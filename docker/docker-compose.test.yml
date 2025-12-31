@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: continua
+      POSTGRES_PASSWORD: continua
+      POSTGRES_DB: continua_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U continua"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate:v4.17.0
+    volumes:
+      - ../server/schema/migrations:/migrations:ro
+    entrypoint:
+      - migrate
+      - -path=/migrations
+      - -database=postgres://continua:continua@db:5432/continua_test?sslmode=disable
+      - up
+    depends_on:
+      db:
+        condition: service_healthy
+
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+      args:
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    environment:
+      CONTINUA_DB_HOST: db
+      CONTINUA_DB_PORT: 5432
+      CONTINUA_DB_USER: continua
+      CONTINUA_DB_PASSWORD: continua
+      CONTINUA_DB_NAME: continua_test
+    healthcheck:
+      test: ["/usr/local/bin/healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  tests-python:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test-python
+    environment:
+      CONTINUA_API_URL: http://server:8243
+    depends_on:
+      server:
+        condition: service_healthy
+
+  tests-typescript:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test-typescript
+    environment:
+      CONTINUA_API_URL: http://server:8243
+    depends_on:
+      server:
+        condition: service_healthy

@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package continua.api.v1;
+
+import "continua/events/v1/agent_events.proto";
+
+option go_package = "continua/api/v1;apiv1";
+
+// Recorder service for event recording and replay
+service RecorderService {
+  // List events for an execution
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+
+  // Replay an execution
+  rpc ReplayExecution(ReplayExecutionRequest) returns (ReplayExecutionResponse);
+
+  // Get execution state at a point in time
+  rpc GetExecutionState(GetExecutionStateRequest) returns (GetExecutionStateResponse);
+
+  // Stream events as they occur
+  rpc WatchEvents(WatchEventsRequest) returns (stream continua.events.v1.AgentEvent);
+}
+
+message ListEventsRequest {
+  string execution_id = 1;
+  string tenant_id = 2;
+  int64 from_event_id = 3;
+  int32 limit = 4;
+}
+
+message ListEventsResponse {
+  repeated continua.events.v1.AgentEvent events = 1;
+  int64 next_event_id = 2;
+  bool has_more = 3;
+}
+
+message ReplayExecutionRequest {
+  string execution_id = 1;
+  string tenant_id = 2;
+  int64 to_event_id = 3;  // Replay up to this event (0 = all)
+  bool strict_mode = 4;    // Fail on any mismatch
+}
+
+message ReplayExecutionResponse {
+  bool success = 1;
+  int64 events_replayed = 2;
+  repeated ReplayMismatch mismatches = 3;
+}
+
+message ReplayMismatch {
+  int64 event_id = 1;
+  string field = 2;
+  string expected = 3;
+  string actual = 4;
+}
+
+message GetExecutionStateRequest {
+  string execution_id = 1;
+  string tenant_id = 2;
+  int64 at_event_id = 3;  // Get state at this event (0 = current)
+}
+
+message GetExecutionStateResponse {
+  bytes state = 1;  // Serialized agent state
+  int64 event_id = 2;
+}
+
+message WatchEventsRequest {
+  string execution_id = 1;
+  string tenant_id = 2;
+  int64 from_event_id = 3;
+}

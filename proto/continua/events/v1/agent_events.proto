@@ -1,0 +1,234 @@
+syntax = "proto3";
+
+package continua.events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "continua/common/v1/messages.proto";
+
+option go_package = "continua/events/v1;eventsv1";
+
+// Main event wrapper
+message AgentEvent {
+  int64 event_id = 1;
+  google.protobuf.Timestamp event_time = 2;
+  AgentEventType event_type = 3;
+  int64 version = 4;
+
+  oneof attributes {
+    // Lifecycle events
+    AgentExecutionStartedEventAttributes execution_started = 10;
+    AgentExecutionCompletedEventAttributes execution_completed = 11;
+    AgentExecutionFailedEventAttributes execution_failed = 12;
+    AgentExecutionCancelledEventAttributes execution_cancelled = 13;
+
+    // LLM events
+    LLMCallScheduledEventAttributes llm_call_scheduled = 20;
+    LLMCallStartedEventAttributes llm_call_started = 21;
+    LLMCallCompletedEventAttributes llm_call_completed = 22;
+    LLMCallFailedEventAttributes llm_call_failed = 23;
+
+    // Tool events
+    ToolCallScheduledEventAttributes tool_call_scheduled = 30;
+    ToolCallStartedEventAttributes tool_call_started = 31;
+    ToolCallCompletedEventAttributes tool_call_completed = 32;
+    ToolCallFailedEventAttributes tool_call_failed = 33;
+
+    // Context events
+    ContextUpdatedEventAttributes context_updated = 40;
+    MemoryUpdatedEventAttributes memory_updated = 41;
+
+    // Signal events
+    AgentSignaledEventAttributes agent_signaled = 50;
+
+    // Sub-agent events
+    SubAgentInitiatedEventAttributes sub_agent_initiated = 60;
+    SubAgentCompletedEventAttributes sub_agent_completed = 61;
+    SubAgentFailedEventAttributes sub_agent_failed = 62;
+  }
+}
+
+enum AgentEventType {
+  AGENT_EVENT_TYPE_UNSPECIFIED = 0;
+
+  // Lifecycle
+  AGENT_EVENT_TYPE_EXECUTION_STARTED = 1;
+  AGENT_EVENT_TYPE_EXECUTION_COMPLETED = 2;
+  AGENT_EVENT_TYPE_EXECUTION_FAILED = 3;
+  AGENT_EVENT_TYPE_EXECUTION_CANCELLED = 4;
+
+  // LLM
+  AGENT_EVENT_TYPE_LLM_CALL_SCHEDULED = 10;
+  AGENT_EVENT_TYPE_LLM_CALL_STARTED = 11;
+  AGENT_EVENT_TYPE_LLM_CALL_COMPLETED = 12;
+  AGENT_EVENT_TYPE_LLM_CALL_FAILED = 13;
+
+  // Tool
+  AGENT_EVENT_TYPE_TOOL_CALL_SCHEDULED = 20;
+  AGENT_EVENT_TYPE_TOOL_CALL_STARTED = 21;
+  AGENT_EVENT_TYPE_TOOL_CALL_COMPLETED = 22;
+  AGENT_EVENT_TYPE_TOOL_CALL_FAILED = 23;
+
+  // Context
+  AGENT_EVENT_TYPE_CONTEXT_UPDATED = 30;
+  AGENT_EVENT_TYPE_MEMORY_UPDATED = 31;
+
+  // Signal
+  AGENT_EVENT_TYPE_SIGNALED = 40;
+
+  // Sub-agent
+  AGENT_EVENT_TYPE_SUB_AGENT_INITIATED = 50;
+  AGENT_EVENT_TYPE_SUB_AGENT_COMPLETED = 51;
+  AGENT_EVENT_TYPE_SUB_AGENT_FAILED = 52;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Lifecycle Event Attributes
+// ═══════════════════════════════════════════════════════════════════
+
+message AgentExecutionStartedEventAttributes {
+  string agent_type = 1;
+  string agent_version = 2;
+  bytes input = 3;
+  continua.common.v1.AgentConfig config = 4;
+  string parent_execution_id = 5;
+  map<string, string> metadata = 6;
+}
+
+message AgentExecutionCompletedEventAttributes {
+  bytes output = 1;
+  map<string, string> metadata = 2;
+}
+
+message AgentExecutionFailedEventAttributes {
+  string error_type = 1;
+  string error_message = 2;
+  string stack_trace = 3;
+  bool retryable = 4;
+}
+
+message AgentExecutionCancelledEventAttributes {
+  string reason = 1;
+  string cancelled_by = 2;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LLM Event Attributes
+// ═══════════════════════════════════════════════════════════════════
+
+message LLMCallScheduledEventAttributes {
+  string call_id = 1;
+  string model = 2;
+  string provider = 3;
+  repeated continua.common.v1.LLMMessage messages = 4;
+  continua.common.v1.LLMCallConfig config = 5;
+  repeated continua.common.v1.ToolDefinition tools = 6;
+  string system_prompt = 7;
+}
+
+message LLMCallStartedEventAttributes {
+  string call_id = 1;
+  google.protobuf.Timestamp started_at = 2;
+}
+
+message LLMCallCompletedEventAttributes {
+  string call_id = 1;
+  continua.common.v1.LLMResponse response = 2;
+  int32 prompt_tokens = 3;
+  int32 completion_tokens = 4;
+  int32 total_tokens = 5;
+  google.protobuf.Duration latency = 6;
+  string finish_reason = 7;
+  repeated continua.common.v1.ToolCallRequest tool_calls = 8;
+  string model_version = 9;
+}
+
+message LLMCallFailedEventAttributes {
+  string call_id = 1;
+  string error_type = 2;
+  string error_message = 3;
+  int32 http_status = 4;
+  bool retryable = 5;
+  int32 retry_attempt = 6;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tool Event Attributes
+// ═══════════════════════════════════════════════════════════════════
+
+message ToolCallScheduledEventAttributes {
+  string call_id = 1;
+  string tool_name = 2;
+  bytes input = 3;
+  string llm_call_id = 4;
+  continua.common.v1.ToolDefinition tool_definition = 5;
+}
+
+message ToolCallStartedEventAttributes {
+  string call_id = 1;
+  google.protobuf.Timestamp started_at = 2;
+}
+
+message ToolCallCompletedEventAttributes {
+  string call_id = 1;
+  bytes output = 2;
+  google.protobuf.Duration latency = 3;
+  map<string, string> metadata = 4;
+}
+
+message ToolCallFailedEventAttributes {
+  string call_id = 1;
+  string error_type = 2;
+  string error_message = 3;
+  bool retryable = 4;
+  int32 retry_attempt = 5;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Context Event Attributes
+// ═══════════════════════════════════════════════════════════════════
+
+message ContextUpdatedEventAttributes {
+  string update_type = 1;
+  repeated continua.common.v1.LLMMessage added_messages = 2;
+  int32 messages_truncated = 3;
+  string reason = 4;
+}
+
+message MemoryUpdatedEventAttributes {
+  string key = 1;
+  bytes old_value = 2;
+  bytes new_value = 3;
+  string reason = 4;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Signal Event Attributes
+// ═══════════════════════════════════════════════════════════════════
+
+message AgentSignaledEventAttributes {
+  string signal_name = 1;
+  bytes payload = 2;
+  string sender = 3;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Sub-Agent Event Attributes
+// ═══════════════════════════════════════════════════════════════════
+
+message SubAgentInitiatedEventAttributes {
+  string sub_execution_id = 1;
+  string agent_type = 2;
+  bytes input = 3;
+}
+
+message SubAgentCompletedEventAttributes {
+  string sub_execution_id = 1;
+  bytes output = 2;
+}
+
+message SubAgentFailedEventAttributes {
+  string sub_execution_id = 1;
+  string error_type = 2;
+  string error_message = 3;
+}

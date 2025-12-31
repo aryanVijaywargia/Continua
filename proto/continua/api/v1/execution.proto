@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package continua.api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "continua/common/v1/messages.proto";
+import "continua/events/v1/agent_events.proto";
+
+option go_package = "continua/api/v1;apiv1";
+
+// Execution service for managing agent executions
+service ExecutionService {
+  // Start a new agent execution
+  rpc StartAgentExecution(StartAgentExecutionRequest) returns (StartAgentExecutionResponse);
+
+  // Get an agent execution by ID
+  rpc GetAgentExecution(GetAgentExecutionRequest) returns (GetAgentExecutionResponse);
+
+  // List agent executions
+  rpc ListAgentExecutions(ListAgentExecutionsRequest) returns (ListAgentExecutionsResponse);
+
+  // Signal a running agent execution
+  rpc SignalAgentExecution(SignalAgentExecutionRequest) returns (SignalAgentExecutionResponse);
+
+  // Query agent state without mutation
+  rpc QueryAgent(QueryAgentRequest) returns (QueryAgentResponse);
+
+  // Cancel a running agent execution
+  rpc CancelAgentExecution(CancelAgentExecutionRequest) returns (CancelAgentExecutionResponse);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Execution Status
+// ═══════════════════════════════════════════════════════════════════
+
+enum AgentExecutionStatus {
+  AGENT_EXECUTION_STATUS_UNSPECIFIED = 0;
+  AGENT_EXECUTION_STATUS_RUNNING = 1;
+  AGENT_EXECUTION_STATUS_COMPLETED = 2;
+  AGENT_EXECUTION_STATUS_FAILED = 3;
+  AGENT_EXECUTION_STATUS_CANCELLED = 4;
+  AGENT_EXECUTION_STATUS_TIMED_OUT = 5;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Agent Execution Info
+// ═══════════════════════════════════════════════════════════════════
+
+message AgentExecutionInfo {
+  string execution_id = 1;
+  string tenant_id = 2;
+  string agent_type = 3;
+  string agent_version = 4;
+  AgentExecutionStatus status = 5;
+  bytes input = 6;
+  bytes output = 7;
+  google.protobuf.Timestamp start_time = 8;
+  google.protobuf.Timestamp end_time = 9;
+  string parent_execution_id = 10;
+  int64 event_count = 11;
+  map<string, string> metadata = 12;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Request/Response Messages
+// ═══════════════════════════════════════════════════════════════════
+
+message StartAgentExecutionRequest {
+  string tenant_id = 1;
+  string agent_type = 2;
+  string agent_version = 3;
+  bytes input = 4;
+  continua.common.v1.AgentConfig config = 5;
+  string task_queue = 6;
+  map<string, string> metadata = 7;
+  string request_id = 8;  // Idempotency key
+}
+
+message StartAgentExecutionResponse {
+  string execution_id = 1;
+  bool already_started = 2;
+}
+
+message GetAgentExecutionRequest {
+  string execution_id = 1;
+  string tenant_id = 2;
+}
+
+message GetAgentExecutionResponse {
+  AgentExecutionInfo execution = 1;
+}
+
+message ListAgentExecutionsRequest {
+  string tenant_id = 1;
+  string agent_type = 2;
+  AgentExecutionStatus status = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+message ListAgentExecutionsResponse {
+  repeated AgentExecutionInfo executions = 1;
+  string next_page_token = 2;
+}
+
+message SignalAgentExecutionRequest {
+  string execution_id = 1;
+  string tenant_id = 2;
+  string signal_name = 3;
+  bytes payload = 4;
+}
+
+message SignalAgentExecutionResponse {
+  // Empty on success
+}
+
+message QueryAgentRequest {
+  string execution_id = 1;
+  string tenant_id = 2;
+  string query_type = 3;
+  bytes query_args = 4;
+}
+
+message QueryAgentResponse {
+  bytes result = 1;
+}
+
+message CancelAgentExecutionRequest {
+  string execution_id = 1;
+  string tenant_id = 2;
+  string reason = 3;
+}
+
+message CancelAgentExecutionResponse {
+  // Empty on success
+}

@@ -1,0 +1,6 @@
+packages:
+  - 'packages/*'
+  - 'sdks/typescript'
+  - 'apps/web'
+  - 'tests/integration/typescript'
+  - 'examples/typescript/*'

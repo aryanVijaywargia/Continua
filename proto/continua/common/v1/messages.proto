@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package continua.common.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "continua/common/v1;commonv1";
+
+// LLM message in a conversation
+message LLMMessage {
+  string role = 1;           // system, user, assistant, tool
+  string content = 2;
+  repeated ToolCallRequest tool_calls = 3;
+  string tool_call_id = 4;   // For tool response messages
+  string name = 5;           // Optional name for the message author
+}
+
+// LLM response from a provider
+message LLMResponse {
+  string id = 1;
+  string content = 2;
+  repeated ToolCallRequest tool_calls = 3;
+  string finish_reason = 4;
+  map<string, string> metadata = 5;
+}
+
+// Tool call request from LLM
+message ToolCallRequest {
+  string id = 1;
+  string name = 2;
+  string arguments = 3;      // JSON string
+}
+
+// Tool definition for LLM
+message ToolDefinition {
+  string name = 1;
+  string description = 2;
+  bytes parameters_schema = 3;  // JSON Schema
+}
+
+// LLM call configuration
+message LLMCallConfig {
+  double temperature = 1;
+  int32 max_tokens = 2;
+  double top_p = 3;
+  repeated string stop = 4;
+  map<string, string> extra = 5;
+}
+
+// Agent configuration
+message AgentConfig {
+  string default_model = 1;
+  int32 max_iterations = 2;
+  int32 max_tokens_per_call = 3;
+  int32 max_total_tokens = 4;
+  google.protobuf.Duration timeout = 5;
+}

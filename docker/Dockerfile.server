@@ -1,0 +1,47 @@
+FROM golang:1.22-alpine AS builder
+
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+
+WORKDIR /app
+
+# Copy go.work and module files
+COPY go.work go.work.sum ./
+COPY server/go.mod server/go.sum ./server/
+COPY packages/proto-go/go.mod packages/proto-go/go.sum ./packages/proto-go/
+
+# Download dependencies
+RUN cd server && go mod download
+RUN cd packages/proto-go && go mod download
+
+# Copy source
+COPY packages/proto-go ./packages/proto-go
+COPY server ./server
+
+# Build server with version info
+WORKDIR /app/server
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-X github.com/aryanVijaywargia/Continua/server/internal/version.Version=${VERSION} \
+              -X github.com/aryanVijaywargia/Continua/server/internal/version.Commit=${COMMIT} \
+              -X github.com/aryanVijaywargia/Continua/server/internal/version.BuildTime=${BUILD_TIME}" \
+    -o /continua-server ./cmd/continua-server
+
+# Build healthcheck
+RUN CGO_ENABLED=0 GOOS=linux go build -o /healthcheck ./cmd/healthcheck
+
+# Final minimal image
+FROM alpine:3.19
+
+RUN apk --no-cache add ca-certificates
+
+COPY --from=builder /continua-server /usr/local/bin/
+COPY --from=builder /healthcheck /usr/local/bin/
+
+# HTTP port only for now (gRPC port 8233 will be added later)
+EXPOSE 8243
+
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/healthcheck"]
+
+ENTRYPOINT ["/usr/local/bin/continua-server"]

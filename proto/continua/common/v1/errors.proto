@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package continua.common.v1;
+
+option go_package = "continua/common/v1;commonv1";
+
+// Service error details
+message ErrorDetails {
+  string error_type = 1;
+  string message = 2;
+  map<string, string> metadata = 3;
+}
+
+// Failure information
+message Failure {
+  string message = 1;
+  string source = 2;
+  string stack_trace = 3;
+  Failure cause = 4;
+}

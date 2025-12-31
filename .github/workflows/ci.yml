@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  GOWORK: "on"
+
+jobs:
+  proto-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: '1.32.0'
+
+      - run: make proto-fmt-check
+      - run: make proto-lint
+      - run: make proto-check
+
+  go-check:
+    runs-on: ubuntu-latest
+    needs: proto-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: |
+            server/go.sum
+            packages/proto-go/go.sum
+
+      - run: make go-work-check
+      - run: make server
+      - run: make server-test
+
+  sdk-python:
+    runs-on: ubuntu-latest
+    needs: proto-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/uv
+            ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('sdks/python/uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Install uv
+        run: |
+          if ! command -v uv &> /dev/null; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+          fi
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - run: make sdk-python
+      - run: make sdk-python-test
+      - run: make sdk-python-lint
+
+  sdk-typescript:
+    runs-on: ubuntu-latest
+    needs: proto-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9.1.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: make api-client
+      - run: make sdk-ts
+      - run: make ts-test
+
+  web:
+    runs-on: ubuntu-latest
+    needs: sdk-typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9.1.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: make web
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: [go-check, sdk-python, sdk-typescript]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - run: make test-integration

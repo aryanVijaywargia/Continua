@@ -1,0 +1,27 @@
+FROM node:20-slim
+
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+# Copy lockfiles first for caching
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/api-client/package.json ./packages/api-client/
+COPY sdks/typescript/package.json ./sdks/typescript/
+COPY tests/integration/typescript/package.json ./tests/integration/typescript/
+
+# Install dependencies (includes integration tests now in workspace)
+RUN pnpm install --frozen-lockfile
+
+# Copy source
+COPY packages/api-client ./packages/api-client
+COPY sdks/typescript ./sdks/typescript
+COPY tests/integration/typescript ./tests/integration/typescript
+
+# Build dependencies
+RUN pnpm --filter @continua/api-client build
+RUN pnpm --filter @continua/sdk build
+
+# Run tests
+WORKDIR /app/tests/integration/typescript
+CMD ["pnpm", "test"]

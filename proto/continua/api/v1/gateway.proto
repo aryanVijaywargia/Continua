@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package continua.api.v1;
+
+option go_package = "continua/api/v1;apiv1";
+
+// Gateway service for health and metadata
+service GatewayService {
+  // Health check endpoint
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Get server version info
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+}
+
+message HealthRequest {
+  // Empty
+}
+
+message HealthResponse {
+  string status = 1;
+  string version = 2;
+  string commit = 3;
+  string build_time = 4;
+}
+
+message GetVersionRequest {
+  // Empty
+}
+
+message GetVersionResponse {
+  string version = 1;
+  string commit = 2;
+  string build_time = 3;
+  string go_version = 4;
+}

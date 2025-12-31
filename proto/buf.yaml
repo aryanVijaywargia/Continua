@@ -1,0 +1,14 @@
+version: v2
+modules:
+  - path: .
+    name: buf.build/continua/api
+deps:
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - DEFAULT
+  except:
+    - FIELD_LOWER_SNAKE_CASE
+breaking:
+  use:
+    - FILE
