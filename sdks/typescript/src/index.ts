@@ -1,8 +1,14 @@
-// Re-export from api-client
-export { ContinuaClient, type ContinuaClientConfig } from '@continua/api-client';
-export type * from '@continua/api-client/types';
+/**
+ * Continua SDK for TypeScript/JavaScript
+ */
 
-// SDK exports
-export { Agent, type AgentConfig } from './agent';
-export { AgentContext } from './context';
-export { tool, type ToolConfig } from './decorators';
+export const VERSION = '0.0.0';
+
+// TODO: Implement SDK client
+export class ContinuaClient {
+  constructor(private options: { baseUrl?: string } = {}) {}
+
+  get baseUrl(): string {
+    return this.options.baseUrl ?? 'http://localhost:8080';
+  }
+}

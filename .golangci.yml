@@ -1,26 +1,80 @@
 run:
   timeout: 5m
-  skip-dirs:
-    - packages/proto-go  # Generated code
+  modules-download-mode: readonly
 
 linters:
   enable:
-    - gofmt
-    - govet
     - errcheck
-    - staticcheck
     - gosimple
+    - govet
     - ineffassign
+    - staticcheck
     - unused
-    - misspell
+    - gofmt
     - goimports
+    - misspell
+    - unconvert
+    - unparam
+    - nakedret
+    - prealloc
+    - exportloopref
+    - gocritic
+    - revive
 
 linters-settings:
+  gofmt:
+    simplify: true
   goimports:
     local-prefixes: github.com/continua-ai/continua
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: increment-decrement
+      - name: var-naming
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
 
 issues:
   exclude-rules:
-    - path: _test\.go
+    - path: "_gen\\.go$"
+      linters:
+        - lll
+        - gocyclo
+        - dupl
+        - gocritic
+        - revive
+    - path: "db/gen/go/"
+      linters:
+        - lll
+        - gocyclo
+        - dupl
+        - gocritic
+        - revive
+    - path: "engine/db/gen/go/"
+      linters:
+        - lll
+        - gocyclo
+        - dupl
+        - gocritic
+        - revive
+    - path: "_test\\.go$"
       linters:
         - errcheck
+        - gocritic

@@ -1,0 +1,269 @@
+openapi: 3.1.0
+info:
+  title: Continua API
+  version: 0.1.0
+  description: AI Agent Observability Platform API
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /api/health:
+    get:
+      operationId: healthCheck
+      summary: Health check endpoint
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/traces:
+    get:
+      operationId: listTraces
+      summary: List traces
+      tags: [Traces]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: session_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of traces
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceList'
+
+  /api/traces/{id}:
+    get:
+      operationId: getTrace
+      summary: Get a trace by ID
+      tags: [Traces]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Trace details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trace'
+        '404':
+          description: Trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/traces/{id}/spans:
+    get:
+      operationId: listSpansByTrace
+      summary: List spans for a trace
+      tags: [Spans]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of spans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpanList'
+
+  /api/sessions:
+    get:
+      operationId: listSessions
+      summary: List sessions
+      tags: [Sessions]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionList'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version:
+          type: string
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    Trace:
+      type: object
+      required: [id, name, status, started_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED]
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        total_tokens_in:
+          type: integer
+        total_tokens_out:
+          type: integer
+        total_cost_usd:
+          type: number
+        metadata:
+          type: object
+
+    TraceList:
+      type: object
+      required: [traces, total]
+      properties:
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trace'
+        total:
+          type: integer
+
+    Span:
+      type: object
+      required: [id, trace_id, name, kind, status, started_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+          format: uuid
+        parent_span_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [LLM, TOOL, CHAIN, AGENT, CUSTOM]
+        status:
+          type: string
+          enum: [SCHEDULED, STARTED, COMPLETED, FAILED]
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        tokens_in:
+          type: integer
+          nullable: true
+        tokens_out:
+          type: integer
+          nullable: true
+        cost_usd:
+          type: number
+          nullable: true
+        latency_ms:
+          type: integer
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+
+    SpanList:
+      type: object
+      required: [spans]
+      properties:
+        spans:
+          type: array
+          items:
+            $ref: '#/components/schemas/Span'
+
+    Session:
+      type: object
+      required: [id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    SessionList:
+      type: object
+      required: [sessions, total]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        total:
+          type: integer

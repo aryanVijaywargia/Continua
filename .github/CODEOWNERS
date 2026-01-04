@@ -1,0 +1,4 @@
+* @continua-ai/core-team
+/contracts/ @continua-ai/api-team
+/web/ @continua-ai/frontend-team
+/sdks/ @continua-ai/sdk-team

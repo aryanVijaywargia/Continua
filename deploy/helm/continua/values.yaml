@@ -1,0 +1,26 @@
+replicaCount: 1
+
+image:
+  repository: continua
+  pullPolicy: IfNotPresent
+  tag: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+  proxyPort: 8081
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+postgresql:
+  enabled: true
+  auth:
+    username: continua
+    password: continua
+    database: continua

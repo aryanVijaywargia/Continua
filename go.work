@@ -1,6 +1,6 @@
 go 1.22
 
 use (
-    ./server
-    ./packages/proto-go
+    .
+    ./engine
 )

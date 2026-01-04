@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: continua-config
+data:
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"

@@ -1,6 +1,4 @@
 packages:
-  - 'packages/*'
+  - 'contracts'
+  - 'web'
   - 'sdks/typescript'
-  - 'apps/web'
-  - 'tests/integration/typescript'
-  - 'examples/typescript/*'

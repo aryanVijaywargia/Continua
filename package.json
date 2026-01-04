@@ -1,15 +1,24 @@
 {
   "name": "continua",
   "private": true,
-  "packageManager": "pnpm@9.1.0",
+  "packageManager": "pnpm@9.14.2",
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "test": "turbo run test",
-    "lint": "turbo run lint",
-    "clean": "turbo run clean"
+    "dev:web": "pnpm --filter web dev",
+    "build:web": "pnpm --filter web build",
+    "build:contracts": "pnpm --filter @continua/contracts generate",
+    "build:sdk": "pnpm --filter @continua/sdk build",
+    "generate": "pnpm --filter @continua/contracts generate",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "type-check": "pnpm -r type-check",
+    "test": "pnpm -r test",
+    "clean": "pnpm -r clean"
   },
   "devDependencies": {
-    "turbo": "^2.0.0"
+    "typescript": "5.6.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
   }
 }

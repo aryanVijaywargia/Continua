@@ -1,0 +1,322 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "WebSocketEvent": {
+      "$ref": "#/definitions/WebSocketEvent",
+      "definitions": {
+        "WebSocketEvent": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "span.created"
+                },
+                "traceId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "spanId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "parentSpanId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "LLM",
+                    "TOOL",
+                    "CHAIN",
+                    "AGENT",
+                    "CUSTOM"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "SCHEDULED",
+                    "STARTED",
+                    "COMPLETED",
+                    "FAILED"
+                  ]
+                },
+                "startedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "type",
+                "traceId",
+                "spanId",
+                "parentSpanId",
+                "name",
+                "kind",
+                "status",
+                "startedAt"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "span.updated"
+                },
+                "spanId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "SCHEDULED",
+                    "STARTED",
+                    "COMPLETED",
+                    "FAILED"
+                  ]
+                },
+                "endedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tokensIn": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tokensOut": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "costUsd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "latencyMs": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "spanId",
+                "status",
+                "endedAt",
+                "tokensIn",
+                "tokensOut",
+                "costUsd",
+                "latencyMs"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "stream.chunk"
+                },
+                "spanId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "chunkIndex": {
+                  "type": "integer"
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "spanId",
+                "chunkIndex",
+                "content"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "trace.completed"
+                },
+                "traceId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "RUNNING",
+                    "COMPLETED",
+                    "FAILED"
+                  ]
+                },
+                "totalCostUsd": {
+                  "type": "number"
+                },
+                "totalDurationMs": {
+                  "type": "integer"
+                },
+                "spanCount": {
+                  "type": "integer"
+                },
+                "errorCount": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "type",
+                "traceId",
+                "status",
+                "totalCostUsd",
+                "totalDurationMs",
+                "spanCount",
+                "errorCount"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "error"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "traceId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "spanId": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "type",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "ClientMessage": {
+      "$ref": "#/definitions/ClientMessage",
+      "definitions": {
+        "ClientMessage": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "subscribe"
+                },
+                "traceIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "sessionIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "unsubscribe"
+                },
+                "traceIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "sessionIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  }
+}

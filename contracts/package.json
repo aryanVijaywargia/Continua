@@ -1,0 +1,49 @@
+{
+  "name": "@continua/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./websocket": {
+      "types": "./dist/websocket/events.d.ts",
+      "import": "./dist/websocket/events.js"
+    },
+    "./generated/typescript/api": {
+      "types": "./generated/typescript/api.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "generated",
+    "openapi/openapi.bundle.yaml",
+    "websocket/events.schema.json"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "generate": "pnpm generate:bundle && pnpm generate:ws && pnpm generate:types:ts && pnpm generate:types:go",
+    "generate:bundle": "redocly bundle openapi/openapi.yaml -o openapi/openapi.bundle.yaml",
+    "generate:ws": "tsx websocket/generate.ts",
+    "generate:types:ts": "openapi-typescript openapi/openapi.bundle.yaml -o generated/typescript/api.ts",
+    "generate:types:go": "$HOME/go/bin/oapi-codegen -generate types,chi-server -package api openapi/openapi.bundle.yaml > generated/go/server_gen.go",
+    "lint": "redocly lint openapi/openapi.yaml",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@redocly/cli": "1.25.11",
+    "openapi-typescript": "7.4.1",
+    "tsup": "8.3.5",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "zod": "3.23.8",
+    "zod-to-json-schema": "3.23.5"
+  },
+  "dependencies": {
+    "zod": "3.23.8"
+  }
+}

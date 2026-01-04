@@ -1,6 +1,6 @@
-# Continua Python SDK
+# Continua SDK for Python
 
-Python SDK for building AI agents with Continua.
+Python SDK for the Continua AI Agent Observability Platform.
 
 ## Installation
 
@@ -11,24 +11,20 @@ pip install continua
 ## Quick Start
 
 ```python
-from continua import Agent, AgentConfig, AgentContext, tool
+from continua import ContinuaClient
 
-
-class MyAgent(Agent):
-    @tool(description="Search the web")
-    async def search(self, query: str) -> str:
-        # Your search implementation
-        return f"Results for: {query}"
-
-    async def run(self, context: AgentContext, input_data: str) -> str:
-        result = await self.search(input_data)
-        return result
-
-
-# Create and run the agent
-agent = MyAgent(AgentConfig(name="my-agent"))
+client = ContinuaClient(base_url="http://localhost:8080")
 ```
 
-## Documentation
+## Development
 
-See the [full documentation](https://docs.continua.dev) for more details.
+```bash
+# Install with dev dependencies
+uv sync --all-extras
+
+# Run tests
+uv run pytest
+
+# Type check
+uv run mypy src/
+```
