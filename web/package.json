@@ -18,13 +18,13 @@
     "class-variance-authority": "0.7.0",
     "clsx": "2.1.1",
     "lucide-react": "0.453.0",
-    "react": "18.3.1",
+    "react": "19.2.3",
     "react-dom": "18.3.1",
     "react-router-dom": "6.28.0",
     "tailwind-merge": "2.5.4"
   },
   "devDependencies": {
-    "@types/react": "18.3.12",
+    "@types/react": "19.2.7",
     "@types/react-dom": "18.3.1",
     "@typescript-eslint/eslint-plugin": "8.13.0",
     "@typescript-eslint/parser": "8.13.0",
