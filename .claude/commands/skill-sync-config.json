@@ -1,0 +1,40 @@
+{
+  "description": "Maps file path patterns to skills and their resource files for automatic sync",
+  "mappings": [
+    {
+      "paths": ["internal/api/**", "internal/store/**", "internal/proxy/**"],
+      "skill": "continua-backend-dev",
+      "resources": ["api-patterns.md", "database.md", "architecture.md"]
+    },
+    {
+      "paths": ["db/platform/migrations/**"],
+      "skill": "continua-backend-dev",
+      "resources": ["database.md"]
+    },
+    {
+      "paths": ["contracts/**"],
+      "skill": "continua-backend-dev",
+      "resources": ["api-patterns.md"]
+    },
+    {
+      "paths": ["**/*_test.go", "internal/**/*_test.go"],
+      "skill": "continua-testing",
+      "resources": ["testing-patterns.md"]
+    },
+    {
+      "paths": ["internal/trace/**", "internal/telemetry/**"],
+      "skill": "continua-observability",
+      "resources": ["tracing.md"]
+    },
+    {
+      "paths": ["sdks/**", "internal/export/**"],
+      "skill": "continua-integrations",
+      "resources": ["sdk-patterns.md"]
+    },
+    {
+      "paths": ["engine/**"],
+      "skill": "continua-backend-dev",
+      "resources": ["architecture.md"]
+    }
+  ]
+}

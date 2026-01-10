@@ -14,3 +14,5 @@ require (
 	go.uber.org/fx v1.23.0
 	modernc.org/sqlite v1.34.1
 )
+
+//figure out ingestion process for phoenix using free claude
