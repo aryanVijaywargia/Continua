@@ -11,24 +11,43 @@ import (
 	"github.com/google/uuid"
 )
 
+const countSessions = `-- name: CountSessions :one
+SELECT COUNT(*) FROM sessions WHERE project_id = $1
+`
+
+func (q *Queries) CountSessions(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countSessions, projectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (id, name, metadata)
-VALUES ($1, $2, $3)
-RETURNING id, name, metadata, created_at, updated_at
+INSERT INTO sessions (project_id, name, user_id, metadata)
+VALUES ($1, $2, $3, $4)
+RETURNING id, project_id, name, user_id, metadata, created_at, updated_at
 `
 
 type CreateSessionParams struct {
-	ID       uuid.UUID `json:"id"`
-	Name     *string   `json:"name"`
-	Metadata []byte    `json:"metadata"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Name      *string   `json:"name"`
+	UserID    *string   `json:"user_id"`
+	Metadata  []byte    `json:"metadata"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
-	row := q.db.QueryRow(ctx, createSession, arg.ID, arg.Name, arg.Metadata)
+	row := q.db.QueryRow(ctx, createSession,
+		arg.ProjectID,
+		arg.Name,
+		arg.UserID,
+		arg.Metadata,
+	)
 	var i Session
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.Name,
+		&i.UserID,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -37,7 +56,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, name, metadata, created_at, updated_at FROM sessions WHERE id = $1
+SELECT id, project_id, name, user_id, metadata, created_at, updated_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, id uuid.UUID) (Session, error) {
@@ -45,7 +64,9 @@ func (q *Queries) GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	var i Session
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.Name,
+		&i.UserID,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -54,18 +75,20 @@ func (q *Queries) GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, name, metadata, created_at, updated_at FROM sessions
+SELECT id, project_id, name, user_id, metadata, created_at, updated_at FROM sessions
+WHERE project_id = $1
 ORDER BY created_at DESC
-LIMIT $1 OFFSET $2
+LIMIT $2 OFFSET $3
 `
 
 type ListSessionsParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Limit     int32     `json:"limit"`
+	Offset    int32     `json:"offset"`
 }
 
 func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]Session, error) {
-	rows, err := q.db.Query(ctx, listSessions, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listSessions, arg.ProjectID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +98,9 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]S
 		var i Session
 		if err := rows.Scan(
 			&i.ID,
+			&i.ProjectID,
 			&i.Name,
+			&i.UserID,
 			&i.Metadata,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -94,7 +119,7 @@ const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
 SET name = $2, metadata = $3, updated_at = NOW()
 WHERE id = $1
-RETURNING id, name, metadata, created_at, updated_at
+RETURNING id, project_id, name, user_id, metadata, created_at, updated_at
 `
 
 type UpdateSessionParams struct {
@@ -108,7 +133,9 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 	var i Session
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.Name,
+		&i.UserID,
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,

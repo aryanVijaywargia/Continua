@@ -20,6 +20,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+  /v1/ingest:
+    post:
+      operationId: ingest
+      summary: Ingest traces, spans, and events
+      description: |
+        Batch ingestion endpoint for traces, spans, and events.
+        Supports idempotent processing via batch_key.
+        Maximum request body size is 5MB.
+      tags:
+        - Ingest
+      parameters:
+        - name: sync
+          in: query
+          description: If true, wait for processing to complete before returning
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+      responses:
+        '200':
+          description: Batch processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body too large (exceeds 5MB limit)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SizeError'
   /api/traces:
     get:
       operationId: listTraces
@@ -144,6 +186,15 @@ components:
           type: string
         message:
           type: string
+    SizeError:
+      type: object
+      required:
+        - error
+      description: Error response for 413 Payload Too Large
+      properties:
+        error:
+          type: string
+          description: Error message describing the size limit violation
     Trace:
       type: object
       required:
@@ -293,3 +344,225 @@ components:
             $ref: '#/components/schemas/Session'
         total:
           type: integer
+    IngestRequest:
+      type: object
+      required:
+        - batch_key
+      properties:
+        batch_key:
+          type: string
+          description: Unique identifier for idempotency. Same batch_key returns success without reprocessing.
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestTraceInput'
+        spans:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestSpanInput'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestEventInput'
+    IngestTraceInput:
+      type: object
+      required:
+        - trace_id
+      properties:
+        trace_id:
+          type: string
+          description: External trace identifier
+        session_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        user_id:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        environment:
+          type: string
+        release:
+          type: string
+        metadata:
+          type: object
+        input:
+          description: Trace input data (any JSON-serializable value)
+        output:
+          description: Trace output data (any JSON-serializable value)
+        status:
+          type: string
+          enum:
+            - running
+            - completed
+            - failed
+          default: running
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+    IngestSpanInput:
+      type: object
+      required:
+        - trace_id
+        - span_id
+        - name
+        - start_time
+      properties:
+        trace_id:
+          type: string
+          description: External trace identifier
+        span_id:
+          type: string
+          description: External span identifier
+        parent_span_id:
+          type: string
+          description: External parent span identifier
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - default
+            - llm
+            - tool
+            - agent
+            - chain
+            - retrieval
+            - embedding
+            - generation
+          default: default
+        status:
+          type: string
+          enum:
+            - running
+            - completed
+            - failed
+          default: running
+        status_message:
+          type: string
+        level:
+          type: string
+          enum:
+            - debug
+            - default
+            - warning
+            - error
+          default: default
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        input:
+          description: Span input data (any JSON-serializable value)
+        output:
+          description: Span output data (any JSON-serializable value)
+        model:
+          type: string
+        provider:
+          type: string
+        prompt_tokens:
+          type: integer
+          format: int64
+        completion_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        total_cost:
+          type: number
+          format: double
+        metadata:
+          type: object
+        sequence:
+          type: integer
+          format: int32
+        depth:
+          type: integer
+          format: int32
+    IngestEventInput:
+      type: object
+      required:
+        - trace_id
+        - span_id
+      properties:
+        trace_id:
+          type: string
+          description: External trace identifier
+        span_id:
+          type: string
+          description: External span identifier
+        event_type:
+          type: string
+          enum:
+            - log
+            - error
+            - exception
+            - message
+            - metric
+            - custom
+          default: log
+        level:
+          type: string
+          enum:
+            - debug
+            - info
+            - warning
+            - error
+          default: info
+        event_ts:
+          type: string
+          format: date-time
+        sequence:
+          type: integer
+          format: int32
+        message:
+          type: string
+        payload:
+          type: object
+        idempotency_key:
+          type: string
+          description: Optional key for event-level deduplication
+    IngestResponse:
+      type: object
+      required:
+        - status
+        - batch_key
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - accepted
+            - duplicate
+            - failed
+          description: Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
+        batch_key:
+          type: string
+        trace_count:
+          type: integer
+          format: int32
+        span_count:
+          type: integer
+          format: int32
+        event_count:
+          type: integer
+          format: int32
+        accepted_count:
+          type: integer
+          format: int32
+        rejected_count:
+          type: integer
+          format: int32
+        errors:
+          type: array
+          items:
+            type: string

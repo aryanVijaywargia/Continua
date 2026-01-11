@@ -11,6 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type IngestBatch struct {
+	ID                    uuid.UUID          `json:"id"`
+	ProjectID             uuid.UUID          `json:"project_id"`
+	BatchKey              string             `json:"batch_key"`
+	Status                string             `json:"status"`
+	ServerReceivedAt      time.Time          `json:"server_received_at"`
+	ProcessingCompletedAt pgtype.Timestamptz `json:"processing_completed_at"`
+	TraceCount            *int32             `json:"trace_count"`
+	SpanCount             *int32             `json:"span_count"`
+	EventCount            *int32             `json:"event_count"`
+	AcceptedCount         *int32             `json:"accepted_count"`
+	RejectedCount         *int32             `json:"rejected_count"`
+	CreatedAt             time.Time          `json:"created_at"`
+}
+
 type Payload struct {
 	ID           uuid.UUID `json:"id"`
 	SpanID       uuid.UUID `json:"span_id"`
@@ -22,44 +37,105 @@ type Payload struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type Project struct {
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	ApiKeyHash string    `json:"api_key_hash"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type Session struct {
 	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
 	Name      *string   `json:"name"`
+	UserID    *string   `json:"user_id"`
 	Metadata  []byte    `json:"metadata"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Span struct {
-	ID           uuid.UUID          `json:"id"`
-	TraceID      uuid.UUID          `json:"trace_id"`
-	ParentSpanID pgtype.UUID        `json:"parent_span_id"`
-	Name         string             `json:"name"`
-	Kind         string             `json:"kind"`
-	Status       string             `json:"status"`
-	StartedAt    time.Time          `json:"started_at"`
-	EndedAt      pgtype.Timestamptz `json:"ended_at"`
-	TokensIn     *int32             `json:"tokens_in"`
-	TokensOut    *int32             `json:"tokens_out"`
-	CostUsd      pgtype.Numeric     `json:"cost_usd"`
-	LatencyMs    *int32             `json:"latency_ms"`
-	ErrorMessage *string            `json:"error_message"`
-	Metadata     []byte             `json:"metadata"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at"`
+	ID                      uuid.UUID          `json:"id"`
+	ProjectID               uuid.UUID          `json:"project_id"`
+	TraceID                 uuid.UUID          `json:"trace_id"`
+	SpanID                  string             `json:"span_id"`
+	ParentSpanID            *string            `json:"parent_span_id"`
+	Name                    string             `json:"name"`
+	Type                    string             `json:"type"`
+	Status                  string             `json:"status"`
+	StatusMessage           *string            `json:"status_message"`
+	Level                   string             `json:"level"`
+	StartTime               time.Time          `json:"start_time"`
+	EndTime                 pgtype.Timestamptz `json:"end_time"`
+	ServerReceivedAt        time.Time          `json:"server_received_at"`
+	DurationMs              *int64             `json:"duration_ms"`
+	Input                   []byte             `json:"input"`
+	InputTruncated          *bool              `json:"input_truncated"`
+	InputOriginalSizeBytes  *int64             `json:"input_original_size_bytes"`
+	InputTruncationReason   *string            `json:"input_truncation_reason"`
+	Output                  []byte             `json:"output"`
+	OutputTruncated         *bool              `json:"output_truncated"`
+	OutputOriginalSizeBytes *int64             `json:"output_original_size_bytes"`
+	OutputTruncationReason  *string            `json:"output_truncation_reason"`
+	Thinking                *string            `json:"thinking"`
+	ThinkingTruncated       *bool              `json:"thinking_truncated"`
+	Model                   *string            `json:"model"`
+	Provider                *string            `json:"provider"`
+	PromptTokens            *int64             `json:"prompt_tokens"`
+	CompletionTokens        *int64             `json:"completion_tokens"`
+	TotalTokens             *int64             `json:"total_tokens"`
+	TotalCost               pgtype.Numeric     `json:"total_cost"`
+	Metadata                []byte             `json:"metadata"`
+	Sequence                *int32             `json:"sequence"`
+	Depth                   *int32             `json:"depth"`
+	Version                 *int32             `json:"version"`
+	CreatedAt               time.Time          `json:"created_at"`
+	UpdatedAt               time.Time          `json:"updated_at"`
+}
+
+type SpanEvent struct {
+	ID                uuid.UUID          `json:"id"`
+	ProjectID         uuid.UUID          `json:"project_id"`
+	TraceID           uuid.UUID          `json:"trace_id"`
+	SpanID            string             `json:"span_id"`
+	EventType         string             `json:"event_type"`
+	Level             string             `json:"level"`
+	EventTs           pgtype.Timestamptz `json:"event_ts"`
+	ServerIngestedAt  time.Time          `json:"server_ingested_at"`
+	Sequence          *int32             `json:"sequence"`
+	Message           *string            `json:"message"`
+	Payload           []byte             `json:"payload"`
+	Truncated         *bool              `json:"truncated"`
+	OriginalSizeBytes *int64             `json:"original_size_bytes"`
+	TruncationReason  *string            `json:"truncation_reason"`
+	IdempotencyKey    *string            `json:"idempotency_key"`
+	CreatedAt         time.Time          `json:"created_at"`
 }
 
 type Trace struct {
-	ID             uuid.UUID          `json:"id"`
-	SessionID      pgtype.UUID        `json:"session_id"`
-	Name           string             `json:"name"`
-	Status         string             `json:"status"`
-	StartedAt      time.Time          `json:"started_at"`
-	EndedAt        pgtype.Timestamptz `json:"ended_at"`
-	TotalTokensIn  *int32             `json:"total_tokens_in"`
-	TotalTokensOut *int32             `json:"total_tokens_out"`
-	TotalCostUsd   pgtype.Numeric     `json:"total_cost_usd"`
-	Metadata       []byte             `json:"metadata"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	ID               uuid.UUID          `json:"id"`
+	ProjectID        uuid.UUID          `json:"project_id"`
+	SessionID        pgtype.UUID        `json:"session_id"`
+	TraceID          string             `json:"trace_id"`
+	Name             *string            `json:"name"`
+	UserID           *string            `json:"user_id"`
+	Tags             []string           `json:"tags"`
+	Environment      *string            `json:"environment"`
+	Release          *string            `json:"release"`
+	Metadata         []byte             `json:"metadata"`
+	Input            []byte             `json:"input"`
+	Output           []byte             `json:"output"`
+	Status           string             `json:"status"`
+	StartTime        pgtype.Timestamptz `json:"start_time"`
+	EndTime          pgtype.Timestamptz `json:"end_time"`
+	ServerReceivedAt time.Time          `json:"server_received_at"`
+	DurationMs       *int64             `json:"duration_ms"`
+	TotalSpans       *int32             `json:"total_spans"`
+	TotalTokens      *int64             `json:"total_tokens"`
+	TotalCost        pgtype.Numeric     `json:"total_cost"`
+	ErrorCount       *int32             `json:"error_count"`
+	Version          *int32             `json:"version"`
+	CreatedAt        time.Time          `json:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
 }

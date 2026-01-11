@@ -3,12 +3,16 @@ SELECT * FROM sessions WHERE id = $1;
 
 -- name: ListSessions :many
 SELECT * FROM sessions
+WHERE project_id = $1
 ORDER BY created_at DESC
-LIMIT $1 OFFSET $2;
+LIMIT $2 OFFSET $3;
+
+-- name: CountSessions :one
+SELECT COUNT(*) FROM sessions WHERE project_id = $1;
 
 -- name: CreateSession :one
-INSERT INTO sessions (id, name, metadata)
-VALUES ($1, $2, $3)
+INSERT INTO sessions (project_id, name, user_id, metadata)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: UpdateSession :one

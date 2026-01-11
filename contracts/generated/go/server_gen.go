@@ -15,8 +15,68 @@ import (
 
 // Defines values for HealthResponseStatus.
 const (
-	Degraded HealthResponseStatus = "degraded"
-	Ok       HealthResponseStatus = "ok"
+	HealthResponseStatusDegraded HealthResponseStatus = "degraded"
+	HealthResponseStatusOk       HealthResponseStatus = "ok"
+)
+
+// Defines values for IngestEventInputEventType.
+const (
+	IngestEventInputEventTypeCustom    IngestEventInputEventType = "custom"
+	IngestEventInputEventTypeError     IngestEventInputEventType = "error"
+	IngestEventInputEventTypeException IngestEventInputEventType = "exception"
+	IngestEventInputEventTypeLog       IngestEventInputEventType = "log"
+	IngestEventInputEventTypeMessage   IngestEventInputEventType = "message"
+	IngestEventInputEventTypeMetric    IngestEventInputEventType = "metric"
+)
+
+// Defines values for IngestEventInputLevel.
+const (
+	IngestEventInputLevelDebug   IngestEventInputLevel = "debug"
+	IngestEventInputLevelError   IngestEventInputLevel = "error"
+	IngestEventInputLevelInfo    IngestEventInputLevel = "info"
+	IngestEventInputLevelWarning IngestEventInputLevel = "warning"
+)
+
+// Defines values for IngestResponseStatus.
+const (
+	IngestResponseStatusAccepted  IngestResponseStatus = "accepted"
+	IngestResponseStatusDuplicate IngestResponseStatus = "duplicate"
+	IngestResponseStatusFailed    IngestResponseStatus = "failed"
+	IngestResponseStatusOk        IngestResponseStatus = "ok"
+)
+
+// Defines values for IngestSpanInputLevel.
+const (
+	IngestSpanInputLevelDebug   IngestSpanInputLevel = "debug"
+	IngestSpanInputLevelDefault IngestSpanInputLevel = "default"
+	IngestSpanInputLevelError   IngestSpanInputLevel = "error"
+	IngestSpanInputLevelWarning IngestSpanInputLevel = "warning"
+)
+
+// Defines values for IngestSpanInputStatus.
+const (
+	IngestSpanInputStatusCompleted IngestSpanInputStatus = "completed"
+	IngestSpanInputStatusFailed    IngestSpanInputStatus = "failed"
+	IngestSpanInputStatusRunning   IngestSpanInputStatus = "running"
+)
+
+// Defines values for IngestSpanInputType.
+const (
+	IngestSpanInputTypeAgent      IngestSpanInputType = "agent"
+	IngestSpanInputTypeChain      IngestSpanInputType = "chain"
+	IngestSpanInputTypeDefault    IngestSpanInputType = "default"
+	IngestSpanInputTypeEmbedding  IngestSpanInputType = "embedding"
+	IngestSpanInputTypeGeneration IngestSpanInputType = "generation"
+	IngestSpanInputTypeLlm        IngestSpanInputType = "llm"
+	IngestSpanInputTypeRetrieval  IngestSpanInputType = "retrieval"
+	IngestSpanInputTypeTool       IngestSpanInputType = "tool"
+)
+
+// Defines values for IngestTraceInputStatus.
+const (
+	IngestTraceInputStatusCompleted IngestTraceInputStatus = "completed"
+	IngestTraceInputStatusFailed    IngestTraceInputStatus = "failed"
+	IngestTraceInputStatusRunning   IngestTraceInputStatus = "running"
 )
 
 // Defines values for SpanKind.
@@ -58,6 +118,127 @@ type HealthResponse struct {
 // HealthResponseStatus defines model for HealthResponse.Status.
 type HealthResponseStatus string
 
+// IngestEventInput defines model for IngestEventInput.
+type IngestEventInput struct {
+	EventTs   *time.Time                 `json:"event_ts,omitempty"`
+	EventType *IngestEventInputEventType `json:"event_type,omitempty"`
+
+	// IdempotencyKey Optional key for event-level deduplication
+	IdempotencyKey *string                 `json:"idempotency_key,omitempty"`
+	Level          *IngestEventInputLevel  `json:"level,omitempty"`
+	Message        *string                 `json:"message,omitempty"`
+	Payload        *map[string]interface{} `json:"payload,omitempty"`
+	Sequence       *int32                  `json:"sequence,omitempty"`
+
+	// SpanId External span identifier
+	SpanId string `json:"span_id"`
+
+	// TraceId External trace identifier
+	TraceId string `json:"trace_id"`
+}
+
+// IngestEventInputEventType defines model for IngestEventInput.EventType.
+type IngestEventInputEventType string
+
+// IngestEventInputLevel defines model for IngestEventInput.Level.
+type IngestEventInputLevel string
+
+// IngestRequest defines model for IngestRequest.
+type IngestRequest struct {
+	// BatchKey Unique identifier for idempotency. Same batch_key returns success without reprocessing.
+	BatchKey string              `json:"batch_key"`
+	Events   *[]IngestEventInput `json:"events,omitempty"`
+	Spans    *[]IngestSpanInput  `json:"spans,omitempty"`
+	Traces   *[]IngestTraceInput `json:"traces,omitempty"`
+}
+
+// IngestResponse defines model for IngestResponse.
+type IngestResponse struct {
+	AcceptedCount *int32    `json:"accepted_count,omitempty"`
+	BatchKey      string    `json:"batch_key"`
+	Errors        *[]string `json:"errors,omitempty"`
+	EventCount    *int32    `json:"event_count,omitempty"`
+	RejectedCount *int32    `json:"rejected_count,omitempty"`
+	SpanCount     *int32    `json:"span_count,omitempty"`
+
+	// Status Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
+	Status     IngestResponseStatus `json:"status"`
+	TraceCount *int32               `json:"trace_count,omitempty"`
+}
+
+// IngestResponseStatus Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
+type IngestResponseStatus string
+
+// IngestSpanInput defines model for IngestSpanInput.
+type IngestSpanInput struct {
+	CompletionTokens *int64     `json:"completion_tokens,omitempty"`
+	Depth            *int32     `json:"depth,omitempty"`
+	EndTime          *time.Time `json:"end_time,omitempty"`
+
+	// Input Span input data (any JSON-serializable value)
+	Input    interface{}             `json:"input,omitempty"`
+	Level    *IngestSpanInputLevel   `json:"level,omitempty"`
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Model    *string                 `json:"model,omitempty"`
+	Name     string                  `json:"name"`
+
+	// Output Span output data (any JSON-serializable value)
+	Output interface{} `json:"output,omitempty"`
+
+	// ParentSpanId External parent span identifier
+	ParentSpanId *string `json:"parent_span_id,omitempty"`
+	PromptTokens *int64  `json:"prompt_tokens,omitempty"`
+	Provider     *string `json:"provider,omitempty"`
+	Sequence     *int32  `json:"sequence,omitempty"`
+
+	// SpanId External span identifier
+	SpanId        string                 `json:"span_id"`
+	StartTime     time.Time              `json:"start_time"`
+	Status        *IngestSpanInputStatus `json:"status,omitempty"`
+	StatusMessage *string                `json:"status_message,omitempty"`
+	TotalCost     *float64               `json:"total_cost,omitempty"`
+	TotalTokens   *int64                 `json:"total_tokens,omitempty"`
+
+	// TraceId External trace identifier
+	TraceId string               `json:"trace_id"`
+	Type    *IngestSpanInputType `json:"type,omitempty"`
+}
+
+// IngestSpanInputLevel defines model for IngestSpanInput.Level.
+type IngestSpanInputLevel string
+
+// IngestSpanInputStatus defines model for IngestSpanInput.Status.
+type IngestSpanInputStatus string
+
+// IngestSpanInputType defines model for IngestSpanInput.Type.
+type IngestSpanInputType string
+
+// IngestTraceInput defines model for IngestTraceInput.
+type IngestTraceInput struct {
+	EndTime     *time.Time `json:"end_time,omitempty"`
+	Environment *string    `json:"environment,omitempty"`
+
+	// Input Trace input data (any JSON-serializable value)
+	Input    interface{}             `json:"input,omitempty"`
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Name     *string                 `json:"name,omitempty"`
+
+	// Output Trace output data (any JSON-serializable value)
+	Output    interface{}             `json:"output,omitempty"`
+	Release   *string                 `json:"release,omitempty"`
+	SessionId *openapi_types.UUID     `json:"session_id,omitempty"`
+	StartTime *time.Time              `json:"start_time,omitempty"`
+	Status    *IngestTraceInputStatus `json:"status,omitempty"`
+	Tags      *[]string               `json:"tags,omitempty"`
+
+	// TraceId External trace identifier
+	TraceId string  `json:"trace_id"`
+	UserId  *string `json:"user_id,omitempty"`
+}
+
+// IngestTraceInputStatus defines model for IngestTraceInput.Status.
+type IngestTraceInputStatus string
+
 // Session defines model for Session.
 type Session struct {
 	CreatedAt time.Time               `json:"created_at"`
@@ -70,6 +251,12 @@ type Session struct {
 type SessionList struct {
 	Sessions []Session `json:"sessions"`
 	Total    int       `json:"total"`
+}
+
+// SizeError Error response for 413 Payload Too Large
+type SizeError struct {
+	// Error Error message describing the size limit violation
+	Error string `json:"error"`
 }
 
 // Span defines model for Span.
@@ -137,6 +324,15 @@ type ListTracesParams struct {
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
 }
 
+// IngestParams defines parameters for Ingest.
+type IngestParams struct {
+	// Sync If true, wait for processing to complete before returning
+	Sync *bool `form:"sync,omitempty" json:"sync,omitempty"`
+}
+
+// IngestJSONRequestBody defines body for Ingest for application/json ContentType.
+type IngestJSONRequestBody = IngestRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Health check endpoint
@@ -154,6 +350,9 @@ type ServerInterface interface {
 	// List spans for a trace
 	// (GET /api/traces/{id}/spans)
 	ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Ingest traces, spans, and events
+	// (POST /v1/ingest)
+	Ingest(w http.ResponseWriter, r *http.Request, params IngestParams)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -187,6 +386,12 @@ func (_ Unimplemented) GetTrace(w http.ResponseWriter, r *http.Request, id opena
 // List spans for a trace
 // (GET /api/traces/{id}/spans)
 func (_ Unimplemented) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Ingest traces, spans, and events
+// (POST /v1/ingest)
+func (_ Unimplemented) Ingest(w http.ResponseWriter, r *http.Request, params IngestParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -341,6 +546,33 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// Ingest operation middleware
+func (siw *ServerInterfaceWrapper) Ingest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params IngestParams
+
+	// ------------- Optional query parameter "sync" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sync", r.URL.Query(), &params.Sync)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sync", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Ingest(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -468,6 +700,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/traces/{id}/spans", wrapper.ListSpansByTrace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/ingest", wrapper.Ingest)
 	})
 
 	return r

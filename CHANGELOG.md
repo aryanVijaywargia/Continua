@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Add batch ingestion pipeline with idempotency, payload truncation, and trace/span/event processing
 - Initial project scaffold
 - OpenAPI contract-first API design
 - PostgreSQL and SQLite database support

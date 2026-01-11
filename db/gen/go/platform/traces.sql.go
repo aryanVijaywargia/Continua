@@ -12,40 +12,85 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countTraces = `-- name: CountTraces :one
+SELECT COUNT(*) FROM traces WHERE project_id = $1
+`
+
+func (q *Queries) CountTraces(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countTraces, projectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createTrace = `-- name: CreateTrace :one
-INSERT INTO traces (id, session_id, name, status, metadata)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, session_id, name, status, started_at, ended_at, total_tokens_in, total_tokens_out, total_cost_usd, metadata, created_at, updated_at
+INSERT INTO traces (
+    project_id, session_id, trace_id, name, user_id, tags,
+    environment, release, metadata, input, output,
+    status, start_time, end_time
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at
 `
 
 type CreateTraceParams struct {
-	ID        uuid.UUID   `json:"id"`
-	SessionID pgtype.UUID `json:"session_id"`
-	Name      string      `json:"name"`
-	Status    string      `json:"status"`
-	Metadata  []byte      `json:"metadata"`
+	ProjectID   uuid.UUID          `json:"project_id"`
+	SessionID   pgtype.UUID        `json:"session_id"`
+	TraceID     string             `json:"trace_id"`
+	Name        *string            `json:"name"`
+	UserID      *string            `json:"user_id"`
+	Tags        []string           `json:"tags"`
+	Environment *string            `json:"environment"`
+	Release     *string            `json:"release"`
+	Metadata    []byte             `json:"metadata"`
+	Input       []byte             `json:"input"`
+	Output      []byte             `json:"output"`
+	Status      string             `json:"status"`
+	StartTime   pgtype.Timestamptz `json:"start_time"`
+	EndTime     pgtype.Timestamptz `json:"end_time"`
 }
 
 func (q *Queries) CreateTrace(ctx context.Context, arg CreateTraceParams) (Trace, error) {
 	row := q.db.QueryRow(ctx, createTrace,
-		arg.ID,
+		arg.ProjectID,
 		arg.SessionID,
+		arg.TraceID,
 		arg.Name,
-		arg.Status,
+		arg.UserID,
+		arg.Tags,
+		arg.Environment,
+		arg.Release,
 		arg.Metadata,
+		arg.Input,
+		arg.Output,
+		arg.Status,
+		arg.StartTime,
+		arg.EndTime,
 	)
 	var i Trace
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.SessionID,
+		&i.TraceID,
 		&i.Name,
-		&i.Status,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.TotalTokensIn,
-		&i.TotalTokensOut,
-		&i.TotalCostUsd,
+		&i.UserID,
+		&i.Tags,
+		&i.Environment,
+		&i.Release,
 		&i.Metadata,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.TotalSpans,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.ErrorCount,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -53,7 +98,7 @@ func (q *Queries) CreateTrace(ctx context.Context, arg CreateTraceParams) (Trace
 }
 
 const getTrace = `-- name: GetTrace :one
-SELECT id, session_id, name, status, started_at, ended_at, total_tokens_in, total_tokens_out, total_cost_usd, metadata, created_at, updated_at FROM traces WHERE id = $1
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at FROM traces WHERE id = $1
 `
 
 func (q *Queries) GetTrace(ctx context.Context, id uuid.UUID) (Trace, error) {
@@ -61,34 +106,105 @@ func (q *Queries) GetTrace(ctx context.Context, id uuid.UUID) (Trace, error) {
 	var i Trace
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.SessionID,
+		&i.TraceID,
 		&i.Name,
-		&i.Status,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.TotalTokensIn,
-		&i.TotalTokensOut,
-		&i.TotalCostUsd,
+		&i.UserID,
+		&i.Tags,
+		&i.Environment,
+		&i.Release,
 		&i.Metadata,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.TotalSpans,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.ErrorCount,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const getTraceByExternalID = `-- name: GetTraceByExternalID :one
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at FROM traces WHERE project_id = $1 AND trace_id = $2
+`
+
+type GetTraceByExternalIDParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	TraceID   string    `json:"trace_id"`
+}
+
+func (q *Queries) GetTraceByExternalID(ctx context.Context, arg GetTraceByExternalIDParams) (Trace, error) {
+	row := q.db.QueryRow(ctx, getTraceByExternalID, arg.ProjectID, arg.TraceID)
+	var i Trace
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.SessionID,
+		&i.TraceID,
+		&i.Name,
+		&i.UserID,
+		&i.Tags,
+		&i.Environment,
+		&i.Release,
+		&i.Metadata,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.TotalSpans,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.ErrorCount,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTraceUUID = `-- name: GetTraceUUID :one
+SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2
+`
+
+type GetTraceUUIDParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	TraceID   string    `json:"trace_id"`
+}
+
+func (q *Queries) GetTraceUUID(ctx context.Context, arg GetTraceUUIDParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getTraceUUID, arg.ProjectID, arg.TraceID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listTraces = `-- name: ListTraces :many
-SELECT id, session_id, name, status, started_at, ended_at, total_tokens_in, total_tokens_out, total_cost_usd, metadata, created_at, updated_at FROM traces
-ORDER BY started_at DESC
-LIMIT $1 OFFSET $2
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at FROM traces
+WHERE project_id = $1
+ORDER BY COALESCE(start_time, server_received_at) DESC
+LIMIT $2 OFFSET $3
 `
 
 type ListTracesParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Limit     int32     `json:"limit"`
+	Offset    int32     `json:"offset"`
 }
 
 func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]Trace, error) {
-	rows, err := q.db.Query(ctx, listTraces, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listTraces, arg.ProjectID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -98,15 +214,27 @@ func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]Trace
 		var i Trace
 		if err := rows.Scan(
 			&i.ID,
+			&i.ProjectID,
 			&i.SessionID,
+			&i.TraceID,
 			&i.Name,
-			&i.Status,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.TotalTokensIn,
-			&i.TotalTokensOut,
-			&i.TotalCostUsd,
+			&i.UserID,
+			&i.Tags,
+			&i.Environment,
+			&i.Release,
 			&i.Metadata,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.StartTime,
+			&i.EndTime,
+			&i.ServerReceivedAt,
+			&i.DurationMs,
+			&i.TotalSpans,
+			&i.TotalTokens,
+			&i.TotalCost,
+			&i.ErrorCount,
+			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -121,13 +249,18 @@ func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]Trace
 }
 
 const listTracesBySession = `-- name: ListTracesBySession :many
-SELECT id, session_id, name, status, started_at, ended_at, total_tokens_in, total_tokens_out, total_cost_usd, metadata, created_at, updated_at FROM traces
-WHERE session_id = $1
-ORDER BY started_at DESC
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at FROM traces
+WHERE project_id = $1 AND session_id = $2
+ORDER BY COALESCE(start_time, server_received_at) DESC
 `
 
-func (q *Queries) ListTracesBySession(ctx context.Context, sessionID pgtype.UUID) ([]Trace, error) {
-	rows, err := q.db.Query(ctx, listTracesBySession, sessionID)
+type ListTracesBySessionParams struct {
+	ProjectID uuid.UUID   `json:"project_id"`
+	SessionID pgtype.UUID `json:"session_id"`
+}
+
+func (q *Queries) ListTracesBySession(ctx context.Context, arg ListTracesBySessionParams) ([]Trace, error) {
+	rows, err := q.db.Query(ctx, listTracesBySession, arg.ProjectID, arg.SessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -137,15 +270,27 @@ func (q *Queries) ListTracesBySession(ctx context.Context, sessionID pgtype.UUID
 		var i Trace
 		if err := rows.Scan(
 			&i.ID,
+			&i.ProjectID,
 			&i.SessionID,
+			&i.TraceID,
 			&i.Name,
-			&i.Status,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.TotalTokensIn,
-			&i.TotalTokensOut,
-			&i.TotalCostUsd,
+			&i.UserID,
+			&i.Tags,
+			&i.Environment,
+			&i.Release,
 			&i.Metadata,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.StartTime,
+			&i.EndTime,
+			&i.ServerReceivedAt,
+			&i.DurationMs,
+			&i.TotalSpans,
+			&i.TotalTokens,
+			&i.TotalCost,
+			&i.ErrorCount,
+			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -159,72 +304,178 @@ func (q *Queries) ListTracesBySession(ctx context.Context, sessionID pgtype.UUID
 	return items, nil
 }
 
+const updateTraceRollups = `-- name: UpdateTraceRollups :exec
+UPDATE traces
+SET
+    total_spans = $2,
+    total_tokens = $3,
+    total_cost = $4,
+    error_count = $5,
+    duration_ms = CASE
+        WHEN end_time IS NOT NULL AND start_time IS NOT NULL
+        THEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000
+        ELSE duration_ms
+    END,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateTraceRollupsParams struct {
+	ID          uuid.UUID      `json:"id"`
+	TotalSpans  *int32         `json:"total_spans"`
+	TotalTokens *int64         `json:"total_tokens"`
+	TotalCost   pgtype.Numeric `json:"total_cost"`
+	ErrorCount  *int32         `json:"error_count"`
+}
+
+func (q *Queries) UpdateTraceRollups(ctx context.Context, arg UpdateTraceRollupsParams) error {
+	_, err := q.db.Exec(ctx, updateTraceRollups,
+		arg.ID,
+		arg.TotalSpans,
+		arg.TotalTokens,
+		arg.TotalCost,
+		arg.ErrorCount,
+	)
+	return err
+}
+
 const updateTraceStatus = `-- name: UpdateTraceStatus :one
 UPDATE traces
-SET status = $2, ended_at = $3, updated_at = NOW()
+SET status = $2, end_time = $3, updated_at = NOW(), version = version + 1
 WHERE id = $1
-RETURNING id, session_id, name, status, started_at, ended_at, total_tokens_in, total_tokens_out, total_cost_usd, metadata, created_at, updated_at
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at
 `
 
 type UpdateTraceStatusParams struct {
 	ID      uuid.UUID          `json:"id"`
 	Status  string             `json:"status"`
-	EndedAt pgtype.Timestamptz `json:"ended_at"`
+	EndTime pgtype.Timestamptz `json:"end_time"`
 }
 
 func (q *Queries) UpdateTraceStatus(ctx context.Context, arg UpdateTraceStatusParams) (Trace, error) {
-	row := q.db.QueryRow(ctx, updateTraceStatus, arg.ID, arg.Status, arg.EndedAt)
+	row := q.db.QueryRow(ctx, updateTraceStatus, arg.ID, arg.Status, arg.EndTime)
 	var i Trace
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.SessionID,
+		&i.TraceID,
 		&i.Name,
-		&i.Status,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.TotalTokensIn,
-		&i.TotalTokensOut,
-		&i.TotalCostUsd,
+		&i.UserID,
+		&i.Tags,
+		&i.Environment,
+		&i.Release,
 		&i.Metadata,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.TotalSpans,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.ErrorCount,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const updateTraceTokens = `-- name: UpdateTraceTokens :one
-UPDATE traces
-SET total_tokens_in = $2, total_tokens_out = $3, total_cost_usd = $4, updated_at = NOW()
-WHERE id = $1
-RETURNING id, session_id, name, status, started_at, ended_at, total_tokens_in, total_tokens_out, total_cost_usd, metadata, created_at, updated_at
+const upsertTrace = `-- name: UpsertTrace :one
+INSERT INTO traces (
+    project_id, session_id, trace_id, name, user_id, tags,
+    environment, release, metadata, input, output,
+    status, start_time, end_time
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+ON CONFLICT (project_id, trace_id) DO UPDATE SET
+    session_id = COALESCE(EXCLUDED.session_id, traces.session_id),
+    name = COALESCE(EXCLUDED.name, traces.name),
+    user_id = COALESCE(EXCLUDED.user_id, traces.user_id),
+    tags = CASE WHEN EXCLUDED.tags IS NOT NULL AND array_length(EXCLUDED.tags, 1) > 0 THEN EXCLUDED.tags ELSE traces.tags END,
+    environment = COALESCE(EXCLUDED.environment, traces.environment),
+    release = COALESCE(EXCLUDED.release, traces.release),
+    metadata = CASE
+        WHEN EXCLUDED.metadata IS NOT NULL THEN traces.metadata || EXCLUDED.metadata
+        ELSE traces.metadata
+    END,
+    input = COALESCE(EXCLUDED.input, traces.input),
+    output = COALESCE(EXCLUDED.output, traces.output),
+    -- Status protection: never downgrade from failed/error
+    status = CASE
+        WHEN traces.status IN ('failed', 'error') THEN traces.status
+        ELSE COALESCE(EXCLUDED.status, traces.status)
+    END,
+    start_time = COALESCE(EXCLUDED.start_time, traces.start_time),
+    end_time = COALESCE(EXCLUDED.end_time, traces.end_time),
+    updated_at = NOW(),
+    version = traces.version + 1
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at
 `
 
-type UpdateTraceTokensParams struct {
-	ID             uuid.UUID      `json:"id"`
-	TotalTokensIn  *int32         `json:"total_tokens_in"`
-	TotalTokensOut *int32         `json:"total_tokens_out"`
-	TotalCostUsd   pgtype.Numeric `json:"total_cost_usd"`
+type UpsertTraceParams struct {
+	ProjectID   uuid.UUID          `json:"project_id"`
+	SessionID   pgtype.UUID        `json:"session_id"`
+	TraceID     string             `json:"trace_id"`
+	Name        *string            `json:"name"`
+	UserID      *string            `json:"user_id"`
+	Tags        []string           `json:"tags"`
+	Environment *string            `json:"environment"`
+	Release     *string            `json:"release"`
+	Metadata    []byte             `json:"metadata"`
+	Input       []byte             `json:"input"`
+	Output      []byte             `json:"output"`
+	Status      string             `json:"status"`
+	StartTime   pgtype.Timestamptz `json:"start_time"`
+	EndTime     pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) UpdateTraceTokens(ctx context.Context, arg UpdateTraceTokensParams) (Trace, error) {
-	row := q.db.QueryRow(ctx, updateTraceTokens,
-		arg.ID,
-		arg.TotalTokensIn,
-		arg.TotalTokensOut,
-		arg.TotalCostUsd,
+// Upsert trace with patch semantics: NULL values don't overwrite existing.
+// Status is protected: 'failed'/'error' status can never be downgraded.
+func (q *Queries) UpsertTrace(ctx context.Context, arg UpsertTraceParams) (Trace, error) {
+	row := q.db.QueryRow(ctx, upsertTrace,
+		arg.ProjectID,
+		arg.SessionID,
+		arg.TraceID,
+		arg.Name,
+		arg.UserID,
+		arg.Tags,
+		arg.Environment,
+		arg.Release,
+		arg.Metadata,
+		arg.Input,
+		arg.Output,
+		arg.Status,
+		arg.StartTime,
+		arg.EndTime,
 	)
 	var i Trace
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.SessionID,
+		&i.TraceID,
 		&i.Name,
-		&i.Status,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.TotalTokensIn,
-		&i.TotalTokensOut,
-		&i.TotalCostUsd,
+		&i.UserID,
+		&i.Tags,
+		&i.Environment,
+		&i.Release,
 		&i.Metadata,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.TotalSpans,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.ErrorCount,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

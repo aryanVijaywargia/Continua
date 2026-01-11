@@ -1,0 +1,2 @@
+-- Placeholder to satisfy //go:embed *.sql directive
+-- This will be replaced with actual migrations when the engine module is implemented

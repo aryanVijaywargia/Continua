@@ -21,6 +21,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest traces, spans, and events
+         * @description Batch ingestion endpoint for traces, spans, and events.
+         *     Supports idempotent processing via batch_key.
+         *     Maximum request body size is 5MB.
+         *
+         */
+        post: operations["ingest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/traces": {
         parameters: {
             query?: never;
@@ -102,6 +125,11 @@ export interface components {
             code: string;
             message: string;
         };
+        /** @description Error response for 413 Payload Too Large */
+        SizeError: {
+            /** @description Error message describing the size limit violation */
+            error: string;
+        };
         Trace: {
             /** Format: uuid */
             id: string;
@@ -161,6 +189,129 @@ export interface components {
             sessions: components["schemas"]["Session"][];
             total: number;
         };
+        IngestRequest: {
+            /** @description Unique identifier for idempotency. Same batch_key returns success without reprocessing. */
+            batch_key: string;
+            traces?: components["schemas"]["IngestTraceInput"][];
+            spans?: components["schemas"]["IngestSpanInput"][];
+            events?: components["schemas"]["IngestEventInput"][];
+        };
+        IngestTraceInput: {
+            /** @description External trace identifier */
+            trace_id: string;
+            /** Format: uuid */
+            session_id?: string;
+            name?: string;
+            user_id?: string;
+            tags?: string[];
+            environment?: string;
+            release?: string;
+            metadata?: Record<string, never>;
+            /** @description Trace input data (any JSON-serializable value) */
+            input?: unknown;
+            /** @description Trace output data (any JSON-serializable value) */
+            output?: unknown;
+            /**
+             * @default running
+             * @enum {string}
+             */
+            status: "running" | "completed" | "failed";
+            /** Format: date-time */
+            start_time?: string;
+            /** Format: date-time */
+            end_time?: string;
+        };
+        IngestSpanInput: {
+            /** @description External trace identifier */
+            trace_id: string;
+            /** @description External span identifier */
+            span_id: string;
+            /** @description External parent span identifier */
+            parent_span_id?: string;
+            name: string;
+            /**
+             * @default default
+             * @enum {string}
+             */
+            type: "default" | "llm" | "tool" | "agent" | "chain" | "retrieval" | "embedding" | "generation";
+            /**
+             * @default running
+             * @enum {string}
+             */
+            status: "running" | "completed" | "failed";
+            status_message?: string;
+            /**
+             * @default default
+             * @enum {string}
+             */
+            level: "debug" | "default" | "warning" | "error";
+            /** Format: date-time */
+            start_time: string;
+            /** Format: date-time */
+            end_time?: string;
+            /** @description Span input data (any JSON-serializable value) */
+            input?: unknown;
+            /** @description Span output data (any JSON-serializable value) */
+            output?: unknown;
+            model?: string;
+            provider?: string;
+            /** Format: int64 */
+            prompt_tokens?: number;
+            /** Format: int64 */
+            completion_tokens?: number;
+            /** Format: int64 */
+            total_tokens?: number;
+            /** Format: double */
+            total_cost?: number;
+            metadata?: Record<string, never>;
+            /** Format: int32 */
+            sequence?: number;
+            /** Format: int32 */
+            depth?: number;
+        };
+        IngestEventInput: {
+            /** @description External trace identifier */
+            trace_id: string;
+            /** @description External span identifier */
+            span_id: string;
+            /**
+             * @default log
+             * @enum {string}
+             */
+            event_type: "log" | "error" | "exception" | "message" | "metric" | "custom";
+            /**
+             * @default info
+             * @enum {string}
+             */
+            level: "debug" | "info" | "warning" | "error";
+            /** Format: date-time */
+            event_ts?: string;
+            /** Format: int32 */
+            sequence?: number;
+            message?: string;
+            payload?: Record<string, never>;
+            /** @description Optional key for event-level deduplication */
+            idempotency_key?: string;
+        };
+        IngestResponse: {
+            /**
+             * @description Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
+             * @enum {string}
+             */
+            status: "ok" | "accepted" | "duplicate" | "failed";
+            batch_key: string;
+            /** Format: int32 */
+            trace_count?: number;
+            /** Format: int32 */
+            span_count?: number;
+            /** Format: int32 */
+            event_count?: number;
+            /** Format: int32 */
+            accepted_count?: number;
+            /** Format: int32 */
+            rejected_count?: number;
+            errors?: string[];
+        };
     };
     responses: never;
     parameters: never;
@@ -186,6 +337,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    ingest: {
+        parameters: {
+            query?: {
+                /** @description If true, wait for processing to complete before returning */
+                sync?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Batch processed successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestResponse"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request body too large (exceeds 5MB limit) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SizeError"];
                 };
             };
         };

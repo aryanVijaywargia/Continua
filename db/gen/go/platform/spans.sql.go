@@ -7,53 +7,141 @@ package platform
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countSpansByTrace = `-- name: CountSpansByTrace :one
+SELECT COUNT(*) FROM spans WHERE trace_id = $1
+`
+
+func (q *Queries) CountSpansByTrace(ctx context.Context, traceID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countSpansByTrace, traceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createSpan = `-- name: CreateSpan :one
-INSERT INTO spans (id, trace_id, parent_span_id, name, kind, status, metadata)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, trace_id, parent_span_id, name, kind, status, started_at, ended_at, tokens_in, tokens_out, cost_usd, latency_ms, error_message, metadata, created_at, updated_at
+INSERT INTO spans (
+    project_id, trace_id, span_id, parent_span_id, name, type,
+    status, status_message, level, start_time, end_time,
+    input, input_truncated, input_original_size_bytes, input_truncation_reason,
+    output, output_truncated, output_original_size_bytes, output_truncation_reason,
+    model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost,
+    metadata, sequence, depth
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11,
+    $12, $13, $14, $15,
+    $16, $17, $18, $19,
+    $20, $21, $22, $23, $24, $25,
+    $26, $27, $28
+)
+RETURNING id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at
 `
 
 type CreateSpanParams struct {
-	ID           uuid.UUID   `json:"id"`
-	TraceID      uuid.UUID   `json:"trace_id"`
-	ParentSpanID pgtype.UUID `json:"parent_span_id"`
-	Name         string      `json:"name"`
-	Kind         string      `json:"kind"`
-	Status       string      `json:"status"`
-	Metadata     []byte      `json:"metadata"`
+	ProjectID               uuid.UUID          `json:"project_id"`
+	TraceID                 uuid.UUID          `json:"trace_id"`
+	SpanID                  string             `json:"span_id"`
+	ParentSpanID            *string            `json:"parent_span_id"`
+	Name                    string             `json:"name"`
+	Type                    string             `json:"type"`
+	Status                  string             `json:"status"`
+	StatusMessage           *string            `json:"status_message"`
+	Level                   string             `json:"level"`
+	StartTime               time.Time          `json:"start_time"`
+	EndTime                 pgtype.Timestamptz `json:"end_time"`
+	Input                   []byte             `json:"input"`
+	InputTruncated          *bool              `json:"input_truncated"`
+	InputOriginalSizeBytes  *int64             `json:"input_original_size_bytes"`
+	InputTruncationReason   *string            `json:"input_truncation_reason"`
+	Output                  []byte             `json:"output"`
+	OutputTruncated         *bool              `json:"output_truncated"`
+	OutputOriginalSizeBytes *int64             `json:"output_original_size_bytes"`
+	OutputTruncationReason  *string            `json:"output_truncation_reason"`
+	Model                   *string            `json:"model"`
+	Provider                *string            `json:"provider"`
+	PromptTokens            *int64             `json:"prompt_tokens"`
+	CompletionTokens        *int64             `json:"completion_tokens"`
+	TotalTokens             *int64             `json:"total_tokens"`
+	TotalCost               pgtype.Numeric     `json:"total_cost"`
+	Metadata                []byte             `json:"metadata"`
+	Sequence                *int32             `json:"sequence"`
+	Depth                   *int32             `json:"depth"`
 }
 
 func (q *Queries) CreateSpan(ctx context.Context, arg CreateSpanParams) (Span, error) {
 	row := q.db.QueryRow(ctx, createSpan,
-		arg.ID,
+		arg.ProjectID,
 		arg.TraceID,
+		arg.SpanID,
 		arg.ParentSpanID,
 		arg.Name,
-		arg.Kind,
+		arg.Type,
 		arg.Status,
+		arg.StatusMessage,
+		arg.Level,
+		arg.StartTime,
+		arg.EndTime,
+		arg.Input,
+		arg.InputTruncated,
+		arg.InputOriginalSizeBytes,
+		arg.InputTruncationReason,
+		arg.Output,
+		arg.OutputTruncated,
+		arg.OutputOriginalSizeBytes,
+		arg.OutputTruncationReason,
+		arg.Model,
+		arg.Provider,
+		arg.PromptTokens,
+		arg.CompletionTokens,
+		arg.TotalTokens,
+		arg.TotalCost,
 		arg.Metadata,
+		arg.Sequence,
+		arg.Depth,
 	)
 	var i Span
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.TraceID,
+		&i.SpanID,
 		&i.ParentSpanID,
 		&i.Name,
-		&i.Kind,
+		&i.Type,
 		&i.Status,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.TokensIn,
-		&i.TokensOut,
-		&i.CostUsd,
-		&i.LatencyMs,
-		&i.ErrorMessage,
+		&i.StatusMessage,
+		&i.Level,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.Input,
+		&i.InputTruncated,
+		&i.InputOriginalSizeBytes,
+		&i.InputTruncationReason,
+		&i.Output,
+		&i.OutputTruncated,
+		&i.OutputOriginalSizeBytes,
+		&i.OutputTruncationReason,
+		&i.Thinking,
+		&i.ThinkingTruncated,
+		&i.Model,
+		&i.Provider,
+		&i.PromptTokens,
+		&i.CompletionTokens,
+		&i.TotalTokens,
+		&i.TotalCost,
 		&i.Metadata,
+		&i.Sequence,
+		&i.Depth,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -61,7 +149,7 @@ func (q *Queries) CreateSpan(ctx context.Context, arg CreateSpanParams) (Span, e
 }
 
 const getSpan = `-- name: GetSpan :one
-SELECT id, trace_id, parent_span_id, name, kind, status, started_at, ended_at, tokens_in, tokens_out, cost_usd, latency_ms, error_message, metadata, created_at, updated_at FROM spans WHERE id = $1
+SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at FROM spans WHERE id = $1
 `
 
 func (q *Queries) GetSpan(ctx context.Context, id uuid.UUID) (Span, error) {
@@ -69,19 +157,92 @@ func (q *Queries) GetSpan(ctx context.Context, id uuid.UUID) (Span, error) {
 	var i Span
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.TraceID,
+		&i.SpanID,
 		&i.ParentSpanID,
 		&i.Name,
-		&i.Kind,
+		&i.Type,
 		&i.Status,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.TokensIn,
-		&i.TokensOut,
-		&i.CostUsd,
-		&i.LatencyMs,
-		&i.ErrorMessage,
+		&i.StatusMessage,
+		&i.Level,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.Input,
+		&i.InputTruncated,
+		&i.InputOriginalSizeBytes,
+		&i.InputTruncationReason,
+		&i.Output,
+		&i.OutputTruncated,
+		&i.OutputOriginalSizeBytes,
+		&i.OutputTruncationReason,
+		&i.Thinking,
+		&i.ThinkingTruncated,
+		&i.Model,
+		&i.Provider,
+		&i.PromptTokens,
+		&i.CompletionTokens,
+		&i.TotalTokens,
+		&i.TotalCost,
 		&i.Metadata,
+		&i.Sequence,
+		&i.Depth,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSpanByExternalID = `-- name: GetSpanByExternalID :one
+SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at FROM spans WHERE trace_id = $1 AND span_id = $2
+`
+
+type GetSpanByExternalIDParams struct {
+	TraceID uuid.UUID `json:"trace_id"`
+	SpanID  string    `json:"span_id"`
+}
+
+func (q *Queries) GetSpanByExternalID(ctx context.Context, arg GetSpanByExternalIDParams) (Span, error) {
+	row := q.db.QueryRow(ctx, getSpanByExternalID, arg.TraceID, arg.SpanID)
+	var i Span
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.TraceID,
+		&i.SpanID,
+		&i.ParentSpanID,
+		&i.Name,
+		&i.Type,
+		&i.Status,
+		&i.StatusMessage,
+		&i.Level,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.Input,
+		&i.InputTruncated,
+		&i.InputOriginalSizeBytes,
+		&i.InputTruncationReason,
+		&i.Output,
+		&i.OutputTruncated,
+		&i.OutputOriginalSizeBytes,
+		&i.OutputTruncationReason,
+		&i.Thinking,
+		&i.ThinkingTruncated,
+		&i.Model,
+		&i.Provider,
+		&i.PromptTokens,
+		&i.CompletionTokens,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.Metadata,
+		&i.Sequence,
+		&i.Depth,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -89,9 +250,9 @@ func (q *Queries) GetSpan(ctx context.Context, id uuid.UUID) (Span, error) {
 }
 
 const listSpansByTrace = `-- name: ListSpansByTrace :many
-SELECT id, trace_id, parent_span_id, name, kind, status, started_at, ended_at, tokens_in, tokens_out, cost_usd, latency_ms, error_message, metadata, created_at, updated_at FROM spans
+SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at FROM spans
 WHERE trace_id = $1
-ORDER BY started_at ASC
+ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST
 `
 
 func (q *Queries) ListSpansByTrace(ctx context.Context, traceID uuid.UUID) ([]Span, error) {
@@ -105,19 +266,39 @@ func (q *Queries) ListSpansByTrace(ctx context.Context, traceID uuid.UUID) ([]Sp
 		var i Span
 		if err := rows.Scan(
 			&i.ID,
+			&i.ProjectID,
 			&i.TraceID,
+			&i.SpanID,
 			&i.ParentSpanID,
 			&i.Name,
-			&i.Kind,
+			&i.Type,
 			&i.Status,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.TokensIn,
-			&i.TokensOut,
-			&i.CostUsd,
-			&i.LatencyMs,
-			&i.ErrorMessage,
+			&i.StatusMessage,
+			&i.Level,
+			&i.StartTime,
+			&i.EndTime,
+			&i.ServerReceivedAt,
+			&i.DurationMs,
+			&i.Input,
+			&i.InputTruncated,
+			&i.InputOriginalSizeBytes,
+			&i.InputTruncationReason,
+			&i.Output,
+			&i.OutputTruncated,
+			&i.OutputOriginalSizeBytes,
+			&i.OutputTruncationReason,
+			&i.Thinking,
+			&i.ThinkingTruncated,
+			&i.Model,
+			&i.Provider,
+			&i.PromptTokens,
+			&i.CompletionTokens,
+			&i.TotalTokens,
+			&i.TotalCost,
 			&i.Metadata,
+			&i.Sequence,
+			&i.Depth,
+			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -131,45 +312,133 @@ func (q *Queries) ListSpansByTrace(ctx context.Context, traceID uuid.UUID) ([]Sp
 	return items, nil
 }
 
-const updateSpanMetrics = `-- name: UpdateSpanMetrics :one
-UPDATE spans
-SET tokens_in = $2, tokens_out = $3, cost_usd = $4, latency_ms = $5, updated_at = NOW()
-WHERE id = $1
-RETURNING id, trace_id, parent_span_id, name, kind, status, started_at, ended_at, tokens_in, tokens_out, cost_usd, latency_ms, error_message, metadata, created_at, updated_at
+const listSpansSummaryByTrace = `-- name: ListSpansSummaryByTrace :many
+SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status,
+       start_time, end_time, duration_ms, model, total_tokens, total_cost,
+       input_truncated, output_truncated, depth
+FROM spans
+WHERE trace_id = $1
+ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST
 `
 
-type UpdateSpanMetricsParams struct {
-	ID        uuid.UUID      `json:"id"`
-	TokensIn  *int32         `json:"tokens_in"`
-	TokensOut *int32         `json:"tokens_out"`
-	CostUsd   pgtype.Numeric `json:"cost_usd"`
-	LatencyMs *int32         `json:"latency_ms"`
+type ListSpansSummaryByTraceRow struct {
+	ID              uuid.UUID          `json:"id"`
+	ProjectID       uuid.UUID          `json:"project_id"`
+	TraceID         uuid.UUID          `json:"trace_id"`
+	SpanID          string             `json:"span_id"`
+	ParentSpanID    *string            `json:"parent_span_id"`
+	Name            string             `json:"name"`
+	Type            string             `json:"type"`
+	Status          string             `json:"status"`
+	StartTime       time.Time          `json:"start_time"`
+	EndTime         pgtype.Timestamptz `json:"end_time"`
+	DurationMs      *int64             `json:"duration_ms"`
+	Model           *string            `json:"model"`
+	TotalTokens     *int64             `json:"total_tokens"`
+	TotalCost       pgtype.Numeric     `json:"total_cost"`
+	InputTruncated  *bool              `json:"input_truncated"`
+	OutputTruncated *bool              `json:"output_truncated"`
+	Depth           *int32             `json:"depth"`
 }
 
-func (q *Queries) UpdateSpanMetrics(ctx context.Context, arg UpdateSpanMetricsParams) (Span, error) {
-	row := q.db.QueryRow(ctx, updateSpanMetrics,
+func (q *Queries) ListSpansSummaryByTrace(ctx context.Context, traceID uuid.UUID) ([]ListSpansSummaryByTraceRow, error) {
+	rows, err := q.db.Query(ctx, listSpansSummaryByTrace, traceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSpansSummaryByTraceRow{}
+	for rows.Next() {
+		var i ListSpansSummaryByTraceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.TraceID,
+			&i.SpanID,
+			&i.ParentSpanID,
+			&i.Name,
+			&i.Type,
+			&i.Status,
+			&i.StartTime,
+			&i.EndTime,
+			&i.DurationMs,
+			&i.Model,
+			&i.TotalTokens,
+			&i.TotalCost,
+			&i.InputTruncated,
+			&i.OutputTruncated,
+			&i.Depth,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateSpanOutput = `-- name: UpdateSpanOutput :one
+UPDATE spans
+SET output = $2, output_truncated = $3, output_original_size_bytes = $4,
+    output_truncation_reason = $5, updated_at = NOW(), version = version + 1
+WHERE id = $1
+RETURNING id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at
+`
+
+type UpdateSpanOutputParams struct {
+	ID                      uuid.UUID `json:"id"`
+	Output                  []byte    `json:"output"`
+	OutputTruncated         *bool     `json:"output_truncated"`
+	OutputOriginalSizeBytes *int64    `json:"output_original_size_bytes"`
+	OutputTruncationReason  *string   `json:"output_truncation_reason"`
+}
+
+func (q *Queries) UpdateSpanOutput(ctx context.Context, arg UpdateSpanOutputParams) (Span, error) {
+	row := q.db.QueryRow(ctx, updateSpanOutput,
 		arg.ID,
-		arg.TokensIn,
-		arg.TokensOut,
-		arg.CostUsd,
-		arg.LatencyMs,
+		arg.Output,
+		arg.OutputTruncated,
+		arg.OutputOriginalSizeBytes,
+		arg.OutputTruncationReason,
 	)
 	var i Span
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.TraceID,
+		&i.SpanID,
 		&i.ParentSpanID,
 		&i.Name,
-		&i.Kind,
+		&i.Type,
 		&i.Status,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.TokensIn,
-		&i.TokensOut,
-		&i.CostUsd,
-		&i.LatencyMs,
-		&i.ErrorMessage,
+		&i.StatusMessage,
+		&i.Level,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.Input,
+		&i.InputTruncated,
+		&i.InputOriginalSizeBytes,
+		&i.InputTruncationReason,
+		&i.Output,
+		&i.OutputTruncated,
+		&i.OutputOriginalSizeBytes,
+		&i.OutputTruncationReason,
+		&i.Thinking,
+		&i.ThinkingTruncated,
+		&i.Model,
+		&i.Provider,
+		&i.PromptTokens,
+		&i.CompletionTokens,
+		&i.TotalTokens,
+		&i.TotalCost,
 		&i.Metadata,
+		&i.Sequence,
+		&i.Depth,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -178,41 +447,298 @@ func (q *Queries) UpdateSpanMetrics(ctx context.Context, arg UpdateSpanMetricsPa
 
 const updateSpanStatus = `-- name: UpdateSpanStatus :one
 UPDATE spans
-SET status = $2, ended_at = $3, error_message = $4, updated_at = NOW()
+SET status = $2, end_time = $3, status_message = $4,
+    duration_ms = CASE
+        WHEN $3 IS NOT NULL THEN EXTRACT(EPOCH FROM ($3 - start_time)) * 1000
+        ELSE duration_ms
+    END,
+    updated_at = NOW(), version = version + 1
 WHERE id = $1
-RETURNING id, trace_id, parent_span_id, name, kind, status, started_at, ended_at, tokens_in, tokens_out, cost_usd, latency_ms, error_message, metadata, created_at, updated_at
+RETURNING id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at
 `
 
 type UpdateSpanStatusParams struct {
-	ID           uuid.UUID          `json:"id"`
-	Status       string             `json:"status"`
-	EndedAt      pgtype.Timestamptz `json:"ended_at"`
-	ErrorMessage *string            `json:"error_message"`
+	ID            uuid.UUID          `json:"id"`
+	Status        string             `json:"status"`
+	EndTime       pgtype.Timestamptz `json:"end_time"`
+	StatusMessage *string            `json:"status_message"`
 }
 
 func (q *Queries) UpdateSpanStatus(ctx context.Context, arg UpdateSpanStatusParams) (Span, error) {
 	row := q.db.QueryRow(ctx, updateSpanStatus,
 		arg.ID,
 		arg.Status,
-		arg.EndedAt,
-		arg.ErrorMessage,
+		arg.EndTime,
+		arg.StatusMessage,
 	)
 	var i Span
 	err := row.Scan(
 		&i.ID,
+		&i.ProjectID,
 		&i.TraceID,
+		&i.SpanID,
 		&i.ParentSpanID,
 		&i.Name,
-		&i.Kind,
+		&i.Type,
 		&i.Status,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.TokensIn,
-		&i.TokensOut,
-		&i.CostUsd,
-		&i.LatencyMs,
-		&i.ErrorMessage,
+		&i.StatusMessage,
+		&i.Level,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.Input,
+		&i.InputTruncated,
+		&i.InputOriginalSizeBytes,
+		&i.InputTruncationReason,
+		&i.Output,
+		&i.OutputTruncated,
+		&i.OutputOriginalSizeBytes,
+		&i.OutputTruncationReason,
+		&i.Thinking,
+		&i.ThinkingTruncated,
+		&i.Model,
+		&i.Provider,
+		&i.PromptTokens,
+		&i.CompletionTokens,
+		&i.TotalTokens,
+		&i.TotalCost,
 		&i.Metadata,
+		&i.Sequence,
+		&i.Depth,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateSpanTokens = `-- name: UpdateSpanTokens :one
+UPDATE spans
+SET prompt_tokens = $2, completion_tokens = $3, total_tokens = $4,
+    total_cost = $5, updated_at = NOW(), version = version + 1
+WHERE id = $1
+RETURNING id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at
+`
+
+type UpdateSpanTokensParams struct {
+	ID               uuid.UUID      `json:"id"`
+	PromptTokens     *int64         `json:"prompt_tokens"`
+	CompletionTokens *int64         `json:"completion_tokens"`
+	TotalTokens      *int64         `json:"total_tokens"`
+	TotalCost        pgtype.Numeric `json:"total_cost"`
+}
+
+func (q *Queries) UpdateSpanTokens(ctx context.Context, arg UpdateSpanTokensParams) (Span, error) {
+	row := q.db.QueryRow(ctx, updateSpanTokens,
+		arg.ID,
+		arg.PromptTokens,
+		arg.CompletionTokens,
+		arg.TotalTokens,
+		arg.TotalCost,
+	)
+	var i Span
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.TraceID,
+		&i.SpanID,
+		&i.ParentSpanID,
+		&i.Name,
+		&i.Type,
+		&i.Status,
+		&i.StatusMessage,
+		&i.Level,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.Input,
+		&i.InputTruncated,
+		&i.InputOriginalSizeBytes,
+		&i.InputTruncationReason,
+		&i.Output,
+		&i.OutputTruncated,
+		&i.OutputOriginalSizeBytes,
+		&i.OutputTruncationReason,
+		&i.Thinking,
+		&i.ThinkingTruncated,
+		&i.Model,
+		&i.Provider,
+		&i.PromptTokens,
+		&i.CompletionTokens,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.Metadata,
+		&i.Sequence,
+		&i.Depth,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertSpan = `-- name: UpsertSpan :one
+INSERT INTO spans (
+    project_id, trace_id, span_id, parent_span_id, name, type,
+    status, status_message, level, start_time, end_time,
+    input, input_truncated, input_original_size_bytes, input_truncation_reason,
+    output, output_truncated, output_original_size_bytes, output_truncation_reason,
+    model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost,
+    metadata, sequence, depth
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11,
+    $12, $13, $14, $15,
+    $16, $17, $18, $19,
+    $20, $21, $22, $23, $24, $25,
+    $26, $27, $28
+)
+ON CONFLICT (trace_id, span_id) DO UPDATE SET
+    parent_span_id = COALESCE(EXCLUDED.parent_span_id, spans.parent_span_id),
+    name = COALESCE(EXCLUDED.name, spans.name),
+    type = COALESCE(EXCLUDED.type, spans.type),
+    -- Status protection: never downgrade from failed/error
+    status = CASE
+        WHEN spans.status IN ('failed', 'error') THEN spans.status
+        ELSE COALESCE(EXCLUDED.status, spans.status)
+    END,
+    status_message = COALESCE(EXCLUDED.status_message, spans.status_message),
+    level = COALESCE(EXCLUDED.level, spans.level),
+    start_time = COALESCE(EXCLUDED.start_time, spans.start_time),
+    end_time = COALESCE(EXCLUDED.end_time, spans.end_time),
+    input = COALESCE(EXCLUDED.input, spans.input),
+    input_truncated = COALESCE(EXCLUDED.input_truncated, spans.input_truncated),
+    input_original_size_bytes = COALESCE(EXCLUDED.input_original_size_bytes, spans.input_original_size_bytes),
+    input_truncation_reason = COALESCE(EXCLUDED.input_truncation_reason, spans.input_truncation_reason),
+    output = COALESCE(EXCLUDED.output, spans.output),
+    output_truncated = COALESCE(EXCLUDED.output_truncated, spans.output_truncated),
+    output_original_size_bytes = COALESCE(EXCLUDED.output_original_size_bytes, spans.output_original_size_bytes),
+    output_truncation_reason = COALESCE(EXCLUDED.output_truncation_reason, spans.output_truncation_reason),
+    model = COALESCE(EXCLUDED.model, spans.model),
+    provider = COALESCE(EXCLUDED.provider, spans.provider),
+    prompt_tokens = COALESCE(EXCLUDED.prompt_tokens, spans.prompt_tokens),
+    completion_tokens = COALESCE(EXCLUDED.completion_tokens, spans.completion_tokens),
+    total_tokens = COALESCE(EXCLUDED.total_tokens, spans.total_tokens),
+    total_cost = COALESCE(EXCLUDED.total_cost, spans.total_cost),
+    metadata = CASE
+        WHEN EXCLUDED.metadata IS NOT NULL THEN spans.metadata || EXCLUDED.metadata
+        ELSE spans.metadata
+    END,
+    sequence = COALESCE(EXCLUDED.sequence, spans.sequence),
+    depth = COALESCE(EXCLUDED.depth, spans.depth),
+    duration_ms = CASE
+        WHEN EXCLUDED.end_time IS NOT NULL AND spans.start_time IS NOT NULL
+        THEN EXTRACT(EPOCH FROM (EXCLUDED.end_time - spans.start_time)) * 1000
+        ELSE spans.duration_ms
+    END,
+    updated_at = NOW(),
+    version = spans.version + 1
+RETURNING id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at
+`
+
+type UpsertSpanParams struct {
+	ProjectID               uuid.UUID          `json:"project_id"`
+	TraceID                 uuid.UUID          `json:"trace_id"`
+	SpanID                  string             `json:"span_id"`
+	ParentSpanID            *string            `json:"parent_span_id"`
+	Name                    string             `json:"name"`
+	Type                    string             `json:"type"`
+	Status                  string             `json:"status"`
+	StatusMessage           *string            `json:"status_message"`
+	Level                   string             `json:"level"`
+	StartTime               time.Time          `json:"start_time"`
+	EndTime                 pgtype.Timestamptz `json:"end_time"`
+	Input                   []byte             `json:"input"`
+	InputTruncated          *bool              `json:"input_truncated"`
+	InputOriginalSizeBytes  *int64             `json:"input_original_size_bytes"`
+	InputTruncationReason   *string            `json:"input_truncation_reason"`
+	Output                  []byte             `json:"output"`
+	OutputTruncated         *bool              `json:"output_truncated"`
+	OutputOriginalSizeBytes *int64             `json:"output_original_size_bytes"`
+	OutputTruncationReason  *string            `json:"output_truncation_reason"`
+	Model                   *string            `json:"model"`
+	Provider                *string            `json:"provider"`
+	PromptTokens            *int64             `json:"prompt_tokens"`
+	CompletionTokens        *int64             `json:"completion_tokens"`
+	TotalTokens             *int64             `json:"total_tokens"`
+	TotalCost               pgtype.Numeric     `json:"total_cost"`
+	Metadata                []byte             `json:"metadata"`
+	Sequence                *int32             `json:"sequence"`
+	Depth                   *int32             `json:"depth"`
+}
+
+// Upsert span with patch semantics: NULL values don't overwrite existing.
+// Status is protected: 'failed'/'error' status can never be downgraded.
+func (q *Queries) UpsertSpan(ctx context.Context, arg UpsertSpanParams) (Span, error) {
+	row := q.db.QueryRow(ctx, upsertSpan,
+		arg.ProjectID,
+		arg.TraceID,
+		arg.SpanID,
+		arg.ParentSpanID,
+		arg.Name,
+		arg.Type,
+		arg.Status,
+		arg.StatusMessage,
+		arg.Level,
+		arg.StartTime,
+		arg.EndTime,
+		arg.Input,
+		arg.InputTruncated,
+		arg.InputOriginalSizeBytes,
+		arg.InputTruncationReason,
+		arg.Output,
+		arg.OutputTruncated,
+		arg.OutputOriginalSizeBytes,
+		arg.OutputTruncationReason,
+		arg.Model,
+		arg.Provider,
+		arg.PromptTokens,
+		arg.CompletionTokens,
+		arg.TotalTokens,
+		arg.TotalCost,
+		arg.Metadata,
+		arg.Sequence,
+		arg.Depth,
+	)
+	var i Span
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.TraceID,
+		&i.SpanID,
+		&i.ParentSpanID,
+		&i.Name,
+		&i.Type,
+		&i.Status,
+		&i.StatusMessage,
+		&i.Level,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.Input,
+		&i.InputTruncated,
+		&i.InputOriginalSizeBytes,
+		&i.InputTruncationReason,
+		&i.Output,
+		&i.OutputTruncated,
+		&i.OutputOriginalSizeBytes,
+		&i.OutputTruncationReason,
+		&i.Thinking,
+		&i.ThinkingTruncated,
+		&i.Model,
+		&i.Provider,
+		&i.PromptTokens,
+		&i.CompletionTokens,
+		&i.TotalTokens,
+		&i.TotalCost,
+		&i.Metadata,
+		&i.Sequence,
+		&i.Depth,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
