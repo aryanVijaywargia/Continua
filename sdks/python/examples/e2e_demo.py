@@ -178,7 +178,9 @@ def verify_traces():
             print("-" * 60)
 
             for t in traces:
-                status_icon = "✓" if t.get("status") in ["COMPLETED", "ok"] else "✗"
+                status = t.get("status", "unknown")
+                # API returns uppercase (COMPLETED, FAILED, RUNNING)
+                status_icon = "✓" if status == "COMPLETED" else "✗"
                 print(f"  {status_icon} {t['name']}")
                 print(f"    ID: {t['id'][:8]}...")
                 print(f"    Status: {t.get('status', 'unknown')}")
