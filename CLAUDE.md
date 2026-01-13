@@ -137,3 +137,9 @@ Core tables: `sessions`, `traces`, `spans`, `payloads`
 - **Frontend**: Vite, React 18, TypeScript 5.6, TanStack Query, Tailwind
 - **Database**: PostgreSQL (primary), SQLite (local dev option)
 - **SDKs**: TypeScript (tsup, vitest), Python (uv, pytest, pydantic)
+
+## Git Commit Rules
+
+- **Never add Co-Authored-By signatures** to commit messages
+- Use conventional commit format: `type: description`
+- Types: feat, fix, chore, docs, refactor, test, perf, ci
