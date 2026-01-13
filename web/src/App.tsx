@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { TracesPage } from './pages/TracesPage';
+import { TraceDetailPage } from './pages/TraceDetailPage';
 
 const queryClient = new QueryClient();
 
@@ -29,12 +31,4 @@ function HomePage() {
       </div>
     </div>
   );
-}
-
-function TracesPage() {
-  return <div className="p-8"><h1 className="text-2xl font-bold">Traces</h1></div>;
-}
-
-function TraceDetailPage() {
-  return <div className="p-8"><h1 className="text-2xl font-bold">Trace Detail</h1></div>;
 }
