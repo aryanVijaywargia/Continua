@@ -4,23 +4,6 @@
  */
 
 export interface paths {
-    "/api/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Health check endpoint */
-        get: operations["healthCheck"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/ingest": {
         parameters: {
             query?: never;
@@ -145,6 +128,8 @@ export interface components {
             total_tokens_in?: number;
             total_tokens_out?: number;
             total_cost_usd?: number;
+            /** @description Count of failed spans in this trace */
+            error_count?: number | null;
             metadata?: Record<string, never>;
         };
         TraceList: {
@@ -156,7 +141,9 @@ export interface components {
             id: string;
             /** Format: uuid */
             trace_id: string;
-            /** Format: uuid */
+            /** @description External span identifier (used for parent-child relationships) */
+            span_id: string;
+            /** @description External parent span identifier */
             parent_span_id?: string | null;
             name: string;
             /** @enum {string} */
@@ -172,6 +159,10 @@ export interface components {
             cost_usd?: number | null;
             latency_ms?: number | null;
             error_message?: string | null;
+            /** @description Span input payload (any valid JSON) */
+            input?: unknown;
+            /** @description Span output payload (any valid JSON) */
+            output?: unknown;
             metadata?: Record<string, never>;
         };
         SpanList: {
@@ -321,26 +312,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    healthCheck: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Service is healthy */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponse"];
-                };
-            };
-        };
-    };
     ingest: {
         parameters: {
             query?: {
