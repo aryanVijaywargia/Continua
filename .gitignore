@@ -57,4 +57,6 @@ coverage.html
 # Misc
 tmp/
 .cache/
-docs/
+
+# Claude Code session state (per-user, not shared)
+.claude/hooks/state/

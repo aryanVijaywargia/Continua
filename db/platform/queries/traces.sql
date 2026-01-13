@@ -16,10 +16,14 @@ LIMIT $2 OFFSET $3;
 -- name: ListTracesBySession :many
 SELECT * FROM traces
 WHERE project_id = $1 AND session_id = $2
-ORDER BY COALESCE(start_time, server_received_at) DESC;
+ORDER BY COALESCE(start_time, server_received_at) DESC
+LIMIT $3 OFFSET $4;
 
 -- name: CountTraces :one
 SELECT COUNT(*) FROM traces WHERE project_id = $1;
+
+-- name: CountTracesBySession :one
+SELECT COUNT(*) FROM traces WHERE project_id = $1 AND session_id = $2;
 
 -- name: CreateTrace :one
 INSERT INTO traces (

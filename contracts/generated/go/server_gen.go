@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -13,10 +14,8 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for HealthResponseStatus.
 const (
-	HealthResponseStatusDegraded HealthResponseStatus = "degraded"
-	HealthResponseStatusOk       HealthResponseStatus = "ok"
+	ApiKeyScopes = "apiKey.Scopes"
 )
 
 // Defines values for IngestEventInputEventType.
@@ -74,9 +73,9 @@ const (
 
 // Defines values for IngestTraceInputStatus.
 const (
-	IngestTraceInputStatusCompleted IngestTraceInputStatus = "completed"
-	IngestTraceInputStatusFailed    IngestTraceInputStatus = "failed"
-	IngestTraceInputStatusRunning   IngestTraceInputStatus = "running"
+	Completed IngestTraceInputStatus = "completed"
+	Failed    IngestTraceInputStatus = "failed"
+	Running   IngestTraceInputStatus = "running"
 )
 
 // Defines values for SpanKind.
@@ -108,15 +107,6 @@ type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
-
-// HealthResponse defines model for HealthResponse.
-type HealthResponse struct {
-	Status  HealthResponseStatus `json:"status"`
-	Version string               `json:"version"`
-}
-
-// HealthResponseStatus defines model for HealthResponse.Status.
-type HealthResponseStatus string
 
 // IngestEventInput defines model for IngestEventInput.
 type IngestEventInput struct {
@@ -244,7 +234,7 @@ type Session struct {
 	CreatedAt time.Time               `json:"created_at"`
 	Id        openapi_types.UUID      `json:"id"`
 	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
-	Name      *string                 `json:"name"`
+	Name      *string                 `json:"name,omitempty"`
 }
 
 // SessionList defines model for SessionList.
@@ -261,20 +251,31 @@ type SizeError struct {
 
 // Span defines model for Span.
 type Span struct {
-	CostUsd      *float32                `json:"cost_usd"`
-	EndedAt      *time.Time              `json:"ended_at"`
-	ErrorMessage *string                 `json:"error_message"`
-	Id           openapi_types.UUID      `json:"id"`
-	Kind         SpanKind                `json:"kind"`
-	LatencyMs    *int                    `json:"latency_ms"`
-	Metadata     *map[string]interface{} `json:"metadata,omitempty"`
-	Name         string                  `json:"name"`
-	ParentSpanId *openapi_types.UUID     `json:"parent_span_id"`
-	StartedAt    time.Time               `json:"started_at"`
-	Status       SpanStatus              `json:"status"`
-	TokensIn     *int                    `json:"tokens_in"`
-	TokensOut    *int                    `json:"tokens_out"`
-	TraceId      openapi_types.UUID      `json:"trace_id"`
+	CostUsd      *float32           `json:"cost_usd,omitempty"`
+	EndedAt      *time.Time         `json:"ended_at,omitempty"`
+	ErrorMessage *string            `json:"error_message,omitempty"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// Input Span input payload (any valid JSON)
+	Input     interface{}             `json:"input,omitempty"`
+	Kind      SpanKind                `json:"kind"`
+	LatencyMs *int                    `json:"latency_ms,omitempty"`
+	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
+	Name      string                  `json:"name"`
+
+	// Output Span output payload (any valid JSON)
+	Output interface{} `json:"output,omitempty"`
+
+	// ParentSpanId External parent span identifier
+	ParentSpanId *string `json:"parent_span_id,omitempty"`
+
+	// SpanId External span identifier (used for parent-child relationships)
+	SpanId    string             `json:"span_id"`
+	StartedAt time.Time          `json:"started_at"`
+	Status    SpanStatus         `json:"status"`
+	TokensIn  *int               `json:"tokens_in,omitempty"`
+	TokensOut *int               `json:"tokens_out,omitempty"`
+	TraceId   openapi_types.UUID `json:"trace_id"`
 }
 
 // SpanKind defines model for Span.Kind.
@@ -290,11 +291,14 @@ type SpanList struct {
 
 // Trace defines model for Trace.
 type Trace struct {
-	EndedAt        *time.Time              `json:"ended_at"`
+	EndedAt *time.Time `json:"ended_at,omitempty"`
+
+	// ErrorCount Count of failed spans in this trace
+	ErrorCount     *int                    `json:"error_count,omitempty"`
 	Id             openapi_types.UUID      `json:"id"`
 	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
 	Name           string                  `json:"name"`
-	SessionId      *openapi_types.UUID     `json:"session_id"`
+	SessionId      *openapi_types.UUID     `json:"session_id,omitempty"`
 	StartedAt      time.Time               `json:"started_at"`
 	Status         TraceStatus             `json:"status"`
 	TotalCostUsd   *float32                `json:"total_cost_usd,omitempty"`
@@ -335,9 +339,6 @@ type IngestJSONRequestBody = IngestRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Health check endpoint
-	// (GET /api/health)
-	HealthCheck(w http.ResponseWriter, r *http.Request)
 	// List sessions
 	// (GET /api/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
@@ -358,12 +359,6 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
-
-// Health check endpoint
-// (GET /api/health)
-func (_ Unimplemented) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
 
 // List sessions
 // (GET /api/sessions)
@@ -404,24 +399,16 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// HealthCheck operation middleware
-func (siw *ServerInterfaceWrapper) HealthCheck(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.HealthCheck(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // ListSessions operation middleware
 func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSessionsParams
@@ -457,6 +444,12 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListTracesParams
@@ -510,6 +503,12 @@ func (siw *ServerInterfaceWrapper) GetTrace(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTrace(w, r, id)
 	}))
@@ -535,6 +534,12 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 		return
 	}
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListSpansByTrace(w, r, id)
 	}))
@@ -550,6 +555,12 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 func (siw *ServerInterfaceWrapper) Ingest(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params IngestParams
@@ -686,9 +697,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/health", wrapper.HealthCheck)
-	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/sessions", wrapper.ListSessions)
 	})

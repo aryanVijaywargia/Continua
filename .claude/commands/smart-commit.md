@@ -187,12 +187,7 @@ If no skills affected, skip this step entirely.
 git add -A
 
 # Commit
-git commit -m "$(cat <<'EOF'
-$message
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-EOF
-)"
+git commit -m "$message"
 ```
 
 ---

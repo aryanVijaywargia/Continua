@@ -61,6 +61,12 @@ func traceToAPI(t *platform.Trace) Trace {
 		}
 	}
 
+	// Error count (from rollups)
+	if t.ErrorCount != nil {
+		ec := int(*t.ErrorCount)
+		trace.ErrorCount = &ec
+	}
+
 	return trace
 }
 
@@ -69,14 +75,17 @@ func spanToAPI(sp *platform.Span) Span {
 	span := Span{
 		Id:        sp.ID,
 		TraceId:   sp.TraceID,
+		SpanId:    sp.SpanID, // External span ID for tree building
 		Name:      sp.Name,
 		Kind:      SpanKind(mapSpanKind(sp.Type)),
 		Status:    SpanStatus(mapSpanStatus(sp.Status)),
 		StartedAt: sp.StartTime,
 	}
 
-	// Parent span ID (convert from external string to UUID if possible)
-	// For now, we don't have a direct mapping, so skip
+	// Parent span ID - direct string copy from DB
+	if sp.ParentSpanID != nil {
+		span.ParentSpanId = sp.ParentSpanID
+	}
 
 	// End time
 	if sp.EndTime.Valid {
@@ -116,6 +125,22 @@ func spanToAPI(sp *platform.Span) Span {
 		var meta map[string]interface{}
 		if err := parseJSON(sp.Metadata, &meta); err == nil {
 			span.Metadata = &meta
+		}
+	}
+
+	// Input payload (JSON from DB bytes - can be any valid JSON)
+	if len(sp.Input) > 0 {
+		var input interface{}
+		if err := parseJSON(sp.Input, &input); err == nil {
+			span.Input = &input
+		}
+	}
+
+	// Output payload (JSON from DB bytes - can be any valid JSON)
+	if len(sp.Output) > 0 {
+		var output interface{}
+		if err := parseJSON(sp.Output, &output); err == nil {
+			span.Output = &output
 		}
 	}
 

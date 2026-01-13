@@ -1,0 +1,52 @@
+# CodeRabbit Configuration
+# https://docs.coderabbit.ai/guides/configure-coderabbit
+
+language: "en-US"
+
+reviews:
+  # Enable automatic reviews on PRs
+  auto_review:
+    enabled: true
+    # Review all PRs, not just drafts
+    drafts: false
+    # Base branches to review PRs against
+    base_branches:
+      - main
+      - dev
+
+  # Review profile - chill is less nitpicky
+  profile: "chill"
+
+  # Request changes on high severity issues
+  request_changes_workflow: true
+
+  # High-level summary at the top of review
+  high_level_summary: true
+
+  # Show poem at the end (fun touch)
+  poem: false
+
+  # Ignore generated files
+  path_instructions:
+    - path: "**/*_gen.go"
+      instructions: "This is a generated file. Only check for security issues, not style."
+    - path: "contracts/generated/**"
+      instructions: "This is a generated file. Skip detailed review."
+    - path: "db/gen/**"
+      instructions: "This is sqlc-generated code. Only check for SQL injection risks."
+
+# Chat settings for interactive review
+chat:
+  auto_reply: true
+
+# Early access features
+early_access: false
+
+# Knowledge base for better context
+knowledge_base:
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
