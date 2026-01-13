@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -136,6 +137,15 @@ func (s *Service) Ingest(ctx context.Context, projectID uuid.UUID, req *IngestRe
 		}
 		if inserted {
 			actualEventInserts++
+		}
+	}
+
+	// Compute rollups for all affected traces
+	// Per design: compute inline in v1, log warning on error but don't abort
+	for _, traceUUID := range traceMap {
+		if err := s.store.ComputeAndUpdateTraceRollupsTx(ctx, tx, traceUUID); err != nil {
+			log.Printf("Warning: failed to compute rollups for trace %s: %v", traceUUID, err)
+			// Continue - rollups are eventually consistent
 		}
 	}
 

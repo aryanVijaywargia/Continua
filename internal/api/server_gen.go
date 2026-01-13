@@ -13,12 +13,6 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for HealthResponseStatus.
-const (
-	HealthResponseStatusDegraded HealthResponseStatus = "degraded"
-	HealthResponseStatusOk       HealthResponseStatus = "ok"
-)
-
 // Defines values for IngestEventInputEventType.
 const (
 	IngestEventInputEventTypeCustom    IngestEventInputEventType = "custom"
@@ -74,9 +68,9 @@ const (
 
 // Defines values for IngestTraceInputStatus.
 const (
-	IngestTraceInputStatusCompleted IngestTraceInputStatus = "completed"
-	IngestTraceInputStatusFailed    IngestTraceInputStatus = "failed"
-	IngestTraceInputStatusRunning   IngestTraceInputStatus = "running"
+	Completed IngestTraceInputStatus = "completed"
+	Failed    IngestTraceInputStatus = "failed"
+	Running   IngestTraceInputStatus = "running"
 )
 
 // Defines values for SpanKind.
@@ -108,15 +102,6 @@ type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
-
-// HealthResponse defines model for HealthResponse.
-type HealthResponse struct {
-	Status  HealthResponseStatus `json:"status"`
-	Version string               `json:"version"`
-}
-
-// HealthResponseStatus defines model for HealthResponse.Status.
-type HealthResponseStatus string
 
 // IngestEventInput defines model for IngestEventInput.
 type IngestEventInput struct {
@@ -261,20 +246,31 @@ type SizeError struct {
 
 // Span defines model for Span.
 type Span struct {
-	CostUsd      *float32                `json:"cost_usd"`
-	EndedAt      *time.Time              `json:"ended_at"`
-	ErrorMessage *string                 `json:"error_message"`
-	Id           openapi_types.UUID      `json:"id"`
-	Kind         SpanKind                `json:"kind"`
-	LatencyMs    *int                    `json:"latency_ms"`
-	Metadata     *map[string]interface{} `json:"metadata,omitempty"`
-	Name         string                  `json:"name"`
-	ParentSpanId *openapi_types.UUID     `json:"parent_span_id"`
-	StartedAt    time.Time               `json:"started_at"`
-	Status       SpanStatus              `json:"status"`
-	TokensIn     *int                    `json:"tokens_in"`
-	TokensOut    *int                    `json:"tokens_out"`
-	TraceId      openapi_types.UUID      `json:"trace_id"`
+	CostUsd      *float32           `json:"cost_usd"`
+	EndedAt      *time.Time         `json:"ended_at"`
+	ErrorMessage *string            `json:"error_message"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// Input Span input payload (any valid JSON)
+	Input     interface{}             `json:"input"`
+	Kind      SpanKind                `json:"kind"`
+	LatencyMs *int                    `json:"latency_ms"`
+	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
+	Name      string                  `json:"name"`
+
+	// Output Span output payload (any valid JSON)
+	Output interface{} `json:"output"`
+
+	// ParentSpanId External parent span identifier
+	ParentSpanId *string `json:"parent_span_id"`
+
+	// SpanId External span identifier (used for parent-child relationships)
+	SpanId    string             `json:"span_id"`
+	StartedAt time.Time          `json:"started_at"`
+	Status    SpanStatus         `json:"status"`
+	TokensIn  *int               `json:"tokens_in"`
+	TokensOut *int               `json:"tokens_out"`
+	TraceId   openapi_types.UUID `json:"trace_id"`
 }
 
 // SpanKind defines model for Span.Kind.
@@ -290,7 +286,10 @@ type SpanList struct {
 
 // Trace defines model for Trace.
 type Trace struct {
-	EndedAt        *time.Time              `json:"ended_at"`
+	EndedAt *time.Time `json:"ended_at"`
+
+	// ErrorCount Count of failed spans in this trace
+	ErrorCount     *int                    `json:"error_count"`
 	Id             openapi_types.UUID      `json:"id"`
 	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
 	Name           string                  `json:"name"`
@@ -335,9 +334,6 @@ type IngestJSONRequestBody = IngestRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Health check endpoint
-	// (GET /api/health)
-	HealthCheck(w http.ResponseWriter, r *http.Request)
 	// List sessions
 	// (GET /api/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
@@ -358,12 +354,6 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
-
-// Health check endpoint
-// (GET /api/health)
-func (_ Unimplemented) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
 
 // List sessions
 // (GET /api/sessions)
@@ -403,20 +393,6 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
-
-// HealthCheck operation middleware
-func (siw *ServerInterfaceWrapper) HealthCheck(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.HealthCheck(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
 
 // ListSessions operation middleware
 func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
@@ -686,9 +662,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/health", wrapper.HealthCheck)
-	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/sessions", wrapper.ListSessions)
 	})

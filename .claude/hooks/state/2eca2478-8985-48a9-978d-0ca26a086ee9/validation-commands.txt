@@ -1,0 +1,7 @@
+db/platform:make generate
+internal/store:make lint-go && make test-go
+internal/domain:make lint-go && make test-go
+pkg:make lint-go && make test-go
+internal/ingest:make lint-go && make test-go
+internal/api:make lint-go && make test-go
+engine:cd /Users/aryanvijaywargia/Projects/Continua/engine && go test ./...

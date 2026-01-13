@@ -6,14 +6,25 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/continua-ai/continua/db/gen/go/platform"
+	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/store"
 )
 
 // MaxBodySize is the maximum request body size (5MB).
 const MaxBodySize = 5 * 1024 * 1024
+
+// HealthResponse is the response for the health check endpoint.
+// Note: This is defined locally because /api/health is routed directly
+// in Chi (not via OpenAPI) to avoid auth middleware complexity.
+type HealthResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+}
 
 // Server implements the ServerInterface for the Continua API.
 type Server struct {
@@ -30,9 +41,10 @@ func NewServer(s *store.Store) *Server {
 }
 
 // HealthCheck implements the health check endpoint.
+// Note: This is NOT part of ServerInterface - it's routed directly in Chi.
 func (s *Server) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	resp := HealthResponse{
-		Status:  HealthResponseStatusOk,
+		Status:  "ok",
 		Version: "0.1.0",
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -64,10 +76,10 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 		return
 	}
 
-	// Use default project for now (v1 single-tenant)
-	project, err := s.store.GetDefaultProject(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get project")
+	// Get project ID from auth context
+	projectID, ok := middleware.GetProjectID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
 		return
 	}
 
@@ -81,7 +93,7 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 	if !isSync {
 		// Async mode: For v1, we still process synchronously but return 202
 		// In v1.1 with River queue, this would actually queue the work
-		result, err := s.ingestService.Ingest(r.Context(), project.ID, &svcReq)
+		result, err := s.ingestService.Ingest(r.Context(), projectID, &svcReq)
 		if err != nil {
 			if ingest.IsValidationError(err) {
 				writeError(w, http.StatusBadRequest, "validation_error", err.Error())
@@ -106,7 +118,7 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 	}
 
 	// Sync mode: process and return 200
-	result, err := s.ingestService.Ingest(r.Context(), project.ID, &svcReq)
+	result, err := s.ingestService.Ingest(r.Context(), projectID, &svcReq)
 	if err != nil {
 		if ingest.IsValidationError(err) {
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error())
@@ -135,10 +147,10 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 
 // ListTraces returns a paginated list of traces.
 func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams) {
-	// Get default project
-	project, err := s.store.GetDefaultProject(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get project")
+	// Get project ID from auth context
+	projectID, ok := middleware.GetProjectID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
 		return
 	}
 
@@ -151,13 +163,36 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 		offset = int32(*params.Offset)
 	}
 
-	traces, err := s.store.ListTraces(r.Context(), project.ID, limit, offset)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
-		return
-	}
+	var traces []platform.Trace
+	var total int64
+	var err error
 
-	total, err := s.store.CountTraces(r.Context(), project.ID)
+	// Use session-filtered query if session_id is provided
+	if params.SessionId != nil {
+		sessionUUID := pgtype.UUID{Bytes: *params.SessionId, Valid: true}
+		traces, err = s.store.ListTracesBySession(r.Context(), platform.ListTracesBySessionParams{
+			ProjectID: projectID,
+			SessionID: sessionUUID,
+			Limit:     limit,
+			Offset:    offset,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
+			return
+		}
+		// Use session-scoped count
+		total, err = s.store.CountTracesBySession(r.Context(), platform.CountTracesBySessionParams{
+			ProjectID: projectID,
+			SessionID: sessionUUID,
+		})
+	} else {
+		traces, err = s.store.ListTraces(r.Context(), projectID, limit, offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
+			return
+		}
+		total, err = s.store.CountTraces(r.Context(), projectID)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count traces")
 		return
@@ -178,6 +213,13 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 
 // GetTrace returns a trace by ID.
 func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	// Get project ID from auth context
+	projectID, ok := middleware.GetProjectID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
+		return
+	}
+
 	trace, err := s.store.GetTrace(r.Context(), id)
 	if store.IsNotFound(err) {
 		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
@@ -188,12 +230,40 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
+	// Verify trace belongs to the project (multi-tenant isolation)
+	if trace.ProjectID != projectID {
+		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
+		return
+	}
+
 	resp := traceToAPI(&trace)
 	writeJSON(w, http.StatusOK, resp)
 }
 
 // ListSpansByTrace returns spans for a trace.
 func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	// Get project ID from auth context
+	projectID, ok := middleware.GetProjectID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
+		return
+	}
+
+	// First verify the trace belongs to this project
+	trace, err := s.store.GetTrace(r.Context(), id)
+	if store.IsNotFound(err) {
+		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get trace")
+		return
+	}
+	if trace.ProjectID != projectID {
+		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
+		return
+	}
+
 	spans, err := s.store.ListSpansByTrace(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list spans")
@@ -213,9 +283,10 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 
 // ListSessions returns a paginated list of sessions.
 func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams) {
-	project, err := s.store.GetDefaultProject(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get project")
+	// Get project ID from auth context
+	projectID, ok := middleware.GetProjectID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
 		return
 	}
 
@@ -228,13 +299,13 @@ func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params Lis
 		offset = int32(*params.Offset)
 	}
 
-	sessions, err := s.store.ListSessions(r.Context(), project.ID, limit, offset)
+	sessions, err := s.store.ListSessions(r.Context(), projectID, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list sessions")
 		return
 	}
 
-	total, err := s.store.CountSessions(r.Context(), project.ID)
+	total, err := s.store.CountSessions(r.Context(), projectID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count sessions")
 		return
