@@ -99,11 +99,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        HealthResponse: {
-            /** @enum {string} */
-            status: "ok" | "degraded";
-            version: string;
-        };
         Error: {
             code: string;
             message: string;
@@ -117,19 +112,19 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            session_id?: string | null;
+            session_id?: string;
             name: string;
             /** @enum {string} */
             status: "RUNNING" | "COMPLETED" | "FAILED";
             /** Format: date-time */
             started_at: string;
             /** Format: date-time */
-            ended_at?: string | null;
+            ended_at?: string;
             total_tokens_in?: number;
             total_tokens_out?: number;
             total_cost_usd?: number;
             /** @description Count of failed spans in this trace */
-            error_count?: number | null;
+            error_count?: number;
             metadata?: Record<string, never>;
         };
         TraceList: {
@@ -144,7 +139,7 @@ export interface components {
             /** @description External span identifier (used for parent-child relationships) */
             span_id: string;
             /** @description External parent span identifier */
-            parent_span_id?: string | null;
+            parent_span_id?: string;
             name: string;
             /** @enum {string} */
             kind: "LLM" | "TOOL" | "CHAIN" | "AGENT" | "CUSTOM";
@@ -153,12 +148,12 @@ export interface components {
             /** Format: date-time */
             started_at: string;
             /** Format: date-time */
-            ended_at?: string | null;
-            tokens_in?: number | null;
-            tokens_out?: number | null;
-            cost_usd?: number | null;
-            latency_ms?: number | null;
-            error_message?: string | null;
+            ended_at?: string;
+            tokens_in?: number;
+            tokens_out?: number;
+            cost_usd?: number;
+            latency_ms?: number;
+            error_message?: string;
             /** @description Span input payload (any valid JSON) */
             input?: unknown;
             /** @description Span output payload (any valid JSON) */
@@ -171,7 +166,7 @@ export interface components {
         Session: {
             /** Format: uuid */
             id: string;
-            name?: string | null;
+            name?: string;
             metadata?: Record<string, never>;
             /** Format: date-time */
             created_at: string;
@@ -346,6 +341,15 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Request body too large (exceeds 5MB limit) */
             413: {
                 headers: {
@@ -379,6 +383,15 @@ export interface operations {
                     "application/json": components["schemas"]["TraceList"];
                 };
             };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getTrace: {
@@ -399,6 +412,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Trace"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Trace not found */
@@ -432,6 +454,24 @@ export interface operations {
                     "application/json": components["schemas"]["SpanList"];
                 };
             };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Trace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listSessions: {
@@ -453,6 +493,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionList"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -11,6 +12,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+const (
+	ApiKeyScopes = "apiKey.Scopes"
 )
 
 // Defines values for IngestEventInputEventType.
@@ -229,7 +234,7 @@ type Session struct {
 	CreatedAt time.Time               `json:"created_at"`
 	Id        openapi_types.UUID      `json:"id"`
 	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
-	Name      *string                 `json:"name"`
+	Name      *string                 `json:"name,omitempty"`
 }
 
 // SessionList defines model for SessionList.
@@ -246,30 +251,30 @@ type SizeError struct {
 
 // Span defines model for Span.
 type Span struct {
-	CostUsd      *float32           `json:"cost_usd"`
-	EndedAt      *time.Time         `json:"ended_at"`
-	ErrorMessage *string            `json:"error_message"`
+	CostUsd      *float32           `json:"cost_usd,omitempty"`
+	EndedAt      *time.Time         `json:"ended_at,omitempty"`
+	ErrorMessage *string            `json:"error_message,omitempty"`
 	Id           openapi_types.UUID `json:"id"`
 
 	// Input Span input payload (any valid JSON)
-	Input     interface{}             `json:"input"`
+	Input     interface{}             `json:"input,omitempty"`
 	Kind      SpanKind                `json:"kind"`
-	LatencyMs *int                    `json:"latency_ms"`
+	LatencyMs *int                    `json:"latency_ms,omitempty"`
 	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
 	Name      string                  `json:"name"`
 
 	// Output Span output payload (any valid JSON)
-	Output interface{} `json:"output"`
+	Output interface{} `json:"output,omitempty"`
 
 	// ParentSpanId External parent span identifier
-	ParentSpanId *string `json:"parent_span_id"`
+	ParentSpanId *string `json:"parent_span_id,omitempty"`
 
 	// SpanId External span identifier (used for parent-child relationships)
 	SpanId    string             `json:"span_id"`
 	StartedAt time.Time          `json:"started_at"`
 	Status    SpanStatus         `json:"status"`
-	TokensIn  *int               `json:"tokens_in"`
-	TokensOut *int               `json:"tokens_out"`
+	TokensIn  *int               `json:"tokens_in,omitempty"`
+	TokensOut *int               `json:"tokens_out,omitempty"`
 	TraceId   openapi_types.UUID `json:"trace_id"`
 }
 
@@ -286,14 +291,14 @@ type SpanList struct {
 
 // Trace defines model for Trace.
 type Trace struct {
-	EndedAt *time.Time `json:"ended_at"`
+	EndedAt *time.Time `json:"ended_at,omitempty"`
 
 	// ErrorCount Count of failed spans in this trace
-	ErrorCount     *int                    `json:"error_count"`
+	ErrorCount     *int                    `json:"error_count,omitempty"`
 	Id             openapi_types.UUID      `json:"id"`
 	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
 	Name           string                  `json:"name"`
-	SessionId      *openapi_types.UUID     `json:"session_id"`
+	SessionId      *openapi_types.UUID     `json:"session_id,omitempty"`
 	StartedAt      time.Time               `json:"started_at"`
 	Status         TraceStatus             `json:"status"`
 	TotalCostUsd   *float32                `json:"total_cost_usd,omitempty"`
@@ -399,6 +404,12 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 
 	var err error
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSessionsParams
 
@@ -433,6 +444,12 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListTracesParams
@@ -486,6 +503,12 @@ func (siw *ServerInterfaceWrapper) GetTrace(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTrace(w, r, id)
 	}))
@@ -511,6 +534,12 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 		return
 	}
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListSpansByTrace(w, r, id)
 	}))
@@ -526,6 +555,12 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 func (siw *ServerInterfaceWrapper) Ingest(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params IngestParams

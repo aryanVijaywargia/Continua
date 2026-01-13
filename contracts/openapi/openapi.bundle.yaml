@@ -3,9 +3,14 @@ info:
   title: Continua API
   version: 0.1.0
   description: AI Agent Observability Platform API
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
 servers:
-  - url: http://localhost:8080
-    description: Local development
+  - url: /
+    description: Relative path (works with any host)
+security:
+  - apiKey: []
 paths:
   /v1/ingest:
     post:
@@ -39,6 +44,12 @@ paths:
                 $ref: '#/components/schemas/IngestResponse'
         '400':
           description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
           content:
             application/json:
               schema:
@@ -78,6 +89,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TraceList'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/traces/{id}:
     get:
       operationId: getTrace
@@ -98,6 +115,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Trace'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Trace not found
           content:
@@ -124,6 +147,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SpanList'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/sessions:
     get:
       operationId: listSessions
@@ -148,21 +183,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SessionList'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
   schemas:
-    HealthResponse:
-      type: object
-      required:
-        - status
-        - version
-      properties:
-        status:
-          type: string
-          enum:
-            - ok
-            - degraded
-        version:
-          type: string
     Error:
       type: object
       required:
@@ -196,7 +230,6 @@ components:
         session_id:
           type: string
           format: uuid
-          nullable: true
         name:
           type: string
         status:
@@ -211,7 +244,6 @@ components:
         ended_at:
           type: string
           format: date-time
-          nullable: true
         total_tokens_in:
           type: integer
         total_tokens_out:
@@ -220,7 +252,6 @@ components:
           type: number
         error_count:
           type: integer
-          nullable: true
           description: Count of failed spans in this trace
         metadata:
           type: object
@@ -258,7 +289,6 @@ components:
           description: External span identifier (used for parent-child relationships)
         parent_span_id:
           type: string
-          nullable: true
           description: External parent span identifier
         name:
           type: string
@@ -283,27 +313,19 @@ components:
         ended_at:
           type: string
           format: date-time
-          nullable: true
         tokens_in:
           type: integer
-          nullable: true
         tokens_out:
           type: integer
-          nullable: true
         cost_usd:
           type: number
-          nullable: true
         latency_ms:
           type: integer
-          nullable: true
         error_message:
           type: string
-          nullable: true
         input:
-          nullable: true
           description: Span input payload (any valid JSON)
         output:
-          nullable: true
           description: Span output payload (any valid JSON)
         metadata:
           type: object
@@ -327,7 +349,6 @@ components:
           format: uuid
         name:
           type: string
-          nullable: true
         metadata:
           type: object
         created_at:
