@@ -151,3 +151,32 @@ Core tables: `sessions`, `traces`, `spans`, `payloads`
 - Always perform root cause analysis (RCA) first
 - Fix the actual issue, not the symptom
 - If a test is genuinely wrong, fix the test logic - don't delete it
+
+## Go Performance Patterns
+
+- Use pointer parameters for structs > 200 bytes (spans, traces, events)
+- Use index-based range loops: `for i := range slice { item := &slice[i] }`
+- Dereference at sqlc call boundary, not before
+
+## Review Feedback Guidelines
+
+When receiving PR/code review feedback:
+
+**Accept and fix:**
+- Redundant code (unused handlers, variables)
+- Type safety issues (overly restrictive TypeScript types)
+- Missing error handling
+- Bug fixes (atexit accumulation, status mismatches)
+
+**Push back on:**
+- Suggestions to modify generated code (use `make generate`)
+- Database-specific suggestions for wrong database (SQLite for PostgreSQL-only)
+- Cosmetic changes (enum ordering, minor formatting)
+- Documentation changes in implementation reviews
+
+## Development Workflow
+
+- Create feature branches for all changes (never commit directly to main)
+- Use OpenSpec for proposals involving architecture changes
+- Run `make ci` before committing
+- Use `/smart-commit` for commits with changelog updates
