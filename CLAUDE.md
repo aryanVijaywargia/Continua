@@ -143,3 +143,11 @@ Core tables: `sessions`, `traces`, `spans`, `payloads`
 - **Never add Co-Authored-By signatures** to commit messages
 - Use conventional commit format: `type: description`
 - Types: feat, fix, chore, docs, refactor, test, perf, ci
+
+## Test and CI Failure Policy
+
+- **Never bypass, skip, or remove failing tests** as a solution
+- **Never disable CI checks** to make builds pass
+- Always perform root cause analysis (RCA) first
+- Fix the actual issue, not the symptom
+- If a test is genuinely wrong, fix the test logic - don't delete it

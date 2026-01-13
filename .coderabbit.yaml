@@ -26,12 +26,6 @@ reviews:
   # Show poem at the end (fun touch)
   poem: false
 
-  # Review scope - exclude test files
-  path_filters:
-    - "!**/*_test.go"  # Skip test files for now
-    - "!**/*.test.ts"
-    - "!**/*.spec.ts"
-
   # Ignore generated files
   path_instructions:
     - path: "**/*_gen.go"
