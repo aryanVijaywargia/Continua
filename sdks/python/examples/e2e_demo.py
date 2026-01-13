@@ -97,7 +97,7 @@ def run_code_review_agent(code: str):
     2. Checks for issues
     3. Provides recommendations
     """
-    print(f"  Starting code review agent")
+    print("  Starting code review agent")
 
     # Analysis chain
     with span("code_analysis_chain", kind="chain"):

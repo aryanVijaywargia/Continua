@@ -24,7 +24,7 @@ This checklist provides a task-level breakdown for implementing Continua v1. Eac
 **Work Items:**
 - [ ] Initialize Go module (`go mod init github.com/continua/continua`)
 - [ ] Create directory structure:
-  ```
+  ```text
   continua/
   ├── cmd/
   │   └── server/

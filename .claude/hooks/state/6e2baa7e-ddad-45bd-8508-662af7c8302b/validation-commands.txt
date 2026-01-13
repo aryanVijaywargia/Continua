@@ -1,5 +1,0 @@
-internal/api:make lint-go && make test-go
-web:cd /Users/aryanvijaywargia/Projects/Continua/web && pnpm type-check && pnpm lint
-db/platform:make generate
-internal/store:make lint-go && make test-go
-sdks/python:cd /Users/aryanvijaywargia/Projects/Continua/sdks/python && uv run pytest

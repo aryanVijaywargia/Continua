@@ -596,10 +596,11 @@ BEGIN
         total_cost = (SELECT COALESCE(SUM(total_cost), 0) FROM spans WHERE trace_id = p_trace_id),
         total_tokens = (SELECT COALESCE(SUM(total_tokens), 0) FROM spans WHERE trace_id = p_trace_id),
         error_count = (SELECT COUNT(*) FROM spans WHERE trace_id = p_trace_id AND status = 'error'),
-        status = CASE 
+        status = CASE
             WHEN EXISTS (SELECT 1 FROM spans WHERE trace_id = p_trace_id AND status = 'error') THEN 'error'
-            WHEN EXISTS (SELECT 1 FROM spans WHERE trace_id = p_trace_id AND status = 'ok') THEN 'ok'
+            WHEN EXISTS (SELECT 1 FROM spans WHERE trace_id = p_trace_id AND status = 'cancelled') THEN 'cancelled'
             WHEN EXISTS (SELECT 1 FROM spans WHERE trace_id = p_trace_id AND status = 'running') THEN 'running'
+            WHEN EXISTS (SELECT 1 FROM spans WHERE trace_id = p_trace_id AND status = 'ok') THEN 'ok'
             ELSE 'ok'
         END,
         start_time = COALESCE(traces.start_time, (SELECT MIN(start_time) FROM spans WHERE trace_id = p_trace_id)),

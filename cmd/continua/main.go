@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -90,14 +88,6 @@ func startHTTPServer(lc fx.Lifecycle, cfg *config.Config, handler http.Handler) 
 				if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 				}
-			}()
-
-			// Set up signal handling for graceful shutdown
-			go func() {
-				sigChan := make(chan os.Signal, 1)
-				signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-				<-sigChan
-				fmt.Println("\nShutting down gracefully...")
 			}()
 
 			return nil

@@ -84,6 +84,19 @@ function TraceDetailContent({
     );
   }
 
+  if (spansQuery.error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-red-600">
+          Error loading spans:{' '}
+          {spansQuery.error instanceof Error
+            ? spansQuery.error.message
+            : 'Unknown error'}
+        </div>
+      </div>
+    );
+  }
+
   const trace = traceQuery.data;
   const spans = spansQuery.data?.spans ?? [];
 

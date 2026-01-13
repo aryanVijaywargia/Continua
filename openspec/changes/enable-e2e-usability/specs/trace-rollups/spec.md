@@ -22,7 +22,7 @@ The system SHALL compute and store aggregate metrics on traces after span ingest
 - **THEN** trace `total_spans` equals N
 
 #### Scenario: Error counting
-- **WHEN** trace has spans with status "error" or "failed"
+- **WHEN** trace has spans with status "FAILED"
 - **THEN** trace `error_count` equals count of failed spans
 
 #### Scenario: Duration computation

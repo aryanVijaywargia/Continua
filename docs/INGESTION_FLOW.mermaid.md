@@ -368,7 +368,7 @@ def enqueue_span_end(self, trace_id, span_id, **updates):
 
 ### 4. Endpoint Routing for Span Uniqueness
 
-```
+```text
 # span_id only unique within trace - use nested routes
 GET /v1/traces/{trace_id}/spans/{span_id}
 GET /v1/traces/{trace_id}/spans/{span_id}/events

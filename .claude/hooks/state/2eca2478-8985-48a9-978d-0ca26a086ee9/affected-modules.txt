@@ -1,7 +1,0 @@
-db/platform
-internal/store
-internal/domain
-pkg
-internal/ingest
-internal/api
-engine

@@ -149,13 +149,13 @@ function MetricCard({ label, value }: MetricCardProps) {
 }
 
 interface JsonViewerProps {
-  data: Record<string, unknown>;
+  data: unknown;
 }
 
 function JsonViewer({ data }: JsonViewerProps) {
   return (
     <pre className="bg-gray-50 border rounded p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto">
-      {JSON.stringify(data, null, 2)}
+      {JSON.stringify(data ?? null, null, 2)}
     </pre>
   );
 }

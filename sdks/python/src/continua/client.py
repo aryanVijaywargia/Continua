@@ -10,6 +10,18 @@ import httpx
 
 from .batch import BatchQueue
 
+# Module-level reference for shutdown handler
+_current_client: Continua | None = None
+_atexit_registered: bool = False
+
+
+def _module_shutdown() -> None:
+    """Module-level shutdown handler called once at exit."""
+    global _current_client
+    if _current_client is not None:
+        _current_client._do_shutdown()
+        _current_client = None
+
 
 class Continua:
     """Main client for the Continua observability platform.
@@ -46,6 +58,8 @@ class Continua:
             batch_size: Maximum items before auto-flush
             flush_interval: Seconds between auto-flushes
         """
+        global _current_client, _atexit_registered
+
         self.api_key = api_key
         self.endpoint = endpoint.rstrip("/")
         self._client = httpx.Client(
@@ -60,8 +74,11 @@ class Continua:
         )
         self._batch.start()
 
-        # Register shutdown handler
-        atexit.register(self.shutdown)
+        # Register module-level shutdown handler once
+        _current_client = self
+        if not _atexit_registered:
+            atexit.register(_module_shutdown)
+            _atexit_registered = True
 
     @classmethod
     def init(
@@ -154,6 +171,13 @@ class Continua:
 
     def shutdown(self) -> None:
         """Shutdown the client gracefully."""
+        global _current_client
+        self._do_shutdown()
+        if _current_client is self:
+            _current_client = None
+
+    def _do_shutdown(self) -> None:
+        """Internal shutdown logic."""
         self._batch.shutdown()
         self._client.close()
 

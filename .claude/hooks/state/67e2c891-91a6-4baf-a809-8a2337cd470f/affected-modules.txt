@@ -1,9 +1,0 @@
-internal/api
-internal/config
-internal/store
-internal/ingest
-cmd
-sdks/python
-db/platform
-web
-root
