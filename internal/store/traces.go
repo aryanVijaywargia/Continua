@@ -97,6 +97,11 @@ func (s *Store) CountTraces(ctx context.Context, projectID uuid.UUID) (int64, er
 	return s.q.CountTraces(ctx, projectID)
 }
 
+// CountTracesBySession returns the total number of traces for a session.
+func (s *Store) CountTracesBySession(ctx context.Context, params platform.CountTracesBySessionParams) (int64, error) {
+	return s.q.CountTracesBySession(ctx, params)
+}
+
 // UpdateTraceStatus updates a trace's status and end time.
 func (s *Store) UpdateTraceStatus(ctx context.Context, params platform.UpdateTraceStatusParams) (platform.Trace, error) {
 	return s.q.UpdateTraceStatus(ctx, params)
