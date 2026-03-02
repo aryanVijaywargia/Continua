@@ -1,6 +1,10 @@
 -- name: GetTrace :one
 SELECT * FROM traces WHERE id = $1;
 
+-- name: GetTraceVersion :one
+-- Get trace version for optimistic concurrency checks (e.g., rollup re-enqueue).
+SELECT version FROM traces WHERE id = $1;
+
 -- name: GetTraceByExternalID :one
 SELECT * FROM traces WHERE project_id = $1 AND trace_id = $2;
 
@@ -61,8 +65,16 @@ ON CONFLICT (project_id, trace_id) DO UPDATE SET
         WHEN traces.status IN ('failed', 'error') THEN traces.status
         ELSE COALESCE(EXCLUDED.status, traces.status)
     END,
-    start_time = COALESCE(EXCLUDED.start_time, traces.start_time),
-    end_time = COALESCE(EXCLUDED.end_time, traces.end_time),
+    start_time = COALESCE(
+        LEAST(traces.start_time, EXCLUDED.start_time),
+        traces.start_time,
+        EXCLUDED.start_time
+    ),
+    end_time = COALESCE(
+        GREATEST(traces.end_time, EXCLUDED.end_time),
+        traces.end_time,
+        EXCLUDED.end_time
+    ),
     updated_at = NOW(),
     version = traces.version + 1
 RETURNING *;
