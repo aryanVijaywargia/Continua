@@ -2,14 +2,22 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 
+	pgmigrations "github.com/continua-ai/continua/db/platform/migrations/postgres"
 	"github.com/continua-ai/continua/internal/api"
 	"github.com/continua-ai/continua/internal/config"
 	"github.com/continua-ai/continua/internal/ingest"
@@ -31,6 +39,7 @@ func main() {
 	}
 
 	rootCmd.AddCommand(serveCmd())
+	rootCmd.AddCommand(migrateCmd())
 	rootCmd.AddCommand(versionCmd())
 
 	if err := rootCmd.Execute(); err != nil {
@@ -72,6 +81,117 @@ func runServer() error {
 
 	app.Run()
 	return nil
+}
+
+func migrateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "migrate",
+		Short: "Run database migrations",
+	}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "up",
+		Short: "Apply all pending migrations",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMigrationsUp()
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "down [steps]",
+		Short: "Rollback migrations (default: 1 step)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			steps := 1
+			if len(args) == 1 {
+				n, err := strconv.Atoi(args[0])
+				if err != nil || n < 1 {
+					return fmt.Errorf("invalid steps %q: must be a positive integer", args[0])
+				}
+				steps = n
+			}
+			return runMigrationsDown(steps)
+		},
+	})
+
+	return cmd
+}
+
+func newMigrator(databaseURL string) (*migrate.Migrate, error) {
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create postgres migration driver: %w", err)
+	}
+
+	source, err := iofs.New(pgmigrations.Migrations, ".")
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create migration source: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create migrator: %w", err)
+	}
+
+	return m, nil
+}
+
+func runMigrationsUp() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	m, err := newMigrator(cfg.Database.URL)
+	if err != nil {
+		return err
+	}
+	defer closeMigrator(m)
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("apply migrations: %w", err)
+	}
+
+	fmt.Println("Migrations applied successfully")
+	return nil
+}
+
+func runMigrationsDown(steps int) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	m, err := newMigrator(cfg.Database.URL)
+	if err != nil {
+		return err
+	}
+	defer closeMigrator(m)
+
+	if err := m.Steps(-steps); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("rollback migrations: %w", err)
+	}
+
+	fmt.Printf("Rolled back %d migration step(s)\n", steps)
+	return nil
+}
+
+func closeMigrator(m *migrate.Migrate) {
+	srcErr, dbErr := m.Close()
+	if srcErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: close migration source: %v\n", srcErr)
+	}
+	if dbErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: close migration db: %v\n", dbErr)
+	}
 }
 
 // startHTTPServer starts the HTTP server with graceful shutdown.
