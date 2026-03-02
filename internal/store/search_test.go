@@ -337,6 +337,7 @@ func TestSearch_FilterByTimeRangeWithNullStartTime(t *testing.T) {
 	now := time.Now()
 	yesterday := now.Add(-24 * time.Hour)
 	twoDaysAgo := now.Add(-48 * time.Hour)
+	timeRangeEnd := now.Add(2 * time.Minute)
 
 	// Create trace without start_time (will use server_received_at)
 	traceNoStartTime, err := q.UpsertTrace(ctx, platform.UpsertTraceParams{
@@ -361,7 +362,7 @@ func TestSearch_FilterByTimeRangeWithNullStartTime(t *testing.T) {
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
 		ProjectID:     projectID,
 		StartTimeFrom: &yesterday,
-		StartTimeTo:   &now,
+		StartTimeTo:   &timeRangeEnd,
 		Limit:         10,
 	})
 	require.NoError(t, err)

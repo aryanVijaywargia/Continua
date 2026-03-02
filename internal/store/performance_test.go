@@ -54,6 +54,12 @@ func TestIndex_TracesListUsesProjectStartedAt(t *testing.T) {
 		LIMIT 10
 	`
 
+	_, err := pool.Exec(ctx, "SET enable_seqscan = off")
+	require.NoError(t, err)
+	defer func() {
+		_, _ = pool.Exec(ctx, "SET enable_seqscan = on")
+	}()
+
 	rows, err := pool.Query(ctx, query, projectID)
 	require.NoError(t, err)
 	defer rows.Close()
@@ -122,7 +128,13 @@ func TestIndex_SpansByTracePreserved(t *testing.T) {
 		ORDER BY COALESCE(start_time, server_received_at) ASC
 	`
 
-	rows, err := pool.Query(ctx, query, traceID)
+	_, err = pool.Exec(ctx, "SET enable_seqscan = off")
+	require.NoError(t, err)
+	defer func() {
+		_, _ = pool.Exec(ctx, "SET enable_seqscan = on")
+	}()
+
+	rows, err := pool.Query(ctx, query, trace.ID)
 	require.NoError(t, err)
 	defer rows.Close()
 
@@ -392,9 +404,15 @@ func TestIndex_GINSearchIndex(t *testing.T) {
 	`
 
 	// This query will fail if search_vector column doesn't exist yet
-	_, err = pool.Query(ctx, searchQuery, projectID)
+	searchRows, err := pool.Query(ctx, searchQuery, projectID)
 	if err != nil {
 		t.Logf("Search query failed (expected if migration not applied): %v", err)
 		t.Skip("Skipping GIN index test - search_vector column not yet created")
 	}
+	defer searchRows.Close()
+
+	for searchRows.Next() {
+		// Consume EXPLAIN output and immediately discard it.
+	}
+	require.NoError(t, searchRows.Err())
 }

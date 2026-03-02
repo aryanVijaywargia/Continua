@@ -55,16 +55,26 @@ func (q *Queries) GetSpanEvent(ctx context.Context, id uuid.UUID) (SpanEvent, er
 }
 
 const insertSpanEvent = `-- name: InsertSpanEvent :one
-INSERT INTO span_events (
-    project_id, trace_id, span_id, event_type, level,
-    event_ts, sequence, message, payload,
-    truncated, original_size_bytes, truncation_reason,
-    idempotency_key
+WITH inserted AS (
+    INSERT INTO span_events (
+        project_id, trace_id, span_id, event_type, level,
+        event_ts, sequence, message, payload,
+        truncated, original_size_bytes, truncation_reason,
+        idempotency_key
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    ON CONFLICT (project_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+    DO NOTHING
+    RETURNING id
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-ON CONFLICT (project_id, idempotency_key) WHERE idempotency_key IS NOT NULL
-DO NOTHING
-RETURNING id
+SELECT id FROM inserted
+UNION ALL
+SELECT id
+FROM span_events
+WHERE project_id = $1
+  AND idempotency_key = $13
+  AND $13 IS NOT NULL
+LIMIT 1
 `
 
 type InsertSpanEventParams struct {
