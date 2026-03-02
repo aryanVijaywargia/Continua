@@ -116,6 +116,90 @@ class SpanContext:
         self.status = "failed"
         self.status_message = message
 
+    def set_llm_response(
+        self,
+        model: str,
+        messages: Any,
+        response: Any,
+        tokens_in: int | None = None,
+        tokens_out: int | None = None,
+        *,
+        provider: str | None = None,
+        cost: float | None = None,
+    ) -> None:
+        """Set LLM call details on this span.
+
+        Args:
+            model: The model name (e.g., "gpt-4", "claude-3-opus")
+            messages: The input messages/prompt
+            response: The LLM response
+            tokens_in: Number of input/prompt tokens
+            tokens_out: Number of output/completion tokens
+            provider: Optional provider name (e.g., "openai", "anthropic")
+            cost: Optional cost in USD
+        """
+        self._model = model
+        self._provider = provider
+        self._input = messages
+        self._output = response
+        self._prompt_tokens = tokens_in
+        self._completion_tokens = tokens_out
+        if tokens_in is not None or tokens_out is not None:
+            self._total_tokens = (tokens_in or 0) + (tokens_out or 0)
+        if cost is not None:
+            self._total_cost = cost
+
+    def set_tool_call(
+        self,
+        tool_name: str,
+        arguments: Any,
+        result: Any,
+    ) -> None:
+        """Set tool call details on this span.
+
+        Args:
+            tool_name: Name of the tool being called
+            arguments: The tool arguments/input
+            result: The tool execution result
+        """
+        self.name = tool_name  # Override span name with tool name
+        self._input = arguments
+        self._output = result
+
+    def log(
+        self,
+        message: str,
+        level: str = "info",
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Log a message as an event on this span.
+
+        Args:
+            message: The log message
+            level: Log level ("debug", "info", "warning", "error")
+            payload: Optional additional data
+        """
+        if self.trace_id is None:
+            return
+
+        try:
+            from .client import Continua
+
+            client = Continua.get_instance()
+            event_data: dict[str, Any] = {
+                "trace_id": self.trace_id,
+                "span_id": self.span_id,
+                "event_type": "log",
+                "level": level,
+                "message": message,
+            }
+            if payload:
+                event_data["payload"] = payload
+            client.add_event(event_data)
+        except RuntimeError:
+            # Client not initialized - skip
+            pass
+
     def __enter__(self) -> SpanContext:
         """Enter the span context."""
         self._token = _current_span.set(self)

@@ -11,20 +11,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/riverqueue/river"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+	"github.com/continua-ai/continua/internal/jobs"
 	"github.com/continua-ai/continua/internal/store"
 	"github.com/continua-ai/continua/pkg/truncation"
 )
 
 // Service handles batch ingestion of traces, spans, and events.
 type Service struct {
-	store *store.Store
+	store       *store.Store
+	riverClient *river.Client[pgx.Tx]
 }
 
 // NewService creates a new ingest service.
-func NewService(s *store.Store) *Service {
-	return &Service{store: s}
+func NewService(s *store.Store, riverClient *river.Client[pgx.Tx]) *Service {
+	return &Service{store: s, riverClient: riverClient}
 }
 
 // ValidationError represents a batch validation error.
@@ -140,13 +143,16 @@ func (s *Service) Ingest(ctx context.Context, projectID uuid.UUID, req *IngestRe
 		}
 	}
 
-	// Compute rollups for all affected traces
-	// Per design: compute inline in v1, log warning on error but don't abort
+	// Enqueue rollup jobs for all affected traces (async via River)
+	// Jobs are enqueued in the same transaction, so they only become visible after commit
 	for _, traceUUID := range traceMap {
-		if err := s.store.ComputeAndUpdateTraceRollupsTx(ctx, tx, traceUUID); err != nil {
-			log.Printf("Warning: failed to compute rollups for trace %s: %v", traceUUID, err)
-			// Continue - rollups are eventually consistent
+		inserted, err := jobs.EnqueueRollupInTx(ctx, s.riverClient, tx.Tx(), traceUUID)
+		if err != nil {
+			log.Printf("Warning: failed to enqueue rollup job for trace %s: %v", traceUUID, err)
+			// Continue - rollups will be computed by the next successful enqueue
+			continue
 		}
+		_ = inserted // Duplicate insert is expected for coalescing.
 	}
 
 	// Update batch status to "accepted" (spec-compliant vocabulary)

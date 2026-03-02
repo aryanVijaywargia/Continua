@@ -158,6 +158,10 @@ func sessionToAPI(s *platform.Session) Session {
 		session.Name = s.Name
 	}
 
+	if s.UserID != nil {
+		session.UserId = s.UserID
+	}
+
 	if len(s.Metadata) > 0 {
 		var meta map[string]interface{}
 		if err := parseJSON(s.Metadata, &meta); err == nil {
@@ -165,6 +169,14 @@ func sessionToAPI(s *platform.Session) Session {
 		}
 	}
 
+	return session
+}
+
+// sessionWithCountToAPI converts a session with trace count to an API session.
+func sessionWithCountToAPI(s *platform.Session, traceCount int64) Session {
+	session := sessionToAPI(s)
+	tc := int(traceCount)
+	session.TraceCount = &tc
 	return session
 }
 
@@ -181,9 +193,9 @@ func mapTraceStatus(status string) string {
 	switch status {
 	case "running":
 		return "RUNNING"
-	case "completed":
+	case "completed", "ok":
 		return "COMPLETED"
-	case "failed", "error":
+	case "failed", "error", "cancelled":
 		return "FAILED"
 	default:
 		return "RUNNING"

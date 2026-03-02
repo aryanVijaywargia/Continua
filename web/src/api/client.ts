@@ -121,6 +121,20 @@ export interface SpanList {
   spans: Span[];
 }
 
+export interface Session {
+  id: string;
+  name?: string;
+  user_id?: string;
+  trace_count?: number;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SessionList {
+  sessions: Session[];
+  total: number;
+}
+
 /**
  * Fetch traces with pagination.
  */
@@ -140,4 +154,31 @@ export async function fetchTrace(id: string): Promise<Trace> {
  */
 export async function fetchSpans(traceId: string): Promise<SpanList> {
   return fetchAPI<SpanList>(`/api/traces/${traceId}/spans`);
+}
+
+/**
+ * Fetch sessions with pagination.
+ */
+export async function fetchSessions(limit = 20, offset = 0): Promise<SessionList> {
+  return fetchAPI<SessionList>(`/api/sessions?limit=${limit}&offset=${offset}`);
+}
+
+/**
+ * Fetch a single session by ID.
+ */
+export async function fetchSession(id: string): Promise<Session> {
+  return fetchAPI<Session>(`/api/sessions/${id}`);
+}
+
+/**
+ * Fetch traces filtered by session ID.
+ */
+export async function fetchTracesBySession(
+  sessionId: string,
+  limit = 20,
+  offset = 0
+): Promise<TraceList> {
+  return fetchAPI<TraceList>(
+    `/api/traces?session_id=${sessionId}&limit=${limit}&offset=${offset}`
+  );
 }

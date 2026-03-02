@@ -73,9 +73,9 @@ const (
 
 // Defines values for IngestTraceInputStatus.
 const (
-	Completed IngestTraceInputStatus = "completed"
-	Failed    IngestTraceInputStatus = "failed"
-	Running   IngestTraceInputStatus = "running"
+	IngestTraceInputStatusCompleted IngestTraceInputStatus = "completed"
+	IngestTraceInputStatusFailed    IngestTraceInputStatus = "failed"
+	IngestTraceInputStatusRunning   IngestTraceInputStatus = "running"
 )
 
 // Defines values for SpanKind.
@@ -100,6 +100,13 @@ const (
 	TraceStatusCOMPLETED TraceStatus = "COMPLETED"
 	TraceStatusFAILED    TraceStatus = "FAILED"
 	TraceStatusRUNNING   TraceStatus = "RUNNING"
+)
+
+// Defines values for ListTracesParamsStatus.
+const (
+	ListTracesParamsStatusCompleted ListTracesParamsStatus = "completed"
+	ListTracesParamsStatusFailed    ListTracesParamsStatus = "failed"
+	ListTracesParamsStatusRunning   ListTracesParamsStatus = "running"
 )
 
 // Error defines model for Error.
@@ -235,6 +242,12 @@ type Session struct {
 	Id        openapi_types.UUID      `json:"id"`
 	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
 	Name      *string                 `json:"name,omitempty"`
+
+	// TraceCount Number of traces in this session
+	TraceCount *int `json:"trace_count,omitempty"`
+
+	// UserId User identifier for this session
+	UserId *string `json:"user_id,omitempty"`
 }
 
 // SessionList defines model for SessionList.
@@ -326,7 +339,31 @@ type ListTracesParams struct {
 	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset    *int                `form:"offset,omitempty" json:"offset,omitempty"`
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// Q Full-text search query (searches trace name and user_id)
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Status Filter by trace status
+	Status *ListTracesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// StartTimeFrom Filter traces starting at or after this time
+	StartTimeFrom *time.Time `form:"start_time_from,omitempty" json:"start_time_from,omitempty"`
+
+	// StartTimeTo Filter traces starting at or before this time
+	StartTimeTo *time.Time `form:"start_time_to,omitempty" json:"start_time_to,omitempty"`
+
+	// UserId Filter by user ID
+	UserId *string `form:"user_id,omitempty" json:"user_id,omitempty"`
+
+	// HasErrors Filter traces with errors (error_count > 0)
+	HasErrors *bool `form:"has_errors,omitempty" json:"has_errors,omitempty"`
+
+	// MinDurationMs Filter traces with duration >= this value in milliseconds
+	MinDurationMs *int64 `form:"min_duration_ms,omitempty" json:"min_duration_ms,omitempty"`
 }
+
+// ListTracesParamsStatus defines parameters for ListTraces.
+type ListTracesParamsStatus string
 
 // IngestParams defines parameters for Ingest.
 type IngestParams struct {
@@ -342,6 +379,9 @@ type ServerInterface interface {
 	// List sessions
 	// (GET /api/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
+	// Get a session by ID
+	// (GET /api/sessions/{id})
+	GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List traces
 	// (GET /api/traces)
 	ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams)
@@ -363,6 +403,12 @@ type Unimplemented struct{}
 // List sessions
 // (GET /api/sessions)
 func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a session by ID
+// (GET /api/sessions/{id})
+func (_ Unimplemented) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -440,6 +486,37 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetSession operation middleware
+func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSession(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTraces operation middleware
 func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Request) {
 
@@ -475,6 +552,62 @@ func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Req
 	err = runtime.BindQueryParameter("form", true, false, "session_id", r.URL.Query(), &params.SessionId)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "start_time_from" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start_time_from", r.URL.Query(), &params.StartTimeFrom)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_time_from", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "start_time_to" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start_time_to", r.URL.Query(), &params.StartTimeTo)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_time_to", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "user_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "user_id", r.URL.Query(), &params.UserId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "has_errors" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "has_errors", r.URL.Query(), &params.HasErrors)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "has_errors", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "min_duration_ms" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "min_duration_ms", r.URL.Query(), &params.MinDurationMs)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "min_duration_ms", Err: err})
 		return
 	}
 
@@ -699,6 +832,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/sessions", wrapper.ListSessions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/sessions/{id}", wrapper.GetSession)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/traces", wrapper.ListTraces)

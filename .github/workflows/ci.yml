@@ -20,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24.11'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -33,10 +33,10 @@ jobs:
           version: 9
 
       - name: Install sqlc
-        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0
 
       - name: Install oapi-codegen
-        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1
 
       - name: Install dependencies
         run: pnpm install
@@ -63,7 +63,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24.11'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -81,13 +81,13 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v4
         with:
-          version: v1.61
+          version: v1.64.8
           args: --timeout=5m
 
       - name: Lint engine module
         uses: golangci/golangci-lint-action@v4
         with:
-          version: v1.61
+          version: v1.64.8
           working-directory: engine
           args: --timeout=5m
 
@@ -120,12 +120,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24.11'
+
+      - name: Run DB migrations
+        run: go run ./cmd/continua migrate up
+        env:
+          DATABASE_URL: postgres://continua:continua@localhost:5432/continua_test?sslmode=disable
 
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
         env:
           DATABASE_URL: postgres://continua:continua@localhost:5432/continua_test?sslmode=disable
+          TEST_DATABASE_URL: postgres://continua:continua@localhost:5432/continua_test?sslmode=disable
 
       - name: Run engine tests
         run: cd engine && go test -v -race ./...
@@ -171,7 +177,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24.11'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

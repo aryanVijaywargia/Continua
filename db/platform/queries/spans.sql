@@ -69,8 +69,33 @@ ON CONFLICT (trace_id, span_id) DO UPDATE SET
     END,
     status_message = COALESCE(EXCLUDED.status_message, spans.status_message),
     level = COALESCE(EXCLUDED.level, spans.level),
-    start_time = COALESCE(EXCLUDED.start_time, spans.start_time),
-    end_time = COALESCE(EXCLUDED.end_time, spans.end_time),
+    -- Use LEAST/GREATEST for time merging to handle out-of-order updates correctly
+    start_time = COALESCE(
+        LEAST(
+            CASE
+                WHEN spans.start_time <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                ELSE spans.start_time
+            END,
+            CASE
+                WHEN $10::timestamptz <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                ELSE $10::timestamptz
+            END
+        ),
+        CASE
+            WHEN spans.start_time <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+            ELSE spans.start_time
+        END,
+        CASE
+            WHEN $10::timestamptz <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+            ELSE $10::timestamptz
+        END,
+        spans.start_time
+    ),
+    end_time = COALESCE(
+        GREATEST(spans.end_time, $11),
+        spans.end_time,
+        $11
+    ),
     input = COALESCE(EXCLUDED.input, spans.input),
     input_truncated = COALESCE(EXCLUDED.input_truncated, spans.input_truncated),
     input_original_size_bytes = COALESCE(EXCLUDED.input_original_size_bytes, spans.input_original_size_bytes),
@@ -92,8 +117,57 @@ ON CONFLICT (trace_id, span_id) DO UPDATE SET
     sequence = COALESCE(EXCLUDED.sequence, spans.sequence),
     depth = COALESCE(EXCLUDED.depth, spans.depth),
     duration_ms = CASE
-        WHEN EXCLUDED.end_time IS NOT NULL AND spans.start_time IS NOT NULL
-        THEN EXTRACT(EPOCH FROM (EXCLUDED.end_time - spans.start_time)) * 1000
+        WHEN COALESCE(
+            GREATEST(spans.end_time, $11),
+            spans.end_time,
+            $11
+        ) IS NOT NULL
+        AND COALESCE(
+            LEAST(
+                CASE
+                    WHEN spans.start_time <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                    ELSE spans.start_time
+                END,
+                CASE
+                    WHEN $10::timestamptz <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                    ELSE $10::timestamptz
+                END
+            ),
+            CASE
+                WHEN spans.start_time <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                ELSE spans.start_time
+            END,
+            CASE
+                WHEN $10::timestamptz <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                ELSE $10::timestamptz
+            END
+        ) IS NOT NULL
+        THEN EXTRACT(EPOCH FROM (
+            COALESCE(
+                GREATEST(spans.end_time, $11),
+                spans.end_time,
+                $11
+            ) - COALESCE(
+                LEAST(
+                    CASE
+                        WHEN spans.start_time <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                        ELSE spans.start_time
+                    END,
+                    CASE
+                        WHEN $10::timestamptz <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                        ELSE $10::timestamptz
+                    END
+                ),
+                CASE
+                    WHEN spans.start_time <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                    ELSE spans.start_time
+                END,
+                CASE
+                    WHEN $10::timestamptz <= '0001-01-01 00:00:00+00'::timestamptz THEN NULL
+                    ELSE $10::timestamptz
+                END
+            )
+        )) * 1000
         ELSE spans.duration_ms
     END,
     updated_at = NOW(),

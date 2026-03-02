@@ -3,10 +3,10 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
@@ -17,6 +17,11 @@ import (
 
 // MaxBodySize is the maximum request body size (5MB).
 const MaxBodySize = 5 * 1024 * 1024
+
+const (
+	defaultPageLimit = int32(50)
+	maxPageLimit     = int32(200)
+)
 
 // HealthResponse is the response for the health check endpoint.
 // Note: This is defined locally because /api/health is routed directly
@@ -33,10 +38,10 @@ type Server struct {
 }
 
 // NewServer creates a new API server with the given dependencies.
-func NewServer(s *store.Store) *Server {
+func NewServer(s *store.Store, ingestService *ingest.Service) *Server {
 	return &Server{
 		store:         s,
-		ingestService: ingest.NewService(s),
+		ingestService: ingestService,
 	}
 }
 
@@ -99,7 +104,8 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 				writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 				return
 			}
-			writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			log.Printf("ingest async mode failed: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "An internal error occurred")
 			return
 		}
 
@@ -124,7 +130,8 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		log.Printf("ingest sync mode failed: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "An internal error occurred")
 		return
 	}
 
@@ -145,7 +152,9 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// ListTraces returns a paginated list of traces.
+// ListTraces returns a paginated list of traces with optional filtering.
+//
+//nolint:gocritic // Signature is generated from the OpenAPI contract.
 func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams) {
 	// Get project ID from auth context
 	projectID, ok := middleware.GetProjectID(r.Context())
@@ -154,48 +163,70 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 		return
 	}
 
-	limit := int32(50)
-	offset := int32(0)
-	if params.Limit != nil {
-		limit = int32(*params.Limit)
-	}
-	if params.Offset != nil {
-		offset = int32(*params.Offset)
-	}
+	limit, offset := normalizePagination(params.Limit, params.Offset)
+
+	// Check if any filter params are provided (besides limit/offset/session_id)
+	hasFilters := params.Q != nil || params.Status != nil || params.StartTimeFrom != nil ||
+		params.StartTimeTo != nil || params.UserId != nil || params.HasErrors != nil ||
+		params.MinDurationMs != nil
 
 	var traces []platform.Trace
 	var total int64
 	var err error
 
-	// Use session-filtered query if session_id is provided
-	if params.SessionId != nil {
-		sessionUUID := pgtype.UUID{Bytes: *params.SessionId, Valid: true}
-		traces, err = s.store.ListTracesBySession(r.Context(), platform.ListTracesBySessionParams{
+	if hasFilters || params.SessionId != nil {
+		// Use filtered search
+		filter := store.TraceFilter{
 			ProjectID: projectID,
-			SessionID: sessionUUID,
 			Limit:     limit,
 			Offset:    offset,
-		})
+		}
+
+		if params.Q != nil {
+			filter.Query = *params.Q
+		}
+		if params.Status != nil {
+			filter.Status = string(*params.Status)
+		}
+		if params.StartTimeFrom != nil {
+			filter.StartTimeFrom = params.StartTimeFrom
+		}
+		if params.StartTimeTo != nil {
+			filter.StartTimeTo = params.StartTimeTo
+		}
+		if params.UserId != nil {
+			filter.UserID = *params.UserId
+		}
+		if params.SessionId != nil {
+			id := *params.SessionId
+			filter.SessionID = &id
+		}
+		if params.HasErrors != nil {
+			filter.HasErrors = params.HasErrors
+		}
+		if params.MinDurationMs != nil {
+			filter.MinDurationMs = params.MinDurationMs
+		}
+
+		result, err := s.store.ListTracesFiltered(r.Context(), filter)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to search traces")
 			return
 		}
-		// Use session-scoped count
-		total, err = s.store.CountTracesBySession(r.Context(), platform.CountTracesBySessionParams{
-			ProjectID: projectID,
-			SessionID: sessionUUID,
-		})
+		traces = result.Traces
+		total = result.Total
 	} else {
+		// Use simple list without filters
 		traces, err = s.store.ListTraces(r.Context(), projectID, limit, offset)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
 			return
 		}
 		total, err = s.store.CountTraces(r.Context(), projectID)
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count traces")
-		return
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count traces")
+			return
+		}
 	}
 
 	// Convert to API types
@@ -290,16 +321,9 @@ func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params Lis
 		return
 	}
 
-	limit := int32(50)
-	offset := int32(0)
-	if params.Limit != nil {
-		limit = int32(*params.Limit)
-	}
-	if params.Offset != nil {
-		offset = int32(*params.Offset)
-	}
+	limit, offset := normalizePagination(params.Limit, params.Offset)
 
-	sessions, err := s.store.ListSessions(r.Context(), projectID, limit, offset)
+	sessions, err := s.store.ListSessionsWithTraceCount(r.Context(), projectID, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list sessions")
 		return
@@ -313,13 +337,42 @@ func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params Lis
 
 	apiSessions := make([]Session, len(sessions))
 	for i := range sessions {
-		apiSessions[i] = sessionToAPI(&sessions[i])
+		apiSessions[i] = sessionWithCountToAPI(&sessions[i].Session, sessions[i].TraceCount)
 	}
 
 	resp := SessionList{
 		Sessions: apiSessions,
 		Total:    int(total),
 	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// GetSession returns a session by ID.
+func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	// Get project ID from auth context
+	projectID, ok := middleware.GetProjectID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
+		return
+	}
+
+	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), id)
+	if store.IsNotFound(err) {
+		writeError(w, http.StatusNotFound, "not_found", "Session not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session")
+		return
+	}
+
+	// Verify session belongs to the project (multi-tenant isolation)
+	if sessionWithCount.ProjectID != projectID {
+		writeError(w, http.StatusNotFound, "not_found", "Session not found")
+		return
+	}
+
+	resp := sessionWithCountToAPI(&sessionWithCount.Session, sessionWithCount.TraceCount)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -362,6 +415,30 @@ func isMaxBytesError(err error) bool {
 	}
 	// Fallback for older Go versions or wrapped errors
 	return strings.Contains(err.Error(), "request body too large")
+}
+
+func normalizePagination(limitParam, offsetParam *int) (limit, offset int32) {
+	limit = defaultPageLimit
+	offset = 0
+
+	if limitParam != nil {
+		limit = int32(*limitParam)
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > maxPageLimit {
+		limit = maxPageLimit
+	}
+
+	if offsetParam != nil {
+		offset = int32(*offsetParam)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	return limit, offset
 }
 
 // convertToServiceRequest converts API types to service types.

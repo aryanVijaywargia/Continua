@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, TypeVar
 
 from .client import Continua
+from .session import get_current_session
 
 # Context variable for the current trace
 _current_trace: ContextVar[TraceContext | None] = ContextVar(
@@ -48,17 +49,39 @@ class TraceContext:
 
         Args:
             name: Name of the trace
-            session_id: Optional session identifier
-            user_id: Optional user identifier
+            session_id: Optional session identifier. If not provided and a session
+                        context is active, inherits from the session.
+            user_id: Optional user identifier. If not provided and a session
+                     context is active with a user_id, inherits from the session.
             tags: Optional list of tags
             metadata: Optional metadata dictionary
         """
         self.trace_id = str(uuid.uuid4())
         self.name = name
-        self.session_id = session_id
-        self.user_id = user_id
+
+        # Inherit from session context if not explicitly provided
+        current_session = get_current_session()
+        if session_id is not None:
+            self.session_id = session_id
+        elif current_session is not None:
+            self.session_id = current_session.session_id
+        else:
+            self.session_id = None
+
+        if user_id is not None:
+            self.user_id = user_id
+        elif current_session is not None and current_session.user_id is not None:
+            self.user_id = current_session.user_id
+        else:
+            self.user_id = None
+
         self.tags = tags or []
         self.metadata = metadata or {}
+
+        # Merge session metadata into trace metadata
+        if current_session is not None and current_session.metadata:
+            self.metadata = {**current_session.metadata, **self.metadata}
+
         self.start_time = datetime.now(timezone.utc)
         self.end_time: datetime | None = None
         self.status = "running"

@@ -3,16 +3,29 @@
 from __future__ import annotations
 
 import atexit
+import random
+import time
 import uuid
 from typing import Any
 
 import httpx
 
 from .batch import BatchQueue
+from .exceptions import (
+    AuthenticationError,
+    NetworkError,
+    RateLimitError,
+    ValidationError,
+)
 
 # Module-level reference for shutdown handler
 _current_client: Continua | None = None
 _atexit_registered: bool = False
+
+# Retry configuration
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_BASE_DELAY = 1.0  # seconds
+DEFAULT_MAX_DELAY = 30.0  # seconds
 
 
 def _module_shutdown() -> None:
@@ -49,6 +62,9 @@ class Continua:
         *,
         batch_size: int = 100,
         flush_interval: float = 5.0,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        base_delay: float = DEFAULT_BASE_DELAY,
+        max_delay: float = DEFAULT_MAX_DELAY,
     ) -> None:
         """Create a new Continua client.
 
@@ -57,11 +73,18 @@ class Continua:
             endpoint: Server endpoint URL
             batch_size: Maximum items before auto-flush
             flush_interval: Seconds between auto-flushes
+            max_retries: Maximum retry attempts for transient errors
+            base_delay: Base delay for exponential backoff (seconds)
+            max_delay: Maximum delay between retries (seconds)
         """
         global _current_client, _atexit_registered
 
         self.api_key = api_key
         self.endpoint = endpoint.rstrip("/")
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        self.max_delay = max_delay
+
         self._client = httpx.Client(
             base_url=self.endpoint,
             headers={"X-API-Key": api_key},
@@ -202,8 +225,102 @@ class Continua:
             payload["events"] = events
 
         try:
-            response = self._client.post("/v1/ingest", json=payload)
-            response.raise_for_status()
-        except httpx.HTTPError as e:
+            self._send_with_retry("/v1/ingest", payload)
+        except (AuthenticationError, ValidationError, RateLimitError, NetworkError) as e:
             # Log but don't raise - we don't want to crash the application
             print(f"Continua: Failed to send batch: {e}")
+
+    def _send_with_retry(self, path: str, payload: dict[str, Any]) -> httpx.Response:
+        """Send a request with exponential backoff retry.
+
+        Args:
+            path: API path to call
+            payload: JSON payload to send
+
+        Returns:
+            The successful response
+
+        Raises:
+            AuthenticationError: On 401 (no retry)
+            RateLimitError: On 429 (no retry in this version)
+            ValidationError: On 400 (no retry)
+            NetworkError: After all retries exhausted
+        """
+        last_exception: Exception | None = None
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self._client.post(path, json=payload)
+
+                # Handle specific HTTP error codes
+                if response.status_code == 401:
+                    raise AuthenticationError("Invalid or missing API key")
+
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    retry_seconds = int(retry_after) if retry_after else None
+                    raise RateLimitError(
+                        "Rate limit exceeded", retry_after=retry_seconds
+                    )
+
+                if response.status_code == 400:
+                    try:
+                        error_body = response.json()
+                        details = error_body.get("message", str(error_body))
+                    except Exception:
+                        details = response.text
+                    raise ValidationError("Request validation failed", details=details)
+
+                response.raise_for_status()
+                return response
+
+            except (AuthenticationError, RateLimitError, ValidationError):
+                # Don't retry these errors
+                raise
+
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                # Transient errors - retry with backoff
+                last_exception = e
+                if attempt < self.max_retries:
+                    delay = self._calculate_backoff(attempt)
+                    time.sleep(delay)
+                continue
+
+            except httpx.HTTPStatusError as e:
+                # 5xx errors - retry with backoff
+                if e.response.status_code >= 500:
+                    last_exception = e
+                    if attempt < self.max_retries:
+                        delay = self._calculate_backoff(attempt)
+                        time.sleep(delay)
+                    continue
+                # Other HTTP errors - don't retry
+                raise NetworkError(
+                    f"HTTP error {e.response.status_code}",
+                    retry_count=attempt,
+                    cause=e,
+                )
+
+        # All retries exhausted
+        raise NetworkError(
+            "Request failed after retries",
+            retry_count=self.max_retries,
+            cause=last_exception,
+        )
+
+    def _calculate_backoff(self, attempt: int) -> float:
+        """Calculate exponential backoff delay with jitter.
+
+        Args:
+            attempt: The attempt number (0-indexed)
+
+        Returns:
+            Delay in seconds
+        """
+        # Exponential backoff: base_delay * 2^attempt
+        delay = self.base_delay * (2**attempt)
+        # Add random jitter (0-1 second)
+        jitter = random.random()
+        delay += jitter
+        # Cap at max_delay
+        return min(delay, self.max_delay)
