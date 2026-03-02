@@ -13,6 +13,7 @@ import (
 	"github.com/continua-ai/continua/internal/api"
 	"github.com/continua-ai/continua/internal/config"
 	"github.com/continua-ai/continua/internal/ingest"
+	"github.com/continua-ai/continua/internal/jobs"
 	"github.com/continua-ai/continua/internal/store"
 )
 
@@ -55,6 +56,9 @@ func runServer() error {
 
 		// Provide database access
 		store.Module,
+
+		// Provide async job processing (River)
+		jobs.Module,
 
 		// Provide ingest service
 		ingest.Module,

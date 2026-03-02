@@ -153,6 +153,8 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 }
 
 // ListTraces returns a paginated list of traces with optional filtering.
+//
+//nolint:gocritic // Signature is generated from the OpenAPI contract.
 func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams) {
 	// Get project ID from auth context
 	projectID, ok := middleware.GetProjectID(r.Context())
@@ -415,9 +417,9 @@ func isMaxBytesError(err error) bool {
 	return strings.Contains(err.Error(), "request body too large")
 }
 
-func normalizePagination(limitParam, offsetParam *int) (int32, int32) {
-	limit := defaultPageLimit
-	offset := int32(0)
+func normalizePagination(limitParam, offsetParam *int) (limit, offset int32) {
+	limit = defaultPageLimit
+	offset = 0
 
 	if limitParam != nil {
 		limit = int32(*limitParam)

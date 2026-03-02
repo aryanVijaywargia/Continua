@@ -41,6 +41,8 @@ type TraceSearchResult struct {
 // ListTracesFiltered returns traces matching the filter criteria.
 // Supports full-text search on trace name, user_id, and span names.
 // Results are ordered by relevance when a search query is provided.
+//
+//nolint:gocritic // Pass-by-value keeps this immutable and avoids accidental caller mutation.
 func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (TraceSearchResult, error) {
 	result := TraceSearchResult{}
 

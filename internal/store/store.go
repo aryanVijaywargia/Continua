@@ -41,6 +41,8 @@ func (s *Store) Queries() *platform.Queries {
 }
 
 // BeginTx starts a new transaction with the given options.
+//
+//nolint:gocritic // pgx.TxOptions is a small config struct used idiomatically by value in pgx APIs.
 func (s *Store) BeginTx(ctx context.Context, opts pgx.TxOptions) (*Tx, error) {
 	tx, err := s.pool.BeginTx(ctx, opts)
 	if err != nil {

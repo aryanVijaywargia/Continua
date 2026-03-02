@@ -71,3 +71,16 @@ func (s *Store) ComputeAndUpdateTraceRollupsTx(ctx context.Context, tx *Tx, trac
 		ErrorCount:  &rollups.ErrorCount,
 	})
 }
+
+// GetTraceVersion returns the version number of a trace for optimistic concurrency.
+// Used by rollup worker to detect if trace was modified during processing.
+func (s *Store) GetTraceVersion(ctx context.Context, traceID uuid.UUID) (int32, error) {
+	version, err := s.q.GetTraceVersion(ctx, traceID)
+	if err != nil {
+		return 0, err
+	}
+	if version == nil {
+		return 0, nil
+	}
+	return *version, nil
+}
