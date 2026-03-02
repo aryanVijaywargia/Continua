@@ -122,10 +122,16 @@ jobs:
         with:
           go-version: '1.24.11'
 
+      - name: Run DB migrations
+        run: go run ./cmd/continua migrate up
+        env:
+          DATABASE_URL: postgres://continua:continua@localhost:5432/continua_test?sslmode=disable
+
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
         env:
           DATABASE_URL: postgres://continua:continua@localhost:5432/continua_test?sslmode=disable
+          TEST_DATABASE_URL: postgres://continua:continua@localhost:5432/continua_test?sslmode=disable
 
       - name: Run engine tests
         run: cd engine && go test -v -race ./...
