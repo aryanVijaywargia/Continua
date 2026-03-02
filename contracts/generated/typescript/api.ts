@@ -95,6 +95,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a session by ID */
+        get: operations["getSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -167,6 +184,10 @@ export interface components {
             /** Format: uuid */
             id: string;
             name?: string;
+            /** @description User identifier for this session */
+            user_id?: string;
+            /** @description Number of traces in this session */
+            trace_count?: number;
             metadata?: Record<string, never>;
             /** Format: date-time */
             created_at: string;
@@ -367,6 +388,20 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 session_id?: string;
+                /** @description Full-text search query (searches trace name and user_id) */
+                q?: string;
+                /** @description Filter by trace status */
+                status?: "running" | "completed" | "failed";
+                /** @description Filter traces starting at or after this time */
+                start_time_from?: string;
+                /** @description Filter traces starting at or before this time */
+                start_time_to?: string;
+                /** @description Filter by user ID */
+                user_id?: string;
+                /** @description Filter traces with errors (error_count > 0) */
+                has_errors?: boolean;
+                /** @description Filter traces with duration >= this value in milliseconds */
+                min_duration_ms?: number;
             };
             header?: never;
             path?: never;
@@ -497,6 +532,46 @@ export interface operations {
             };
             /** @description Unauthorized - missing or invalid API key */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
