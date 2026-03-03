@@ -54,3 +54,19 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Architecture & Configuration Notes
 - Follow the 10 architecture rules in `docs/architecture/RULES.md`.
 - Use `config.example.yaml` as a template; keep secrets out of the repo.
+
+## Skills
+Repo-local skills for this repository live under `.claude/skills/`.
+
+### Available skills
+- `continua-backend-dev`: Backend development patterns for Continua's Go monorepo. (file: `/Users/aryanvijaywargia/Projects/Continua/.claude/skills/continua-backend-dev/SKILL.md`)
+- `continua-observability`: Domain-specific guide for trace/span model, WebSocket events, and replay. (file: `/Users/aryanvijaywargia/Projects/Continua/.claude/skills/continua-observability/SKILL.md`)
+- `continua-integrations`: SDK and proxy development patterns. (file: `/Users/aryanvijaywargia/Projects/Continua/.claude/skills/continua-integrations/SKILL.md`)
+- `continua-testing`: Testing strategy and commands for this repo. (file: `/Users/aryanvijaywargia/Projects/Continua/.claude/skills/continua-testing/SKILL.md`)
+- `skill-developer`: Guide for creating/updating Claude-style skills in this repo. (file: `/Users/aryanvijaywargia/Projects/Continua/.claude/skills/skill-developer/SKILL.md`)
+
+### How to use skills
+- Trigger rules: If the user names a skill (with `$SkillName` or plain text) OR the task clearly matches a listed skill description, use that skill for the turn.
+- Discovery: Open the corresponding `SKILL.md` and read only what is needed to execute the request.
+- Progressive disclosure: Only open referenced `resources/` or `references/` files when needed.
+- Safety: Do not edit files inside `.claude/` unless the user explicitly asks.

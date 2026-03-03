@@ -52,11 +52,24 @@ def record_warning(file_path: str) -> None:
     save_warned_cache(cache)
 
 
+def is_empty_file(file_path: str) -> bool:
+    """Check if a file is empty or contains only whitespace."""
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+            return len(content.strip()) == 0
+    except (OSError, IOError):
+        return False
+
+
 def is_existing_migration(file_path: str, project_dir: str) -> bool:
     normalized = file_path.replace("\\", "/")
     for migration_dir in MIGRATION_DIRS:
         if f"/{migration_dir}/" in normalized or normalized.startswith(f"{project_dir}/{migration_dir}/"):
             if normalized.endswith(".sql") and os.path.exists(file_path):
+                # Allow writing to empty/new migration files
+                if is_empty_file(file_path):
+                    return False
                 return True
     return False
 
