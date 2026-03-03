@@ -180,7 +180,7 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 
 	selectQuery := fmt.Sprintf(`
 		SELECT DISTINCT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.status, t.user_id, t.tags, t.environment, t.release,
-		       t.metadata, t.start_time, t.end_time, t.server_received_at, t.total_spans, t.total_tokens, t.total_cost,
+		       t.metadata, t.start_time, t.end_time, t.server_received_at, t.total_spans, t.total_tokens_in, t.total_tokens_out, t.total_cost,
 		       t.error_count, t.created_at, t.updated_at%s%s
 		%s
 		WHERE %s
@@ -205,7 +205,7 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 		scanArgs := []any{
 			&t.ID, &t.ProjectID, &t.SessionID, &t.TraceID, &t.Name, &t.Status, &t.UserID,
 			&t.Tags, &t.Environment, &t.Release, &t.Metadata, &t.StartTime, &t.EndTime,
-			&t.ServerReceivedAt, &t.TotalSpans, &t.TotalTokens, &t.TotalCost, &t.ErrorCount,
+			&t.ServerReceivedAt, &t.TotalSpans, &t.TotalTokensIn, &t.TotalTokensOut, &t.TotalCost, &t.ErrorCount,
 			&t.CreatedAt, &t.UpdatedAt,
 		}
 		if hasSearchQuery {

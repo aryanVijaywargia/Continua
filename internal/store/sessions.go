@@ -36,13 +36,14 @@ func (s *Store) GetSessionWithTraceCount(ctx context.Context, id uuid.UUID) (Ses
 	}
 	return SessionWithCount{
 		Session: platform.Session{
-			ID:        row.ID,
-			ProjectID: row.ProjectID,
-			Name:      row.Name,
-			UserID:    row.UserID,
-			Metadata:  row.Metadata,
-			CreatedAt: row.CreatedAt,
-			UpdatedAt: row.UpdatedAt,
+			ID:         row.ID,
+			ProjectID:  row.ProjectID,
+			Name:       row.Name,
+			UserID:     row.UserID,
+			Metadata:   row.Metadata,
+			CreatedAt:  row.CreatedAt,
+			UpdatedAt:  row.UpdatedAt,
+			ExternalID: row.ExternalID,
 		},
 		TraceCount: row.TraceCount,
 	}, nil
@@ -73,13 +74,14 @@ func (s *Store) ListSessionsWithTraceCount(ctx context.Context, projectID uuid.U
 		row := &rows[i]
 		result[i] = SessionWithCount{
 			Session: platform.Session{
-				ID:        row.ID,
-				ProjectID: row.ProjectID,
-				Name:      row.Name,
-				UserID:    row.UserID,
-				Metadata:  row.Metadata,
-				CreatedAt: row.CreatedAt,
-				UpdatedAt: row.UpdatedAt,
+				ID:         row.ID,
+				ProjectID:  row.ProjectID,
+				Name:       row.Name,
+				UserID:     row.UserID,
+				Metadata:   row.Metadata,
+				CreatedAt:  row.CreatedAt,
+				UpdatedAt:  row.UpdatedAt,
+				ExternalID: row.ExternalID,
 			},
 			TraceCount: row.TraceCount,
 		}
@@ -100,6 +102,22 @@ func (s *Store) CreateSession(ctx context.Context, params platform.CreateSession
 // CreateSessionTx creates a session within a transaction.
 func (t *Tx) CreateSession(ctx context.Context, params platform.CreateSessionParams) (platform.Session, error) {
 	return t.q.CreateSession(ctx, params)
+}
+
+// GetOrCreateSessionByExternalID upserts a session by (project_id, external_id).
+func (s *Store) GetOrCreateSessionByExternalID(ctx context.Context, projectID uuid.UUID, externalID string) (platform.Session, error) {
+	return s.q.GetOrCreateSessionByExternalID(ctx, platform.GetOrCreateSessionByExternalIDParams{
+		ProjectID:  projectID,
+		ExternalID: externalID,
+	})
+}
+
+// GetOrCreateSessionByExternalIDTx upserts a session within a transaction.
+func (t *Tx) GetOrCreateSessionByExternalID(ctx context.Context, projectID uuid.UUID, externalID string) (platform.Session, error) {
+	return t.q.GetOrCreateSessionByExternalID(ctx, platform.GetOrCreateSessionByExternalIDParams{
+		ProjectID:  projectID,
+		ExternalID: externalID,
+	})
 }
 
 // UpdateSession updates an existing session.

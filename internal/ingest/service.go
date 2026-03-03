@@ -226,6 +226,12 @@ func (s *Service) validateBatch(req *IngestRequest) []string {
 		if span.StartTime.IsZero() {
 			errs = append(errs, fmt.Sprintf("span[%d] missing required field: start_time", i))
 		}
+		if span.TotalTokens != nil && span.PromptTokens == nil && span.CompletionTokens == nil {
+			errs = append(errs, fmt.Sprintf(
+				"span[%d] unsupported token format: total_tokens without prompt_tokens/completion_tokens",
+				i,
+			))
+		}
 		// Note: we don't validate trace_id references here because the trace
 		// might exist in the database from a previous batch. This will be
 		// checked during processing. However, if the span references a trace
@@ -267,13 +273,14 @@ func (s *Service) upsertTrace(ctx context.Context, tx *store.Tx, projectID uuid.
 		endTime = pgtype.Timestamptz{Time: *input.EndTime, Valid: true}
 	}
 
-	// Convert session ID
+	// Resolve session: always treat session_id as an external key
 	var sessionID pgtype.UUID
-	if input.SessionID != nil {
-		parsed, err := uuid.Parse(*input.SessionID)
-		if err == nil {
-			sessionID = pgtype.UUID{Bytes: parsed, Valid: true}
+	if input.SessionID != nil && *input.SessionID != "" {
+		session, err := tx.GetOrCreateSessionByExternalID(ctx, projectID, *input.SessionID)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("resolve session: %w", err)
 		}
+		sessionID = pgtype.UUID{Bytes: session.ID, Valid: true}
 	}
 
 	status := defaultString(input.Status, "running")

@@ -183,6 +183,8 @@ export interface components {
         Session: {
             /** Format: uuid */
             id: string;
+            /** @description Human-readable external session identifier used by SDKs */
+            external_id: string;
             name?: string;
             /** @description User identifier for this session */
             user_id?: string;
@@ -206,7 +208,7 @@ export interface components {
         IngestTraceInput: {
             /** @description External trace identifier */
             trace_id: string;
-            /** Format: uuid */
+            /** @description External session key. The server resolves/creates the internal session UUID from this value. */
             session_id?: string;
             name?: string;
             user_id?: string;
@@ -266,7 +268,11 @@ export interface components {
             prompt_tokens?: number;
             /** Format: int64 */
             completion_tokens?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @deprecated
+             * @description Deprecated compatibility field. total_tokens-only payloads are rejected; provide prompt_tokens and/or completion_tokens for supported rollups.
+             */
             total_tokens?: number;
             /** Format: double */
             total_cost?: number;

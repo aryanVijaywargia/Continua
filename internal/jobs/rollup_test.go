@@ -36,7 +36,7 @@ func createTestProject(t *testing.T, ctx context.Context, q *platform.Queries) u
 func TestRollupJob_Execution(t *testing.T) {
 	// Scenario: Rollup job execution
 	// WHEN the River worker processes a rollup job
-	// THEN the worker computes trace aggregates (total_tokens, total_cost, span_count, error_count)
+	// THEN the worker computes trace aggregates (total_tokens_in/out, total_cost, span_count, error_count)
 	// AND updates the trace record with computed values
 
 	pool := testDB(t)
@@ -56,15 +56,17 @@ func TestRollupJob_Execution(t *testing.T) {
 
 	// Create spans with token and cost data
 	for i := 0; i < 3; i++ {
-		tokens := int64(100)
+		promptTok := int64(100)
+		completionTok := int64(50)
 		_, err = q.UpsertSpan(ctx, platform.UpsertSpanParams{
-			ProjectID:   projectID,
-			TraceID:     trace.ID,
-			SpanID:      "span-" + string(rune('A'+i)),
-			Name:        "llm call",
-			TotalTokens: &tokens,
-			TotalCost:   testutil.PgtypeNumericFromFloat64(0.01),
-			Status:      "completed",
+			ProjectID:        projectID,
+			TraceID:          trace.ID,
+			SpanID:           "span-" + string(rune('A'+i)),
+			Name:             "llm call",
+			PromptTokens:     &promptTok,
+			CompletionTokens: &completionTok,
+			TotalCost:        testutil.PgtypeNumericFromFloat64(0.01),
+			Status:           "completed",
 		})
 		require.NoError(t, err)
 	}
@@ -90,8 +92,8 @@ func TestRollupJob_Execution(t *testing.T) {
 
 	require.NotNil(t, updatedTrace.TotalSpans)
 	assert.Equal(t, int32(4), *updatedTrace.TotalSpans, "total_spans should be 4")
-	require.NotNil(t, updatedTrace.TotalTokens)
-	assert.Equal(t, int64(300), *updatedTrace.TotalTokens, "total_tokens should be 300 (100 * 3)")
+	assert.Equal(t, int64(300), updatedTrace.TotalTokensIn, "total_tokens_in should be 300 (100 * 3)")
+	assert.Equal(t, int64(150), updatedTrace.TotalTokensOut, "total_tokens_out should be 150 (50 * 3)")
 	require.NotNil(t, updatedTrace.ErrorCount)
 	assert.Equal(t, int32(1), *updatedTrace.ErrorCount, "error_count should be 1")
 }
@@ -118,13 +120,15 @@ func TestRollupJob_RetryDoesNotDoubleCount(t *testing.T) {
 
 	// Create spans
 	for i := 0; i < 2; i++ {
-		tokens := int64(50)
+		promptTok := int64(30)
+		completionTok := int64(20)
 		_, err = q.UpsertSpan(ctx, platform.UpsertSpanParams{
-			ProjectID:   projectID,
-			TraceID:     trace.ID,
-			SpanID:      "span-" + string(rune('A'+i)),
-			Name:        "operation",
-			TotalTokens: &tokens,
+			ProjectID:        projectID,
+			TraceID:          trace.ID,
+			SpanID:           "span-" + string(rune('A'+i)),
+			Name:             "operation",
+			PromptTokens:     &promptTok,
+			CompletionTokens: &completionTok,
 		})
 		require.NoError(t, err)
 	}
@@ -145,8 +149,8 @@ func TestRollupJob_RetryDoesNotDoubleCount(t *testing.T) {
 
 	require.NotNil(t, updatedTrace.TotalSpans)
 	assert.Equal(t, int32(2), *updatedTrace.TotalSpans, "total_spans should be 2, not 4")
-	require.NotNil(t, updatedTrace.TotalTokens)
-	assert.Equal(t, int64(100), *updatedTrace.TotalTokens, "total_tokens should be 100, not 200")
+	assert.Equal(t, int64(60), updatedTrace.TotalTokensIn, "total_tokens_in should be 60, not 120")
+	assert.Equal(t, int64(40), updatedTrace.TotalTokensOut, "total_tokens_out should be 40, not 80")
 }
 
 func TestRollupJob_EmptyTrace(t *testing.T) {
@@ -201,16 +205,18 @@ func TestRollupJob_MultipleLLMCalls(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Different token counts for each span
-	tokenCounts := []int64{100, 250, 500, 75}
-	for i, tokens := range tokenCounts {
-		tc := tokens
+	// Different token counts for each span (prompt_tokens, completion_tokens)
+	type tokenPair struct{ in, out int64 }
+	tokenCounts := []tokenPair{{60, 40}, {150, 100}, {300, 200}, {40, 35}}
+	for i, tp := range tokenCounts {
+		in, out := tp.in, tp.out
 		_, err = q.UpsertSpan(ctx, platform.UpsertSpanParams{
-			ProjectID:   projectID,
-			TraceID:     trace.ID,
-			SpanID:      "span-" + string(rune('A'+i)),
-			Name:        "llm-call",
-			TotalTokens: &tc,
+			ProjectID:        projectID,
+			TraceID:          trace.ID,
+			SpanID:           "span-" + string(rune('A'+i)),
+			Name:             "llm-call",
+			PromptTokens:     &in,
+			CompletionTokens: &out,
 		})
 		require.NoError(t, err)
 	}
@@ -222,7 +228,6 @@ func TestRollupJob_MultipleLLMCalls(t *testing.T) {
 	updatedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
 
-	expectedTotal := int64(100 + 250 + 500 + 75)
-	require.NotNil(t, updatedTrace.TotalTokens)
-	assert.Equal(t, expectedTotal, *updatedTrace.TotalTokens, "total_tokens should be sum of all spans")
+	assert.Equal(t, int64(550), updatedTrace.TotalTokensIn, "total_tokens_in should be sum of prompt_tokens")
+	assert.Equal(t, int64(375), updatedTrace.TotalTokensOut, "total_tokens_out should be sum of completion_tokens")
 }

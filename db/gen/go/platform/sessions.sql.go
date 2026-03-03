@@ -24,21 +24,23 @@ func (q *Queries) CountSessions(ctx context.Context, projectID uuid.UUID) (int64
 }
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (project_id, name, user_id, metadata)
-VALUES ($1, $2, $3, $4)
-RETURNING id, project_id, name, user_id, metadata, created_at, updated_at
+INSERT INTO sessions (project_id, external_id, name, user_id, metadata)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, name, user_id, metadata, created_at, updated_at, external_id
 `
 
 type CreateSessionParams struct {
-	ProjectID uuid.UUID `json:"project_id"`
-	Name      *string   `json:"name"`
-	UserID    *string   `json:"user_id"`
-	Metadata  []byte    `json:"metadata"`
+	ProjectID  uuid.UUID `json:"project_id"`
+	ExternalID string    `json:"external_id"`
+	Name       *string   `json:"name"`
+	UserID     *string   `json:"user_id"`
+	Metadata   []byte    `json:"metadata"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
 	row := q.db.QueryRow(ctx, createSession,
 		arg.ProjectID,
+		arg.ExternalID,
 		arg.Name,
 		arg.UserID,
 		arg.Metadata,
@@ -52,12 +54,42 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
+	)
+	return i, err
+}
+
+const getOrCreateSessionByExternalID = `-- name: GetOrCreateSessionByExternalID :one
+INSERT INTO sessions (project_id, external_id)
+VALUES ($1, $2)
+ON CONFLICT (project_id, external_id) DO UPDATE SET updated_at = NOW()
+RETURNING id, project_id, name, user_id, metadata, created_at, updated_at, external_id
+`
+
+type GetOrCreateSessionByExternalIDParams struct {
+	ProjectID  uuid.UUID `json:"project_id"`
+	ExternalID string    `json:"external_id"`
+}
+
+// Upsert a session by (project_id, external_id). Creates if not exists, refreshes updated_at if exists.
+func (q *Queries) GetOrCreateSessionByExternalID(ctx context.Context, arg GetOrCreateSessionByExternalIDParams) (Session, error) {
+	row := q.db.QueryRow(ctx, getOrCreateSessionByExternalID, arg.ProjectID, arg.ExternalID)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.UserID,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExternalID,
 	)
 	return i, err
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, project_id, name, user_id, metadata, created_at, updated_at FROM sessions WHERE id = $1
+SELECT id, project_id, name, user_id, metadata, created_at, updated_at, external_id FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, id uuid.UUID) (Session, error) {
@@ -71,12 +103,13 @@ func (q *Queries) GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
 	)
 	return i, err
 }
 
 const getSessionWithTraceCount = `-- name: GetSessionWithTraceCount :one
-SELECT s.id, s.project_id, s.name, s.user_id, s.metadata, s.created_at, s.updated_at,
+SELECT s.id, s.project_id, s.name, s.user_id, s.metadata, s.created_at, s.updated_at, s.external_id,
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
 WHERE s.id = $1
@@ -90,6 +123,7 @@ type GetSessionWithTraceCountRow struct {
 	Metadata   []byte    `json:"metadata"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+	ExternalID string    `json:"external_id"`
 	TraceCount int64     `json:"trace_count"`
 }
 
@@ -104,13 +138,14 @@ func (q *Queries) GetSessionWithTraceCount(ctx context.Context, id uuid.UUID) (G
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
 		&i.TraceCount,
 	)
 	return i, err
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, project_id, name, user_id, metadata, created_at, updated_at FROM sessions
+SELECT id, project_id, name, user_id, metadata, created_at, updated_at, external_id FROM sessions
 WHERE project_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -139,6 +174,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]S
 			&i.Metadata,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExternalID,
 		); err != nil {
 			return nil, err
 		}
@@ -151,7 +187,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]S
 }
 
 const listSessionsWithTraceCount = `-- name: ListSessionsWithTraceCount :many
-SELECT s.id, s.project_id, s.name, s.user_id, s.metadata, s.created_at, s.updated_at,
+SELECT s.id, s.project_id, s.name, s.user_id, s.metadata, s.created_at, s.updated_at, s.external_id,
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
 WHERE s.project_id = $1
@@ -173,6 +209,7 @@ type ListSessionsWithTraceCountRow struct {
 	Metadata   []byte    `json:"metadata"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+	ExternalID string    `json:"external_id"`
 	TraceCount int64     `json:"trace_count"`
 }
 
@@ -193,6 +230,7 @@ func (q *Queries) ListSessionsWithTraceCount(ctx context.Context, arg ListSessio
 			&i.Metadata,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExternalID,
 			&i.TraceCount,
 		); err != nil {
 			return nil, err
@@ -209,7 +247,7 @@ const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
 SET name = $2, metadata = $3, updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, name, user_id, metadata, created_at, updated_at
+RETURNING id, project_id, name, user_id, metadata, created_at, updated_at, external_id
 `
 
 type UpdateSessionParams struct {
@@ -229,6 +267,7 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExternalID,
 	)
 	return i, err
 }

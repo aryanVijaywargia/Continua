@@ -328,11 +328,10 @@ class TestSessionContextManager:
             assert client._batch._traces[0].get("session_id") == "sess_123"
             client.shutdown()
 
-    def test_session_context_generates_id(self):
-        """Scenario: Session context generates ID
+    def test_session_context_without_id_keeps_session_none(self):
+        """Scenario: Session context without explicit ID
         WHEN code runs inside `with continua.session():` (no ID)
-        THEN a UUID is generated for the session
-        AND all traces created inherit that session_id
+        THEN no session_id is attached to traces
         """
         with patch("continua.client.httpx.Client") as mock_client_class:
             mock_client = MagicMock()
@@ -344,8 +343,7 @@ class TestSessionContextManager:
             client = Continua.init(api_key="test-key", endpoint="http://localhost:8080")
 
             with session() as sess:
-                assert sess.session_id is not None
-                assert len(sess.session_id) == 36  # UUID format
+                assert sess.session_id is None
 
                 @trace()
                 def my_operation():
@@ -354,7 +352,7 @@ class TestSessionContextManager:
                 my_operation()
 
             assert len(client._batch._traces) >= 1
-            assert client._batch._traces[0].get("session_id") == sess.session_id
+            assert client._batch._traces[0].get("session_id") is None
             client.shutdown()
 
     def test_session_context_cleanup(self):
@@ -438,7 +436,7 @@ class TestSpanHelperMethods:
             assert span_data.get("model") == "gpt-4"
             assert span_data.get("prompt_tokens") == 10
             assert span_data.get("completion_tokens") == 5
-            assert span_data.get("total_tokens") == 15
+            assert span_data.get("total_tokens") is None
             assert span_data.get("input") == [{"role": "user", "content": "Hello"}]
             assert span_data.get("output") == {"role": "assistant", "content": "Hi there!"}
             client.shutdown()

@@ -33,7 +33,7 @@ class SpanContext:
             s.set_input({"messages": [...]})
             response = openai.chat.completions.create(...)
             s.set_output(response.model_dump())
-            s.set_tokens(input=100, output=50)
+            s.set_tokens(prompt=100, completion=50)
     """
 
     def __init__(
@@ -98,7 +98,16 @@ class SpanContext:
         completion: int | None = None,
         total: int | None = None,
     ) -> None:
-        """Set token counts for this span."""
+        """Set token counts for this span.
+
+        At least one directional field (`prompt` or `completion`) must be provided.
+        `total` is retained as a local helper value and is not sent to the server.
+        """
+        if total is not None and prompt is None and completion is None:
+            raise ValueError(
+                "set_tokens(total=...) without prompt/completion is unsupported; "
+                "provide prompt and/or completion tokens",
+            )
         self._prompt_tokens = prompt
         self._completion_tokens = completion
         self._total_tokens = total or ((prompt or 0) + (completion or 0))
@@ -254,8 +263,6 @@ class SpanContext:
             data["prompt_tokens"] = self._prompt_tokens
         if self._completion_tokens is not None:
             data["completion_tokens"] = self._completion_tokens
-        if self._total_tokens is not None:
-            data["total_tokens"] = self._total_tokens
         if self._total_cost is not None:
             data["total_cost"] = self._total_cost
         if self.metadata:

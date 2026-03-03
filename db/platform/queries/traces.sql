@@ -89,9 +89,10 @@ RETURNING *;
 UPDATE traces
 SET
     total_spans = $2,
-    total_tokens = $3,
-    total_cost = $4,
-    error_count = $5,
+    total_tokens_in = $3,
+    total_tokens_out = $4,
+    total_cost = $5,
+    error_count = $6,
     duration_ms = CASE
         WHEN end_time IS NOT NULL AND start_time IS NOT NULL
         THEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000

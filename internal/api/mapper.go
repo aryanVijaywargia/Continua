@@ -36,14 +36,11 @@ func traceToAPI(t *platform.Trace) Trace {
 		trace.EndedAt = &t.EndTime.Time
 	}
 
-	// Token counts (map from total_tokens to tokens_in/out for backwards compat)
-	if t.TotalTokens != nil {
-		// Split roughly for now - proper tracking would separate these
-		half := int(*t.TotalTokens / 2)
-		trace.TotalTokensIn = &half
-		remaining := int(*t.TotalTokens) - half
-		trace.TotalTokensOut = &remaining
-	}
+	// Token counts — mapped directly from DB split columns
+	tokIn := int(t.TotalTokensIn)
+	trace.TotalTokensIn = &tokIn
+	tokOut := int(t.TotalTokensOut)
+	trace.TotalTokensOut = &tokOut
 
 	// Cost - pgtype.Numeric needs to be converted via string
 	if t.TotalCost.Valid {
@@ -150,8 +147,9 @@ func spanToAPI(sp *platform.Span) Span {
 // sessionToAPI converts a database session to an API session.
 func sessionToAPI(s *platform.Session) Session {
 	session := Session{
-		Id:        s.ID,
-		CreatedAt: s.CreatedAt,
+		Id:         s.ID,
+		ExternalId: s.ExternalID,
+		CreatedAt:  s.CreatedAt,
 	}
 
 	if s.Name != nil {
