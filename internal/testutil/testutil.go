@@ -95,8 +95,9 @@ func CreateTestSession(t *testing.T, ctx context.Context, q *platform.Queries, p
 	t.Helper()
 
 	session, err := q.CreateSession(ctx, platform.CreateSessionParams{
-		ProjectID: projectID,
-		Name:      &name,
+		ProjectID:  projectID,
+		ExternalID: name,
+		Name:       &name,
 	})
 	require.NoError(t, err)
 

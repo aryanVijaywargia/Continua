@@ -12,10 +12,11 @@ import (
 
 // TraceRollups contains aggregated values for a trace.
 type TraceRollups struct {
-	TotalSpans  int32
-	TotalTokens int64
-	TotalCost   pgtype.Numeric
-	ErrorCount  int32
+	TotalSpans     int32
+	TotalTokensIn  int64
+	TotalTokensOut int64
+	TotalCost      pgtype.Numeric
+	ErrorCount     int32
 }
 
 // ComputeAndUpdateTraceRollups computes rollup values for a trace and updates it.
@@ -31,11 +32,12 @@ func (s *Store) ComputeAndUpdateTraceRollups(ctx context.Context, traceID uuid.U
 
 	// Update the trace with computed rollups
 	return s.q.UpdateTraceRollups(ctx, platform.UpdateTraceRollupsParams{
-		ID:          traceID,
-		TotalSpans:  &rollups.TotalSpans,
-		TotalTokens: &rollups.TotalTokens,
-		TotalCost:   totalCost,
-		ErrorCount:  &rollups.ErrorCount,
+		ID:             traceID,
+		TotalSpans:     &rollups.TotalSpans,
+		TotalTokensIn:  rollups.TotalTokensIn,
+		TotalTokensOut: rollups.TotalTokensOut,
+		TotalCost:      totalCost,
+		ErrorCount:     &rollups.ErrorCount,
 	})
 }
 
@@ -51,11 +53,12 @@ func (s *Store) ComputeAndUpdateTraceRollupsTx(ctx context.Context, tx *Tx, trac
 
 	// Update the trace with computed rollups using transaction's query
 	return tx.q.UpdateTraceRollups(ctx, platform.UpdateTraceRollupsParams{
-		ID:          traceID,
-		TotalSpans:  &rollups.TotalSpans,
-		TotalTokens: &rollups.TotalTokens,
-		TotalCost:   totalCost,
-		ErrorCount:  &rollups.ErrorCount,
+		ID:             traceID,
+		TotalSpans:     &rollups.TotalSpans,
+		TotalTokensIn:  rollups.TotalTokensIn,
+		TotalTokensOut: rollups.TotalTokensOut,
+		TotalCost:      totalCost,
+		ErrorCount:     &rollups.ErrorCount,
 	})
 }
 

@@ -14,7 +14,8 @@ import (
 const computeTraceRollups = `-- name: ComputeTraceRollups :one
 SELECT
     COUNT(*)::int AS total_spans,
-    COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+    COALESCE(SUM(prompt_tokens), 0)::bigint AS total_tokens_in,
+    COALESCE(SUM(completion_tokens), 0)::bigint AS total_tokens_out,
     COALESCE(SUM(total_cost), 0) AS total_cost,
     COUNT(*) FILTER (WHERE status IN ('failed', 'error'))::int AS error_count
 FROM spans
@@ -22,10 +23,11 @@ WHERE trace_id = $1
 `
 
 type ComputeTraceRollupsRow struct {
-	TotalSpans  int32       `json:"total_spans"`
-	TotalTokens int64       `json:"total_tokens"`
-	TotalCost   interface{} `json:"total_cost"`
-	ErrorCount  int32       `json:"error_count"`
+	TotalSpans     int32       `json:"total_spans"`
+	TotalTokensIn  int64       `json:"total_tokens_in"`
+	TotalTokensOut int64       `json:"total_tokens_out"`
+	TotalCost      interface{} `json:"total_cost"`
+	ErrorCount     int32       `json:"error_count"`
 }
 
 // Compute rollup values for a trace by aggregating span data.
@@ -34,7 +36,8 @@ func (q *Queries) ComputeTraceRollups(ctx context.Context, traceID uuid.UUID) (C
 	var i ComputeTraceRollupsRow
 	err := row.Scan(
 		&i.TotalSpans,
-		&i.TotalTokens,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
 		&i.TotalCost,
 		&i.ErrorCount,
 	)

@@ -197,7 +197,8 @@ class TestIntegration:
                 "name": "ingest_method_span",
                 "type": "llm",
                 "status": "completed",
-                "total_tokens": 100,
+                "prompt_tokens": 60,
+                "completion_tokens": 40,
             }],
             flush=True,
         )
@@ -223,7 +224,8 @@ class TestIntegration:
                 "name": "direct_span",
                 "type": "llm",
                 "status": "completed",
-                "total_tokens": 150,
+                "prompt_tokens": 90,
+                "completion_tokens": 60,
                 "total_cost": 0.01,
             }],
         }

@@ -63,6 +63,18 @@ def test_span_context_on_exception():
     assert "Test error" in s.status_message
 
 
+def test_set_tokens_total_only_raises():
+    """Test total-only token usage is rejected."""
+    with TraceContext(name="test_trace"):
+        with span("llm_call", kind="llm") as s:
+            try:
+                s.set_tokens(total=150)
+                raised = False
+            except ValueError:
+                raised = True
+    assert raised is True
+
+
 def test_span_without_trace():
     """Test span without active trace."""
     with span("orphan_span") as s:

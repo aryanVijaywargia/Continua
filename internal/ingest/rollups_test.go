@@ -21,8 +21,8 @@ import (
 
 func TestRollups_TokenAggregation(t *testing.T) {
 	// Scenario: Token aggregation
-	// WHEN trace has spans with total_tokens values
-	// THEN trace total_tokens equals sum of span values
+	// WHEN trace has spans with prompt_tokens/completion_tokens values
+	// THEN trace total_tokens_in/out equals sums of directional token values
 
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
@@ -40,16 +40,18 @@ func TestRollups_TokenAggregation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create spans with token values
-	tokenCounts := []int64{100, 200, 150}
-	for i, tokens := range tokenCounts {
-		tc := tokens
+	// Create spans with split token values
+	type tokenPair struct{ in, out int64 }
+	tokenCounts := []tokenPair{{50, 50}, {100, 100}, {75, 75}}
+	for i, tp := range tokenCounts {
+		in, out := tp.in, tp.out
 		_, err := q.UpsertSpan(ctx, platform.UpsertSpanParams{
-			ProjectID:   projectID,
-			TraceID:     trace.ID,
-			SpanID:      "span-" + string(rune('A'+i)),
-			Name:        "LLM Call",
-			TotalTokens: &tc,
+			ProjectID:        projectID,
+			TraceID:          trace.ID,
+			SpanID:           "span-" + string(rune('A'+i)),
+			Name:             "LLM Call",
+			PromptTokens:     &in,
+			CompletionTokens: &out,
 		})
 		require.NoError(t, err)
 	}
@@ -62,9 +64,8 @@ func TestRollups_TokenAggregation(t *testing.T) {
 	updatedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
 
-	expectedTokens := int64(100 + 200 + 150)
-	require.NotNil(t, updatedTrace.TotalTokens)
-	assert.Equal(t, expectedTokens, *updatedTrace.TotalTokens, "total_tokens should equal sum of span values")
+	assert.Equal(t, int64(225), updatedTrace.TotalTokensIn, "total_tokens_in should equal sum of prompt_tokens")
+	assert.Equal(t, int64(225), updatedTrace.TotalTokensOut, "total_tokens_out should equal sum of completion_tokens")
 }
 
 func TestRollups_CostAggregation(t *testing.T) {

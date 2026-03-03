@@ -194,7 +194,10 @@ type IngestSpanInput struct {
 	Status        *IngestSpanInputStatus `json:"status,omitempty"`
 	StatusMessage *string                `json:"status_message,omitempty"`
 	TotalCost     *float64               `json:"total_cost,omitempty"`
-	TotalTokens   *int64                 `json:"total_tokens,omitempty"`
+
+	// TotalTokens Deprecated compatibility field. total_tokens-only payloads are rejected; provide prompt_tokens and/or completion_tokens for supported rollups.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	TotalTokens *int64 `json:"total_tokens,omitempty"`
 
 	// TraceId External trace identifier
 	TraceId string               `json:"trace_id"`
@@ -221,9 +224,11 @@ type IngestTraceInput struct {
 	Name     *string                 `json:"name,omitempty"`
 
 	// Output Trace output data (any JSON-serializable value)
-	Output    interface{}             `json:"output,omitempty"`
-	Release   *string                 `json:"release,omitempty"`
-	SessionId *openapi_types.UUID     `json:"session_id,omitempty"`
+	Output  interface{} `json:"output,omitempty"`
+	Release *string     `json:"release,omitempty"`
+
+	// SessionId External session key. The server resolves/creates the internal session UUID from this value.
+	SessionId *string                 `json:"session_id,omitempty"`
 	StartTime *time.Time              `json:"start_time,omitempty"`
 	Status    *IngestTraceInputStatus `json:"status,omitempty"`
 	Tags      *[]string               `json:"tags,omitempty"`
@@ -238,10 +243,13 @@ type IngestTraceInputStatus string
 
 // Session defines model for Session.
 type Session struct {
-	CreatedAt time.Time               `json:"created_at"`
-	Id        openapi_types.UUID      `json:"id"`
-	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
-	Name      *string                 `json:"name,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// ExternalId Human-readable external session identifier used by SDKs
+	ExternalId string                  `json:"external_id"`
+	Id         openapi_types.UUID      `json:"id"`
+	Metadata   *map[string]interface{} `json:"metadata,omitempty"`
+	Name       *string                 `json:"name,omitempty"`
 
 	// TraceCount Number of traces in this session
 	TraceCount *int `json:"trace_count,omitempty"`

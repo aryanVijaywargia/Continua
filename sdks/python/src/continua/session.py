@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from contextvars import ContextVar
 from typing import Any
 
@@ -37,10 +36,9 @@ class SessionContext:
                 return "response"
             my_agent("hello")
 
-        # Or with auto-generated session ID:
+        # Or without a session key:
         with session() as sess:
-            print(f"Session ID: {sess.session_id}")
-            # All traces here inherit the session ID
+            print(f"Session ID: {sess.session_id}")  # None
     """
 
     def __init__(
@@ -53,11 +51,11 @@ class SessionContext:
         """Create a new session context.
 
         Args:
-            session_id: Optional session identifier. If not provided, a UUID is generated.
+            session_id: Optional external session identifier.
             user_id: Optional user identifier for the session
             metadata: Optional metadata dictionary
         """
-        self.session_id = session_id or str(uuid.uuid4())
+        self.session_id = session_id
         self.user_id = user_id
         self.metadata = metadata or {}
         self._token: Any = None
@@ -86,7 +84,7 @@ def session(
     """Create a session context manager.
 
     Args:
-        session_id: Optional session identifier. If not provided, a UUID is generated.
+        session_id: Optional external session identifier.
         user_id: Optional user identifier for the session
         metadata: Optional metadata dictionary
 
@@ -99,7 +97,7 @@ def session(
             pass
 
         with session() as sess:
-            # Auto-generated session ID
+            # No session key is attached unless you provide one
             print(f"Session: {sess.session_id}")
     """
     return SessionContext(session_id, user_id=user_id, metadata=metadata)

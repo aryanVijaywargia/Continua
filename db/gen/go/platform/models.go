@@ -158,13 +158,14 @@ type RiverQueue struct {
 }
 
 type Session struct {
-	ID        uuid.UUID `json:"id"`
-	ProjectID uuid.UUID `json:"project_id"`
-	Name      *string   `json:"name"`
-	UserID    *string   `json:"user_id"`
-	Metadata  []byte    `json:"metadata"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         uuid.UUID `json:"id"`
+	ProjectID  uuid.UUID `json:"project_id"`
+	Name       *string   `json:"name"`
+	UserID     *string   `json:"user_id"`
+	Metadata   []byte    `json:"metadata"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	ExternalID string    `json:"external_id"`
 }
 
 type Span struct {
@@ -245,11 +246,12 @@ type Trace struct {
 	ServerReceivedAt time.Time          `json:"server_received_at"`
 	DurationMs       *int64             `json:"duration_ms"`
 	TotalSpans       *int32             `json:"total_spans"`
-	TotalTokens      *int64             `json:"total_tokens"`
 	TotalCost        pgtype.Numeric     `json:"total_cost"`
 	ErrorCount       *int32             `json:"error_count"`
 	Version          *int32             `json:"version"`
 	CreatedAt        time.Time          `json:"created_at"`
 	UpdatedAt        time.Time          `json:"updated_at"`
 	SearchVector     interface{}        `json:"search_vector"`
+	TotalTokensIn    int64              `json:"total_tokens_in"`
+	TotalTokensOut   int64              `json:"total_tokens_out"`
 }

@@ -416,11 +416,15 @@ components:
       type: object
       required:
         - id
+        - external_id
         - created_at
       properties:
         id:
           type: string
           format: uuid
+        external_id:
+          type: string
+          description: Human-readable external session identifier used by SDKs
         name:
           type: string
         user_id:
@@ -476,7 +480,7 @@ components:
           description: External trace identifier
         session_id:
           type: string
-          format: uuid
+          description: External session key. The server resolves/creates the internal session UUID from this value.
         name:
           type: string
         user_id:
@@ -579,6 +583,8 @@ components:
         total_tokens:
           type: integer
           format: int64
+          deprecated: true
+          description: Deprecated compatibility field. total_tokens-only payloads are rejected; provide prompt_tokens and/or completion_tokens for supported rollups.
         total_cost:
           type: number
           format: double

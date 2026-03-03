@@ -63,10 +63,11 @@ type Trace struct {
 	DurationMs       *int64
 
 	// Rollup metrics
-	TotalSpans  *int32
-	TotalTokens *int64
-	TotalCost   *float64
-	ErrorCount  *int32
+	TotalSpans     *int32
+	TotalTokensIn  *int64
+	TotalTokensOut *int64
+	TotalCost      *float64
+	ErrorCount     *int32
 
 	// Version for optimistic locking
 	Version int32

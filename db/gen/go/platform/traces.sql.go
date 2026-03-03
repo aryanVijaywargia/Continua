@@ -46,7 +46,7 @@ INSERT INTO traces (
     status, start_time, end_time
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at, search_vector
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out
 `
 
 type CreateTraceParams struct {
@@ -103,19 +103,20 @@ func (q *Queries) CreateTrace(ctx context.Context, arg CreateTraceParams) (Trace
 		&i.ServerReceivedAt,
 		&i.DurationMs,
 		&i.TotalSpans,
-		&i.TotalTokens,
 		&i.TotalCost,
 		&i.ErrorCount,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SearchVector,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
 	)
 	return i, err
 }
 
 const getTrace = `-- name: GetTrace :one
-SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at, search_vector FROM traces WHERE id = $1
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out FROM traces WHERE id = $1
 `
 
 func (q *Queries) GetTrace(ctx context.Context, id uuid.UUID) (Trace, error) {
@@ -140,19 +141,20 @@ func (q *Queries) GetTrace(ctx context.Context, id uuid.UUID) (Trace, error) {
 		&i.ServerReceivedAt,
 		&i.DurationMs,
 		&i.TotalSpans,
-		&i.TotalTokens,
 		&i.TotalCost,
 		&i.ErrorCount,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SearchVector,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
 	)
 	return i, err
 }
 
 const getTraceByExternalID = `-- name: GetTraceByExternalID :one
-SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at, search_vector FROM traces WHERE project_id = $1 AND trace_id = $2
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out FROM traces WHERE project_id = $1 AND trace_id = $2
 `
 
 type GetTraceByExternalIDParams struct {
@@ -182,13 +184,14 @@ func (q *Queries) GetTraceByExternalID(ctx context.Context, arg GetTraceByExtern
 		&i.ServerReceivedAt,
 		&i.DurationMs,
 		&i.TotalSpans,
-		&i.TotalTokens,
 		&i.TotalCost,
 		&i.ErrorCount,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SearchVector,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
 	)
 	return i, err
 }
@@ -222,7 +225,7 @@ func (q *Queries) GetTraceVersion(ctx context.Context, id uuid.UUID) (*int32, er
 }
 
 const listTraces = `-- name: ListTraces :many
-SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at, search_vector FROM traces
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out FROM traces
 WHERE project_id = $1
 ORDER BY COALESCE(start_time, server_received_at) DESC
 LIMIT $2 OFFSET $3
@@ -262,13 +265,14 @@ func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]Trace
 			&i.ServerReceivedAt,
 			&i.DurationMs,
 			&i.TotalSpans,
-			&i.TotalTokens,
 			&i.TotalCost,
 			&i.ErrorCount,
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SearchVector,
+			&i.TotalTokensIn,
+			&i.TotalTokensOut,
 		); err != nil {
 			return nil, err
 		}
@@ -281,7 +285,7 @@ func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]Trace
 }
 
 const listTracesBySession = `-- name: ListTracesBySession :many
-SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at, search_vector FROM traces
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out FROM traces
 WHERE project_id = $1 AND session_id = $2
 ORDER BY COALESCE(start_time, server_received_at) DESC
 LIMIT $3 OFFSET $4
@@ -327,13 +331,14 @@ func (q *Queries) ListTracesBySession(ctx context.Context, arg ListTracesBySessi
 			&i.ServerReceivedAt,
 			&i.DurationMs,
 			&i.TotalSpans,
-			&i.TotalTokens,
 			&i.TotalCost,
 			&i.ErrorCount,
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SearchVector,
+			&i.TotalTokensIn,
+			&i.TotalTokensOut,
 		); err != nil {
 			return nil, err
 		}
@@ -349,9 +354,10 @@ const updateTraceRollups = `-- name: UpdateTraceRollups :exec
 UPDATE traces
 SET
     total_spans = $2,
-    total_tokens = $3,
-    total_cost = $4,
-    error_count = $5,
+    total_tokens_in = $3,
+    total_tokens_out = $4,
+    total_cost = $5,
+    error_count = $6,
     duration_ms = CASE
         WHEN end_time IS NOT NULL AND start_time IS NOT NULL
         THEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000
@@ -362,18 +368,20 @@ WHERE id = $1
 `
 
 type UpdateTraceRollupsParams struct {
-	ID          uuid.UUID      `json:"id"`
-	TotalSpans  *int32         `json:"total_spans"`
-	TotalTokens *int64         `json:"total_tokens"`
-	TotalCost   pgtype.Numeric `json:"total_cost"`
-	ErrorCount  *int32         `json:"error_count"`
+	ID             uuid.UUID      `json:"id"`
+	TotalSpans     *int32         `json:"total_spans"`
+	TotalTokensIn  int64          `json:"total_tokens_in"`
+	TotalTokensOut int64          `json:"total_tokens_out"`
+	TotalCost      pgtype.Numeric `json:"total_cost"`
+	ErrorCount     *int32         `json:"error_count"`
 }
 
 func (q *Queries) UpdateTraceRollups(ctx context.Context, arg UpdateTraceRollupsParams) error {
 	_, err := q.db.Exec(ctx, updateTraceRollups,
 		arg.ID,
 		arg.TotalSpans,
-		arg.TotalTokens,
+		arg.TotalTokensIn,
+		arg.TotalTokensOut,
 		arg.TotalCost,
 		arg.ErrorCount,
 	)
@@ -384,7 +392,7 @@ const updateTraceStatus = `-- name: UpdateTraceStatus :one
 UPDATE traces
 SET status = $2, end_time = $3, updated_at = NOW(), version = version + 1
 WHERE id = $1
-RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at, search_vector
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out
 `
 
 type UpdateTraceStatusParams struct {
@@ -415,13 +423,14 @@ func (q *Queries) UpdateTraceStatus(ctx context.Context, arg UpdateTraceStatusPa
 		&i.ServerReceivedAt,
 		&i.DurationMs,
 		&i.TotalSpans,
-		&i.TotalTokens,
 		&i.TotalCost,
 		&i.ErrorCount,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SearchVector,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
 	)
 	return i, err
 }
@@ -463,7 +472,7 @@ ON CONFLICT (project_id, trace_id) DO UPDATE SET
     ),
     updated_at = NOW(),
     version = traces.version + 1
-RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_tokens, total_cost, error_count, version, created_at, updated_at, search_vector
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out
 `
 
 type UpsertTraceParams struct {
@@ -522,13 +531,14 @@ func (q *Queries) UpsertTrace(ctx context.Context, arg UpsertTraceParams) (Trace
 		&i.ServerReceivedAt,
 		&i.DurationMs,
 		&i.TotalSpans,
-		&i.TotalTokens,
 		&i.TotalCost,
 		&i.ErrorCount,
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SearchVector,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
 	)
 	return i, err
 }

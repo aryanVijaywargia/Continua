@@ -475,8 +475,7 @@ func convertTraceInput(t *IngestTraceInput) ingest.TraceInput {
 	}
 
 	if t.SessionId != nil {
-		s := t.SessionId.String()
-		input.SessionID = &s
+		input.SessionID = t.SessionId
 	}
 	if t.Name != nil {
 		input.Name = t.Name

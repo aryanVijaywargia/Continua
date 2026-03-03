@@ -45,9 +45,10 @@ func TestSessionDetail_ReturnsSession(t *testing.T) {
 
 	// Create a session
 	session, err := q.CreateSession(ctx, platform.CreateSessionParams{
-		ProjectID: projectID,
-		Name:      testutil.StrPtr("Test Session"),
-		UserID:    testutil.StrPtr("user-123"),
+		ProjectID:  projectID,
+		ExternalID: "test-session-" + uuid.New().String()[:8],
+		Name:       testutil.StrPtr("Test Session"),
+		UserID:     testutil.StrPtr("user-123"),
 	})
 	require.NoError(t, err)
 
@@ -58,6 +59,10 @@ func TestSessionDetail_ReturnsSession(t *testing.T) {
 	assert.Equal(t, "Test Session", *session.Name)
 	require.NotNil(t, session.UserID)
 	assert.Equal(t, "user-123", *session.UserID)
+
+	loaded, err := s.GetSessionWithTraceCount(ctx, session.ID)
+	require.NoError(t, err)
+	assert.Equal(t, session.ExternalID, loaded.ExternalID)
 }
 
 func TestSessionDetail_Returns404ForUnknownSession(t *testing.T) {
@@ -91,9 +96,10 @@ func TestSessionList_IncludesTraceCounts(t *testing.T) {
 
 	// Create session
 	session, err := q.CreateSession(ctx, platform.CreateSessionParams{
-		ProjectID: projectID,
-		Name:      testutil.StrPtr("Test Session"),
-		UserID:    testutil.StrPtr("user-123"),
+		ProjectID:  projectID,
+		ExternalID: "test-session-" + uuid.New().String()[:8],
+		Name:       testutil.StrPtr("Test Session"),
+		UserID:     testutil.StrPtr("user-123"),
 	})
 	require.NoError(t, err)
 
@@ -114,6 +120,7 @@ func TestSessionList_IncludesTraceCounts(t *testing.T) {
 
 	require.Len(t, sessions, 1)
 	assert.Equal(t, session.ID, sessions[0].ID)
+	assert.Equal(t, session.ExternalID, sessions[0].ExternalID)
 	assert.Equal(t, int64(3), sessions[0].TraceCount, "trace_count should be 3")
 }
 
@@ -131,14 +138,16 @@ func TestSessionTraceCount_ComputedCorrectly(t *testing.T) {
 
 	// Create two sessions
 	session1, err := q.CreateSession(ctx, platform.CreateSessionParams{
-		ProjectID: projectID,
-		Name:      testutil.StrPtr("Session 1"),
+		ProjectID:  projectID,
+		ExternalID: "session-1-" + uuid.New().String()[:8],
+		Name:       testutil.StrPtr("Session 1"),
 	})
 	require.NoError(t, err)
 
 	session2, err := q.CreateSession(ctx, platform.CreateSessionParams{
-		ProjectID: projectID,
-		Name:      testutil.StrPtr("Session 2"),
+		ProjectID:  projectID,
+		ExternalID: "session-2-" + uuid.New().String()[:8],
+		Name:       testutil.StrPtr("Session 2"),
 	})
 	require.NoError(t, err)
 
@@ -194,8 +203,9 @@ func TestSessionWithZeroTraces_AppearsInList(t *testing.T) {
 
 	// Create session with no traces
 	session, err := q.CreateSession(ctx, platform.CreateSessionParams{
-		ProjectID: projectID,
-		Name:      testutil.StrPtr("Empty Session"),
+		ProjectID:  projectID,
+		ExternalID: "empty-session-" + uuid.New().String()[:8],
+		Name:       testutil.StrPtr("Empty Session"),
 	})
 	require.NoError(t, err)
 
@@ -222,8 +232,9 @@ func TestSessionList_Pagination(t *testing.T) {
 	// Create 25 sessions
 	for i := 0; i < 25; i++ {
 		_, err := q.CreateSession(ctx, platform.CreateSessionParams{
-			ProjectID: projectID,
-			Name:      testutil.StrPtr("Session " + string(rune('A'+i))),
+			ProjectID:  projectID,
+			ExternalID: "session-" + uuid.New().String()[:8],
+			Name:       testutil.StrPtr("Session " + string(rune('A'+i))),
 		})
 		require.NoError(t, err)
 	}

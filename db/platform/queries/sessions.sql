@@ -25,12 +25,19 @@ LIMIT $2 OFFSET $3;
 SELECT COUNT(*) FROM sessions WHERE project_id = $1;
 
 -- name: CreateSession :one
-INSERT INTO sessions (project_id, name, user_id, metadata)
-VALUES ($1, $2, $3, $4)
+INSERT INTO sessions (project_id, external_id, name, user_id, metadata)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: UpdateSession :one
 UPDATE sessions
 SET name = $2, metadata = $3, updated_at = NOW()
 WHERE id = $1
+RETURNING *;
+
+-- name: GetOrCreateSessionByExternalID :one
+-- Upsert a session by (project_id, external_id). Creates if not exists, refreshes updated_at if exists.
+INSERT INTO sessions (project_id, external_id)
+VALUES ($1, $2)
+ON CONFLICT (project_id, external_id) DO UPDATE SET updated_at = NOW()
 RETURNING *;
