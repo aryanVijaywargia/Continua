@@ -24,7 +24,10 @@ var Module = fx.Module("jobs",
 func startWorker(lc fx.Lifecycle, client *river.Client[pgx.Tx]) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			return client.Start(ctx)
+			// Use a non-deadline context for the long-lived worker runtime.
+			// Fx startup context is short-lived and can be canceled immediately
+			// after startup, which causes River internals to reconnect-loop.
+			return client.Start(context.Background())
 		},
 		OnStop: func(ctx context.Context) error {
 			return client.Stop(ctx)
