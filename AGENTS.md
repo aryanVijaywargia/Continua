@@ -54,3 +54,26 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Architecture & Configuration Notes
 - Follow the 10 architecture rules in `docs/architecture/RULES.md`.
 - Use `config.example.yaml` as a template; keep secrets out of the repo.
+
+
+## Project-local Codex Context
+- Repo-local Codex assets live in `.codex/`. Prefer these over `.claude/` when working from Codex so the guidance stays versioned with the repo.
+
+### Repo-local skills
+- `continua-backend-dev`: Backend changes in `cmd/`, `internal/`, `db/`, and `contracts/`.
+- `continua-observability`: Trace/span/session data model, replay, token rollups, and WebSocket event flows.
+- `continua-integrations`: SDKs, proxy capture, and framework adapters.
+- `continua-testing`: Test planning, suite selection, and coverage expectations.
+
+### How to use repo-local skills
+- If a task clearly matches one of the skills above, open the corresponding `.codex/skills/<skill>/SKILL.md` and follow it.
+- Load linked `resources/` or `references/` files only when they are relevant to the current task.
+- Start with `.codex/references/decisions.md` when you need shared project rules, generated-file boundaries, or source-of-truth locations.
+
+### Codex guardrails
+- Do not edit generated files directly; change the source inputs and run `make generate`.
+- Treat existing migrations under `db/platform/migrations/` and `engine/db/migrations/` as immutable; create a new migration instead.
+- Avoid direct `.env*` reads or writes, and avoid broad `git add .`, `git add -A`, or wildcard staging; use specific file paths.
+- If you touch OpenAPI, WebSocket contracts, SQLC inputs, or migrations, run `make generate` before finishing.
+- Format edited Go files with `gofmt` and `goimports` when available.
+- See `.codex/references/guardrails.md`, `.codex/references/commands.md`, and `.codex/references/subagents.md` for Claude-derived workflow notes that were ported into Codex form.
