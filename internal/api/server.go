@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -251,19 +252,8 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
-	trace, err := s.store.GetTrace(r.Context(), id)
-	if store.IsNotFound(err) {
-		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get trace")
-		return
-	}
-
-	// Verify trace belongs to the project (multi-tenant isolation)
-	if trace.ProjectID != projectID {
-		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
+	trace, ok := s.getScopedTrace(r.Context(), w, projectID, id)
+	if !ok {
 		return
 	}
 
@@ -280,18 +270,7 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 		return
 	}
 
-	// First verify the trace belongs to this project
-	trace, err := s.store.GetTrace(r.Context(), id)
-	if store.IsNotFound(err) {
-		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get trace")
-		return
-	}
-	if trace.ProjectID != projectID {
-		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
+	if _, ok := s.getScopedTrace(r.Context(), w, projectID, id); !ok {
 		return
 	}
 
@@ -309,6 +288,60 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 	resp := SpanList{
 		Spans: apiSpans,
 	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// GetTraceEvents returns merged explicit and synthetic timeline events for a trace.
+func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceEventsParams) {
+	projectID, ok := middleware.GetProjectID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
+		return
+	}
+
+	trace, ok := s.getScopedTrace(r.Context(), w, projectID, id)
+	if !ok {
+		return
+	}
+
+	explicitEvents, err := s.store.ListSpanEventsByTrace(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list timeline events")
+		return
+	}
+
+	spans, err := s.store.ListSpansByTrace(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list spans")
+		return
+	}
+
+	entries := buildTimelineEntries(explicitEvents, spans)
+	limit := int(normalizeLimit(params.Limit, defaultTimelineLimit, maxTimelineLimit))
+
+	page, err := paginateTimelineEntries(entries, params.After, limit)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_cursor", "Invalid cursor")
+		return
+	}
+
+	apiEvents := make([]TimelineEvent, len(page.page))
+	for i := range page.page {
+		apiEvents[i] = page.page[i].event
+	}
+
+	resp := TimelineResponse{
+		Events:      apiEvents,
+		HasMore:     page.hasMore,
+		TraceStatus: mapTimelineTraceStatus(trace.Status),
+	}
+	if page.nextCursor != nil {
+		resp.NextCursor = page.nextCursor
+	}
+	if page.pollCursor != nil {
+		resp.PollCursor = page.pollCursor
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -418,18 +451,8 @@ func isMaxBytesError(err error) bool {
 }
 
 func normalizePagination(limitParam, offsetParam *int) (limit, offset int32) {
-	limit = defaultPageLimit
+	limit = normalizeLimit(limitParam, defaultPageLimit, maxPageLimit)
 	offset = 0
-
-	if limitParam != nil {
-		limit = int32(*limitParam)
-	}
-	if limit < 1 {
-		limit = 1
-	}
-	if limit > maxPageLimit {
-		limit = maxPageLimit
-	}
 
 	if offsetParam != nil {
 		offset = int32(*offsetParam)
@@ -439,6 +462,38 @@ func normalizePagination(limitParam, offsetParam *int) (limit, offset int32) {
 	}
 
 	return limit, offset
+}
+
+func normalizeLimit(limitParam *int, defaultLimit, maxLimit int32) int32 {
+	limit := defaultLimit
+	if limitParam != nil {
+		limit = int32(*limitParam)
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	return limit
+}
+
+func (s *Server) getScopedTrace(ctx context.Context, w http.ResponseWriter, projectID, traceID openapi_types.UUID) (platform.Trace, bool) {
+	trace, err := s.store.GetTrace(ctx, traceID)
+	if store.IsNotFound(err) {
+		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
+		return platform.Trace{}, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get trace")
+		return platform.Trace{}, false
+	}
+	if trace.ProjectID != projectID {
+		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
+		return platform.Trace{}, false
+	}
+
+	return trace, true
 }
 
 // convertToServiceRequest converts API types to service types.

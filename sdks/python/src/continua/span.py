@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import traceback
 import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -188,26 +189,73 @@ class SpanContext:
             level: Log level ("debug", "info", "warning", "error")
             payload: Optional additional data
         """
-        if self.trace_id is None:
-            return
+        self._record_event(
+            event_type="log",
+            level=level,
+            message=message,
+            payload=payload,
+        )
 
-        try:
-            from .client import Continua
+    def error(
+        self,
+        message: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit an explicit error event for this span."""
+        self._record_event(
+            event_type="error",
+            level="error",
+            message=message,
+            payload=payload,
+        )
 
-            client = Continua.get_instance()
-            event_data: dict[str, Any] = {
-                "trace_id": self.trace_id,
-                "span_id": self.span_id,
-                "event_type": "log",
-                "level": level,
-                "message": message,
+    def exception(
+        self,
+        exc: BaseException,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Capture an exception and attach structured exception details."""
+        exception_payload = dict(payload or {})
+        exception_payload.update(
+            {
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc),
+                "traceback": "".join(
+                    traceback.format_exception(type(exc), exc, exc.__traceback__)
+                ),
             }
-            if payload:
-                event_data["payload"] = payload
-            client.add_event(event_data)
-        except RuntimeError:
-            # Client not initialized - skip
-            pass
+        )
+
+        self._record_event(
+            event_type="exception",
+            level="error",
+            message=str(exc),
+            payload=exception_payload,
+        )
+
+    def metric(
+        self,
+        name: str,
+        value: int | float,
+        unit: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a structured metric event for this span."""
+        metric_payload = dict(payload or {})
+        metric_payload.update(
+            {
+                "metric_name": name,
+                "metric_value": value,
+            }
+        )
+        if unit is not None:
+            metric_payload["metric_unit"] = unit
+
+        self._record_event(
+            event_type="metric",
+            level="info",
+            payload=metric_payload,
+        )
 
     def __enter__(self) -> SpanContext:
         """Enter the span context."""
@@ -288,6 +336,35 @@ class SpanContext:
         try:
             client = Continua.get_instance()
             client.add_span(self._build_span_data())
+        except RuntimeError:
+            # Client not initialized - skip
+            pass
+
+    def _record_event(
+        self,
+        *,
+        event_type: str,
+        level: str,
+        message: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Queue a structured event for this span."""
+        if self.trace_id is None:
+            return
+
+        try:
+            client = Continua.get_instance()
+            event_data: dict[str, Any] = {
+                "trace_id": self.trace_id,
+                "span_id": self.span_id,
+                "event_type": event_type,
+                "level": level,
+            }
+            if message is not None:
+                event_data["message"] = message
+            if payload is not None:
+                event_data["payload"] = payload
+            client.add_event(event_data)
         except RuntimeError:
             # Client not initialized - skip
             pass

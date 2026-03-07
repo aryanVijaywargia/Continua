@@ -78,6 +78,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/traces/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List timeline events for a trace */
+        get: operations["getTraceEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -282,21 +299,19 @@ export interface components {
             /** Format: int32 */
             depth?: number;
         };
+        /** @enum {string} */
+        IngestEventType: "log" | "error" | "exception" | "message" | "metric" | "custom";
+        /** @enum {string} */
+        IngestEventLevel: "debug" | "info" | "warning" | "error";
         IngestEventInput: {
             /** @description External trace identifier */
             trace_id: string;
             /** @description External span identifier */
             span_id: string;
-            /**
-             * @default log
-             * @enum {string}
-             */
-            event_type: "log" | "error" | "exception" | "message" | "metric" | "custom";
-            /**
-             * @default info
-             * @enum {string}
-             */
-            level: "debug" | "info" | "warning" | "error";
+            /** @default log */
+            event_type: components["schemas"]["IngestEventType"];
+            /** @default info */
+            level: components["schemas"]["IngestEventLevel"];
             /** Format: date-time */
             event_ts?: string;
             /** Format: int32 */
@@ -305,6 +320,44 @@ export interface components {
             payload?: Record<string, never>;
             /** @description Optional key for event-level deduplication */
             idempotency_key?: string;
+        };
+        /** @enum {string} */
+        TimelineEventType: "log" | "error" | "exception" | "message" | "metric" | "custom" | "span_started" | "span_completed" | "span_failed";
+        /** @enum {string} */
+        TimelineEventSource: "explicit" | "synthetic";
+        /** @enum {string} */
+        TimelineEventLevel: "debug" | "info" | "warning" | "error";
+        TimelineEvent: {
+            /** @description Opaque event identifier. Explicit events use persisted UUIDs; synthetic events use deterministic span-based IDs. */
+            id: string;
+            /** Format: uuid */
+            trace_id: string;
+            /** @description External span identifier for the related span */
+            span_id?: string;
+            span_name?: string;
+            event_type: components["schemas"]["TimelineEventType"];
+            /** Format: date-time */
+            timestamp: string;
+            source: components["schemas"]["TimelineEventSource"];
+            level?: components["schemas"]["TimelineEventLevel"];
+            /**
+             * Format: int32
+             * @description Explicit-event ordering value used to preserve same-timestamp ingest order. Absent for synthetic events.
+             */
+            sequence?: number;
+            message?: string;
+            /** @description Event payload details for explicit events and helper metadata for synthetic events */
+            payload?: Record<string, never>;
+        };
+        TimelineResponse: {
+            events: components["schemas"]["TimelineEvent"][];
+            /** @enum {string} */
+            trace_status: "RUNNING" | "COMPLETED" | "FAILED";
+            has_more: boolean;
+            /** @description Opaque cursor for the next page when `has_more` is true */
+            next_cursor?: string;
+            /** @description Opaque cursor representing the last event included in this response. Use for incremental polling even when `has_more` is false. */
+            poll_cursor?: string;
         };
         IngestResponse: {
             /**
@@ -493,6 +546,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpanList"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Trace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTraceEvents: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor returned by a previous timeline response */
+                after?: string;
+                /** @description Maximum number of timeline events to return */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Timeline events for the trace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            /** @description Invalid cursor or pagination parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Unauthorized - missing or invalid API key */

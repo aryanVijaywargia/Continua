@@ -121,8 +121,42 @@ export interface SpanList {
   spans: Span[];
 }
 
+export type TimelineTraceStatus = Trace['status'];
+
+export interface TimelineEvent {
+  id: string;
+  trace_id: string;
+  span_id?: string;
+  span_name?: string;
+  event_type:
+    | 'log'
+    | 'error'
+    | 'exception'
+    | 'message'
+    | 'metric'
+    | 'custom'
+    | 'span_started'
+    | 'span_completed'
+    | 'span_failed';
+  timestamp: string;
+  source: 'explicit' | 'synthetic';
+  level?: 'debug' | 'info' | 'warning' | 'error';
+  sequence?: number;
+  message?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface TimelineResponse {
+  events: TimelineEvent[];
+  trace_status: TimelineTraceStatus;
+  has_more: boolean;
+  next_cursor?: string;
+  poll_cursor?: string;
+}
+
 export interface Session {
   id: string;
+  external_id: string;
   name?: string;
   user_id?: string;
   trace_count?: number;
@@ -154,6 +188,31 @@ export async function fetchTrace(id: string): Promise<Trace> {
  */
 export async function fetchSpans(traceId: string): Promise<SpanList> {
   return fetchAPI<SpanList>(`/api/traces/${traceId}/spans`);
+}
+
+export interface FetchTimelineEventsOptions {
+  after?: string;
+  limit?: number;
+}
+
+/**
+ * Fetch timeline events for a trace.
+ */
+export async function fetchTimelineEvents(
+  traceId: string,
+  options: FetchTimelineEventsOptions = {}
+): Promise<TimelineResponse> {
+  const params = new URLSearchParams();
+
+  if (options.after) {
+    params.set('after', options.after);
+  }
+  if (options.limit !== undefined) {
+    params.set('limit', String(options.limit));
+  }
+
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return fetchAPI<TimelineResponse>(`/api/traces/${traceId}/events${query}`);
 }
 
 /**

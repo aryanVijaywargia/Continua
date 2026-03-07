@@ -204,6 +204,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/traces/{id}/events:
+    get:
+      operationId: getTraceEvents
+      summary: List timeline events for a trace
+      tags: [Traces]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: after
+          in: query
+          description: Opaque cursor returned by a previous timeline response
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of timeline events to return
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: Timeline events for the trace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineResponse'
+        '400':
+          description: Invalid cursor or pagination parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/sessions:
     get:
       operationId: listSessions
@@ -553,6 +604,14 @@ components:
           type: integer
           format: int32
 
+    IngestEventType:
+      type: string
+      enum: [log, error, exception, message, metric, custom]
+
+    IngestEventLevel:
+      type: string
+      enum: [debug, info, warning, error]
+
     IngestEventInput:
       type: object
       required: [trace_id, span_id]
@@ -564,12 +623,12 @@ components:
           type: string
           description: External span identifier
         event_type:
-          type: string
-          enum: [log, error, exception, message, metric, custom]
+          allOf:
+            - $ref: '#/components/schemas/IngestEventType'
           default: log
         level:
-          type: string
-          enum: [debug, info, warning, error]
+          allOf:
+            - $ref: '#/components/schemas/IngestEventLevel'
           default: info
         event_ts:
           type: string
@@ -584,6 +643,73 @@ components:
         idempotency_key:
           type: string
           description: Optional key for event-level deduplication
+
+    TimelineEventType:
+      type: string
+      enum:
+        [log, error, exception, message, metric, custom, span_started, span_completed, span_failed]
+
+    TimelineEventSource:
+      type: string
+      enum: [explicit, synthetic]
+
+    TimelineEventLevel:
+      type: string
+      enum: [debug, info, warning, error]
+
+    TimelineEvent:
+      type: object
+      required: [id, trace_id, event_type, timestamp, source]
+      properties:
+        id:
+          type: string
+          description: Opaque event identifier. Explicit events use persisted UUIDs; synthetic events use deterministic span-based IDs.
+        trace_id:
+          type: string
+          format: uuid
+        span_id:
+          type: string
+          description: External span identifier for the related span
+        span_name:
+          type: string
+        event_type:
+          $ref: '#/components/schemas/TimelineEventType'
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          $ref: '#/components/schemas/TimelineEventSource'
+        level:
+          $ref: '#/components/schemas/TimelineEventLevel'
+        sequence:
+          type: integer
+          format: int32
+          description: Explicit-event ordering value used to preserve same-timestamp ingest order. Absent for synthetic events.
+        message:
+          type: string
+        payload:
+          type: object
+          description: Event payload details for explicit events and helper metadata for synthetic events
+
+    TimelineResponse:
+      type: object
+      required: [events, trace_status, has_more]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        trace_status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED]
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
+          description: Opaque cursor for the next page when `has_more` is true
+        poll_cursor:
+          type: string
+          description: Opaque cursor representing the last event included in this response. Use for incremental polling even when `has_more` is false.
 
     IngestResponse:
       type: object
