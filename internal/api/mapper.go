@@ -151,7 +151,7 @@ func explicitTimelineEventToAPI(ev *platform.SpanEvent, spanName *string) Timeli
 		Id:        ev.ID.String(),
 		Source:    Explicit,
 		Timestamp: timelineEventDisplayTimestamp(ev.EventTs, ev.ServerIngestedAt),
-		TraceId:   openapi_types.UUID(ev.TraceID),
+		TraceId:   ev.TraceID,
 	}
 
 	spanID := ev.SpanID
@@ -170,7 +170,7 @@ func explicitTimelineEventToAPI(ev *platform.SpanEvent, spanName *string) Timeli
 		event.Message = ev.Message
 	}
 	if payload := parseJSONObject(ev.Payload); payload != nil {
-		event.Payload = payload
+		event.Payload = &payload
 	}
 
 	return event
@@ -188,7 +188,7 @@ func syntheticTimelineEventToAPI(sp *platform.Span, eventType TimelineEventType,
 		SpanId:    &spanID,
 		SpanName:  &spanName,
 		Timestamp: timestamp,
-		TraceId:   openapi_types.UUID(sp.TraceID),
+		TraceId:   sp.TraceID,
 	}
 }
 
@@ -323,7 +323,7 @@ func timelineEventDisplayTimestamp(eventTs pgtype.Timestamptz, fallback time.Tim
 	return fallback
 }
 
-func parseJSONObject(data []byte) *map[string]interface{} {
+func parseJSONObject(data []byte) map[string]interface{} {
 	if len(data) == 0 {
 		return nil
 	}
@@ -333,7 +333,7 @@ func parseJSONObject(data []byte) *map[string]interface{} {
 		return nil
 	}
 
-	return &payload
+	return payload
 }
 
 func syntheticTimelineEventID(spanID string, eventType TimelineEventType) string {

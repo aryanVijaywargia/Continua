@@ -25,7 +25,11 @@ from continua import Continua, session, span, trace
 
 
 # Configuration
-API_URL = os.environ.get("CONTINUA_ENDPOINT", "http://localhost:8080")
+API_URL = (
+    os.environ.get("CONTINUA_API_URL")
+    or os.environ.get("CONTINUA_ENDPOINT")
+    or "http://localhost:8080"
+).rstrip("/")
 API_KEY = os.environ.get("CONTINUA_API_KEY", "")
 DEMO_RUN_ID = os.environ.get(
     "CONTINUA_DEMO_RUN_ID",

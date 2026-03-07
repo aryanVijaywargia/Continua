@@ -297,11 +297,12 @@ function TraceDetailContent({
 
 async function fetchFullTimelineSnapshot(traceId: string): Promise<TimelineSnapshot> {
   let after: string | undefined;
+  let hasMore = true;
   let pollCursor: string | null = null;
   let traceStatus: TimelineTraceStatus = 'RUNNING';
   let events: TimelineEvent[] = [];
 
-  while (true) {
+  while (hasMore) {
     const page = await fetchTimelineEvents(traceId, {
       after,
       limit: TIMELINE_PAGE_LIMIT,
@@ -313,11 +314,10 @@ async function fetchFullTimelineSnapshot(traceId: string): Promise<TimelineSnaps
     if (page.poll_cursor) {
       pollCursor = page.poll_cursor;
     }
-    if (!page.has_more || !page.next_cursor) {
-      break;
+    hasMore = page.has_more && Boolean(page.next_cursor);
+    if (hasMore) {
+      after = page.next_cursor ?? undefined;
     }
-
-    after = page.next_cursor;
   }
 
   return {

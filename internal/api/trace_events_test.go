@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -28,21 +27,21 @@ func TestGetTraceEvents_MergesOrdersAndIncludesOrphans(t *testing.T) {
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
 	base := time.Date(2026, 3, 7, 10, 0, 0, 0, time.UTC)
-	trace := createTimelineTrace(t, ctx, q, projectID, "completed", base, testutil.Ptr(base.Add(6*time.Second)))
+	trace := createTimelineTrace(ctx, t, q, projectID, "completed", base, testutil.Ptr(base.Add(6*time.Second)))
 
-	createTimelineSpan(t, ctx, q, projectID, trace.ID, "alpha", "Alpha Span", "completed", base.Add(time.Second), testutil.Ptr(base.Add(2*time.Second)))
-	createTimelineSpan(t, ctx, q, projectID, trace.ID, "beta", "Beta Span", "error", base.Add(4*time.Second), testutil.Ptr(base.Add(5*time.Second)))
+	createTimelineSpan(ctx, t, q, projectID, trace.ID, "alpha", "Alpha Span", "completed", base.Add(time.Second), testutil.Ptr(base.Add(2*time.Second)))
+	createTimelineSpan(ctx, t, q, projectID, trace.ID, "beta", "Beta Span", "error", base.Add(4*time.Second), testutil.Ptr(base.Add(5*time.Second)))
 
 	insertTimelineEvent(
-		t, ctx, q, projectID, trace.ID, "alpha", "message", "info",
+		ctx, t, q, projectID, trace.ID, "alpha", "message", "info",
 		base.Add(time.Second), testutil.Int32Ptr(1), "alpha message", map[string]any{"step": "alpha-message"},
 	)
 	insertTimelineEvent(
-		t, ctx, q, projectID, trace.ID, "alpha", "log", "info",
+		ctx, t, q, projectID, trace.ID, "alpha", "log", "info",
 		base.Add(time.Second), testutil.Int32Ptr(5), "alpha log", map[string]any{"step": "alpha"},
 	)
 	insertTimelineEvent(
-		t, ctx, q, projectID, trace.ID, "ghost", "error", "error",
+		ctx, t, q, projectID, trace.ID, "ghost", "error", "error",
 		base.Add(3*time.Second), nil, "ghost error", map[string]any{"kind": "orphan"},
 	)
 
@@ -101,17 +100,17 @@ func TestGetTraceEvents_CursorPaginationDoesNotDuplicate(t *testing.T) {
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
 	base := time.Date(2026, 3, 7, 11, 0, 0, 0, time.UTC)
-	trace := createTimelineTrace(t, ctx, q, projectID, "running", base, nil)
+	trace := createTimelineTrace(ctx, t, q, projectID, "running", base, nil)
 
-	createTimelineSpan(t, ctx, q, projectID, trace.ID, "alpha", "Alpha Span", "running", base.Add(time.Second), nil)
-	createTimelineSpan(t, ctx, q, projectID, trace.ID, "beta", "Beta Span", "completed", base.Add(2*time.Second), testutil.Ptr(base.Add(4*time.Second)))
+	createTimelineSpan(ctx, t, q, projectID, trace.ID, "alpha", "Alpha Span", "running", base.Add(time.Second), nil)
+	createTimelineSpan(ctx, t, q, projectID, trace.ID, "beta", "Beta Span", "completed", base.Add(2*time.Second), testutil.Ptr(base.Add(4*time.Second)))
 
 	insertTimelineEvent(
-		t, ctx, q, projectID, trace.ID, "alpha", "log", "info",
+		ctx, t, q, projectID, trace.ID, "alpha", "log", "info",
 		base.Add(1500*time.Millisecond), testutil.Int32Ptr(1), "alpha info", map[string]any{"step": "one"},
 	)
 	insertTimelineEvent(
-		t, ctx, q, projectID, trace.ID, "beta", "metric", "info",
+		ctx, t, q, projectID, trace.ID, "beta", "metric", "info",
 		base.Add(3*time.Second), testutil.Int32Ptr(2), "beta metric", map[string]any{"value": 42},
 	)
 
@@ -168,7 +167,7 @@ func TestGetTraceEvents_CursorPaginationDoesNotDuplicate(t *testing.T) {
 	assert.Equal(t, *tailCursor, *emptyPoll.PollCursor)
 
 	lateEventID := insertTimelineEvent(
-		t, ctx, q, projectID, trace.ID, "alpha", "message", "info",
+		ctx, t, q, projectID, trace.ID, "alpha", "message", "info",
 		base.Add(1500*time.Millisecond), testutil.Int32Ptr(0), "late message", map[string]any{"late": true},
 	)
 
@@ -193,8 +192,8 @@ func TestGetTraceEvents_InvalidCursorReturns400(t *testing.T) {
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
 	trace := createTimelineTrace(
-		t,
 		ctx,
+		t,
 		q,
 		projectID,
 		"running",
@@ -220,8 +219,8 @@ func TestGetTraceEvents_EmptyTimeline(t *testing.T) {
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
 	trace := createTimelineTrace(
-		t,
 		ctx,
+		t,
 		q,
 		projectID,
 		"running",
@@ -251,8 +250,8 @@ func TestGetTraceEvents_ProjectScopingReturns404(t *testing.T) {
 	projectBID := testutil.CreateTestProject(t, ctx, q)
 
 	trace := createTimelineTrace(
-		t,
 		ctx,
+		t,
 		q,
 		projectBID,
 		"running",
@@ -274,14 +273,14 @@ func invokeGetTraceEvents(t *testing.T, server *Server, projectID, traceID uuid.
 	ctx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
 	rec := httptest.NewRecorder()
 
-	server.GetTraceEvents(rec, req.WithContext(ctx), openapi_types.UUID(traceID), params)
+	server.GetTraceEvents(rec, req.WithContext(ctx), traceID, params)
 
 	return rec
 }
 
 func createTimelineTrace(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	q *platform.Queries,
 	projectID uuid.UUID,
 	status string,
@@ -304,8 +303,8 @@ func createTimelineTrace(
 }
 
 func createTimelineSpan(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	q *platform.Queries,
 	projectID uuid.UUID,
 	traceID uuid.UUID,
@@ -335,8 +334,8 @@ func createTimelineSpan(
 }
 
 func insertTimelineEvent(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	q *platform.Queries,
 	projectID uuid.UUID,
 	traceID uuid.UUID,

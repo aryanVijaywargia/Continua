@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"slices"
+	"sort"
 	"time"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
@@ -142,7 +142,7 @@ func paginateTimelineEntries(entries []timelineEntry, after *string, limit int) 
 	hasMore := endIndex < len(cursorOrdered)
 	var nextCursor *string
 	if hasMore && len(pageCursorOrdered) > 0 {
-		cursor := encodeTimelineCursor(pageCursorOrdered[len(pageCursorOrdered)-1])
+		cursor := encodeTimelineCursor(&pageCursorOrdered[len(pageCursorOrdered)-1])
 		nextCursor = &cursor
 	}
 
@@ -162,11 +162,13 @@ func sortTimelineEntriesByCursor(entries []timelineEntry) {
 	sortTimelineEntries(entries, compareTimelineEntriesByCursor)
 }
 
-func sortTimelineEntries(entries []timelineEntry, compare func(a, b timelineEntry) int) {
-	slices.SortFunc(entries, compare)
+func sortTimelineEntries(entries []timelineEntry, compare func(a, b *timelineEntry) int) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		return compare(&entries[i], &entries[j]) < 0
+	})
 }
 
-func compareTimelineEntriesByDisplay(a, b timelineEntry) int {
+func compareTimelineEntriesByDisplay(a, b *timelineEntry) int {
 	if cmp := compareTimes(a.event.Timestamp, b.event.Timestamp); cmp != 0 {
 		return cmp
 	}
@@ -188,7 +190,7 @@ func compareTimelineEntriesByDisplay(a, b timelineEntry) int {
 	return compareStrings(a.event.Id, b.event.Id)
 }
 
-func compareTimelineEntriesByCursor(a, b timelineEntry) int {
+func compareTimelineEntriesByCursor(a, b *timelineEntry) int {
 	if cmp := compareTimes(a.cursorTimestamp, b.cursorTimestamp); cmp != 0 {
 		return cmp
 	}
@@ -271,7 +273,7 @@ func compareStrings(a, b string) int {
 
 func timelinePollCursor(pageCursorOrdered []timelineEntry, after *string) *string {
 	if len(pageCursorOrdered) > 0 {
-		cursor := encodeTimelineCursor(pageCursorOrdered[len(pageCursorOrdered)-1])
+		cursor := encodeTimelineCursor(&pageCursorOrdered[len(pageCursorOrdered)-1])
 		return &cursor
 	}
 	if after == nil || *after == "" {
@@ -282,7 +284,7 @@ func timelinePollCursor(pageCursorOrdered []timelineEntry, after *string) *strin
 	return &cursor
 }
 
-func encodeTimelineCursor(entry timelineEntry) string {
+func encodeTimelineCursor(entry *timelineEntry) string {
 	payload, _ := json.Marshal(timelineCursor{
 		CursorTimestamp: entry.cursorTimestamp.UTC().Format(time.RFC3339Nano),
 		Source:          string(entry.event.Source),

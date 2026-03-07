@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -100,7 +99,7 @@ func TestEncodeDecodeTimelineCursor_RoundTrip(t *testing.T) {
 	base := time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC)
 	entry := unitTimelineEntry("event-a", Explicit, TimelineEventTypeLog, base, base.Add(time.Millisecond), int32Ptr(3))
 
-	encoded := encodeTimelineCursor(entry)
+	encoded := encodeTimelineCursor(&entry)
 	decoded, err := decodeTimelineCursor(encoded)
 	require.NoError(t, err)
 
@@ -145,7 +144,7 @@ func unitTimelineEntry(
 	traceID := uuid.New()
 	event := TimelineEvent{
 		Id:        id,
-		TraceId:   openapi_types.UUID(traceID),
+		TraceId:   traceID,
 		EventType: eventType,
 		Source:    source,
 		Timestamp: displayTimestamp,

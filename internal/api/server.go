@@ -252,7 +252,7 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
-	trace, ok := s.getScopedTrace(w, r.Context(), projectID, id)
+	trace, ok := s.getScopedTrace(r.Context(), w, projectID, id)
 	if !ok {
 		return
 	}
@@ -270,7 +270,7 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 		return
 	}
 
-	if _, ok := s.getScopedTrace(w, r.Context(), projectID, id); !ok {
+	if _, ok := s.getScopedTrace(r.Context(), w, projectID, id); !ok {
 		return
 	}
 
@@ -299,7 +299,7 @@ func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id opena
 		return
 	}
 
-	trace, ok := s.getScopedTrace(w, r.Context(), projectID, id)
+	trace, ok := s.getScopedTrace(r.Context(), w, projectID, id)
 	if !ok {
 		return
 	}
@@ -478,7 +478,7 @@ func normalizeLimit(limitParam *int, defaultLimit, maxLimit int32) int32 {
 	return limit
 }
 
-func (s *Server) getScopedTrace(w http.ResponseWriter, ctx context.Context, projectID, traceID openapi_types.UUID) (platform.Trace, bool) {
+func (s *Server) getScopedTrace(ctx context.Context, w http.ResponseWriter, projectID, traceID openapi_types.UUID) (platform.Trace, bool) {
 	trace, err := s.store.GetTrace(ctx, traceID)
 	if store.IsNotFound(err) {
 		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
