@@ -144,6 +144,54 @@ func spanToAPI(sp *platform.Span) Span {
 	return span
 }
 
+// explicitTimelineEventToAPI converts an explicit span event row to a timeline event.
+func explicitTimelineEventToAPI(ev *platform.SpanEvent, spanName *string) TimelineEvent {
+	event := TimelineEvent{
+		EventType: mapExplicitTimelineEventType(ev.EventType),
+		Id:        ev.ID.String(),
+		Source:    Explicit,
+		Timestamp: timelineEventDisplayTimestamp(ev.EventTs, ev.ServerIngestedAt),
+		TraceId:   openapi_types.UUID(ev.TraceID),
+	}
+
+	spanID := ev.SpanID
+	event.SpanId = &spanID
+
+	if spanName != nil {
+		event.SpanName = spanName
+	}
+	if level := mapTimelineEventLevel(ev.Level); level != nil {
+		event.Level = level
+	}
+	if ev.Sequence != nil {
+		event.Sequence = ev.Sequence
+	}
+	if ev.Message != nil {
+		event.Message = ev.Message
+	}
+	if payload := parseJSONObject(ev.Payload); payload != nil {
+		event.Payload = payload
+	}
+
+	return event
+}
+
+// syntheticTimelineEventToAPI converts a span lifecycle marker to a timeline event.
+func syntheticTimelineEventToAPI(sp *platform.Span, eventType TimelineEventType, timestamp time.Time) TimelineEvent {
+	spanID := sp.SpanID
+	spanName := sp.Name
+
+	return TimelineEvent{
+		EventType: eventType,
+		Id:        syntheticTimelineEventID(sp.SpanID, eventType),
+		Source:    Synthetic,
+		SpanId:    &spanID,
+		SpanName:  &spanName,
+		Timestamp: timestamp,
+		TraceId:   openapi_types.UUID(sp.TraceID),
+	}
+}
+
 // sessionToAPI converts a database session to an API session.
 func sessionToAPI(s *platform.Session) Session {
 	session := Session{
@@ -200,6 +248,10 @@ func mapTraceStatus(status string) string {
 	}
 }
 
+func mapTimelineTraceStatus(status string) TimelineResponseTraceStatus {
+	return TimelineResponseTraceStatus(mapTraceStatus(status))
+}
+
 func mapSpanKind(spanType string) string {
 	switch spanType {
 	case "llm":
@@ -228,6 +280,66 @@ func mapSpanStatus(status string) string {
 	}
 }
 
+func mapExplicitTimelineEventType(eventType string) TimelineEventType {
+	switch eventType {
+	case "log":
+		return TimelineEventTypeLog
+	case "error":
+		return TimelineEventTypeError
+	case "exception":
+		return TimelineEventTypeException
+	case "message":
+		return TimelineEventTypeMessage
+	case "metric":
+		return TimelineEventTypeMetric
+	default:
+		return TimelineEventTypeCustom
+	}
+}
+
+func mapTimelineEventLevel(level string) *TimelineEventLevel {
+	var mapped TimelineEventLevel
+
+	switch level {
+	case "debug":
+		mapped = TimelineEventLevelDebug
+	case "info":
+		mapped = TimelineEventLevelInfo
+	case "warning":
+		mapped = TimelineEventLevelWarning
+	case "error":
+		mapped = TimelineEventLevelError
+	default:
+		return nil
+	}
+
+	return &mapped
+}
+
+func timelineEventDisplayTimestamp(eventTs pgtype.Timestamptz, fallback time.Time) time.Time {
+	if eventTs.Valid {
+		return eventTs.Time
+	}
+	return fallback
+}
+
+func parseJSONObject(data []byte) *map[string]interface{} {
+	if len(data) == 0 {
+		return nil
+	}
+
+	var payload map[string]interface{}
+	if err := parseJSON(data, &payload); err != nil {
+		return nil
+	}
+
+	return &payload
+}
+
+func syntheticTimelineEventID(spanID string, eventType TimelineEventType) string {
+	return spanID + ":" + string(eventType)
+}
+
 func parseJSON(data []byte, v interface{}) error {
 	if len(data) == 0 {
 		return nil
@@ -247,6 +359,3 @@ func numericToFloat32(n pgtype.Numeric) (float32, error) {
 	}
 	return float32(f64.Float64), nil
 }
-
-// Ensure time is used
-var _ = time.Now

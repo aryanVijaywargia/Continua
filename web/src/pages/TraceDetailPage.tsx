@@ -1,20 +1,39 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { startTransition, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { getApiKey, fetchTrace, fetchSpans, Span } from '../api/client';
-import { ApiKeyPrompt } from '../components/ApiKeyPrompt';
-import { StatusBadge } from '../components/StatusBadge';
-import { SpanTree } from '../components/SpanTree';
-import { SpanDetail } from '../components/SpanDetail';
 import {
+  fetchSpans,
+  fetchTimelineEvents,
+  fetchTrace,
+  getApiKey,
+  Span,
+  TimelineEvent,
+  TimelineTraceStatus,
+} from '../api/client';
+import { ApiKeyPrompt } from '../components/ApiKeyPrompt';
+import { SpanDetail } from '../components/SpanDetail';
+import { SpanTree } from '../components/SpanTree';
+import { StatusBadge } from '../components/StatusBadge';
+import { Timeline } from '../components/Timeline';
+import {
+  calculateDuration,
+  formatCost,
   formatDuration,
   formatTokens,
-  formatCost,
-  calculateDuration,
 } from '../utils/format';
+import { mergeTimelineEvents } from '../utils/timeline';
+
+const TIMELINE_PAGE_LIMIT = 100;
+const TIMELINE_POLL_INTERVAL_MS = 3000;
+
+interface TimelineSnapshot {
+  events: TimelineEvent[];
+  traceStatus: TimelineTraceStatus;
+  pollCursor: string | null;
+}
 
 /**
- * Trace detail page with span tree and detail panel.
+ * Trace detail page with span tree, detail panel, and merged event timeline.
  */
 export function TraceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,7 +46,7 @@ export function TraceDetailPage() {
 
   if (!id) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-red-600">Trace ID is required</div>
       </div>
     );
@@ -53,6 +72,9 @@ function TraceDetailContent({
   selectedSpan,
   onSelectSpan,
 }: TraceDetailContentProps) {
+  const [timelineSnapshot, setTimelineSnapshot] = useState<TimelineSnapshot | null>(null);
+  const [needsTerminalRefresh, setNeedsTerminalRefresh] = useState(false);
+
   const traceQuery = useQuery({
     queryKey: ['trace', traceId],
     queryFn: () => fetchTrace(traceId),
@@ -63,9 +85,87 @@ function TraceDetailContent({
     queryFn: () => fetchSpans(traceId),
   });
 
+  const timelineBootstrapQuery = useQuery({
+    queryKey: ['timeline', traceId, 'bootstrap'],
+    queryFn: () => fetchFullTimelineSnapshot(traceId),
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (!timelineBootstrapQuery.data) {
+      return;
+    }
+
+    startTransition(() => {
+      setTimelineSnapshot(timelineBootstrapQuery.data);
+      setNeedsTerminalRefresh(false);
+    });
+  }, [timelineBootstrapQuery.data]);
+
+  const pollingEnabled =
+    timelineSnapshot?.traceStatus === 'RUNNING' &&
+    !needsTerminalRefresh;
+
+  const timelinePollQuery = useQuery({
+    queryKey: ['timeline', traceId, 'poll', timelineSnapshot?.pollCursor ?? 'head'],
+    queryFn: () =>
+      fetchTimelineEvents(traceId, {
+        after: timelineSnapshot?.pollCursor ?? undefined,
+        limit: TIMELINE_PAGE_LIMIT,
+      }),
+    enabled: pollingEnabled,
+    refetchInterval: pollingEnabled ? TIMELINE_POLL_INTERVAL_MS : false,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (!timelinePollQuery.data) {
+      return;
+    }
+
+    const pollResult = timelinePollQuery.data;
+
+    if (pollResult.trace_status !== 'RUNNING') {
+      setNeedsTerminalRefresh(true);
+    }
+
+    startTransition(() => {
+      setTimelineSnapshot((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          events: mergeTimelineEvents(current.events, pollResult.events),
+          traceStatus: pollResult.trace_status,
+          pollCursor: pollResult.poll_cursor ?? current.pollCursor,
+        };
+      });
+    });
+  }, [timelinePollQuery.data]);
+
+  const timelineTerminalRefreshQuery = useQuery({
+    queryKey: ['timeline', traceId, 'terminal-refresh', needsTerminalRefresh],
+    queryFn: () => fetchFullTimelineSnapshot(traceId),
+    enabled: needsTerminalRefresh,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!timelineTerminalRefreshQuery.data) {
+      return;
+    }
+
+    startTransition(() => {
+      setTimelineSnapshot(timelineTerminalRefreshQuery.data);
+      setNeedsTerminalRefresh(false);
+    });
+  }, [timelineTerminalRefreshQuery.data]);
+
   if (traceQuery.isLoading || spansQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-gray-500">Loading trace...</div>
       </div>
     );
@@ -73,7 +173,7 @@ function TraceDetailContent({
 
   if (traceQuery.error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-red-600">
           Error loading trace:{' '}
           {traceQuery.error instanceof Error
@@ -86,7 +186,7 @@ function TraceDetailContent({
 
   if (spansQuery.error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-red-600">
           Error loading spans:{' '}
           {spansQuery.error instanceof Error
@@ -102,31 +202,33 @@ function TraceDetailContent({
 
   if (!trace) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-red-600">Trace not found</div>
       </div>
     );
   }
 
+  const timelineStatus = timelineSnapshot?.traceStatus ?? trace.status;
+  const timelineEvents = timelineSnapshot?.events ?? [];
   const duration = calculateDuration(trace.started_at, trace.ended_at);
   const totalTokens =
     (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <header className="bg-white border-b px-6 py-4">
+    <div className="flex min-h-screen flex-col bg-gray-50">
+      <header className="border-b bg-white px-6 py-4">
         <div className="flex items-center gap-4">
-          <Link
-            to="/traces"
-            className="text-gray-500 hover:text-gray-700"
-          >
+          <Link to="/traces" className="text-gray-500 hover:text-gray-700">
             ← Traces
           </Link>
-          <div className="flex-1">
-            <h1 className="text-xl font-semibold text-gray-900">{trace.name}</h1>
-            <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-              <StatusBadge status={trace.status} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="truncate text-xl font-semibold text-gray-900">
+                {trace.name}
+              </h1>
+              <StatusBadge status={timelineStatus} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500">
               <span>{formatDuration(duration)}</span>
               <span>{formatTokens(totalTokens)} tokens</span>
               <span>{formatCost(trace.total_cost_usd)}</span>
@@ -138,27 +240,112 @@ function TraceDetailContent({
         </div>
       </header>
 
-      {/* Main content - two panel layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left panel - span tree */}
-        <div className="w-1/2 border-r bg-white overflow-y-auto">
-          <div className="px-4 py-2 border-b bg-gray-50">
-            <h2 className="text-sm font-medium text-gray-700">
-              Spans ({spans.length})
-            </h2>
-          </div>
-          <SpanTree
-            spans={spans}
-            selectedSpanId={selectedSpan?.id ?? null}
-            onSelectSpan={onSelectSpan}
-          />
-        </div>
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-600">
+                  Spans ({spans.length})
+                </h2>
+              </div>
+              <div className="h-[32rem] overflow-y-auto">
+                <SpanTree
+                  spans={spans}
+                  selectedSpanId={selectedSpan?.id ?? null}
+                  onSelectSpan={onSelectSpan}
+                />
+              </div>
+            </section>
 
-        {/* Right panel - span detail */}
-        <div className="w-1/2 bg-white overflow-hidden">
-          <SpanDetail span={selectedSpan} />
+            <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-600">
+                  {selectedSpan ? selectedSpan.name : 'Span Details'}
+                </h2>
+              </div>
+              <div className="h-[32rem]">
+                <SpanDetail span={selectedSpan} />
+              </div>
+            </section>
+          </div>
+
+          <Timeline
+            events={timelineEvents}
+            traceStatus={timelineStatus}
+            isLive={pollingEnabled}
+            isLoading={!timelineSnapshot && timelineBootstrapQuery.isLoading}
+            error={resolveTimelineError(
+              timelineSnapshot,
+              timelineBootstrapQuery.error,
+              timelinePollQuery.error,
+              timelineTerminalRefreshQuery.error
+            )}
+            selectedSpanId={selectedSpan?.span_id ?? null}
+            onSelectSpan={(spanId) => {
+              const span = spans.find((candidate) => candidate.span_id === spanId) ?? null;
+              if (span) {
+                onSelectSpan(span);
+              }
+            }}
+          />
         </div>
       </div>
     </div>
   );
+}
+
+async function fetchFullTimelineSnapshot(traceId: string): Promise<TimelineSnapshot> {
+  let after: string | undefined;
+  let pollCursor: string | null = null;
+  let traceStatus: TimelineTraceStatus = 'RUNNING';
+  let events: TimelineEvent[] = [];
+
+  while (true) {
+    const page = await fetchTimelineEvents(traceId, {
+      after,
+      limit: TIMELINE_PAGE_LIMIT,
+    });
+
+    events = mergeTimelineEvents(events, page.events);
+    traceStatus = page.trace_status;
+
+    if (page.poll_cursor) {
+      pollCursor = page.poll_cursor;
+    }
+    if (!page.has_more || !page.next_cursor) {
+      break;
+    }
+
+    after = page.next_cursor;
+  }
+
+  return {
+    events,
+    traceStatus,
+    pollCursor,
+  };
+}
+
+function resolveTimelineError(
+  timelineSnapshot: TimelineSnapshot | null,
+  bootstrapError: unknown,
+  pollError: unknown,
+  terminalRefreshError: unknown
+): string | null {
+  if (!timelineSnapshot) {
+    return queryErrorMessage(bootstrapError ?? terminalRefreshError);
+  }
+
+  return queryErrorMessage(pollError ?? terminalRefreshError);
+}
+
+function queryErrorMessage(error: unknown): string | null {
+  if (!error) {
+    return null;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return 'Unknown timeline error';
 }

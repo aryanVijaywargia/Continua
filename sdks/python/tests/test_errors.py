@@ -513,3 +513,116 @@ class TestSpanHelperMethods:
             assert event2.get("level") == "debug"
             assert event2.get("payload") == {"count": 42, "items": ["a", "b"]}
             client.shutdown()
+
+    def test_error_event_helper(self):
+        """Scenario: Error event
+        WHEN span.error(message, payload) is called
+        THEN an error event is recorded on the span with event_type="error" and level="error"
+        """
+        with patch("continua.client.httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            from continua import Continua, trace
+            from continua.span import span
+
+            Continua._instance = None
+            client = Continua.init(api_key="test-key", endpoint="http://localhost:8080")
+
+            @trace()
+            def my_agent():
+                with span("error_step") as s:
+                    s.error("something went wrong", payload={"code": 500})
+
+            my_agent()
+
+            assert len(client._batch._events) == 1
+
+            event = client._batch._events[0]
+            assert event.get("trace_id") is not None
+            assert event.get("span_id") is not None
+            assert event.get("event_type") == "error"
+            assert event.get("level") == "error"
+            assert event.get("message") == "something went wrong"
+            assert event.get("payload") == {"code": 500}
+            client.shutdown()
+
+    def test_exception_event_helper(self):
+        """Scenario: Exception capture
+        WHEN span.exception(exc, payload) is called
+        THEN an exception event is recorded with exception details merged into payload
+        """
+        with patch("continua.client.httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            from continua import Continua, trace
+            from continua.span import span
+
+            Continua._instance = None
+            client = Continua.init(api_key="test-key", endpoint="http://localhost:8080")
+
+            @trace()
+            def my_agent():
+                with span("exception_step") as s:
+                    try:
+                        raise ValueError("bad input")
+                    except ValueError as exc:
+                        s.exception(exc, payload={"context": "during retry"})
+
+            my_agent()
+
+            assert len(client._batch._events) == 1
+
+            event = client._batch._events[0]
+            payload = event.get("payload")
+            assert event.get("event_type") == "exception"
+            assert event.get("level") == "error"
+            assert event.get("message") == "bad input"
+            assert payload["context"] == "during retry"
+            assert payload["exception_type"] == "ValueError"
+            assert payload["exception_message"] == "bad input"
+            assert "ValueError: bad input" in payload["traceback"]
+            client.shutdown()
+
+    def test_metric_event_helper(self):
+        """Scenario: Metric recording
+        WHEN span.metric(name, value, unit, payload) is called
+        THEN a metric event is recorded with metric fields merged into payload
+        """
+        with patch("continua.client.httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            from continua import Continua, trace
+            from continua.span import span
+
+            Continua._instance = None
+            client = Continua.init(api_key="test-key", endpoint="http://localhost:8080")
+
+            @trace()
+            def my_agent():
+                with span("metric_step") as s:
+                    s.metric("latency_ms", 42.5, "ms", payload={"model": "gpt-4"})
+                    s.metric("retry_count", 3)
+
+            my_agent()
+
+            assert len(client._batch._events) == 2
+
+            first_metric = client._batch._events[0]
+            assert first_metric.get("event_type") == "metric"
+            assert first_metric.get("level") == "info"
+            assert first_metric.get("payload") == {
+                "model": "gpt-4",
+                "metric_name": "latency_ms",
+                "metric_value": 42.5,
+                "metric_unit": "ms",
+            }
+
+            second_metric = client._batch._events[1]
+            assert second_metric.get("payload") == {
+                "metric_name": "retry_count",
+                "metric_value": 3,
+            }
+            client.shutdown()

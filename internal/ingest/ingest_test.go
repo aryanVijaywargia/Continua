@@ -91,6 +91,52 @@ func TestIngest_RejectsTotalTokensOnlySpan(t *testing.T) {
 	assert.Contains(t, vErr.Errors[0], "unsupported token format")
 }
 
+func TestIngest_RejectsSyntheticTimelineEventTypes(t *testing.T) {
+	svc := ingest.NewService(nil, nil)
+
+	eventType := "span_started"
+	resp, err := svc.Ingest(context.Background(), uuid.New(), &ingest.IngestRequest{
+		BatchKey: "batch-1",
+		Events: []ingest.EventInput{
+			{
+				TraceID:   "trace-1",
+				SpanID:    "span-1",
+				EventType: &eventType,
+			},
+		},
+	})
+
+	require.Nil(t, resp)
+	require.Error(t, err)
+
+	var vErr *ingest.ValidationError
+	require.ErrorAs(t, err, &vErr)
+	assert.Contains(t, vErr.Errors, "event[0] invalid event_type: span_started")
+}
+
+func TestIngest_RejectsInvalidEventLevel(t *testing.T) {
+	svc := ingest.NewService(nil, nil)
+
+	level := "verbose"
+	resp, err := svc.Ingest(context.Background(), uuid.New(), &ingest.IngestRequest{
+		BatchKey: "batch-1",
+		Events: []ingest.EventInput{
+			{
+				TraceID: "trace-1",
+				SpanID:  "span-1",
+				Level:   &level,
+			},
+		},
+	})
+
+	require.Nil(t, resp)
+	require.Error(t, err)
+
+	var vErr *ingest.ValidationError
+	require.ErrorAs(t, err, &vErr)
+	assert.Contains(t, vErr.Errors, "event[0] invalid level: verbose")
+}
+
 func TestIngest_AcceptsNonUUIDSessionKey(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()

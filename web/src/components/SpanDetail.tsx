@@ -1,5 +1,6 @@
 import { Span } from '../api/client';
 import { StatusBadge } from './StatusBadge';
+import { JsonViewer } from './JsonViewer';
 import { formatDuration, formatTokens, formatCost } from '../utils/format';
 
 interface SpanDetailProps {
@@ -145,17 +146,5 @@ function MetricCard({ label, value }: MetricCardProps) {
       <div className="text-xl font-semibold text-gray-900">{value}</div>
       <div className="text-xs text-gray-500 mt-1">{label}</div>
     </div>
-  );
-}
-
-interface JsonViewerProps {
-  data: unknown;
-}
-
-function JsonViewer({ data }: JsonViewerProps) {
-  return (
-    <pre className="bg-gray-50 border rounded p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto">
-      {JSON.stringify(data ?? null, null, 2)}
-    </pre>
   );
 }

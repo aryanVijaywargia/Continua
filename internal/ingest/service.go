@@ -248,9 +248,33 @@ func (s *Service) validateBatch(req *IngestRequest) []string {
 		if event.SpanID == "" {
 			errs = append(errs, fmt.Sprintf("event[%d] missing required field: span_id", i))
 		}
+		if event.EventType != nil && !isValidIngestEventType(*event.EventType) {
+			errs = append(errs, fmt.Sprintf("event[%d] invalid event_type: %s", i, *event.EventType))
+		}
+		if event.Level != nil && !isValidIngestEventLevel(*event.Level) {
+			errs = append(errs, fmt.Sprintf("event[%d] invalid level: %s", i, *event.Level))
+		}
 	}
 
 	return errs
+}
+
+func isValidIngestEventType(eventType string) bool {
+	switch eventType {
+	case "log", "error", "exception", "message", "metric", "custom":
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidIngestEventLevel(level string) bool {
+	switch level {
+	case "debug", "info", "warning", "error":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) upsertTrace(ctx context.Context, tx *store.Tx, projectID uuid.UUID, input *TraceInput) (uuid.UUID, error) {

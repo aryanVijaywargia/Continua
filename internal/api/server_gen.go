@@ -18,22 +18,22 @@ const (
 	ApiKeyScopes = "apiKey.Scopes"
 )
 
-// Defines values for IngestEventInputEventType.
+// Defines values for IngestEventLevel.
 const (
-	IngestEventInputEventTypeCustom    IngestEventInputEventType = "custom"
-	IngestEventInputEventTypeError     IngestEventInputEventType = "error"
-	IngestEventInputEventTypeException IngestEventInputEventType = "exception"
-	IngestEventInputEventTypeLog       IngestEventInputEventType = "log"
-	IngestEventInputEventTypeMessage   IngestEventInputEventType = "message"
-	IngestEventInputEventTypeMetric    IngestEventInputEventType = "metric"
+	IngestEventLevelDebug   IngestEventLevel = "debug"
+	IngestEventLevelError   IngestEventLevel = "error"
+	IngestEventLevelInfo    IngestEventLevel = "info"
+	IngestEventLevelWarning IngestEventLevel = "warning"
 )
 
-// Defines values for IngestEventInputLevel.
+// Defines values for IngestEventType.
 const (
-	IngestEventInputLevelDebug   IngestEventInputLevel = "debug"
-	IngestEventInputLevelError   IngestEventInputLevel = "error"
-	IngestEventInputLevelInfo    IngestEventInputLevel = "info"
-	IngestEventInputLevelWarning IngestEventInputLevel = "warning"
+	IngestEventTypeCustom    IngestEventType = "custom"
+	IngestEventTypeError     IngestEventType = "error"
+	IngestEventTypeException IngestEventType = "exception"
+	IngestEventTypeLog       IngestEventType = "log"
+	IngestEventTypeMessage   IngestEventType = "message"
+	IngestEventTypeMetric    IngestEventType = "metric"
 )
 
 // Defines values for IngestResponseStatus.
@@ -95,11 +95,45 @@ const (
 	SpanStatusSTARTED   SpanStatus = "STARTED"
 )
 
+// Defines values for TimelineEventLevel.
+const (
+	TimelineEventLevelDebug   TimelineEventLevel = "debug"
+	TimelineEventLevelError   TimelineEventLevel = "error"
+	TimelineEventLevelInfo    TimelineEventLevel = "info"
+	TimelineEventLevelWarning TimelineEventLevel = "warning"
+)
+
+// Defines values for TimelineEventSource.
+const (
+	Explicit  TimelineEventSource = "explicit"
+	Synthetic TimelineEventSource = "synthetic"
+)
+
+// Defines values for TimelineEventType.
+const (
+	TimelineEventTypeCustom        TimelineEventType = "custom"
+	TimelineEventTypeError         TimelineEventType = "error"
+	TimelineEventTypeException     TimelineEventType = "exception"
+	TimelineEventTypeLog           TimelineEventType = "log"
+	TimelineEventTypeMessage       TimelineEventType = "message"
+	TimelineEventTypeMetric        TimelineEventType = "metric"
+	TimelineEventTypeSpanCompleted TimelineEventType = "span_completed"
+	TimelineEventTypeSpanFailed    TimelineEventType = "span_failed"
+	TimelineEventTypeSpanStarted   TimelineEventType = "span_started"
+)
+
+// Defines values for TimelineResponseTraceStatus.
+const (
+	TimelineResponseTraceStatusCOMPLETED TimelineResponseTraceStatus = "COMPLETED"
+	TimelineResponseTraceStatusFAILED    TimelineResponseTraceStatus = "FAILED"
+	TimelineResponseTraceStatusRUNNING   TimelineResponseTraceStatus = "RUNNING"
+)
+
 // Defines values for TraceStatus.
 const (
-	TraceStatusCOMPLETED TraceStatus = "COMPLETED"
-	TraceStatusFAILED    TraceStatus = "FAILED"
-	TraceStatusRUNNING   TraceStatus = "RUNNING"
+	COMPLETED TraceStatus = "COMPLETED"
+	FAILED    TraceStatus = "FAILED"
+	RUNNING   TraceStatus = "RUNNING"
 )
 
 // Defines values for ListTracesParamsStatus.
@@ -117,12 +151,12 @@ type Error struct {
 
 // IngestEventInput defines model for IngestEventInput.
 type IngestEventInput struct {
-	EventTs   *time.Time                 `json:"event_ts,omitempty"`
-	EventType *IngestEventInputEventType `json:"event_type,omitempty"`
+	EventTs   *time.Time       `json:"event_ts,omitempty"`
+	EventType *IngestEventType `json:"event_type,omitempty"`
 
 	// IdempotencyKey Optional key for event-level deduplication
 	IdempotencyKey *string                 `json:"idempotency_key,omitempty"`
-	Level          *IngestEventInputLevel  `json:"level,omitempty"`
+	Level          *IngestEventLevel       `json:"level,omitempty"`
 	Message        *string                 `json:"message,omitempty"`
 	Payload        *map[string]interface{} `json:"payload,omitempty"`
 	Sequence       *int32                  `json:"sequence,omitempty"`
@@ -134,11 +168,11 @@ type IngestEventInput struct {
 	TraceId string `json:"trace_id"`
 }
 
-// IngestEventInputEventType defines model for IngestEventInput.EventType.
-type IngestEventInputEventType string
+// IngestEventLevel defines model for IngestEventLevel.
+type IngestEventLevel string
 
-// IngestEventInputLevel defines model for IngestEventInput.Level.
-type IngestEventInputLevel string
+// IngestEventType defines model for IngestEventType.
+type IngestEventType string
 
 // IngestRequest defines model for IngestRequest.
 type IngestRequest struct {
@@ -310,6 +344,54 @@ type SpanList struct {
 	Spans []Span `json:"spans"`
 }
 
+// TimelineEvent defines model for TimelineEvent.
+type TimelineEvent struct {
+	EventType TimelineEventType `json:"event_type"`
+
+	// Id Opaque event identifier. Explicit events use persisted UUIDs; synthetic events use deterministic span-based IDs.
+	Id      string              `json:"id"`
+	Level   *TimelineEventLevel `json:"level,omitempty"`
+	Message *string             `json:"message,omitempty"`
+
+	// Payload Event payload details for explicit events and helper metadata for synthetic events
+	Payload *map[string]interface{} `json:"payload,omitempty"`
+
+	// Sequence Explicit-event ordering value used to preserve same-timestamp ingest order. Absent for synthetic events.
+	Sequence *int32              `json:"sequence,omitempty"`
+	Source   TimelineEventSource `json:"source"`
+
+	// SpanId External span identifier for the related span
+	SpanId    *string            `json:"span_id,omitempty"`
+	SpanName  *string            `json:"span_name,omitempty"`
+	Timestamp time.Time          `json:"timestamp"`
+	TraceId   openapi_types.UUID `json:"trace_id"`
+}
+
+// TimelineEventLevel defines model for TimelineEventLevel.
+type TimelineEventLevel string
+
+// TimelineEventSource defines model for TimelineEventSource.
+type TimelineEventSource string
+
+// TimelineEventType defines model for TimelineEventType.
+type TimelineEventType string
+
+// TimelineResponse defines model for TimelineResponse.
+type TimelineResponse struct {
+	Events  []TimelineEvent `json:"events"`
+	HasMore bool            `json:"has_more"`
+
+	// NextCursor Opaque cursor for the next page when `has_more` is true
+	NextCursor *string `json:"next_cursor,omitempty"`
+
+	// PollCursor Opaque cursor representing the last event included in this response. Use for incremental polling even when `has_more` is false.
+	PollCursor  *string                     `json:"poll_cursor,omitempty"`
+	TraceStatus TimelineResponseTraceStatus `json:"trace_status"`
+}
+
+// TimelineResponseTraceStatus defines model for TimelineResponse.TraceStatus.
+type TimelineResponseTraceStatus string
+
 // Trace defines model for Trace.
 type Trace struct {
 	EndedAt *time.Time `json:"ended_at,omitempty"`
@@ -373,6 +455,15 @@ type ListTracesParams struct {
 // ListTracesParamsStatus defines parameters for ListTraces.
 type ListTracesParamsStatus string
 
+// GetTraceEventsParams defines parameters for GetTraceEvents.
+type GetTraceEventsParams struct {
+	// After Opaque cursor returned by a previous timeline response
+	After *string `form:"after,omitempty" json:"after,omitempty"`
+
+	// Limit Maximum number of timeline events to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // IngestParams defines parameters for Ingest.
 type IngestParams struct {
 	// Sync If true, wait for processing to complete before returning
@@ -396,6 +487,9 @@ type ServerInterface interface {
 	// Get a trace by ID
 	// (GET /api/traces/{id})
 	GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// List timeline events for a trace
+	// (GET /api/traces/{id}/events)
+	GetTraceEvents(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceEventsParams)
 	// List spans for a trace
 	// (GET /api/traces/{id}/spans)
 	ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -429,6 +523,12 @@ func (_ Unimplemented) ListTraces(w http.ResponseWriter, r *http.Request, params
 // Get a trace by ID
 // (GET /api/traces/{id})
 func (_ Unimplemented) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List timeline events for a trace
+// (GET /api/traces/{id}/events)
+func (_ Unimplemented) GetTraceEvents(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceEventsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -661,6 +761,56 @@ func (siw *ServerInterfaceWrapper) GetTrace(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// GetTraceEvents operation middleware
+func (siw *ServerInterfaceWrapper) GetTraceEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTraceEventsParams
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "after", r.URL.Query(), &params.After)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTraceEvents(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSpansByTrace operation middleware
 func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *http.Request) {
 
@@ -849,6 +999,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/traces/{id}", wrapper.GetTrace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/traces/{id}/events", wrapper.GetTraceEvents)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/traces/{id}/spans", wrapper.ListSpansByTrace)

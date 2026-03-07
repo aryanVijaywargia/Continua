@@ -13,18 +13,33 @@ Usage:
     uv run python examples/e2e_demo.py
 """
 
-import time
+import os
 import random
-import httpx
+import time
 from datetime import datetime
 
+import httpx
+
 # Import the SDK
-from continua import Continua, trace, span
+from continua import Continua, session, span, trace
 
 
 # Configuration
-API_URL = "http://localhost:8081"
-API_KEY = "test-api-key-12345"
+API_URL = os.environ.get("CONTINUA_ENDPOINT", "http://localhost:8080")
+API_KEY = os.environ.get("CONTINUA_API_KEY", "")
+DEMO_RUN_ID = os.environ.get(
+    "CONTINUA_DEMO_RUN_ID",
+    datetime.now().strftime("%Y%m%d%H%M%S"),
+)
+SESSION_IDS = [
+    f"demo-sdk-{DEMO_RUN_ID}-research",
+    f"demo-sdk-{DEMO_RUN_ID}-incident",
+]
+SAMPLE_CODE = """
+def hello_world():
+    print("Hello, World!")
+    return True
+"""
 
 
 def simulate_llm_call(prompt: str) -> str:
@@ -58,6 +73,7 @@ def run_research_agent(query: str):
     # Step 1: Planning span
     with span("plan_research", kind="llm") as s:
         s.set_input({"query": query, "instruction": "Create a research plan"})
+        s.log("Planning research steps", payload={"query": query})
         plan = simulate_llm_call(f"Plan research for: {query}")
         s.set_output({"plan": plan})
         s.set_tokens(prompt=50, completion=100)
@@ -84,6 +100,7 @@ def run_research_agent(query: str):
         s.set_output({"synthesis": synthesis, "confidence": 0.85})
         s.set_tokens(prompt=200, completion=300)
         s.set_model("gpt-4", provider="openai")
+        s.metric("confidence_score", 0.85, payload={"stage": "synthesis"})
         print("    - Synthesized results")
 
     return {"status": "completed", "query": query}
@@ -136,6 +153,7 @@ def run_code_review_agent(code: str):
 def run_failing_agent():
     """Simulate an agent that encounters an error."""
     print("  Starting failing agent (intentional error)")
+    error_message = "Failed to reach external service"
 
     with span("initial_step", kind="llm") as s:
         s.set_input({"task": "process data"})
@@ -147,75 +165,165 @@ def run_failing_agent():
         s.set_input({"operation": "risky_operation"})
         time.sleep(0.1)
         # Simulate an error
-        s.set_error("Connection timeout: Failed to reach external service")
+        try:
+            raise TimeoutError(error_message)
+        except TimeoutError as exc:
+            s.error("Connection timeout", payload={"operation": "risky_operation"})
+            s.exception(exc, payload={"operation": "risky_operation"})
+            s.set_error("Connection timeout: Failed to reach external service")
         s.set_output({"status": "failed"})
         print("    - Encountered error (expected)")
 
-    return {"status": "failed", "error": "Connection timeout"}
+    raise TimeoutError(error_message)
 
 
-def verify_traces():
-    """Verify traces were captured by querying the API."""
+def api_headers() -> dict[str, str]:
+    """Build API headers for verification requests."""
+    return {"X-API-Key": API_KEY}
+
+
+def resolve_api_key() -> str:
+    """Resolve a working local demo API key.
+
+    Fresh local databases accept `default` after the hash-fix migration.
+    Older persisted dev volumes may still use `test-api-key-12345`.
+    """
+    candidates = []
+    if API_KEY:
+        candidates.append(API_KEY)
+    candidates.extend(["default", "test-api-key-12345"])
+
+    seen = set()
+    deduped_candidates = []
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            deduped_candidates.append(candidate)
+            seen.add(candidate)
+
+    with httpx.Client(timeout=5.0) as client:
+        for candidate in deduped_candidates:
+            try:
+                response = client.get(
+                    f"{API_URL}/api/traces",
+                    headers={"X-API-Key": candidate},
+                    params={"limit": 1, "offset": 0},
+                )
+            except httpx.RequestError:
+                continue
+
+            if response.status_code == 200:
+                return candidate
+
+    tried = ", ".join(deduped_candidates)
+    raise RuntimeError(f"Could not resolve a working API key. Tried: {tried}")
+
+
+def fetch_json(
+    client: httpx.Client,
+    path: str,
+    *,
+    params: dict[str, str | int] | None = None,
+) -> dict:
+    """Fetch and decode a JSON document from the Continua API."""
+    response = client.get(f"{API_URL}{path}", headers=api_headers(), params=params)
+    response.raise_for_status()
+    return response.json()
+
+
+def verify_demo_data() -> bool:
+    """Verify the demo sessions, traces, and timeline events exist."""
     print("\n" + "=" * 60)
-    print("VERIFICATION: Querying API for traces")
+    print("VERIFICATION: Querying API for demo sessions and traces")
     print("=" * 60)
 
     try:
-        with httpx.Client() as client:
-            # Fetch traces
-            response = client.get(
-                f"{API_URL}/api/traces",
-                headers={"X-API-Key": API_KEY},
-                params={"limit": 10}
+        with httpx.Client(timeout=10.0) as client:
+            sessions_payload = fetch_json(
+                client,
+                "/api/sessions",
+                params={"limit": 20, "offset": 0},
             )
-            response.raise_for_status()
-            data = response.json()
+            sessions = {
+                session_obj["external_id"]: session_obj
+                for session_obj in sessions_payload.get("sessions", [])
+                if session_obj.get("external_id") in SESSION_IDS
+            }
 
-            traces = data.get("traces", [])
-            total = data.get("total", 0)
+            missing_sessions = [session_id for session_id in SESSION_IDS if session_id not in sessions]
+            if missing_sessions:
+                print(f"ERROR: Missing demo sessions: {missing_sessions}")
+                return False
 
-            print(f"\nFound {total} trace(s) in the system:")
+            print("\nCreated sessions:")
             print("-" * 60)
 
-            for t in traces:
-                status = t.get("status", "unknown")
-                # API returns uppercase (COMPLETED, FAILED, RUNNING)
-                status_icon = "✓" if status == "COMPLETED" else "✗"
-                print(f"  {status_icon} {t['name']}")
-                print(f"    ID: {t['id'][:8]}...")
-                print(f"    Status: {t.get('status', 'unknown')}")
-                print(f"    Tokens: {(t.get('total_tokens_in') or 0) + (t.get('total_tokens_out') or 0)}")
-
-                # Fetch spans for this trace
-                spans_resp = client.get(
-                    f"{API_URL}/api/traces/{t['id']}/spans",
-                    headers={"X-API-Key": API_KEY}
+            first_trace_id: str | None = None
+            for session_id in SESSION_IDS:
+                session_obj = sessions[session_id]
+                print(
+                    f"  • {session_obj['external_id']} "
+                    f"(trace_count={session_obj.get('trace_count', 0)})"
                 )
-                if spans_resp.status_code == 200:
-                    spans_data = spans_resp.json()
-                    span_count = len(spans_data.get("spans", []))
-                    print(f"    Spans: {span_count}")
-                print()
+                traces_payload = fetch_json(
+                    client,
+                    "/api/traces",
+                    params={
+                        "session_id": session_obj["id"],
+                        "limit": 10,
+                        "offset": 0,
+                    },
+                )
+                traces = traces_payload.get("traces", [])
+                if not traces:
+                    print("    ERROR: Session exists but no traces were returned")
+                    return False
 
-            return True
+                for trace_obj in traces:
+                    status = trace_obj.get("status", "UNKNOWN")
+                    status_icon = "✓" if status == "COMPLETED" else "✗"
+                    print(f"    {status_icon} {trace_obj['name']} ({status})")
+                    if first_trace_id is None:
+                        first_trace_id = trace_obj["id"]
+
+            if first_trace_id is None:
+                print("ERROR: No trace ID available to verify timeline events")
+                return False
+
+            timeline_payload = fetch_json(
+                client,
+                f"/api/traces/{first_trace_id}/events",
+                params={"limit": 20},
+            )
+            events = timeline_payload.get("events", [])
+            print("-" * 60)
+            print(f"Timeline check: trace {first_trace_id[:8]}... returned {len(events)} event(s)")
+
+            return len(events) > 0
 
     except httpx.HTTPError as e:
-        print(f"ERROR: Failed to verify traces: {e}")
+        print(f"ERROR: Failed to verify demo data: {e}")
         return False
 
 
 def main():
     """Run the E2E demo."""
+    global API_KEY
+
+    random.seed(42)
+    API_KEY = resolve_api_key()
+
     print("=" * 60)
     print("Continua SDK End-to-End Demo")
     print("=" * 60)
     print(f"API URL: {API_URL}")
+    print(f"API key: {API_KEY}")
+    print(f"Demo run ID: {DEMO_RUN_ID}")
     print(f"Time: {datetime.now().isoformat()}")
     print()
 
     # Initialize SDK
     print("1. Initializing SDK...")
-    Continua.init(
+    client = Continua.init(
         api_key=API_KEY,
         endpoint=API_URL,
         flush_interval=1.0,  # Flush every second for demo
@@ -228,29 +336,31 @@ def main():
     print("2. Running demo agents...")
     print()
 
-    print("  [Agent 1: Research Agent]")
-    result1 = run_research_agent("What are the benefits of AI observability?")
-    print(f"  Result: {result1}")
-    print()
+    print(f"  [Session 1: {SESSION_IDS[0]}]")
+    with session(SESSION_IDS[0]):
+        print("  [Agent 1: Research Agent]")
+        result1 = run_research_agent("What are the benefits of AI observability?")
+        print(f"  Result: {result1}")
+        print()
 
-    print("  [Agent 2: Code Review Agent]")
-    sample_code = """
-def hello_world():
-    print("Hello, World!")
-    return True
-"""
-    result2 = run_code_review_agent(sample_code)
-    print(f"  Result: {result2}")
-    print()
+        print("  [Agent 2: Code Review Agent]")
+        result2 = run_code_review_agent(SAMPLE_CODE)
+        print(f"  Result: {result2}")
+        print()
 
-    print("  [Agent 3: Failing Agent]")
-    result3 = run_failing_agent()
-    print(f"  Result: {result3}")
-    print()
+    print(f"  [Session 2: {SESSION_IDS[1]}]")
+    with session(SESSION_IDS[1]):
+        print("  [Agent 3: Failing Agent]")
+        try:
+            run_failing_agent()
+        except TimeoutError as exc:
+            result3 = {"status": "failed", "error": str(exc)}
+        print(f"  Result: {result3}")
+        print()
 
     # Shutdown SDK (flushes remaining data)
     print("3. Shutting down SDK (flushing data)...")
-    Continua.get_instance().shutdown()
+    client.shutdown()
     print("   SDK shutdown complete")
 
     # Wait for data to be processed
@@ -258,19 +368,20 @@ def hello_world():
     time.sleep(2)
 
     # Verify
-    print("\n5. Verifying traces...")
-    success = verify_traces()
+    print("\n5. Verifying traces, sessions, and timeline...")
+    success = verify_demo_data()
 
     print("\n" + "=" * 60)
     if success:
         print("SUCCESS: E2E demo completed!")
         print("\nNext steps:")
         print("  1. Open http://localhost:3000/traces in your browser")
-        print("  2. Enter API key: test-api-key-12345")
-        print("  3. View the traces and click to see span details")
+        print(f"  2. Enter API key: {API_KEY}")
+        print("  3. Open /sessions to see the new session groups")
+        print(f"  4. Look for session IDs starting with demo-sdk-{DEMO_RUN_ID}")
     else:
         print("WARNING: Demo completed but verification failed")
-        print("Check that the server is running on port 8081")
+        print(f"Check that the server is running on {API_URL}")
     print("=" * 60)
 
 
