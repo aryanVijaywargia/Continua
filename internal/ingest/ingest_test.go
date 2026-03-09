@@ -11,12 +11,30 @@ import (
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
 	"github.com/continua-ai/continua/internal/ingest"
+	"github.com/continua-ai/continua/internal/jobs"
 	"github.com/continua-ai/continua/internal/store"
 	"github.com/continua-ai/continua/internal/testutil"
 )
 
+func newTestService(s *store.Store) *ingest.Service {
+	return ingest.NewService(s, nil, ingest.NewProcessor(s, nil), nil)
+}
+
+func newAsyncTestService(t *testing.T, s *store.Store) *ingest.Service {
+	t.Helper()
+
+	client, err := jobs.NewClient(testutil.TestDB(t), s, ingest.NewProcessor(s, nil), nil)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = client.Stop(context.Background())
+	})
+
+	return ingest.NewService(s, client, ingest.NewProcessor(s, nil), nil)
+}
+
 func TestIngest_RejectsMissingBatchKey(t *testing.T) {
-	svc := ingest.NewService(nil, nil)
+	svc := newTestService(nil)
 
 	resp, err := svc.Ingest(context.Background(), uuid.New(), &ingest.IngestRequest{})
 	require.Nil(t, resp)
@@ -28,7 +46,7 @@ func TestIngest_RejectsMissingBatchKey(t *testing.T) {
 }
 
 func TestIngest_RejectsInvalidBatchBeforeDBAccess(t *testing.T) {
-	svc := ingest.NewService(nil, nil)
+	svc := newTestService(nil)
 
 	resp, err := svc.Ingest(context.Background(), uuid.New(), &ingest.IngestRequest{
 		BatchKey: "batch-1",
@@ -66,7 +84,7 @@ func TestIngest_RejectsInvalidBatchBeforeDBAccess(t *testing.T) {
 }
 
 func TestIngest_RejectsTotalTokensOnlySpan(t *testing.T) {
-	svc := ingest.NewService(nil, nil)
+	svc := newTestService(nil)
 
 	total := int64(123)
 	resp, err := svc.Ingest(context.Background(), uuid.New(), &ingest.IngestRequest{
@@ -92,7 +110,7 @@ func TestIngest_RejectsTotalTokensOnlySpan(t *testing.T) {
 }
 
 func TestIngest_RejectsSyntheticTimelineEventTypes(t *testing.T) {
-	svc := ingest.NewService(nil, nil)
+	svc := newTestService(nil)
 
 	eventType := "span_started"
 	resp, err := svc.Ingest(context.Background(), uuid.New(), &ingest.IngestRequest{
@@ -115,7 +133,7 @@ func TestIngest_RejectsSyntheticTimelineEventTypes(t *testing.T) {
 }
 
 func TestIngest_RejectsInvalidEventLevel(t *testing.T) {
-	svc := ingest.NewService(nil, nil)
+	svc := newTestService(nil)
 
 	level := "verbose"
 	resp, err := svc.Ingest(context.Background(), uuid.New(), &ingest.IngestRequest{
@@ -141,7 +159,7 @@ func TestIngest_AcceptsNonUUIDSessionKey(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	s := store.New(pool)
-	svc := ingest.NewService(s, nil)
+	svc := newTestService(s)
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
@@ -177,7 +195,7 @@ func TestIngest_UUIDLookingSessionKeyIsTreatedAsExternalID(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	s := store.New(pool)
-	svc := ingest.NewService(s, nil)
+	svc := newTestService(s)
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
@@ -207,4 +225,62 @@ func TestIngest_UUIDLookingSessionKeyIsTreatedAsExternalID(t *testing.T) {
 	session, err := q.GetSession(ctx, trace.SessionID.Bytes)
 	require.NoError(t, err)
 	assert.Equal(t, sessionKey, session.ExternalID)
+}
+
+func TestAcceptAsync_StoresPayloadAndReturnsAccepted(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	svc := newAsyncTestService(t, s)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	rawPayload := []byte(`{"batch_key":"batch-async","traces":[]}`)
+
+	resp, err := svc.AcceptAsync(ctx, projectID, &ingest.IngestRequest{
+		BatchKey: "batch-async",
+	}, rawPayload)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "accepted", resp.Status)
+	assert.NotEqual(t, uuid.Nil, resp.BatchID)
+
+	batch, err := s.GetBatch(ctx, resp.BatchID)
+	require.NoError(t, err)
+	assert.Equal(t, "queued", batch.Status)
+
+	payload, err := s.GetBatchPayload(ctx, resp.BatchID)
+	require.NoError(t, err)
+	assert.Equal(t, int32(len(rawPayload)), payload.ByteSize)
+
+	decoded, err := ingest.DecompressPayload(payload.PayloadBytes)
+	require.NoError(t, err)
+	assert.Equal(t, rawPayload, decoded)
+}
+
+func TestAcceptAsync_DuplicateReturnsExistingBatchID(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	svc := newAsyncTestService(t, s)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	req := &ingest.IngestRequest{BatchKey: "batch-dup-async"}
+	rawPayload := []byte(`{"batch_key":"batch-dup-async"}`)
+
+	first, err := svc.AcceptAsync(ctx, projectID, req, rawPayload)
+	require.NoError(t, err)
+
+	second, err := svc.AcceptAsync(ctx, projectID, req, rawPayload)
+	require.NoError(t, err)
+
+	assert.Equal(t, "duplicate", second.Status)
+	assert.Equal(t, first.BatchID, second.BatchID)
+
+	payload, err := s.GetBatchPayload(ctx, first.BatchID)
+	require.NoError(t, err)
+	decoded, err := ingest.DecompressPayload(payload.PayloadBytes)
+	require.NoError(t, err)
+	assert.Equal(t, rawPayload, decoded)
 }

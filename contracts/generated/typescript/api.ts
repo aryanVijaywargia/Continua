@@ -27,6 +27,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ingest/batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get ingest batch status
+         * @description Poll the processing status of an ingest batch.
+         */
+        get: operations["getBatchStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/traces": {
         parameters: {
             query?: never;
@@ -366,6 +386,13 @@ export interface components {
              */
             status: "ok" | "accepted" | "duplicate" | "failed";
             batch_key: string;
+            /**
+             * Format: uuid
+             * @description Stable batch identifier returned for sync responses, true-async acceptance,
+             *     and duplicates. It may be omitted for the legacy Stage A fake-async path.
+             *
+             */
+            batch_id?: string;
             /** Format: int32 */
             trace_count?: number;
             /** Format: int32 */
@@ -377,6 +404,33 @@ export interface components {
             /** Format: int32 */
             rejected_count?: number;
             errors?: string[];
+        };
+        BatchStatusResponse: {
+            /** Format: uuid */
+            batch_id: string;
+            batch_key: string;
+            /** @enum {string} */
+            status: "accepted" | "processing" | "completed" | "failed";
+            /** Format: int32 */
+            attempt_count: number;
+            /** Format: date-time */
+            server_received_at: string;
+            /** Format: date-time */
+            processing_started_at?: string;
+            /** Format: date-time */
+            processing_completed_at?: string;
+            /** Format: int32 */
+            trace_count?: number;
+            /** Format: int32 */
+            span_count?: number;
+            /** Format: int32 */
+            event_count?: number;
+            /** Format: int32 */
+            accepted_count?: number;
+            /** Format: int32 */
+            rejected_count?: number;
+            last_error_code?: string;
+            last_error_message?: string;
         };
     };
     responses: never;
@@ -393,7 +447,13 @@ export interface operations {
                 /** @description If true, wait for processing to complete before returning */
                 sync?: boolean;
             };
-            header?: never;
+            header?: {
+                /** @description Optional staged-rollout header for true async ingest.
+                 *     `2` enables durable async acceptance and background processing.
+                 *     Any other value is rejected with `400 unsupported_async_version`.
+                 *      */
+                "X-Continua-Async-Version"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -412,7 +472,16 @@ export interface operations {
                     "application/json": components["schemas"]["IngestResponse"];
                 };
             };
-            /** @description Invalid request body */
+            /** @description Batch accepted for asynchronous processing */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestResponse"];
+                };
+            };
+            /** @description Invalid request body or unsupported async version */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -437,6 +506,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SizeError"];
+                };
+            };
+        };
+    };
+    getBatchStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Batch status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchStatusResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Batch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

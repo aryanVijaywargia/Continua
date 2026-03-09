@@ -18,6 +18,14 @@ const (
 	ApiKeyScopes = "apiKey.Scopes"
 )
 
+// Defines values for BatchStatusResponseStatus.
+const (
+	BatchStatusResponseStatusAccepted   BatchStatusResponseStatus = "accepted"
+	BatchStatusResponseStatusCompleted  BatchStatusResponseStatus = "completed"
+	BatchStatusResponseStatusFailed     BatchStatusResponseStatus = "failed"
+	BatchStatusResponseStatusProcessing BatchStatusResponseStatus = "processing"
+)
+
 // Defines values for IngestEventLevel.
 const (
 	IngestEventLevelDebug   IngestEventLevel = "debug"
@@ -138,10 +146,31 @@ const (
 
 // Defines values for ListTracesParamsStatus.
 const (
-	ListTracesParamsStatusCompleted ListTracesParamsStatus = "completed"
-	ListTracesParamsStatusFailed    ListTracesParamsStatus = "failed"
-	ListTracesParamsStatusRunning   ListTracesParamsStatus = "running"
+	Completed ListTracesParamsStatus = "completed"
+	Failed    ListTracesParamsStatus = "failed"
+	Running   ListTracesParamsStatus = "running"
 )
+
+// BatchStatusResponse defines model for BatchStatusResponse.
+type BatchStatusResponse struct {
+	AcceptedCount         *int32                    `json:"accepted_count,omitempty"`
+	AttemptCount          int32                     `json:"attempt_count"`
+	BatchId               openapi_types.UUID        `json:"batch_id"`
+	BatchKey              string                    `json:"batch_key"`
+	EventCount            *int32                    `json:"event_count,omitempty"`
+	LastErrorCode         *string                   `json:"last_error_code,omitempty"`
+	LastErrorMessage      *string                   `json:"last_error_message,omitempty"`
+	ProcessingCompletedAt *time.Time                `json:"processing_completed_at,omitempty"`
+	ProcessingStartedAt   *time.Time                `json:"processing_started_at,omitempty"`
+	RejectedCount         *int32                    `json:"rejected_count,omitempty"`
+	ServerReceivedAt      time.Time                 `json:"server_received_at"`
+	SpanCount             *int32                    `json:"span_count,omitempty"`
+	Status                BatchStatusResponseStatus `json:"status"`
+	TraceCount            *int32                    `json:"trace_count,omitempty"`
+}
+
+// BatchStatusResponseStatus defines model for BatchStatusResponse.Status.
+type BatchStatusResponseStatus string
 
 // Error defines model for Error.
 type Error struct {
@@ -185,12 +214,16 @@ type IngestRequest struct {
 
 // IngestResponse defines model for IngestResponse.
 type IngestResponse struct {
-	AcceptedCount *int32    `json:"accepted_count,omitempty"`
-	BatchKey      string    `json:"batch_key"`
-	Errors        *[]string `json:"errors,omitempty"`
-	EventCount    *int32    `json:"event_count,omitempty"`
-	RejectedCount *int32    `json:"rejected_count,omitempty"`
-	SpanCount     *int32    `json:"span_count,omitempty"`
+	AcceptedCount *int32 `json:"accepted_count,omitempty"`
+
+	// BatchId Stable batch identifier returned for sync responses, true-async acceptance,
+	// and duplicates. It may be omitted for the legacy Stage A fake-async path.
+	BatchId       *openapi_types.UUID `json:"batch_id,omitempty"`
+	BatchKey      string              `json:"batch_key"`
+	Errors        *[]string           `json:"errors,omitempty"`
+	EventCount    *int32              `json:"event_count,omitempty"`
+	RejectedCount *int32              `json:"rejected_count,omitempty"`
+	SpanCount     *int32              `json:"span_count,omitempty"`
 
 	// Status Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
 	Status     IngestResponseStatus `json:"status"`
@@ -468,6 +501,11 @@ type GetTraceEventsParams struct {
 type IngestParams struct {
 	// Sync If true, wait for processing to complete before returning
 	Sync *bool `form:"sync,omitempty" json:"sync,omitempty"`
+
+	// XContinuaAsyncVersion Optional staged-rollout header for true async ingest.
+	// `2` enables durable async acceptance and background processing.
+	// Any other value is rejected with `400 unsupported_async_version`.
+	XContinuaAsyncVersion *string `json:"X-Continua-Async-Version,omitempty"`
 }
 
 // IngestJSONRequestBody defines body for Ingest for application/json ContentType.
@@ -496,6 +534,9 @@ type ServerInterface interface {
 	// Ingest traces, spans, and events
 	// (POST /v1/ingest)
 	Ingest(w http.ResponseWriter, r *http.Request, params IngestParams)
+	// Get ingest batch status
+	// (GET /v1/ingest/batches/{id})
+	GetBatchStatus(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -541,6 +582,12 @@ func (_ Unimplemented) ListSpansByTrace(w http.ResponseWriter, r *http.Request, 
 // Ingest traces, spans, and events
 // (POST /v1/ingest)
 func (_ Unimplemented) Ingest(w http.ResponseWriter, r *http.Request, params IngestParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get ingest batch status
+// (GET /v1/ingest/batches/{id})
+func (_ Unimplemented) GetBatchStatus(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -864,8 +911,60 @@ func (siw *ServerInterfaceWrapper) Ingest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Continua-Async-Version" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Async-Version")]; found {
+		var XContinuaAsyncVersion string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Async-Version", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Async-Version", valueList[0], &XContinuaAsyncVersion, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Async-Version", Err: err})
+			return
+		}
+
+		params.XContinuaAsyncVersion = &XContinuaAsyncVersion
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Ingest(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBatchStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetBatchStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBatchStatus(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1008,6 +1107,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/ingest", wrapper.Ingest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/ingest/batches/{id}", wrapper.GetBatchStatus)
 	})
 
 	return r

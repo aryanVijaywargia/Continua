@@ -34,6 +34,14 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: X-Continua-Async-Version
+          in: header
+          description: |
+            Optional staged-rollout header for true async ingest.
+            `2` enables durable async acceptance and background processing.
+            Any other value is rejected with `400 unsupported_async_version`.
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -47,8 +55,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IngestResponse'
+        '202':
+          description: Batch accepted for asynchronous processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
         '400':
-          description: Invalid request body
+          description: Invalid request body or unsupported async version
           content:
             application/json:
               schema:
@@ -65,6 +79,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SizeError'
+
+  /v1/ingest/batches/{id}:
+    get:
+      operationId: getBatchStatus
+      summary: Get ingest batch status
+      description: Poll the processing status of an ingest batch.
+      tags: [Ingest]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Batch status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStatusResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/traces:
     get:
@@ -721,6 +768,12 @@ components:
           description: Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
         batch_key:
           type: string
+        batch_id:
+          type: string
+          format: uuid
+          description: |
+            Stable batch identifier returned for sync responses, true-async acceptance,
+            and duplicates. It may be omitted for the legacy Stage A fake-async path.
         trace_count:
           type: integer
           format: int32
@@ -740,3 +793,47 @@ components:
           type: array
           items:
             type: string
+
+    BatchStatusResponse:
+      type: object
+      required: [batch_id, batch_key, status, attempt_count, server_received_at]
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+        batch_key:
+          type: string
+        status:
+          type: string
+          enum: [accepted, processing, completed, failed]
+        attempt_count:
+          type: integer
+          format: int32
+        server_received_at:
+          type: string
+          format: date-time
+        processing_started_at:
+          type: string
+          format: date-time
+        processing_completed_at:
+          type: string
+          format: date-time
+        trace_count:
+          type: integer
+          format: int32
+        span_count:
+          type: integer
+          format: int32
+        event_count:
+          type: integer
+          format: int32
+        accepted_count:
+          type: integer
+          format: int32
+        rejected_count:
+          type: integer
+          format: int32
+        last_error_code:
+          type: string
+        last_error_message:
+          type: string

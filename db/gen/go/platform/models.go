@@ -75,6 +75,20 @@ type IngestBatch struct {
 	AcceptedCount         *int32             `json:"accepted_count"`
 	RejectedCount         *int32             `json:"rejected_count"`
 	CreatedAt             time.Time          `json:"created_at"`
+	ProcessingStartedAt   pgtype.Timestamptz `json:"processing_started_at"`
+	AttemptCount          int32              `json:"attempt_count"`
+	LastErrorCode         *string            `json:"last_error_code"`
+	LastErrorMessage      *string            `json:"last_error_message"`
+	LastErrorAt           pgtype.Timestamptz `json:"last_error_at"`
+}
+
+type IngestBatchPayload struct {
+	BatchID      uuid.UUID `json:"batch_id"`
+	PayloadBytes []byte    `json:"payload_bytes"`
+	Compression  string    `json:"compression"`
+	ContentType  string    `json:"content_type"`
+	ByteSize     int32     `json:"byte_size"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Payload struct {

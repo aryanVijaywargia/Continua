@@ -11,6 +11,9 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"go.uber.org/fx"
 
+	"github.com/continua-ai/continua/internal/config"
+	"github.com/continua-ai/continua/internal/ingest"
+	"github.com/continua-ai/continua/internal/jobargs"
 	"github.com/continua-ai/continua/internal/store"
 )
 
@@ -35,25 +38,52 @@ func startWorker(lc fx.Lifecycle, client *river.Client[pgx.Tx]) {
 	})
 }
 
-// NewClient creates a new River client with the trace rollup worker registered.
-// The store is injected to allow the worker to compute rollups.
-func NewClient(pool *pgxpool.Pool, s *store.Store) (*river.Client[pgx.Tx], error) {
+// NewClient creates a new River client with the ingest, rollup, and cleanup workers registered.
+func NewClient(
+	pool *pgxpool.Pool,
+	s *store.Store,
+	processor *ingest.Processor,
+	cfg *config.Config,
+) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
 
-	// Create the worker with the store for rollup computation
-	worker := &TraceRollupWorker{store: s}
-	river.AddWorker(workers, worker)
+	ingestWorker := &IngestBatchWorker{store: s, processor: processor}
+	rollupWorker := &TraceRollupWorker{store: s}
+	cleanupWorker := &CleanupWorker{
+		store:            s,
+		payloadRetention: failedPayloadRetention(cfg),
+	}
+	river.AddWorker(workers, ingestWorker)
+	river.AddWorker(workers, rollupWorker)
+	river.AddWorker(workers, cleanupWorker)
 
-	// Job retention: keep completed/cancelled/discarded jobs for 7 days per spec
 	retentionPeriod := 7 * 24 * time.Hour
+	periodicJobs := []*river.PeriodicJob{
+		river.NewPeriodicJob(
+			river.PeriodicInterval(jobargs.CleanupInterval),
+			func() (river.JobArgs, *river.InsertOpts) {
+				args := jobargs.CleanupArgs{}
+				opts := args.InsertOpts()
+				return args, &opts
+			},
+			&river.PeriodicJobOpts{
+				ID:         "ingest-payload-cleanup",
+				RunOnStart: true,
+			},
+		),
+	}
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Queues: map[string]river.QueueConfig{
-			river.QueueDefault: {MaxWorkers: 10},
+			jobargs.QueueIngest:      {MaxWorkers: queueWorkers(cfg, func(c *config.Config) int { return c.Jobs.IngestWorkers }, 4)},
+			jobargs.QueueRollup:      {MaxWorkers: queueWorkers(cfg, func(c *config.Config) int { return c.Jobs.RollupWorkers }, 10)},
+			jobargs.QueueMaintenance: {MaxWorkers: queueWorkers(cfg, func(c *config.Config) int { return c.Jobs.MaintenanceWorkers }, 1)},
+			river.QueueDefault:       {MaxWorkers: queueWorkers(cfg, func(c *config.Config) int { return c.Jobs.DefaultWorkers }, 1)},
 		},
+		PeriodicJobs:                periodicJobs,
 		Workers:                     workers,
-		JobTimeout:                  30 * time.Second,
-		RescueStuckJobsAfter:        time.Hour,
+		JobTimeout:                  5 * time.Minute,
+		RescueStuckJobsAfter:        10 * time.Minute,
 		CancelledJobRetentionPeriod: retentionPeriod,
 		CompletedJobRetentionPeriod: retentionPeriod,
 		DiscardedJobRetentionPeriod: retentionPeriod,
@@ -62,5 +92,20 @@ func NewClient(pool *pgxpool.Pool, s *store.Store) (*river.Client[pgx.Tx], error
 		return nil, err
 	}
 
+	ingestWorker.client = client
 	return client, nil
+}
+
+func queueWorkers(cfg *config.Config, getter func(*config.Config) int, fallback int) int {
+	if cfg == nil {
+		return fallback
+	}
+	return getter(cfg)
+}
+
+func failedPayloadRetention(cfg *config.Config) time.Duration {
+	if cfg == nil || cfg.Ingest.FailedPayloadRetention <= 0 {
+		return 7 * 24 * time.Hour
+	}
+	return cfg.Ingest.FailedPayloadRetention
 }

@@ -26,6 +26,16 @@ _atexit_registered: bool = False
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_BASE_DELAY = 1.0  # seconds
 DEFAULT_MAX_DELAY = 30.0  # seconds
+DEFAULT_BATCH_POLL_INTERVAL = 1.0  # seconds
+
+INGEST_MODE_SYNC = "sync"
+INGEST_MODE_ASYNC_V2 = "async_v2"
+INGEST_MODE_SERVER_DEFAULT = "server_default"
+VALID_INGEST_MODES = {
+    INGEST_MODE_SYNC,
+    INGEST_MODE_ASYNC_V2,
+    INGEST_MODE_SERVER_DEFAULT,
+}
 
 
 def _module_shutdown() -> None:
@@ -65,6 +75,7 @@ class Continua:
         max_retries: int = DEFAULT_MAX_RETRIES,
         base_delay: float = DEFAULT_BASE_DELAY,
         max_delay: float = DEFAULT_MAX_DELAY,
+        ingest_mode: str = INGEST_MODE_SERVER_DEFAULT,
     ) -> None:
         """Create a new Continua client.
 
@@ -76,14 +87,24 @@ class Continua:
             max_retries: Maximum retry attempts for transient errors
             base_delay: Base delay for exponential backoff (seconds)
             max_delay: Maximum delay between retries (seconds)
+            ingest_mode: Ingest behavior. One of "sync", "async_v2", or
+                "server_default"
         """
         global _current_client, _atexit_registered
+
+        if ingest_mode not in VALID_INGEST_MODES:
+            msg = (
+                f"Invalid ingest_mode {ingest_mode!r}. "
+                f"Expected one of {sorted(VALID_INGEST_MODES)!r}"
+            )
+            raise ValueError(msg)
 
         self.api_key = api_key
         self.endpoint = endpoint.rstrip("/")
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
+        self.ingest_mode = ingest_mode
 
         self._client = httpx.Client(
             base_url=self.endpoint,
@@ -151,6 +172,29 @@ class Continua:
     def flush(self) -> None:
         """Flush all pending items immediately."""
         self._batch.flush()
+
+    def wait_for_batch(
+        self,
+        batch_id: str,
+        timeout: float = 30.0,
+        poll_interval: float = DEFAULT_BATCH_POLL_INTERVAL,
+    ) -> dict[str, Any]:
+        """Poll batch status until it reaches a terminal state or times out."""
+        deadline = time.monotonic() + timeout
+
+        while True:
+            response = self._request_with_retry(
+                "GET",
+                f"/v1/ingest/batches/{batch_id}",
+            )
+            data = response.json()
+            if data.get("status") in {"completed", "failed"}:
+                return data
+
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for batch {batch_id}")
+
+            time.sleep(poll_interval)
 
     def ingest(
         self,
@@ -225,17 +269,51 @@ class Continua:
             payload["events"] = events
 
         try:
-            self._send_with_retry("/v1/ingest", payload)
+            params, headers = self._ingest_request_options()
+            self._send_with_retry(
+                "/v1/ingest",
+                payload,
+                params=params,
+                headers=headers,
+            )
         except (AuthenticationError, ValidationError, RateLimitError, NetworkError) as e:
             # Log but don't raise - we don't want to crash the application
             print(f"Continua: Failed to send batch: {e}")
 
-    def _send_with_retry(self, path: str, payload: dict[str, Any]) -> httpx.Response:
+    def _send_with_retry(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        """Send a POST request with retry behavior."""
+        return self._request_with_retry(
+            "POST",
+            path,
+            json_payload=payload,
+            params=params,
+            headers=headers,
+        )
+
+    def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_payload: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
         """Send a request with exponential backoff retry.
 
         Args:
+            method: HTTP method to call
             path: API path to call
-            payload: JSON payload to send
+            json_payload: JSON payload to send for POST requests
+            params: Optional query parameters
+            headers: Optional per-request headers
 
         Returns:
             The successful response
@@ -250,7 +328,27 @@ class Continua:
 
         for attempt in range(self.max_retries + 1):
             try:
-                response = self._client.post(path, json=payload)
+                if method == "POST":
+                    response = self._client.post(
+                        path,
+                        json=json_payload,
+                        params=params,
+                        headers=headers,
+                    )
+                elif method == "GET":
+                    response = self._client.get(
+                        path,
+                        params=params,
+                        headers=headers,
+                    )
+                else:
+                    response = self._client.request(
+                        method,
+                        path,
+                        json=json_payload,
+                        params=params,
+                        headers=headers,
+                    )
 
                 # Handle specific HTTP error codes
                 if response.status_code == 401:
@@ -270,6 +368,13 @@ class Continua:
                     except Exception:
                         details = response.text
                     raise ValidationError("Request validation failed", details=details)
+
+                if (
+                    response.status_code == 404
+                    and method == "GET"
+                    and path.startswith("/v1/ingest/batches/")
+                ):
+                    raise NetworkError("Batch not found", retry_count=attempt)
 
                 response.raise_for_status()
                 return response
@@ -307,6 +412,13 @@ class Continua:
             retry_count=self.max_retries,
             cause=last_exception,
         )
+
+    def _ingest_request_options(self) -> tuple[dict[str, Any] | None, dict[str, str] | None]:
+        if self.ingest_mode == INGEST_MODE_SYNC:
+            return {"sync": True}, None
+        if self.ingest_mode == INGEST_MODE_ASYNC_V2:
+            return None, {"X-Continua-Async-Version": "2"}
+        return None, None
 
     def _calculate_backoff(self, attempt: int) -> float:
         """Calculate exponential backoff delay with jitter.
