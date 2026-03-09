@@ -162,7 +162,7 @@ func (s *Server) GetBatchStatus(w http.ResponseWriter, r *http.Request, id opena
 		return
 	}
 
-	status, err := s.ingestService.GetBatchStatus(r.Context(), projectID, uuid.UUID(id))
+	status, err := s.ingestService.GetBatchStatus(r.Context(), projectID, id)
 	if err != nil {
 		if store.IsNotFound(err) {
 			writeError(w, http.StatusNotFound, "not_found", "Batch not found")
@@ -507,7 +507,7 @@ func apiIngestResponse(result *ingest.IngestResponse, includeCounts bool) Ingest
 	}
 
 	if result.BatchID != uuid.Nil {
-		batchID := openapi_types.UUID(result.BatchID)
+		batchID := result.BatchID
 		resp.BatchId = &batchID
 	}
 
@@ -527,7 +527,7 @@ func apiIngestResponse(result *ingest.IngestResponse, includeCounts bool) Ingest
 
 func apiBatchStatus(status *ingest.BatchStatus) BatchStatusResponse {
 	resp := BatchStatusResponse{
-		BatchId:          openapi_types.UUID(status.BatchID),
+		BatchId:          status.BatchID,
 		BatchKey:         status.BatchKey,
 		Status:           BatchStatusResponseStatus(status.Status),
 		AttemptCount:     status.AttemptCount,

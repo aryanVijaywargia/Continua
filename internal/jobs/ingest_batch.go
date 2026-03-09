@@ -48,22 +48,22 @@ func (w *IngestBatchWorker) Work(ctx context.Context, job *river.Job[IngestBatch
 
 	req, err := w.loadRequest(ctx, batch.ID)
 	if err != nil {
-		return w.finishTerminalFailure(ctx, batch, startedAt, err)
+		return w.finishTerminalFailure(ctx, &batch, startedAt, err)
 	}
 
 	tx, err := w.store.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return w.retryBatch(ctx, batch, startedAt, classifyRetryableError(err), err.Error(), err)
+		return w.retryBatch(ctx, &batch, startedAt, classifyRetryableError(err), err.Error(), err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	result, err := w.processor.ProcessBatch(ctx, tx, batch.ProjectID, req)
 	if err != nil {
-		return w.handleProcessingError(ctx, batch, startedAt, err)
+		return w.handleProcessingError(ctx, &batch, startedAt, err)
 	}
 
 	if err := w.enqueueRollupsInTx(ctx, tx.Tx(), result.TraceIDs); err != nil {
-		return w.retryBatch(ctx, batch, startedAt, classifyRetryableError(err), err.Error(), err)
+		return w.retryBatch(ctx, &batch, startedAt, classifyRetryableError(err), err.Error(), err)
 	}
 
 	if err := tx.MarkBatchCompleted(ctx, platform.MarkBatchCompletedParams{
@@ -74,15 +74,15 @@ func (w *IngestBatchWorker) Work(ctx context.Context, job *river.Job[IngestBatch
 		AcceptedCount: &result.AcceptedCount,
 		RejectedCount: &result.RejectedCount,
 	}); err != nil {
-		return w.retryBatch(ctx, batch, startedAt, classifyRetryableError(err), err.Error(), err)
+		return w.retryBatch(ctx, &batch, startedAt, classifyRetryableError(err), err.Error(), err)
 	}
 
 	if err := tx.DeleteBatchPayload(ctx, batch.ID); err != nil {
-		return w.retryBatch(ctx, batch, startedAt, classifyRetryableError(err), err.Error(), err)
+		return w.retryBatch(ctx, &batch, startedAt, classifyRetryableError(err), err.Error(), err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return w.resolveCommitOutcome(ctx, batch, startedAt, err)
+		return w.resolveCommitOutcome(ctx, &batch, startedAt, err)
 	}
 
 	log.Printf(
@@ -98,7 +98,7 @@ func (w *IngestBatchWorker) Work(ctx context.Context, job *river.Job[IngestBatch
 
 func (w *IngestBatchWorker) resolveCommitOutcome(
 	ctx context.Context,
-	batch platform.IngestBatch,
+	batch *platform.IngestBatch,
 	startedAt time.Time,
 	commitErr error,
 ) error {
@@ -213,7 +213,7 @@ func (w *IngestBatchWorker) loadRequest(ctx context.Context, batchID uuid.UUID) 
 
 func (w *IngestBatchWorker) handleProcessingError(
 	ctx context.Context,
-	batch platform.IngestBatch,
+	batch *platform.IngestBatch,
 	startedAt time.Time,
 	err error,
 ) error {
@@ -240,7 +240,7 @@ func (w *IngestBatchWorker) handleProcessingError(
 
 func (w *IngestBatchWorker) finishTerminalFailure(
 	ctx context.Context,
-	batch platform.IngestBatch,
+	batch *platform.IngestBatch,
 	startedAt time.Time,
 	err error,
 ) error {
@@ -275,7 +275,7 @@ func (w *IngestBatchWorker) finishTerminalFailure(
 
 func (w *IngestBatchWorker) retryBatch(
 	ctx context.Context,
-	batch platform.IngestBatch,
+	batch *platform.IngestBatch,
 	startedAt time.Time,
 	errorCode string,
 	errorMessage string,

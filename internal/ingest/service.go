@@ -256,7 +256,7 @@ func (s *Service) AcceptAsync(
 		return nil, fmt.Errorf("compress payload: %w", err)
 	}
 
-	if err := tx.InsertBatchPayload(ctx, platform.InsertBatchPayloadParams{
+	if err := tx.InsertBatchPayload(ctx, &platform.InsertBatchPayloadParams{
 		BatchID:      claim.Batch.ID,
 		PayloadBytes: compressedPayload,
 		Compression:  "gzip",
@@ -295,7 +295,7 @@ func (s *Service) GetBatchStatus(ctx context.Context, projectID, batchID uuid.UU
 		return nil, err
 	}
 
-	return batchStatusFromModel(batch)
+	return batchStatusFromModel(&batch)
 }
 
 // Validate performs request-shape validation that should fail fast at acceptance time.
@@ -678,7 +678,7 @@ func DecompressPayload(compressedPayload []byte) ([]byte, error) {
 	return ioReadAll(reader)
 }
 
-func batchStatusFromModel(batch platform.IngestBatch) (*BatchStatus, error) {
+func batchStatusFromModel(batch *platform.IngestBatch) (*BatchStatus, error) {
 	status, err := publicBatchStatus(batch.Status)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", errUnknownBatchStatus, batch.Status)

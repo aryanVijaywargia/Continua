@@ -243,7 +243,7 @@ func TestCleanupWorker_DeletesExpiredFailedPayloadsOnly(t *testing.T) {
 		BatchKey:  "cleanup-expired-" + uuid.NewString()[:8],
 	})
 	require.NoError(t, err)
-	err = s.InsertBatchPayload(ctx, platform.InsertBatchPayloadParams{
+	err = s.InsertBatchPayload(ctx, &platform.InsertBatchPayloadParams{
 		BatchID:      expiredBatchID,
 		PayloadBytes: []byte("expired"),
 		Compression:  "gzip",
@@ -263,7 +263,7 @@ func TestCleanupWorker_DeletesExpiredFailedPayloadsOnly(t *testing.T) {
 		BatchKey:  "cleanup-active-" + uuid.NewString()[:8],
 	})
 	require.NoError(t, err)
-	err = s.InsertBatchPayload(ctx, platform.InsertBatchPayloadParams{
+	err = s.InsertBatchPayload(ctx, &platform.InsertBatchPayloadParams{
 		BatchID:      activeBatchID,
 		PayloadBytes: []byte("active"),
 		Compression:  "gzip",
@@ -298,9 +298,9 @@ func TestCleanupWorker_DeletesExpiredFailedPayloadsOnly(t *testing.T) {
 func TestLegacyDefaultQueueRollupJobExecutesDuringTransition(t *testing.T) {
 	cfg := &config.Config{
 		Jobs: config.JobsConfig{
-			IngestWorkers:      0,
+			IngestWorkers:      1,
 			RollupWorkers:      1,
-			MaintenanceWorkers: 0,
+			MaintenanceWorkers: 1,
 			DefaultWorkers:     1,
 		},
 	}

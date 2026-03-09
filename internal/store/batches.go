@@ -18,7 +18,7 @@ type ClaimedBatch struct {
 	Inserted bool
 }
 
-func claimBatchRowToModel(row platform.ClaimBatchOrGetExistingRow) ClaimedBatch {
+func claimBatchRowToModel(row *platform.ClaimBatchOrGetExistingRow) ClaimedBatch {
 	return ClaimedBatch{
 		Batch: platform.IngestBatch{
 			ID:                    row.ID,
@@ -65,7 +65,7 @@ func (s *Store) ClaimBatchOrGetExisting(ctx context.Context, projectID uuid.UUID
 	if err != nil {
 		return ClaimedBatch{}, err
 	}
-	return claimBatchRowToModel(row), nil
+	return claimBatchRowToModel(&row), nil
 }
 
 // ClaimBatchTx attempts to claim a batch within a transaction.
@@ -89,7 +89,7 @@ func (t *Tx) ClaimBatchOrGetExisting(ctx context.Context, projectID uuid.UUID, b
 	if err != nil {
 		return ClaimedBatch{}, err
 	}
-	return claimBatchRowToModel(row), nil
+	return claimBatchRowToModel(&row), nil
 }
 
 // GetBatch retrieves a batch by its internal UUID.
@@ -136,13 +136,13 @@ func (t *Tx) UpdateBatchStatus(ctx context.Context, params platform.UpdateBatchS
 }
 
 // InsertBatchPayload stores the compressed ingest payload for an async batch.
-func (s *Store) InsertBatchPayload(ctx context.Context, params platform.InsertBatchPayloadParams) error {
-	return s.q.InsertBatchPayload(ctx, params)
+func (s *Store) InsertBatchPayload(ctx context.Context, params *platform.InsertBatchPayloadParams) error {
+	return s.q.InsertBatchPayload(ctx, *params)
 }
 
 // InsertBatchPayload stores the compressed ingest payload for an async batch within a transaction.
-func (t *Tx) InsertBatchPayload(ctx context.Context, params platform.InsertBatchPayloadParams) error {
-	return t.q.InsertBatchPayload(ctx, params)
+func (t *Tx) InsertBatchPayload(ctx context.Context, params *platform.InsertBatchPayloadParams) error {
+	return t.q.InsertBatchPayload(ctx, *params)
 }
 
 // GetBatchPayload loads a stored async batch payload.
