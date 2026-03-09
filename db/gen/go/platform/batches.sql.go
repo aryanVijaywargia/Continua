@@ -7,13 +7,15 @@ package platform
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const claimBatch = `-- name: ClaimBatch :one
 INSERT INTO ingest_batches (project_id, batch_key, status)
-VALUES ($1, $2, 'processing')
+VALUES ($1, $2, 'queued')
 ON CONFLICT (project_id, batch_key) DO NOTHING
 RETURNING id
 `
@@ -32,8 +34,125 @@ func (q *Queries) ClaimBatch(ctx context.Context, arg ClaimBatchParams) (uuid.UU
 	return id, err
 }
 
+const claimBatchOrGetExisting = `-- name: ClaimBatchOrGetExisting :one
+INSERT INTO ingest_batches (project_id, batch_key, status)
+VALUES ($1, $2, 'queued')
+ON CONFLICT (project_id, batch_key) DO UPDATE
+SET batch_key = EXCLUDED.batch_key
+RETURNING
+    id,
+    project_id,
+    batch_key,
+    status,
+    server_received_at,
+    processing_started_at,
+    processing_completed_at,
+    trace_count,
+    span_count,
+    event_count,
+    accepted_count,
+    rejected_count,
+    attempt_count,
+    last_error_code,
+    last_error_message,
+    last_error_at,
+    created_at,
+    (xmax = 0) AS inserted
+`
+
+type ClaimBatchOrGetExistingParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	BatchKey  string    `json:"batch_key"`
+}
+
+type ClaimBatchOrGetExistingRow struct {
+	ID                    uuid.UUID          `json:"id"`
+	ProjectID             uuid.UUID          `json:"project_id"`
+	BatchKey              string             `json:"batch_key"`
+	Status                string             `json:"status"`
+	ServerReceivedAt      time.Time          `json:"server_received_at"`
+	ProcessingStartedAt   pgtype.Timestamptz `json:"processing_started_at"`
+	ProcessingCompletedAt pgtype.Timestamptz `json:"processing_completed_at"`
+	TraceCount            *int32             `json:"trace_count"`
+	SpanCount             *int32             `json:"span_count"`
+	EventCount            *int32             `json:"event_count"`
+	AcceptedCount         *int32             `json:"accepted_count"`
+	RejectedCount         *int32             `json:"rejected_count"`
+	AttemptCount          int32              `json:"attempt_count"`
+	LastErrorCode         *string            `json:"last_error_code"`
+	LastErrorMessage      *string            `json:"last_error_message"`
+	LastErrorAt           pgtype.Timestamptz `json:"last_error_at"`
+	CreatedAt             time.Time          `json:"created_at"`
+	Inserted              bool               `json:"inserted"`
+}
+
+func (q *Queries) ClaimBatchOrGetExisting(ctx context.Context, arg ClaimBatchOrGetExistingParams) (ClaimBatchOrGetExistingRow, error) {
+	row := q.db.QueryRow(ctx, claimBatchOrGetExisting, arg.ProjectID, arg.BatchKey)
+	var i ClaimBatchOrGetExistingRow
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.BatchKey,
+		&i.Status,
+		&i.ServerReceivedAt,
+		&i.ProcessingStartedAt,
+		&i.ProcessingCompletedAt,
+		&i.TraceCount,
+		&i.SpanCount,
+		&i.EventCount,
+		&i.AcceptedCount,
+		&i.RejectedCount,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.LastErrorAt,
+		&i.CreatedAt,
+		&i.Inserted,
+	)
+	return i, err
+}
+
+const cleanupExpiredPayloads = `-- name: CleanupExpiredPayloads :many
+DELETE FROM ingest_batch_payloads AS p
+USING ingest_batches AS b
+WHERE p.batch_id = b.id
+  AND b.status = 'failed'
+  AND b.processing_completed_at IS NOT NULL
+  AND b.processing_completed_at < $1
+RETURNING p.batch_id
+`
+
+func (q *Queries) CleanupExpiredPayloads(ctx context.Context, processingCompletedAt pgtype.Timestamptz) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, cleanupExpiredPayloads, processingCompletedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var batch_id uuid.UUID
+		if err := rows.Scan(&batch_id); err != nil {
+			return nil, err
+		}
+		items = append(items, batch_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteBatchPayload = `-- name: DeleteBatchPayload :exec
+DELETE FROM ingest_batch_payloads WHERE batch_id = $1
+`
+
+func (q *Queries) DeleteBatchPayload(ctx context.Context, batchID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteBatchPayload, batchID)
+	return err
+}
+
 const getBatch = `-- name: GetBatch :one
-SELECT id, project_id, batch_key, status, server_received_at, processing_completed_at, trace_count, span_count, event_count, accepted_count, rejected_count, created_at FROM ingest_batches WHERE id = $1
+SELECT id, project_id, batch_key, status, server_received_at, processing_completed_at, trace_count, span_count, event_count, accepted_count, rejected_count, created_at, processing_started_at, attempt_count, last_error_code, last_error_message, last_error_at FROM ingest_batches WHERE id = $1
 `
 
 func (q *Queries) GetBatch(ctx context.Context, id uuid.UUID) (IngestBatch, error) {
@@ -52,12 +171,17 @@ func (q *Queries) GetBatch(ctx context.Context, id uuid.UUID) (IngestBatch, erro
 		&i.AcceptedCount,
 		&i.RejectedCount,
 		&i.CreatedAt,
+		&i.ProcessingStartedAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.LastErrorAt,
 	)
 	return i, err
 }
 
 const getBatchByKey = `-- name: GetBatchByKey :one
-SELECT id, project_id, batch_key, status, server_received_at, processing_completed_at, trace_count, span_count, event_count, accepted_count, rejected_count, created_at FROM ingest_batches WHERE project_id = $1 AND batch_key = $2
+SELECT id, project_id, batch_key, status, server_received_at, processing_completed_at, trace_count, span_count, event_count, accepted_count, rejected_count, created_at, processing_started_at, attempt_count, last_error_code, last_error_message, last_error_at FROM ingest_batches WHERE project_id = $1 AND batch_key = $2
 `
 
 type GetBatchByKeyParams struct {
@@ -81,12 +205,99 @@ func (q *Queries) GetBatchByKey(ctx context.Context, arg GetBatchByKeyParams) (I
 		&i.AcceptedCount,
 		&i.RejectedCount,
 		&i.CreatedAt,
+		&i.ProcessingStartedAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.LastErrorAt,
 	)
 	return i, err
 }
 
+const getBatchForProject = `-- name: GetBatchForProject :one
+SELECT id, project_id, batch_key, status, server_received_at, processing_completed_at, trace_count, span_count, event_count, accepted_count, rejected_count, created_at, processing_started_at, attempt_count, last_error_code, last_error_message, last_error_at FROM ingest_batches WHERE id = $1 AND project_id = $2
+`
+
+type GetBatchForProjectParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+}
+
+func (q *Queries) GetBatchForProject(ctx context.Context, arg GetBatchForProjectParams) (IngestBatch, error) {
+	row := q.db.QueryRow(ctx, getBatchForProject, arg.ID, arg.ProjectID)
+	var i IngestBatch
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.BatchKey,
+		&i.Status,
+		&i.ServerReceivedAt,
+		&i.ProcessingCompletedAt,
+		&i.TraceCount,
+		&i.SpanCount,
+		&i.EventCount,
+		&i.AcceptedCount,
+		&i.RejectedCount,
+		&i.CreatedAt,
+		&i.ProcessingStartedAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.LastErrorAt,
+	)
+	return i, err
+}
+
+const getBatchPayload = `-- name: GetBatchPayload :one
+SELECT batch_id, payload_bytes, compression, content_type, byte_size, created_at FROM ingest_batch_payloads WHERE batch_id = $1
+`
+
+func (q *Queries) GetBatchPayload(ctx context.Context, batchID uuid.UUID) (IngestBatchPayload, error) {
+	row := q.db.QueryRow(ctx, getBatchPayload, batchID)
+	var i IngestBatchPayload
+	err := row.Scan(
+		&i.BatchID,
+		&i.PayloadBytes,
+		&i.Compression,
+		&i.ContentType,
+		&i.ByteSize,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const insertBatchPayload = `-- name: InsertBatchPayload :exec
+INSERT INTO ingest_batch_payloads (
+    batch_id,
+    payload_bytes,
+    compression,
+    content_type,
+    byte_size
+)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type InsertBatchPayloadParams struct {
+	BatchID      uuid.UUID `json:"batch_id"`
+	PayloadBytes []byte    `json:"payload_bytes"`
+	Compression  string    `json:"compression"`
+	ContentType  string    `json:"content_type"`
+	ByteSize     int32     `json:"byte_size"`
+}
+
+func (q *Queries) InsertBatchPayload(ctx context.Context, arg InsertBatchPayloadParams) error {
+	_, err := q.db.Exec(ctx, insertBatchPayload,
+		arg.BatchID,
+		arg.PayloadBytes,
+		arg.Compression,
+		arg.ContentType,
+		arg.ByteSize,
+	)
+	return err
+}
+
 const listBatches = `-- name: ListBatches :many
-SELECT id, project_id, batch_key, status, server_received_at, processing_completed_at, trace_count, span_count, event_count, accepted_count, rejected_count, created_at FROM ingest_batches
+SELECT id, project_id, batch_key, status, server_received_at, processing_completed_at, trace_count, span_count, event_count, accepted_count, rejected_count, created_at, processing_started_at, attempt_count, last_error_code, last_error_message, last_error_at FROM ingest_batches
 WHERE project_id = $1
 ORDER BY server_received_at DESC
 LIMIT $2 OFFSET $3
@@ -120,6 +331,11 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Ing
 			&i.AcceptedCount,
 			&i.RejectedCount,
 			&i.CreatedAt,
+			&i.ProcessingStartedAt,
+			&i.AttemptCount,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.LastErrorAt,
 		); err != nil {
 			return nil, err
 		}
@@ -129,6 +345,119 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Ing
 		return nil, err
 	}
 	return items, nil
+}
+
+const markBatchCompleted = `-- name: MarkBatchCompleted :exec
+UPDATE ingest_batches
+SET status = 'completed',
+    processing_completed_at = NOW(),
+    trace_count = $2,
+    span_count = $3,
+    event_count = $4,
+    accepted_count = $5,
+    rejected_count = $6,
+    last_error_code = NULL,
+    last_error_message = NULL,
+    last_error_at = NULL
+WHERE id = $1
+`
+
+type MarkBatchCompletedParams struct {
+	ID            uuid.UUID `json:"id"`
+	TraceCount    *int32    `json:"trace_count"`
+	SpanCount     *int32    `json:"span_count"`
+	EventCount    *int32    `json:"event_count"`
+	AcceptedCount *int32    `json:"accepted_count"`
+	RejectedCount *int32    `json:"rejected_count"`
+}
+
+func (q *Queries) MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) error {
+	_, err := q.db.Exec(ctx, markBatchCompleted,
+		arg.ID,
+		arg.TraceCount,
+		arg.SpanCount,
+		arg.EventCount,
+		arg.AcceptedCount,
+		arg.RejectedCount,
+	)
+	return err
+}
+
+const markBatchFailed = `-- name: MarkBatchFailed :exec
+UPDATE ingest_batches
+SET status = 'failed',
+    processing_completed_at = NOW(),
+    last_error_code = $2,
+    last_error_message = $3,
+    last_error_at = NOW()
+WHERE id = $1
+`
+
+type MarkBatchFailedParams struct {
+	ID               uuid.UUID `json:"id"`
+	LastErrorCode    *string   `json:"last_error_code"`
+	LastErrorMessage *string   `json:"last_error_message"`
+}
+
+func (q *Queries) MarkBatchFailed(ctx context.Context, arg MarkBatchFailedParams) error {
+	_, err := q.db.Exec(ctx, markBatchFailed, arg.ID, arg.LastErrorCode, arg.LastErrorMessage)
+	return err
+}
+
+const markBatchProcessingIfQueued = `-- name: MarkBatchProcessingIfQueued :one
+UPDATE ingest_batches
+SET status = 'processing',
+    processing_started_at = COALESCE(processing_started_at, NOW()),
+    attempt_count = attempt_count + 1
+WHERE id = $1
+  AND status = 'queued'
+RETURNING id, project_id, batch_key, status, server_received_at, processing_completed_at, trace_count, span_count, event_count, accepted_count, rejected_count, created_at, processing_started_at, attempt_count, last_error_code, last_error_message, last_error_at
+`
+
+func (q *Queries) MarkBatchProcessingIfQueued(ctx context.Context, id uuid.UUID) (IngestBatch, error) {
+	row := q.db.QueryRow(ctx, markBatchProcessingIfQueued, id)
+	var i IngestBatch
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.BatchKey,
+		&i.Status,
+		&i.ServerReceivedAt,
+		&i.ProcessingCompletedAt,
+		&i.TraceCount,
+		&i.SpanCount,
+		&i.EventCount,
+		&i.AcceptedCount,
+		&i.RejectedCount,
+		&i.CreatedAt,
+		&i.ProcessingStartedAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.LastErrorAt,
+	)
+	return i, err
+}
+
+const markBatchQueued = `-- name: MarkBatchQueued :exec
+UPDATE ingest_batches
+SET status = 'queued',
+    processing_completed_at = NULL,
+    last_error_code = $2,
+    last_error_message = $3,
+    last_error_at = NOW()
+WHERE id = $1
+`
+
+type MarkBatchQueuedParams struct {
+	ID               uuid.UUID `json:"id"`
+	LastErrorCode    *string   `json:"last_error_code"`
+	LastErrorMessage *string   `json:"last_error_message"`
+}
+
+func (q *Queries) MarkBatchQueued(ctx context.Context, arg MarkBatchQueuedParams) error {
+	_, err := q.db.Exec(ctx, markBatchQueued, arg.ID, arg.LastErrorCode, arg.LastErrorMessage)
+	return err
 }
 
 const updateBatchStatus = `-- name: UpdateBatchStatus :exec

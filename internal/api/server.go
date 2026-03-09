@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
@@ -70,10 +72,18 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 	// Limit reader to prevent DoS - this will cause an error if body exceeds limit
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBodySize)
 
-	// Parse request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		if isMaxBytesError(err) {
+			write413Error(w, "batch exceeds 5MB limit")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "invalid_json", "Failed to read request body: "+err.Error())
+		return
+	}
+
 	var req IngestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Check if this is a MaxBytesReader error (body too large)
+	if err := json.Unmarshal(body, &req); err != nil {
 		if isMaxBytesError(err) {
 			write413Error(w, "batch exceeds 5MB limit")
 			return
@@ -92,65 +102,77 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 	// Convert API types to service types
 	svcReq := convertToServiceRequest(req)
 
-	// Determine if this is sync or async mode
-	// Per spec: sync=false (or not provided) returns 202 "accepted"
 	isSync := params.Sync != nil && *params.Sync
+	asyncVersion := strings.TrimSpace(r.Header.Get("X-Continua-Async-Version"))
+	if asyncVersion != "" && asyncVersion != "2" {
+		writeError(w, http.StatusBadRequest, "unsupported_async_version", "Unsupported X-Continua-Async-Version header")
+		return
+	}
 
-	if !isSync {
-		// Async mode: For v1, we still process synchronously but return 202
-		// In v1.1 with River queue, this would actually queue the work
-		result, err := s.ingestService.Ingest(r.Context(), projectID, &svcReq)
+	if !isSync && (asyncVersion == "2" || s.ingestService.TrueAsyncDefault()) {
+		result, err := s.ingestService.AcceptAsync(r.Context(), projectID, &svcReq, body)
 		if err != nil {
 			if ingest.IsValidationError(err) {
 				writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 				return
 			}
-			log.Printf("ingest async mode failed: %v", err)
+			log.Printf("ingest true async acceptance failed: %v", err)
 			writeError(w, http.StatusInternalServerError, "internal_error", "An internal error occurred")
 			return
 		}
 
-		// Async mode returns 202 with status: "accepted" per spec
-		// For duplicates, return 202 with status: "duplicate"
-		status := IngestResponseStatus(ingest.IngestStatusAccepted)
-		if result.Status == string(ingest.IngestStatusDuplicate) {
-			status = IngestResponseStatusDuplicate
-		}
-		resp := IngestResponse{
-			Status:   status,
-			BatchKey: result.BatchKey,
-		}
-		writeJSON(w, http.StatusAccepted, resp)
+		writeJSON(w, http.StatusAccepted, apiIngestResponse(result, false))
 		return
 	}
 
-	// Sync mode: process and return 200
 	result, err := s.ingestService.Ingest(r.Context(), projectID, &svcReq)
 	if err != nil {
 		if ingest.IsValidationError(err) {
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 			return
 		}
-		log.Printf("ingest sync mode failed: %v", err)
+		log.Printf("ingest inline mode failed: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "An internal error occurred")
 		return
 	}
 
-	// Sync mode returns 200 with full result
-	resp := IngestResponse{
-		Status:        IngestResponseStatus(result.Status),
-		BatchKey:      result.BatchKey,
-		TraceCount:    &result.TraceCount,
-		SpanCount:     &result.SpanCount,
-		EventCount:    &result.EventCount,
-		AcceptedCount: &result.AcceptedCount,
-		RejectedCount: &result.RejectedCount,
-	}
-	if len(result.Errors) > 0 {
-		resp.Errors = &result.Errors
+	if !isSync {
+		resp := apiIngestResponse(result, false)
+		if resp.Status != IngestResponseStatusDuplicate {
+			resp.Status = IngestResponseStatusAccepted
+			resp.TraceCount = nil
+			resp.SpanCount = nil
+			resp.EventCount = nil
+			resp.AcceptedCount = nil
+			resp.RejectedCount = nil
+			resp.Errors = nil
+		}
+		writeJSON(w, http.StatusAccepted, resp)
+		return
 	}
 
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, apiIngestResponse(result, true))
+}
+
+// GetBatchStatus returns the processing status for a previously accepted batch.
+func (s *Server) GetBatchStatus(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	projectID, ok := middleware.GetProjectID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
+		return
+	}
+
+	status, err := s.ingestService.GetBatchStatus(r.Context(), projectID, id)
+	if err != nil {
+		if store.IsNotFound(err) {
+			writeError(w, http.StatusNotFound, "not_found", "Batch not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get batch status")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, apiBatchStatus(status))
 }
 
 // ListTraces returns a paginated list of traces with optional filtering.
@@ -476,6 +498,55 @@ func normalizeLimit(limitParam *int, defaultLimit, maxLimit int32) int32 {
 		limit = maxLimit
 	}
 	return limit
+}
+
+func apiIngestResponse(result *ingest.IngestResponse, includeCounts bool) IngestResponse {
+	resp := IngestResponse{
+		Status:   IngestResponseStatus(result.Status),
+		BatchKey: result.BatchKey,
+	}
+
+	if result.BatchID != uuid.Nil {
+		batchID := result.BatchID
+		resp.BatchId = &batchID
+	}
+
+	if includeCounts {
+		resp.TraceCount = &result.TraceCount
+		resp.SpanCount = &result.SpanCount
+		resp.EventCount = &result.EventCount
+		resp.AcceptedCount = &result.AcceptedCount
+		resp.RejectedCount = &result.RejectedCount
+		if len(result.Errors) > 0 {
+			resp.Errors = &result.Errors
+		}
+	}
+
+	return resp
+}
+
+func apiBatchStatus(status *ingest.BatchStatus) BatchStatusResponse {
+	resp := BatchStatusResponse{
+		BatchId:          status.BatchID,
+		BatchKey:         status.BatchKey,
+		Status:           BatchStatusResponseStatus(status.Status),
+		AttemptCount:     status.AttemptCount,
+		ServerReceivedAt: status.ServerReceivedAt,
+		TraceCount:       status.TraceCount,
+		SpanCount:        status.SpanCount,
+		EventCount:       status.EventCount,
+		AcceptedCount:    status.AcceptedCount,
+		RejectedCount:    status.RejectedCount,
+		LastErrorCode:    status.LastErrorCode,
+		LastErrorMessage: status.LastErrorMessage,
+	}
+	if status.ProcessingStartedAt != nil {
+		resp.ProcessingStartedAt = status.ProcessingStartedAt
+	}
+	if status.ProcessingCompletedAt != nil {
+		resp.ProcessingCompletedAt = status.ProcessingCompletedAt
+	}
+	return resp
 }
 
 func (s *Server) getScopedTrace(ctx context.Context, w http.ResponseWriter, projectID, traceID openapi_types.UUID) (platform.Trace, bool) {

@@ -1,6 +1,8 @@
 package ingest
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,20 +16,46 @@ import (
 	"github.com/riverqueue/river"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
-	"github.com/continua-ai/continua/internal/jobs"
+	"github.com/continua-ai/continua/internal/config"
+	"github.com/continua-ai/continua/internal/jobargs"
 	"github.com/continua-ai/continua/internal/store"
 	"github.com/continua-ai/continua/pkg/truncation"
 )
 
-// Service handles batch ingestion of traces, spans, and events.
+const (
+	batchStatusAcceptedLegacy = "accepted"
+	batchStatusCompleted      = "completed"
+	batchStatusFailed         = "failed"
+	batchStatusProcessing     = "processing"
+	batchStatusQueued         = "queued"
+)
+
+const defaultDependencyRetryWindow = 15 * time.Minute
+
+var errUnknownBatchStatus = errors.New("unknown batch status")
+
+// Service handles synchronous and asynchronous batch ingestion flows.
 type Service struct {
-	store       *store.Store
-	riverClient *river.Client[pgx.Tx]
+	store            *store.Store
+	riverClient      *river.Client[pgx.Tx]
+	processor        *Processor
+	trueAsyncDefault bool
 }
 
-// NewService creates a new ingest service.
-func NewService(s *store.Store, riverClient *river.Client[pgx.Tx]) *Service {
-	return &Service{store: s, riverClient: riverClient}
+// Processor owns the shared trace/span/event write path used by both sync and async ingest.
+type Processor struct {
+	store                 *store.Store
+	dependencyRetryWindow time.Duration
+}
+
+// ProcessedBatch is the shared processing result for sync and async ingestion.
+type ProcessedBatch struct {
+	TraceIDs      []uuid.UUID
+	TraceCount    int32
+	SpanCount     int32
+	EventCount    int32
+	AcceptedCount int32
+	RejectedCount int32
 }
 
 // ValidationError represents a batch validation error.
@@ -42,176 +70,351 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("validation failed: %s", e.Errors[0])
 }
 
-// Ingest processes a batch of traces, spans, and events.
-// It is idempotent - duplicate batch keys return success without re-processing.
-// Per spec v1: rejects entire batch on any validation error (no partial success).
+// DependencyNotReadyError indicates a trace reference that may become valid after another accepted batch commits.
+type DependencyNotReadyError struct {
+	Message string
+}
+
+func (e *DependencyNotReadyError) Error() string {
+	return e.Message
+}
+
+// TerminalError indicates a non-retryable async worker failure.
+type TerminalError struct {
+	Code    string
+	Message string
+	Err     error
+}
+
+func (e *TerminalError) Error() string {
+	return e.Message
+}
+
+func (e *TerminalError) Unwrap() error {
+	return e.Err
+}
+
+// NewProcessor creates a shared ingest processor from configuration.
+func NewProcessor(s *store.Store, cfg *config.Config) *Processor {
+	window := defaultDependencyRetryWindow
+	if cfg != nil && cfg.Ingest.DependencyRetryWindow > 0 {
+		window = cfg.Ingest.DependencyRetryWindow
+	}
+
+	return &Processor{
+		store:                 s,
+		dependencyRetryWindow: window,
+	}
+}
+
+// NewService creates a new ingest service.
+func NewService(
+	s *store.Store,
+	riverClient *river.Client[pgx.Tx],
+	processor *Processor,
+	cfg *config.Config,
+) *Service {
+	trueAsyncDefault := false
+	if cfg != nil {
+		trueAsyncDefault = cfg.Ingest.TrueAsyncDefault
+	}
+
+	return &Service{
+		store:            s,
+		riverClient:      riverClient,
+		processor:        processor,
+		trueAsyncDefault: trueAsyncDefault,
+	}
+}
+
+// TrueAsyncDefault reports whether the server default routes non-sync ingest requests to true async.
+func (s *Service) TrueAsyncDefault() bool {
+	return s.trueAsyncDefault
+}
+
+// DependencyRetryWindow returns the configured retry window for dependency-not-ready batches.
+func (p *Processor) DependencyRetryWindow() time.Duration {
+	return p.dependencyRetryWindow
+}
+
+// Ingest processes a batch inline and returns once all writes are committed.
 func (s *Service) Ingest(ctx context.Context, projectID uuid.UUID, req *IngestRequest) (*IngestResponse, error) {
-	if req.BatchKey == "" {
-		return nil, &ValidationError{Errors: []string{"batch_key is required"}}
+	if err := s.processor.Validate(req); err != nil {
+		return nil, err
 	}
 
-	// Phase 1: Validate the entire batch BEFORE any database operations
-	validationErrors := s.validateBatch(req)
-	if len(validationErrors) > 0 {
-		return nil, &ValidationError{Errors: validationErrors}
-	}
-
-	// Start transaction
 	tx, err := s.store.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// Claim the batch (idempotency check) - FIRST operation in transaction
-	batchID, err := tx.ClaimBatch(ctx, projectID, req.BatchKey)
-	if errors.Is(err, store.ErrDuplicateBatch) {
-		// Duplicate batch - return success without processing
-		return &IngestResponse{
-			Status:   string(IngestStatusDuplicate),
-			BatchKey: req.BatchKey,
-		}, nil
-	}
+	claim, err := tx.ClaimBatchOrGetExisting(ctx, projectID, req.BatchKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to claim batch: %w", err)
 	}
 
-	// Phase 2: Process all items (now that batch is claimed)
-	// Build trace map: external trace_id -> internal UUID
-	traceMap := make(map[string]uuid.UUID)
+	if !claim.Inserted {
+		log.Printf(
+			"event=batch_duplicate batch_id=%s batch_key=%s project_id=%s",
+			claim.Batch.ID,
+			claim.Batch.BatchKey,
+			projectID,
+		)
+		return &IngestResponse{
+			Status:   string(IngestStatusDuplicate),
+			BatchKey: req.BatchKey,
+			BatchID:  claim.Batch.ID,
+		}, nil
+	}
 
-	// Process traces first to build the external->internal ID map
+	result, err := s.processor.ProcessBatch(ctx, tx, projectID, req)
+	if err != nil {
+		var dependencyErr *DependencyNotReadyError
+		if errors.As(err, &dependencyErr) {
+			return nil, &ValidationError{Errors: []string{dependencyErr.Message}}
+		}
+		return nil, err
+	}
+
+	if err := s.enqueueRollupsInTx(ctx, tx.Tx(), result.TraceIDs); err != nil {
+		return nil, fmt.Errorf("failed to enqueue rollups: %w", err)
+	}
+
+	if err := tx.MarkBatchCompleted(ctx, platform.MarkBatchCompletedParams{
+		ID:            claim.Batch.ID,
+		TraceCount:    &result.TraceCount,
+		SpanCount:     &result.SpanCount,
+		EventCount:    &result.EventCount,
+		AcceptedCount: &result.AcceptedCount,
+		RejectedCount: &result.RejectedCount,
+	}); err != nil {
+		return nil, fmt.Errorf("failed to update batch status: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Printf(
+		"event=batch_processing_completed batch_id=%s batch_key=%s project_id=%s attempt_count=0 duration_ms=0",
+		claim.Batch.ID,
+		req.BatchKey,
+		projectID,
+	)
+
+	return &IngestResponse{
+		Status:        string(IngestStatusOK),
+		BatchKey:      req.BatchKey,
+		BatchID:       claim.Batch.ID,
+		TraceCount:    result.TraceCount,
+		SpanCount:     result.SpanCount,
+		EventCount:    result.EventCount,
+		AcceptedCount: result.AcceptedCount,
+		RejectedCount: result.RejectedCount,
+	}, nil
+}
+
+// AcceptAsync validates a batch, durably stores its payload, and enqueues a background job.
+func (s *Service) AcceptAsync(
+	ctx context.Context,
+	projectID uuid.UUID,
+	req *IngestRequest,
+	rawPayload []byte,
+) (*IngestResponse, error) {
+	if err := s.processor.Validate(req); err != nil {
+		return nil, err
+	}
+
+	tx, err := s.store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	claim, err := tx.ClaimBatchOrGetExisting(ctx, projectID, req.BatchKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim batch: %w", err)
+	}
+
+	if !claim.Inserted {
+		log.Printf(
+			"event=batch_duplicate batch_id=%s batch_key=%s project_id=%s",
+			claim.Batch.ID,
+			claim.Batch.BatchKey,
+			projectID,
+		)
+		return &IngestResponse{
+			Status:   string(IngestStatusDuplicate),
+			BatchKey: req.BatchKey,
+			BatchID:  claim.Batch.ID,
+		}, nil
+	}
+
+	compressedPayload, err := CompressPayload(rawPayload)
+	if err != nil {
+		return nil, fmt.Errorf("compress payload: %w", err)
+	}
+
+	if err := tx.InsertBatchPayload(ctx, &platform.InsertBatchPayloadParams{
+		BatchID:      claim.Batch.ID,
+		PayloadBytes: compressedPayload,
+		Compression:  "gzip",
+		ContentType:  "application/json",
+		ByteSize:     int32(len(rawPayload)),
+	}); err != nil {
+		return nil, fmt.Errorf("insert batch payload: %w", err)
+	}
+
+	if err := s.enqueueAsyncBatchInTx(ctx, tx.Tx(), claim.Batch.ID); err != nil {
+		return nil, fmt.Errorf("enqueue ingest batch job: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit async acceptance transaction: %w", err)
+	}
+
+	log.Printf(
+		"event=batch_accepted batch_id=%s batch_key=%s project_id=%s",
+		claim.Batch.ID,
+		req.BatchKey,
+		projectID,
+	)
+
+	return &IngestResponse{
+		Status:   string(IngestStatusAccepted),
+		BatchKey: req.BatchKey,
+		BatchID:  claim.Batch.ID,
+	}, nil
+}
+
+// GetBatchStatus retrieves a batch scoped to the given project and maps its internal status to the public API vocabulary.
+func (s *Service) GetBatchStatus(ctx context.Context, projectID, batchID uuid.UUID) (*BatchStatus, error) {
+	batch, err := s.store.GetBatchForProject(ctx, projectID, batchID)
+	if err != nil {
+		return nil, err
+	}
+
+	return batchStatusFromModel(&batch)
+}
+
+// Validate performs request-shape validation that should fail fast at acceptance time.
+func (p *Processor) Validate(req *IngestRequest) error {
+	if req.BatchKey == "" {
+		return &ValidationError{Errors: []string{"batch_key is required"}}
+	}
+
+	validationErrors := p.validateBatch(req)
+	if len(validationErrors) > 0 {
+		return &ValidationError{Errors: validationErrors}
+	}
+
+	return nil
+}
+
+// ProcessBatch executes the shared trace/span/event write path inside the caller's transaction.
+func (p *Processor) ProcessBatch(
+	ctx context.Context,
+	tx *store.Tx,
+	projectID uuid.UUID,
+	req *IngestRequest,
+) (*ProcessedBatch, error) {
+	traceMap := make(map[string]uuid.UUID)
+	affectedTraceIDs := make(map[uuid.UUID]struct{})
+
 	for i := range req.Traces {
 		trace := &req.Traces[i]
-		internalID, err := s.upsertTrace(ctx, tx, projectID, trace)
+		internalID, err := p.upsertTrace(ctx, tx, projectID, trace)
 		if err != nil {
-			// Transaction will be rolled back, batch not committed
 			return nil, fmt.Errorf("failed to upsert trace %s: %w", trace.TraceID, err)
 		}
 		traceMap[trace.TraceID] = internalID
+		affectedTraceIDs[internalID] = struct{}{}
 	}
 
-	// Process spans - resolve trace UUID from map or DB
 	for i := range req.Spans {
 		span := &req.Spans[i]
-		traceUUID, ok := traceMap[span.TraceID]
-		if !ok {
-			// Try to find existing trace in DB
-			traceUUID, err = tx.GetTraceUUID(ctx, projectID, span.TraceID)
-			if err != nil {
-				if store.IsNotFound(err) {
-					// Per spec: unknown trace reference returns 400 ValidationError
-					return nil, &ValidationError{Errors: []string{
-						fmt.Sprintf("span %s references unknown trace %s", span.SpanID, span.TraceID),
-					}}
-				}
-				return nil, fmt.Errorf("failed to lookup trace for span %s: %w", span.SpanID, err)
-			}
-			traceMap[span.TraceID] = traceUUID
+		traceUUID, err := p.resolveTraceUUID(ctx, tx, projectID, traceMap, span.TraceID)
+		if err != nil {
+			return nil, err
 		}
-
-		if err := s.upsertSpan(ctx, tx, projectID, traceUUID, span); err != nil {
+		if err := p.upsertSpan(ctx, tx, projectID, traceUUID, span); err != nil {
 			return nil, fmt.Errorf("failed to upsert span %s: %w", span.SpanID, err)
 		}
+		affectedTraceIDs[traceUUID] = struct{}{}
 	}
 
-	// Process events - track actual inserts vs duplicates
 	actualEventInserts := int32(0)
 	for i := range req.Events {
 		event := &req.Events[i]
-		traceUUID, ok := traceMap[event.TraceID]
-		if !ok {
-			traceUUID, err = tx.GetTraceUUID(ctx, projectID, event.TraceID)
-			if err != nil {
-				if store.IsNotFound(err) {
-					// Per spec: unknown trace reference returns 400 ValidationError
-					return nil, &ValidationError{Errors: []string{
-						fmt.Sprintf("event for span %s references unknown trace %s", event.SpanID, event.TraceID),
-					}}
-				}
-				return nil, fmt.Errorf("failed to lookup trace for event: %w", err)
-			}
-			traceMap[event.TraceID] = traceUUID
+		traceUUID, err := p.resolveTraceUUID(ctx, tx, projectID, traceMap, event.TraceID)
+		if err != nil {
+			return nil, err
 		}
-
-		inserted, err := s.insertEvent(ctx, tx, projectID, traceUUID, event)
+		inserted, err := p.insertEvent(ctx, tx, projectID, traceUUID, event)
 		if err != nil {
 			return nil, fmt.Errorf("failed to insert event for span %s: %w", event.SpanID, err)
 		}
 		if inserted {
 			actualEventInserts++
 		}
+		affectedTraceIDs[traceUUID] = struct{}{}
 	}
 
-	// Enqueue rollup jobs for all affected traces (async via River)
-	// Jobs are enqueued in the same transaction, so they only become visible after commit
-	for _, traceUUID := range traceMap {
-		inserted, err := jobs.EnqueueRollupInTx(ctx, s.riverClient, tx.Tx(), traceUUID)
-		if err != nil {
-			log.Printf("Warning: failed to enqueue rollup job for trace %s: %v", traceUUID, err)
-			// Continue - rollups will be computed by the next successful enqueue
-			continue
-		}
-		_ = inserted // Duplicate insert is expected for coalescing.
+	traceIDs := make([]uuid.UUID, 0, len(affectedTraceIDs))
+	for traceID := range affectedTraceIDs {
+		traceIDs = append(traceIDs, traceID)
 	}
 
-	// Update batch status to "accepted" (spec-compliant vocabulary)
-	// event_count reflects actual inserts, not submitted count
-	// Per spec: "The insert count reflects 0 new events for that key" (idempotency)
 	traceCount := int32(len(req.Traces))
 	spanCount := int32(len(req.Spans))
-	eventCount := actualEventInserts // actual inserts, not len(req.Events)
 	acceptedCount := traceCount + spanCount + actualEventInserts
-	// Duplicate events are NOT counted as rejected - they're silently ignored
-	rejectedCount := int32(0)
 
-	err = tx.UpdateBatchStatus(ctx, platform.UpdateBatchStatusParams{
-		ID:            batchID,
-		Status:        "accepted", // Spec: use "accepted" not "completed"
-		TraceCount:    &traceCount,
-		SpanCount:     &spanCount,
-		EventCount:    &eventCount,
-		AcceptedCount: &acceptedCount,
-		RejectedCount: &rejectedCount,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to update batch status: %w", err)
-	}
-
-	// Commit transaction
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return &IngestResponse{
-		Status:        string(IngestStatusOK),
-		BatchKey:      req.BatchKey,
+	return &ProcessedBatch{
+		TraceIDs:      traceIDs,
 		TraceCount:    traceCount,
 		SpanCount:     spanCount,
-		EventCount:    eventCount,
+		EventCount:    actualEventInserts,
 		AcceptedCount: acceptedCount,
-		RejectedCount: rejectedCount,
+		RejectedCount: 0,
 	}, nil
 }
 
-// validateBatch performs upfront validation of the entire batch.
-// Returns validation errors if any items are invalid.
-// Per spec v1: entire batch is rejected on any validation error.
-func (s *Service) validateBatch(req *IngestRequest) []string {
+func (p *Processor) resolveTraceUUID(
+	ctx context.Context,
+	tx *store.Tx,
+	projectID uuid.UUID,
+	traceMap map[string]uuid.UUID,
+	traceID string,
+) (uuid.UUID, error) {
+	if traceUUID, ok := traceMap[traceID]; ok {
+		return traceUUID, nil
+	}
+
+	traceUUID, err := tx.GetTraceUUID(ctx, projectID, traceID)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return uuid.Nil, &DependencyNotReadyError{
+				Message: fmt.Sprintf("unknown trace reference: %s", traceID),
+			}
+		}
+		return uuid.Nil, fmt.Errorf("failed to lookup trace %s: %w", traceID, err)
+	}
+
+	traceMap[traceID] = traceUUID
+	return traceUUID, nil
+}
+
+func (p *Processor) validateBatch(req *IngestRequest) []string {
 	var errs []string
 
-	// Track which trace IDs are provided in this batch
-	providedTraceIDs := make(map[string]bool)
 	for i := range req.Traces {
 		trace := &req.Traces[i]
 		if trace.TraceID == "" {
 			errs = append(errs, "trace missing required field: trace_id")
-			continue
 		}
-		providedTraceIDs[trace.TraceID] = true
 	}
 
-	// Validate spans
 	for i := range req.Spans {
 		span := &req.Spans[i]
 		if span.TraceID == "" {
@@ -232,14 +435,8 @@ func (s *Service) validateBatch(req *IngestRequest) []string {
 				i,
 			))
 		}
-		// Note: we don't validate trace_id references here because the trace
-		// might exist in the database from a previous batch. This will be
-		// checked during processing. However, if the span references a trace
-		// that doesn't exist in this batch AND doesn't exist in DB, processing
-		// will fail and the entire batch will be rolled back.
 	}
 
-	// Validate events
 	for i := range req.Events {
 		event := &req.Events[i]
 		if event.TraceID == "" {
@@ -277,18 +474,15 @@ func isValidIngestEventLevel(level string) bool {
 	}
 }
 
-func (s *Service) upsertTrace(ctx context.Context, tx *store.Tx, projectID uuid.UUID, input *TraceInput) (uuid.UUID, error) {
-	// Process metadata
+func (p *Processor) upsertTrace(ctx context.Context, tx *store.Tx, projectID uuid.UUID, input *TraceInput) (uuid.UUID, error) {
 	var metadata []byte
 	if input.Metadata != nil {
 		metadata, _ = json.Marshal(input.Metadata)
 	}
 
-	// Process input/output with truncation
 	inputData, _, _, _ := processPayload(input.Input, truncation.DefaultMaxBytes)
 	outputData, _, _, _ := processPayload(input.Output, truncation.DefaultMaxBytes)
 
-	// Convert times to pgtype
 	var startTime, endTime pgtype.Timestamptz
 	if input.StartTime != nil {
 		startTime = pgtype.Timestamptz{Time: *input.StartTime, Valid: true}
@@ -297,7 +491,6 @@ func (s *Service) upsertTrace(ctx context.Context, tx *store.Tx, projectID uuid.
 		endTime = pgtype.Timestamptz{Time: *input.EndTime, Valid: true}
 	}
 
-	// Resolve session: always treat session_id as an external key
 	var sessionID pgtype.UUID
 	if input.SessionID != nil && *input.SessionID != "" {
 		session, err := tx.GetOrCreateSessionByExternalID(ctx, projectID, *input.SessionID)
@@ -332,24 +525,20 @@ func (s *Service) upsertTrace(ctx context.Context, tx *store.Tx, projectID uuid.
 	return trace.ID, nil
 }
 
-func (s *Service) upsertSpan(ctx context.Context, tx *store.Tx, projectID, traceUUID uuid.UUID, input *SpanInput) error {
-	// Process metadata
+func (p *Processor) upsertSpan(ctx context.Context, tx *store.Tx, projectID, traceUUID uuid.UUID, input *SpanInput) error {
 	var metadata []byte
 	if input.Metadata != nil {
 		metadata, _ = json.Marshal(input.Metadata)
 	}
 
-	// Process input/output with truncation
 	inputData, inputTruncated, inputOrigSize, inputTruncReason := processPayload(input.Input, truncation.DefaultMaxBytes)
 	outputData, outputTruncated, outputOrigSize, outputTruncReason := processPayload(input.Output, truncation.DefaultMaxBytes)
 
-	// Convert end time
 	var endTime pgtype.Timestamptz
 	if input.EndTime != nil {
 		endTime = pgtype.Timestamptz{Time: *input.EndTime, Valid: true}
 	}
 
-	// Convert cost to numeric
 	var totalCost pgtype.Numeric
 	if input.TotalCost != nil {
 		totalCost.Valid = true
@@ -359,8 +548,6 @@ func (s *Service) upsertSpan(ctx context.Context, tx *store.Tx, projectID, trace
 	spanType := defaultString(input.Type, "default")
 	status := defaultString(input.Status, "running")
 	level := defaultString(input.Level, "default")
-
-	// Use provided start time (required field, validated earlier)
 	startTime := input.StartTime
 	if startTime.IsZero() {
 		startTime = time.Now()
@@ -400,8 +587,7 @@ func (s *Service) upsertSpan(ctx context.Context, tx *store.Tx, projectID, trace
 	return err
 }
 
-func (s *Service) insertEvent(ctx context.Context, tx *store.Tx, projectID, traceUUID uuid.UUID, input *EventInput) (bool, error) {
-	// Process payload with truncation
+func (p *Processor) insertEvent(ctx context.Context, tx *store.Tx, projectID, traceUUID uuid.UUID, input *EventInput) (bool, error) {
 	var payloadData []byte
 	var truncated bool
 	var origSize *int64
@@ -411,7 +597,6 @@ func (s *Service) insertEvent(ctx context.Context, tx *store.Tx, projectID, trac
 		payloadData, truncated, origSize, truncReason = processPayload(input.Payload, truncation.DefaultMaxBytes)
 	}
 
-	// Convert event time
 	var eventTs pgtype.Timestamptz
 	if input.EventTs != nil {
 		eventTs = pgtype.Timestamptz{Time: *input.EventTs, Valid: true}
@@ -438,8 +623,113 @@ func (s *Service) insertEvent(ctx context.Context, tx *store.Tx, projectID, trac
 	if err != nil {
 		return false, err
 	}
-	// id == uuid.Nil means it was a duplicate (ON CONFLICT DO NOTHING)
 	return id != uuid.Nil, nil
+}
+
+func (s *Service) enqueueRollupsInTx(ctx context.Context, tx pgx.Tx, traceIDs []uuid.UUID) error {
+	if s.riverClient == nil {
+		return nil
+	}
+
+	for _, traceID := range traceIDs {
+		res, err := s.riverClient.InsertTx(ctx, tx, jobargs.TraceRollupArgs{TraceID: traceID}, nil)
+		if err != nil {
+			return err
+		}
+		if res.UniqueSkippedAsDuplicate {
+			continue
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) enqueueAsyncBatchInTx(ctx context.Context, tx pgx.Tx, batchID uuid.UUID) error {
+	if s.riverClient == nil {
+		return errors.New("river client is nil")
+	}
+
+	_, err := s.riverClient.InsertTx(ctx, tx, jobargs.IngestBatchArgs{BatchID: batchID}, nil)
+	return err
+}
+
+// CompressPayload gzips raw request bytes for async payload storage.
+func CompressPayload(rawPayload []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	writer := gzip.NewWriter(&buf)
+	if _, err := writer.Write(rawPayload); err != nil {
+		_ = writer.Close()
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// DecompressPayload expands a gzip-compressed async payload.
+func DecompressPayload(compressedPayload []byte) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(compressedPayload))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = reader.Close() }()
+
+	return ioReadAll(reader)
+}
+
+func batchStatusFromModel(batch *platform.IngestBatch) (*BatchStatus, error) {
+	status, err := publicBatchStatus(batch.Status)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", errUnknownBatchStatus, batch.Status)
+	}
+
+	return &BatchStatus{
+		BatchID:               batch.ID,
+		BatchKey:              batch.BatchKey,
+		Status:                status,
+		AttemptCount:          batch.AttemptCount,
+		ServerReceivedAt:      batch.ServerReceivedAt,
+		ProcessingStartedAt:   timestamptzPtr(batch.ProcessingStartedAt),
+		ProcessingCompletedAt: timestamptzPtr(batch.ProcessingCompletedAt),
+		TraceCount:            batch.TraceCount,
+		SpanCount:             batch.SpanCount,
+		EventCount:            batch.EventCount,
+		AcceptedCount:         batch.AcceptedCount,
+		RejectedCount:         batch.RejectedCount,
+		LastErrorCode:         batch.LastErrorCode,
+		LastErrorMessage:      batch.LastErrorMessage,
+	}, nil
+}
+
+func publicBatchStatus(internalStatus string) (string, error) {
+	switch internalStatus {
+	case batchStatusQueued:
+		return string(IngestStatusAccepted), nil
+	case batchStatusProcessing:
+		return batchStatusProcessing, nil
+	case batchStatusCompleted, batchStatusAcceptedLegacy:
+		return batchStatusCompleted, nil
+	case batchStatusFailed:
+		return batchStatusFailed, nil
+	default:
+		return "", errUnknownBatchStatus
+	}
+}
+
+func timestamptzPtr(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Time
+}
+
+func ioReadAll(reader *gzip.Reader) ([]byte, error) {
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(reader); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // IsValidationError checks if an error is a validation error.

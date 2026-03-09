@@ -9,8 +9,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/continua-ai/continua/internal/jobargs"
 	"github.com/continua-ai/continua/internal/jobs"
 )
+
+func TestTraceRollupArgs_InsertOpts_UsesRollupQueue(t *testing.T) {
+	opts := jobs.TraceRollupArgs{}.InsertOpts()
+	assert.Equal(t, jobargs.QueueRollup, opts.Queue)
+}
 
 func TestTraceRollupArgs_InsertOpts_UsesActiveUniqueStates(t *testing.T) {
 	opts := jobs.TraceRollupArgs{}.InsertOpts()

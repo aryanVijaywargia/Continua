@@ -2,7 +2,9 @@ package store_test
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +24,7 @@ func TestBatch_ClaimNewBatch(t *testing.T) {
 	// Scenario: Claim new batch
 	// GIVEN no batch with batch_key exists for the project
 	// WHEN the ingest transaction begins
-	// THEN a new ingest_batches record is created with status: "processing"
+	// THEN a new ingest_batches record is created with status: "queued"
 	// AND the batch ID is returned for subsequent operations
 
 	pool := testutil.TestDB(t)
@@ -47,7 +49,7 @@ func TestBatch_ClaimNewBatch(t *testing.T) {
 		BatchKey:  batchKey,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "processing", batch.Status)
+	assert.Equal(t, "queued", batch.Status)
 }
 
 func TestBatch_ClaimDuplicateBatch(t *testing.T) {
@@ -103,10 +105,10 @@ func TestBatch_DuplicateReturnsSuccess(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Update status to accepted
+	// Update status to completed
 	err = q.UpdateBatchStatus(ctx, platform.UpdateBatchStatusParams{
 		ID:     batchID,
-		Status: "accepted",
+		Status: "completed",
 	})
 	require.NoError(t, err)
 
@@ -119,14 +121,14 @@ func TestBatch_DuplicateReturnsSuccess(t *testing.T) {
 
 	// Should find the existing batch - this is what enables "duplicate" response
 	assert.Equal(t, batchKey, existing.BatchKey)
-	assert.Equal(t, "accepted", existing.Status)
+	assert.Equal(t, "completed", existing.Status)
 }
 
 func TestBatch_StatusUpdatedOnSuccess(t *testing.T) {
 	// Scenario: Batch status updated on success
 	// GIVEN a batch is being processed
 	// WHEN all traces, spans, events are successfully upserted
-	// THEN batch status is updated to "accepted"
+	// THEN batch status is updated to "completed"
 	// AND processing_completed_at is set
 	// AND trace_count, span_count, event_count reflect actual counts
 
@@ -151,7 +153,7 @@ func TestBatch_StatusUpdatedOnSuccess(t *testing.T) {
 	eventCount := int32(10)
 	err = q.UpdateBatchStatus(ctx, platform.UpdateBatchStatusParams{
 		ID:         batchID,
-		Status:     "accepted",
+		Status:     "completed",
 		TraceCount: &traceCount,
 		SpanCount:  &spanCount,
 		EventCount: &eventCount,
@@ -165,7 +167,7 @@ func TestBatch_StatusUpdatedOnSuccess(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, "accepted", updated.Status)
+	assert.Equal(t, "completed", updated.Status)
 	assert.Equal(t, int32(5), *updated.TraceCount)
 	assert.Equal(t, int32(20), *updated.SpanCount)
 	assert.Equal(t, int32(10), *updated.EventCount)
@@ -253,6 +255,89 @@ func TestBatch_SameKeyDetectsDuplicate(t *testing.T) {
 	// Existing batch found - this enables duplicate detection
 	assert.Equal(t, batchKey, existing.BatchKey)
 	// At this point, service would return "duplicate" status
+}
+
+func TestBatch_ReclaimPreservesOriginalProcessingStartedAt(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	batchKey := "batch-reclaim-" + uuid.New().String()[:8]
+
+	batchID, err := q.ClaimBatch(ctx, platform.ClaimBatchParams{
+		ProjectID: projectID,
+		BatchKey:  batchKey,
+	})
+	require.NoError(t, err)
+
+	firstClaim, err := s.MarkBatchProcessingIfQueued(ctx, batchID)
+	require.NoError(t, err)
+	require.True(t, firstClaim.ProcessingStartedAt.Valid)
+	assert.Equal(t, int32(1), firstClaim.AttemptCount)
+
+	time.Sleep(10 * time.Millisecond)
+
+	err = s.MarkBatchQueued(ctx, platform.MarkBatchQueuedParams{
+		ID:               batchID,
+		LastErrorCode:    testutil.StrPtr("dependency_not_ready"),
+		LastErrorMessage: testutil.StrPtr("retry"),
+	})
+	require.NoError(t, err)
+
+	secondClaim, err := s.MarkBatchProcessingIfQueued(ctx, batchID)
+	require.NoError(t, err)
+	require.True(t, secondClaim.ProcessingStartedAt.Valid)
+	assert.Equal(t, firstClaim.ProcessingStartedAt.Time, secondClaim.ProcessingStartedAt.Time)
+	assert.Equal(t, int32(2), secondClaim.AttemptCount)
+}
+
+func TestBatch_ClaimBatchOrGetExistingConcurrentDuplicate(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	batchKey := "batch-race-" + uuid.New().String()[:8]
+
+	const workers = 2
+	results := make([]store.ClaimedBatch, workers)
+	errs := make([]error, workers)
+
+	var ready sync.WaitGroup
+	ready.Add(workers)
+	var done sync.WaitGroup
+	done.Add(workers)
+	start := make(chan struct{})
+
+	for i := 0; i < workers; i++ {
+		go func(idx int) {
+			defer done.Done()
+			ready.Done()
+			<-start
+			results[idx], errs[idx] = s.ClaimBatchOrGetExisting(ctx, projectID, batchKey)
+		}(i)
+	}
+
+	ready.Wait()
+	close(start)
+	done.Wait()
+
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, results[0].Batch.ID, results[1].Batch.ID)
+	assert.NotEqual(t, uuid.Nil, results[0].Batch.ID)
+	assert.Equal(t, "queued", results[0].Batch.Status)
+	assert.Equal(t, "queued", results[1].Batch.Status)
+	assert.NotEqual(t, results[0].Inserted, results[1].Inserted)
+
+	existing, err := s.GetBatchByKey(ctx, projectID, batchKey)
+	require.NoError(t, err)
+	assert.Equal(t, results[0].Batch.ID, existing.ID)
 }
 
 // =============================================================================

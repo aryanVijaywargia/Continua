@@ -2,6 +2,8 @@ package ingest
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // IngestRequest represents the request body for the ingest endpoint.
@@ -73,14 +75,15 @@ type EventInput struct {
 //
 //nolint:revive // IngestResponse is clearer than Response in import context
 type IngestResponse struct {
-	Status        string   `json:"status"`
-	BatchKey      string   `json:"batch_key"`
-	TraceCount    int32    `json:"trace_count,omitempty"`
-	SpanCount     int32    `json:"span_count,omitempty"`
-	EventCount    int32    `json:"event_count,omitempty"`
-	AcceptedCount int32    `json:"accepted_count,omitempty"`
-	RejectedCount int32    `json:"rejected_count,omitempty"`
-	Errors        []string `json:"errors,omitempty"`
+	Status        string    `json:"status"`
+	BatchKey      string    `json:"batch_key"`
+	BatchID       uuid.UUID `json:"batch_id,omitempty"`
+	TraceCount    int32     `json:"trace_count,omitempty"`
+	SpanCount     int32     `json:"span_count,omitempty"`
+	EventCount    int32     `json:"event_count,omitempty"`
+	AcceptedCount int32     `json:"accepted_count,omitempty"`
+	RejectedCount int32     `json:"rejected_count,omitempty"`
+	Errors        []string  `json:"errors,omitempty"`
 }
 
 // IngestStatus represents the processing status.
@@ -94,3 +97,21 @@ const (
 	IngestStatusDuplicate IngestStatus = "duplicate"
 	IngestStatusFailed    IngestStatus = "failed"
 )
+
+// BatchStatus is the public-facing view returned for batch status polling.
+type BatchStatus struct {
+	BatchID               uuid.UUID  `json:"batch_id"`
+	BatchKey              string     `json:"batch_key"`
+	Status                string     `json:"status"`
+	AttemptCount          int32      `json:"attempt_count"`
+	ServerReceivedAt      time.Time  `json:"server_received_at"`
+	ProcessingStartedAt   *time.Time `json:"processing_started_at,omitempty"`
+	ProcessingCompletedAt *time.Time `json:"processing_completed_at,omitempty"`
+	TraceCount            *int32     `json:"trace_count,omitempty"`
+	SpanCount             *int32     `json:"span_count,omitempty"`
+	EventCount            *int32     `json:"event_count,omitempty"`
+	AcceptedCount         *int32     `json:"accepted_count,omitempty"`
+	RejectedCount         *int32     `json:"rejected_count,omitempty"`
+	LastErrorCode         *string    `json:"last_error_code,omitempty"`
+	LastErrorMessage      *string    `json:"last_error_message,omitempty"`
+}

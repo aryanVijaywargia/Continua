@@ -4,43 +4,18 @@ import (
 	"context"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/rivertype"
 
+	"github.com/continua-ai/continua/internal/jobargs"
 	"github.com/continua-ai/continua/internal/store"
 )
 
 // TraceRollupArgs contains the arguments for a trace rollup job.
-type TraceRollupArgs struct {
-	TraceID uuid.UUID `json:"trace_id"`
-}
-
-// Kind returns the job kind for River.
-func (TraceRollupArgs) Kind() string {
-	return "trace_rollup"
-}
-
-// InsertOpts returns River insert options with uniqueness configuration.
-// Coalescing is enforced for active jobs of the same trace.
-func (TraceRollupArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		UniqueOpts: river.UniqueOpts{
-			ByArgs: true,
-			// Keep uniqueness scoped to "active" states so completed jobs
-			// don't block re-enqueue of fresh rollups.
-			ByState: []rivertype.JobState{
-				rivertype.JobStateAvailable,
-				rivertype.JobStatePending,
-				rivertype.JobStateRunning,
-				rivertype.JobStateScheduled,
-				rivertype.JobStateRetryable,
-			},
-		},
-	}
-}
+type TraceRollupArgs = jobargs.TraceRollupArgs
 
 // TraceRollupWorker processes trace rollup jobs.
 type TraceRollupWorker struct {
@@ -52,6 +27,11 @@ type TraceRollupWorker struct {
 // Used for testing purposes - in production the worker is created by NewClient.
 func NewTraceRollupWorker(s *store.Store) *TraceRollupWorker {
 	return &TraceRollupWorker{store: s}
+}
+
+// Timeout bounds rollup execution time.
+func (w *TraceRollupWorker) Timeout(*river.Job[TraceRollupArgs]) time.Duration {
+	return 30 * time.Second
 }
 
 // Work processes a trace rollup job by computing and updating trace aggregates.
@@ -112,7 +92,7 @@ func EnqueueRollup(ctx context.Context, client *river.Client[pgx.Tx], traceID uu
 	if client == nil {
 		return false, errors.New("river client is nil")
 	}
-	res, err := client.Insert(ctx, TraceRollupArgs{TraceID: traceID}, nil)
+	res, err := client.Insert(ctx, jobargs.TraceRollupArgs{TraceID: traceID}, nil)
 	if err != nil {
 		return false, err
 	}
@@ -126,7 +106,7 @@ func EnqueueRollupInTx(ctx context.Context, client *river.Client[pgx.Tx], tx pgx
 	if client == nil {
 		return false, errors.New("river client is nil")
 	}
-	res, err := client.InsertTx(ctx, tx, TraceRollupArgs{TraceID: traceID}, nil)
+	res, err := client.InsertTx(ctx, tx, jobargs.TraceRollupArgs{TraceID: traceID}, nil)
 	if err != nil {
 		return false, err
 	}
