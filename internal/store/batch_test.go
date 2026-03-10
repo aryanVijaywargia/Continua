@@ -335,7 +335,10 @@ func TestBatch_ClaimBatchOrGetExistingConcurrentDuplicate(t *testing.T) {
 	assert.Equal(t, "queued", results[1].Batch.Status)
 	assert.NotEqual(t, results[0].Inserted, results[1].Inserted)
 
-	existing, err := s.GetBatchByKey(ctx, projectID, batchKey)
+	existing, err := q.GetBatchByKey(ctx, platform.GetBatchByKeyParams{
+		ProjectID: projectID,
+		BatchKey:  batchKey,
+	})
 	require.NoError(t, err)
 	assert.Equal(t, results[0].Batch.ID, existing.ID)
 }

@@ -88,22 +88,6 @@ func CreateTestTrace(t *testing.T, ctx context.Context, q *platform.Queries, pro
 	return trace.ID
 }
 
-// CreateTestSession creates a test session and returns its UUID.
-//
-//nolint:revive // Keep testing.T first in shared test helper signatures.
-func CreateTestSession(t *testing.T, ctx context.Context, q *platform.Queries, projectID uuid.UUID, name string) uuid.UUID {
-	t.Helper()
-
-	session, err := q.CreateSession(ctx, platform.CreateSessionParams{
-		ProjectID:  projectID,
-		ExternalID: name,
-		Name:       &name,
-	})
-	require.NoError(t, err)
-
-	return session.ID
-}
-
 // Ptr returns a pointer to the given value.
 // Useful for creating pointers to literals in test code.
 func Ptr[T any](v T) *T {
@@ -130,11 +114,6 @@ func Int64Ptr(i int64) *int64 {
 	return &i
 }
 
-// Float64Ptr returns a pointer to the given float64.
-func Float64Ptr(f float64) *float64 {
-	return &f
-}
-
 // BoolPtr returns a pointer to the given bool.
 func BoolPtr(b bool) *bool {
 	return &b
@@ -148,14 +127,6 @@ func UniqueID(prefix string) string {
 // PgtypeUUID converts a uuid.UUID to pgtype.UUID for use in SQLC params.
 func PgtypeUUID(id uuid.UUID) pgtype.UUID {
 	return pgtype.UUID{Bytes: id, Valid: true}
-}
-
-// PgtypeUUIDFromPtr converts a *uuid.UUID to pgtype.UUID for use in SQLC params.
-func PgtypeUUIDFromPtr(id *uuid.UUID) pgtype.UUID {
-	if id == nil {
-		return pgtype.UUID{Valid: false}
-	}
-	return pgtype.UUID{Bytes: *id, Valid: true}
 }
 
 // PgtypeTimestamptz converts a time.Time to pgtype.Timestamptz.
@@ -175,15 +146,5 @@ func PgtypeTimestamptzPtr(t *time.Time) pgtype.Timestamptz {
 func PgtypeNumericFromFloat64(f float64) pgtype.Numeric {
 	var n pgtype.Numeric
 	_ = n.Scan(f)
-	return n
-}
-
-// PgtypeNumericFromFloat64Ptr converts a *float64 to pgtype.Numeric.
-func PgtypeNumericFromFloat64Ptr(f *float64) pgtype.Numeric {
-	if f == nil {
-		return pgtype.Numeric{Valid: false}
-	}
-	var n pgtype.Numeric
-	_ = n.Scan(*f)
 	return n
 }

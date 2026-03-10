@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from .client import Continua
+from .client import _get_client_if_initialized
 from .trace import get_current_trace
 
 # Context variable for the current span
@@ -322,23 +322,19 @@ class SpanContext:
         """Send the span start event."""
         if self.trace_id is None:
             return
-        try:
-            client = Continua.get_instance()
-            client.add_span(self._build_span_data())
-        except RuntimeError:
-            # Client not initialized - skip
-            pass
+        client = _get_client_if_initialized()
+        if client is None:
+            return
+        client.add_span(self._build_span_data())
 
     def _send_span_end(self) -> None:
         """Send the span end event."""
         if self.trace_id is None:
             return
-        try:
-            client = Continua.get_instance()
-            client.add_span(self._build_span_data())
-        except RuntimeError:
-            # Client not initialized - skip
-            pass
+        client = _get_client_if_initialized()
+        if client is None:
+            return
+        client.add_span(self._build_span_data())
 
     def _record_event(
         self,
@@ -352,22 +348,21 @@ class SpanContext:
         if self.trace_id is None:
             return
 
-        try:
-            client = Continua.get_instance()
-            event_data: dict[str, Any] = {
-                "trace_id": self.trace_id,
-                "span_id": self.span_id,
-                "event_type": event_type,
-                "level": level,
-            }
-            if message is not None:
-                event_data["message"] = message
-            if payload is not None:
-                event_data["payload"] = payload
-            client.add_event(event_data)
-        except RuntimeError:
-            # Client not initialized - skip
-            pass
+        client = _get_client_if_initialized()
+        if client is None:
+            return
+
+        event_data: dict[str, Any] = {
+            "trace_id": self.trace_id,
+            "span_id": self.span_id,
+            "event_type": event_type,
+            "level": level,
+        }
+        if message is not None:
+            event_data["message"] = message
+        if payload is not None:
+            event_data["payload"] = payload
+        client.add_event(event_data)
 
 
 def span(

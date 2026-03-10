@@ -14,11 +14,6 @@ type Tx struct {
 	q  *platform.Queries
 }
 
-// Queries returns the sqlc queries instance scoped to this transaction.
-func (t *Tx) Queries() *platform.Queries {
-	return t.q
-}
-
 // Commit commits the transaction.
 func (t *Tx) Commit(ctx context.Context) error {
 	return t.tx.Commit(ctx)

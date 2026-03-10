@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -229,8 +230,11 @@ func TestIngestBatchWorker_DependencyRetryWindowExpires(t *testing.T) {
 	_, err = s.GetBatchPayload(ctx, batchID)
 	require.NoError(t, err)
 
-	_, err = s.GetTraceByExternalID(ctx, projectID, traceID)
-	assert.True(t, store.IsNotFound(err))
+	_, err = q.GetTraceByExternalID(ctx, platform.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   traceID,
+	})
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
 }
 
 func TestCleanupWorker_DeletesExpiredFailedPayloadsOnly(t *testing.T) {

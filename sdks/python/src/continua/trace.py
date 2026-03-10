@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any, Callable, TypeVar
 
-from .client import Continua
+from .client import _get_client_if_initialized
 from .session import get_current_session
 
 # Context variable for the current trace
@@ -121,49 +121,47 @@ class TraceContext:
 
     def _send_trace_start(self) -> None:
         """Send the trace start event."""
-        try:
-            client = Continua.get_instance()
-            trace_data: dict[str, Any] = {
-                "trace_id": self.trace_id,
-                "name": self.name,
-                "status": "running",
-                "start_time": self.start_time.isoformat(),
-            }
-            if self.session_id:
-                trace_data["session_id"] = self.session_id
-            if self.user_id:
-                trace_data["user_id"] = self.user_id
-            if self.tags:
-                trace_data["tags"] = self.tags
-            if self.metadata:
-                trace_data["metadata"] = self.metadata
-            if self._input is not None:
-                trace_data["input"] = self._input
-            client.add_trace(trace_data)
-        except RuntimeError:
-            # Client not initialized - skip
-            pass
+        client = _get_client_if_initialized()
+        if client is None:
+            return
+
+        trace_data: dict[str, Any] = {
+            "trace_id": self.trace_id,
+            "name": self.name,
+            "status": "running",
+            "start_time": self.start_time.isoformat(),
+        }
+        if self.session_id:
+            trace_data["session_id"] = self.session_id
+        if self.user_id:
+            trace_data["user_id"] = self.user_id
+        if self.tags:
+            trace_data["tags"] = self.tags
+        if self.metadata:
+            trace_data["metadata"] = self.metadata
+        if self._input is not None:
+            trace_data["input"] = self._input
+        client.add_trace(trace_data)
 
     def _send_trace_end(self) -> None:
         """Send the trace end event."""
-        try:
-            client = Continua.get_instance()
-            trace_data: dict[str, Any] = {
-                "trace_id": self.trace_id,
-                "name": self.name,
-                "status": self.status,
-                "start_time": self.start_time.isoformat(),
-            }
-            if self.end_time:
-                trace_data["end_time"] = self.end_time.isoformat()
-            if self._output is not None:
-                trace_data["output"] = self._output
-            if self.metadata:
-                trace_data["metadata"] = self.metadata
-            client.add_trace(trace_data)
-        except RuntimeError:
-            # Client not initialized - skip
-            pass
+        client = _get_client_if_initialized()
+        if client is None:
+            return
+
+        trace_data: dict[str, Any] = {
+            "trace_id": self.trace_id,
+            "name": self.name,
+            "status": self.status,
+            "start_time": self.start_time.isoformat(),
+        }
+        if self.end_time:
+            trace_data["end_time"] = self.end_time.isoformat()
+        if self._output is not None:
+            trace_data["output"] = self._output
+        if self.metadata:
+            trace_data["metadata"] = self.metadata
+        client.add_trace(trace_data)
 
 
 def trace(

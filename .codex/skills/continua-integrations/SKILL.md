@@ -119,6 +119,12 @@ def capture_span(func):
     return wrapper
 ```
 
+### 5. Current Python SDK Pattern
+
+- For trace/span emission, prefer one private helper that returns the global client when initialized and `None` otherwise.
+- Call that helper from `trace.py` and `span.py` instead of repeating `try/except RuntimeError` blocks.
+- Keep the current behavior: if the client is not initialized, tracing should quietly skip rather than fail user code.
+
 ---
 
 ## Quick Reference

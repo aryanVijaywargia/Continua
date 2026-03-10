@@ -62,7 +62,7 @@ func (w *IngestBatchWorker) Work(ctx context.Context, job *river.Job[IngestBatch
 		return w.handleProcessingError(ctx, &batch, startedAt, err)
 	}
 
-	if err := w.enqueueRollupsInTx(ctx, tx.Tx(), result.TraceIDs); err != nil {
+	if err := enqueueRollupsInTx(ctx, w.client, tx.Tx(), result.TraceIDs); err != nil {
 		return w.retryBatch(ctx, &batch, startedAt, classifyRetryableError(err), err.Error(), err)
 	}
 
@@ -301,12 +301,9 @@ func (w *IngestBatchWorker) retryBatch(
 	return err
 }
 
-func (w *IngestBatchWorker) enqueueRollupsInTx(ctx context.Context, tx pgx.Tx, traceIDs []uuid.UUID) error {
-	if w.client == nil {
-		return errors.New("river client is nil")
-	}
+func enqueueRollupsInTx(ctx context.Context, client *river.Client[pgx.Tx], tx pgx.Tx, traceIDs []uuid.UUID) error {
 	for _, traceID := range traceIDs {
-		if _, err := w.client.InsertTx(ctx, tx, jobargs.TraceRollupArgs{TraceID: traceID}, nil); err != nil {
+		if _, err := EnqueueRollupInTx(ctx, client, tx, traceID); err != nil {
 			return err
 		}
 	}
