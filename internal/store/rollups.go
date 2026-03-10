@@ -10,15 +10,6 @@ import (
 	"github.com/continua-ai/continua/db/gen/go/platform"
 )
 
-// TraceRollups contains aggregated values for a trace.
-type TraceRollups struct {
-	TotalSpans     int32
-	TotalTokensIn  int64
-	TotalTokensOut int64
-	TotalCost      pgtype.Numeric
-	ErrorCount     int32
-}
-
 // ComputeAndUpdateTraceRollups computes rollup values for a trace and updates it.
 // This is called after ingesting spans to update aggregate values.
 func (s *Store) ComputeAndUpdateTraceRollups(ctx context.Context, traceID uuid.UUID) error {
@@ -32,27 +23,6 @@ func (s *Store) ComputeAndUpdateTraceRollups(ctx context.Context, traceID uuid.U
 
 	// Update the trace with computed rollups
 	return s.q.UpdateTraceRollups(ctx, platform.UpdateTraceRollupsParams{
-		ID:             traceID,
-		TotalSpans:     &rollups.TotalSpans,
-		TotalTokensIn:  rollups.TotalTokensIn,
-		TotalTokensOut: rollups.TotalTokensOut,
-		TotalCost:      totalCost,
-		ErrorCount:     &rollups.ErrorCount,
-	})
-}
-
-// ComputeAndUpdateTraceRollupsTx computes and updates rollups within a transaction.
-func (s *Store) ComputeAndUpdateTraceRollupsTx(ctx context.Context, tx *Tx, traceID uuid.UUID) error {
-	// Compute rollups from spans using transaction's query
-	rollups, err := tx.q.ComputeTraceRollups(ctx, traceID)
-	if err != nil {
-		return err
-	}
-
-	totalCost := numericFromAny(rollups.TotalCost)
-
-	// Update the trace with computed rollups using transaction's query
-	return tx.q.UpdateTraceRollups(ctx, platform.UpdateTraceRollupsParams{
 		ID:             traceID,
 		TotalSpans:     &rollups.TotalSpans,
 		TotalTokensIn:  rollups.TotalTokensIn,

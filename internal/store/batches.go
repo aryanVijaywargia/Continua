@@ -43,19 +43,6 @@ func claimBatchRowToModel(row *platform.ClaimBatchOrGetExistingRow) ClaimedBatch
 	}
 }
 
-// ClaimBatch attempts to claim a batch for processing.
-// Returns the batch ID if successful, or ErrDuplicateBatch if the batch already exists.
-func (s *Store) ClaimBatch(ctx context.Context, projectID uuid.UUID, batchKey string) (uuid.UUID, error) {
-	id, err := s.q.ClaimBatch(ctx, platform.ClaimBatchParams{
-		ProjectID: projectID,
-		BatchKey:  batchKey,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, ErrDuplicateBatch
-	}
-	return id, err
-}
-
 // ClaimBatchOrGetExisting inserts a new queued batch or returns the existing durable idempotency record.
 func (s *Store) ClaimBatchOrGetExisting(ctx context.Context, projectID uuid.UUID, batchKey string) (ClaimedBatch, error) {
 	row, err := s.q.ClaimBatchOrGetExisting(ctx, platform.ClaimBatchOrGetExistingParams{
@@ -66,18 +53,6 @@ func (s *Store) ClaimBatchOrGetExisting(ctx context.Context, projectID uuid.UUID
 		return ClaimedBatch{}, err
 	}
 	return claimBatchRowToModel(&row), nil
-}
-
-// ClaimBatchTx attempts to claim a batch within a transaction.
-func (t *Tx) ClaimBatch(ctx context.Context, projectID uuid.UUID, batchKey string) (uuid.UUID, error) {
-	id, err := t.q.ClaimBatch(ctx, platform.ClaimBatchParams{
-		ProjectID: projectID,
-		BatchKey:  batchKey,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, ErrDuplicateBatch
-	}
-	return id, err
 }
 
 // ClaimBatchOrGetExisting inserts a new queued batch or returns the existing durable idempotency record within a transaction.
@@ -111,28 +86,6 @@ func (s *Store) GetBatchForProject(ctx context.Context, projectID, id uuid.UUID)
 		return platform.IngestBatch{}, ErrNotFound
 	}
 	return batch, err
-}
-
-// GetBatchByKey retrieves a batch by project ID and batch key.
-func (s *Store) GetBatchByKey(ctx context.Context, projectID uuid.UUID, batchKey string) (platform.IngestBatch, error) {
-	batch, err := s.q.GetBatchByKey(ctx, platform.GetBatchByKeyParams{
-		ProjectID: projectID,
-		BatchKey:  batchKey,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return platform.IngestBatch{}, ErrNotFound
-	}
-	return batch, err
-}
-
-// UpdateBatchStatus updates a batch's processing status and counts.
-func (s *Store) UpdateBatchStatus(ctx context.Context, params platform.UpdateBatchStatusParams) error {
-	return s.q.UpdateBatchStatus(ctx, params)
-}
-
-// UpdateBatchStatusTx updates a batch's processing status within a transaction.
-func (t *Tx) UpdateBatchStatus(ctx context.Context, params platform.UpdateBatchStatusParams) error {
-	return t.q.UpdateBatchStatus(ctx, params)
 }
 
 // InsertBatchPayload stores the compressed ingest payload for an async batch.
@@ -207,14 +160,5 @@ func (s *Store) CleanupExpiredPayloads(ctx context.Context, cutoff time.Time) ([
 	return s.q.CleanupExpiredPayloads(ctx, pgtype.Timestamptz{
 		Time:  cutoff,
 		Valid: true,
-	})
-}
-
-// ListBatches returns paginated batches for a project.
-func (s *Store) ListBatches(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]platform.IngestBatch, error) {
-	return s.q.ListBatches(ctx, platform.ListBatchesParams{
-		ProjectID: projectID,
-		Limit:     limit,
-		Offset:    offset,
 	})
 }

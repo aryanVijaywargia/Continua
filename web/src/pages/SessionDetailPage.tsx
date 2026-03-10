@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
-  getApiKey,
   fetchSession,
   fetchTracesBySession,
   Trace,
 } from '../api/client';
-import { ApiKeyPrompt } from '../components/ApiKeyPrompt';
+import { PaginationControls } from '../components/PaginationControls';
 import { StatusBadge } from '../components/StatusBadge';
+import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import {
   formatDuration,
   formatTokens,
@@ -24,11 +24,11 @@ const PAGE_SIZE = 20;
  */
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [hasApiKey, setHasApiKey] = useState(() => !!getApiKey());
+  const { hasApiKey, prompt } = useRequireApiKey();
   const [offset, setOffset] = useState(0);
 
   if (!hasApiKey) {
-    return <ApiKeyPrompt onSubmit={() => setHasApiKey(true)} />;
+    return prompt;
   }
 
   if (!id) {
@@ -102,8 +102,6 @@ function SessionDetailContent({
 
   const traces = tracesData?.traces ?? [];
   const total = tracesData?.total ?? 0;
-  const hasNextPage = offset + PAGE_SIZE < total;
-  const hasPrevPage = offset > 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -209,36 +207,12 @@ function SessionDetailContent({
                 </tbody>
               </table>
             </div>
-
-            {/* Pagination */}
-            <div className="mt-4 flex justify-between items-center">
-              <button
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                disabled={!hasPrevPage}
-                className={`px-4 py-2 rounded-lg ${
-                  hasPrevPage
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                Previous
-              </button>
-              <span className="text-sm text-gray-600">
-                Showing {offset + 1} - {Math.min(offset + PAGE_SIZE, total)} of{' '}
-                {total}
-              </span>
-              <button
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-                disabled={!hasNextPage}
-                className={`px-4 py-2 rounded-lg ${
-                  hasNextPage
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                Next
-              </button>
-            </div>
+            <PaginationControls
+              offset={offset}
+              pageSize={PAGE_SIZE}
+              total={total}
+              onOffsetChange={setOffset}
+            />
           </>
         )}
       </div>

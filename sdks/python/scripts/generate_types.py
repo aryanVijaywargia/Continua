@@ -19,6 +19,7 @@ def main():
         "--input", str(openapi_path),
         "--output", str(output_path),
         "--input-file-type", "openapi",
+        "--disable-timestamp",
         "--output-model-type", "pydantic_v2.BaseModel",
         "--use-schema-description",
         "--field-constraints",

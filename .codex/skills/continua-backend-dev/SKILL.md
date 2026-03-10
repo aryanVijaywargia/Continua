@@ -125,6 +125,22 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id string) {
 }
 ```
 
+### Current API File Layout
+
+- Keep `internal/api/server.go` for the `Server` type, constructor, and shared constants only.
+- Put shared HTTP helpers in `internal/api/server_helpers.go`.
+- Split handlers by feature, not by generic role:
+  - `internal/api/ingest_handlers.go`
+  - `internal/api/traces_handlers.go`
+  - `internal/api/sessions_handlers.go`
+- Keep related conversion helpers beside the feature that uses them. Example: ingest request conversion belongs with ingest handlers.
+
+### Current Ingest File Layout
+
+- Keep `internal/ingest/service.go` focused on sync/async orchestration, payload helpers, and status mapping.
+- Keep `internal/ingest/processor.go` focused on validation and the trace/span/event write path.
+- Prefer moving new ingest write-path logic into `Processor` before adding more orchestration code to `Service`.
+
 ### Type Mapping (Rule #10)
 
 ```go
@@ -160,6 +176,8 @@ func mapTraceToAPI(t platform.Trace) Trace {
 |-------|-----|
 | Edit `*_gen.go` files | Edit source + `make generate` |
 | Return `platform.Trace` from handlers | Map to API types |
+| Put every endpoint back into one large handler file | Keep handlers split by feature |
+| Mix ingest orchestration and DB write-path code in one file | Keep `service.go` and `processor.go` separate |
 | Add queries outside SQLC | Use `db/platform/queries/` |
 | Use `process.env` style config | Use config structs |
 | Panic on errors | Return structured errors |

@@ -12,8 +12,7 @@ import (
 
 // Sentinel errors for store operations.
 var (
-	ErrNotFound       = errors.New("store: record not found")
-	ErrDuplicateBatch = errors.New("store: duplicate batch key")
+	ErrNotFound = errors.New("store: record not found")
 )
 
 // Store provides database access for the platform.

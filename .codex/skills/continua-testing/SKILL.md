@@ -14,3 +14,13 @@ Use requirement-driven tests and run the smallest relevant suite before expandin
 ## References
 - `references/strategy.md` - what to test and how to scope coverage.
 - `references/commands.md` - make targets and SDK test commands.
+
+## Current Conventions
+
+- Keep Go tests colocated with the code they verify; do not move them into a repo-level `tests/` bucket.
+- In `internal/api`, mirror the handler split in test filenames:
+  - `ingest_handlers_test.go`
+  - `traces_handlers_test.go`
+  - `sessions_handlers_test.go`
+  - `server_helpers_test.go`
+- When reorganizing files without changing behavior, prefer renaming or regrouping existing tests over rewriting them.

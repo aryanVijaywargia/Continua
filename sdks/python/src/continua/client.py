@@ -46,6 +46,11 @@ def _module_shutdown() -> None:
         _current_client = None
 
 
+def _get_client_if_initialized() -> Continua | None:
+    """Return the global client when initialized, otherwise None."""
+    return Continua._instance
+
+
 class Continua:
     """Main client for the Continua observability platform.
 
