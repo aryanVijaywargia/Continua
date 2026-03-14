@@ -156,4 +156,4 @@ Continua.shutdown()
 
 ## Specification Reference
 
-Implements: `openspec/changes/add-reliability-search-sessions/specs/python-sdk-polish/spec.md`
+Implements: `openspec/implemented/add-reliability-search-sessions/specs/python-sdk-polish/spec.md`

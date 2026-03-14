@@ -90,18 +90,18 @@ New or still-open issues:
 
 ## Specs Found (Key Constraints)
 
-- `openspec/changes/enable-e2e-usability/proposal.md`
+- `openspec/implemented/enable-e2e-usability/proposal.md`
   - Minimal new code, no new Go deps, Python SDK only `httpx`.
   - Remove `/api/health` from OpenAPI, route via router composition.
-- `openspec/changes/enable-e2e-usability/design.md`
+- `openspec/implemented/enable-e2e-usability/design.md`
   - Env-only config for Phase 2.
   - Router composition with health public and OpenAPI routes protected.
   - Limit/offset pagination for UI.
   - Inline rollups; stop after each spec.
-- `openspec/changes/enable-e2e-usability/tasks.md`
+- `openspec/implemented/enable-e2e-usability/tasks.md`
   - Mount web UI handler at `/`.
   - Run `make generate`, seed test API key, write docs for specs 1-6.
-- `openspec/changes/enable-e2e-usability/specs/*/spec.md`
+- `openspec/implemented/enable-e2e-usability/specs/*/spec.md`
   - Auth enforcement, rollups after ingest, Python SDK, Web UI requirements.
 - `docs/CONTINUA_ARCHITECTURE_PLAN_v1.md`
   - Contract-first; wrapper for invalid JSON; 5MB ingest limit.
@@ -162,7 +162,7 @@ Web UI:
 - `web/vite.config.ts`
 
 Misc/docs:
-- `openspec/changes/enable-e2e-usability/*`
+- `openspec/implemented/enable-e2e-usability/*`
 - `docs/phase2/spec-0-discovery.md`
 - `.gitignore`, `.air.toml`, `.claude/settings.json`, `go.work.sum`
 
@@ -179,14 +179,14 @@ Misc/docs:
 - Minimal fix: Add a session-scoped count query and apply limit/offset for session_id.
 
 3) Python SDK ingest API and integration test missing
-- Evidence: `sdks/python/src/continua/client.py`, `openspec/changes/enable-e2e-usability/tasks.md:170`.
+- Evidence: `sdks/python/src/continua/client.py`, `openspec/implemented/enable-e2e-usability/tasks.md:170`.
 - Impact: SDK does not meet spec requirements.
 - Minimal fix: Add `Continua.ingest()` and `sdks/python/tests/test_integration.py`.
 
 ## High-Risk Issues (Fix Soon)
 
 1) Auth error response shape mismatch
-- Evidence: OpenSpec auth spec expects `{"error":...}` but middleware returns `{"code","message"}`: `openspec/changes/enable-e2e-usability/specs/authentication/spec.md:7`, `internal/api/middleware/auth.go:86`.
+- Evidence: OpenSpec auth spec expects `{"error":...}` but middleware returns `{"code","message"}`: `openspec/implemented/enable-e2e-usability/specs/authentication/spec.md:7`, `internal/api/middleware/auth.go:86`.
 - Impact: Spec mismatch and client assumptions break.
 - Fix: Align spec and implementation to one error shape.
 
@@ -202,11 +202,11 @@ Misc/docs:
 
 ## Medium/Low Issues
 
-- Python SDK missing `ingest()` and integration test: `sdks/python/src/continua/client.py`, `openspec/changes/enable-e2e-usability/tasks.md:170`, `openspec/changes/enable-e2e-usability/tasks.md:214`.
-- Traces list missing status filter requirement: `web/src/pages/TracesPage.tsx:68`, `openspec/changes/enable-e2e-usability/specs/web-ui/spec.md:24`.
+- Python SDK missing `ingest()` and integration test: `sdks/python/src/continua/client.py`, `openspec/implemented/enable-e2e-usability/tasks.md:170`, `openspec/implemented/enable-e2e-usability/tasks.md:214`.
+- Traces list missing status filter requirement: `web/src/pages/TracesPage.tsx:68`, `openspec/implemented/enable-e2e-usability/specs/web-ui/spec.md:24`.
 - Ingest service created inside API server instead of injected: `internal/api/server.go:33`, `internal/ingest/module.go:9`.
 - Trace detail ignores span query errors: `web/src/pages/TraceDetailPage.tsx:61`.
-- Spec process outputs missing (spec-1..6 summary docs): `openspec/changes/enable-e2e-usability/tasks.md:116`.
+- Spec process outputs missing (spec-1..6 summary docs): `openspec/implemented/enable-e2e-usability/tasks.md:116`.
 
 ## Spec Compliance Table
 
@@ -265,7 +265,7 @@ Missing tests for Phase 2:
 - Impact: Auth works for SQLite dev flows.
 
 4) Align auth error response shape to spec or update spec accordingly.
-- Files: `internal/api/middleware/auth.go:86`, `openspec/changes/enable-e2e-usability/specs/authentication/spec.md:7`
+- Files: `internal/api/middleware/auth.go:86`, `openspec/implemented/enable-e2e-usability/specs/authentication/spec.md:7`
 - Impact: Prevents client confusion.
 
 5) Complete SDK tasks.

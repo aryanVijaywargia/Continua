@@ -56,7 +56,7 @@
 - Use store/ingest/service helpers that already fill required fields and types, or build small helper constructors that populate required sqlc params (pgtype types, defaults). This fixes most compile errors in `internal/ingest/rollups_test.go`, `internal/store/search_test.go`, `internal/jobs/rollup_test.go`, `internal/store/performance_test.go`, `internal/store/spans_test.go`.
 
 2) **Standardize job API naming in spec/tasks/tests**
-- Align on function names for enqueueing rollup jobs (e.g., `jobs.EnqueueRollup`/`jobs.EnqueueRollupInTx`), and update tasks/spec so tests and implementation match (`internal/jobs/rollup_test.go`, `openspec/changes/add-reliability-search-sessions/tasks.md`).
+- Align on function names for enqueueing rollup jobs (e.g., `jobs.EnqueueRollup`/`jobs.EnqueueRollupInTx`), and update tasks/spec so tests and implementation match (`internal/jobs/rollup_test.go`, `openspec/implemented/add-reliability-search-sessions/tasks.md`).
 
 3) **Fix auth tests to match middleware and OpenAPI**
 - Use `middleware.APIKeyAuth`, store hashed API keys, assert `{code,message}` response shape, and handle `(uuid.UUID, bool)` return from `GetProjectID` (`internal/api/middleware/auth_test.go`).

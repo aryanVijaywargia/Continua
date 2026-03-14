@@ -19,12 +19,12 @@ The implementation follows an all-or-nothing transaction model where validation 
 
 | Document | Purpose |
 |----------|---------|
-| `openspec/changes/add-ingestion-pipeline/proposal.md` | Why, what, impact summary |
-| `openspec/changes/add-ingestion-pipeline/design.md` | Technical decisions and architecture |
-| `openspec/changes/add-ingestion-pipeline/specs/ingestion/spec.md` | Batch ingestion capability spec |
-| `openspec/changes/add-ingestion-pipeline/specs/idempotency/spec.md` | Batch deduplication spec |
-| `openspec/changes/add-ingestion-pipeline/specs/data-model/spec.md` | Extended schema spec |
-| `openspec/changes/add-ingestion-pipeline/tasks.md` | Implementation checklist |
+| `openspec/implemented/add-ingestion-pipeline/proposal.md` | Why, what, impact summary |
+| `openspec/implemented/add-ingestion-pipeline/design.md` | Technical decisions and architecture |
+| `openspec/implemented/add-ingestion-pipeline/specs/ingestion/spec.md` | Batch ingestion capability spec |
+| `openspec/implemented/add-ingestion-pipeline/specs/idempotency/spec.md` | Batch deduplication spec |
+| `openspec/implemented/add-ingestion-pipeline/specs/data-model/spec.md` | Extended schema spec |
+| `openspec/implemented/add-ingestion-pipeline/tasks.md` | Implementation checklist |
 
 ---
 

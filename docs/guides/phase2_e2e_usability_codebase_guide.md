@@ -25,15 +25,15 @@ Phase 2 added:
 
 | Document | Location | Status |
 |----------|----------|--------|
-| Proposal | `openspec/changes/enable-e2e-usability/proposal.md` | Implemented |
-| Design | `openspec/changes/enable-e2e-usability/design.md` | Implemented |
-| Tasks | `openspec/changes/enable-e2e-usability/tasks.md` | Implemented |
-| Spec: Server Bootstrap | `openspec/changes/enable-e2e-usability/specs/server-bootstrap/spec.md` | Implemented |
-| Spec: Authentication | `openspec/changes/enable-e2e-usability/specs/authentication/spec.md` | Implemented |
-| Spec: Python SDK | `openspec/changes/enable-e2e-usability/specs/python-sdk/spec.md` | Implemented |
-| Spec: Trace Rollups | `openspec/changes/enable-e2e-usability/specs/trace-rollups/spec.md` | Implemented |
-| Spec: Web UI | `openspec/changes/enable-e2e-usability/specs/web-ui/spec.md` | Implemented |
-| Spec: OpenAPI Extensions | `openspec/changes/enable-e2e-usability/specs/openapi-extensions/spec.md` | Implemented |
+| Proposal | `openspec/implemented/enable-e2e-usability/proposal.md` | Implemented |
+| Design | `openspec/implemented/enable-e2e-usability/design.md` | Implemented |
+| Tasks | `openspec/implemented/enable-e2e-usability/tasks.md` | Implemented |
+| Spec: Server Bootstrap | `openspec/implemented/enable-e2e-usability/specs/server-bootstrap/spec.md` | Implemented |
+| Spec: Authentication | `openspec/implemented/enable-e2e-usability/specs/authentication/spec.md` | Implemented |
+| Spec: Python SDK | `openspec/implemented/enable-e2e-usability/specs/python-sdk/spec.md` | Implemented |
+| Spec: Trace Rollups | `openspec/implemented/enable-e2e-usability/specs/trace-rollups/spec.md` | Implemented |
+| Spec: Web UI | `openspec/implemented/enable-e2e-usability/specs/web-ui/spec.md` | Implemented |
+| Spec: OpenAPI Extensions | `openspec/implemented/enable-e2e-usability/specs/openapi-extensions/spec.md` | Implemented |
 
 ### Related Architecture Docs
 

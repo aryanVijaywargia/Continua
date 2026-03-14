@@ -6,7 +6,7 @@
 - Sessions exist in DB but current OpenAPI lacks a session detail endpoint (db/platform/migrations/postgres/0001_initial_schema.up.sql, contracts/openapi/openapi.yaml).
 
 ## OpenSpec Issues (Critical/Logical Only)
-1) P1 - Search semantics conflict: the search scenario says "checkout flow" matches traces containing "checkout" OR "flow", but the spec mandates `plainto_tsquery` AND semantics (openspec/changes/add-reliability-search-sessions/specs/search/spec.md). This creates contradictory behavior expectations for the same query.
+1) P1 - Search semantics conflict: the search scenario says "checkout flow" matches traces containing "checkout" OR "flow", but the spec mandates `plainto_tsquery` AND semantics (openspec/implemented/add-reliability-search-sessions/specs/search/spec.md). This creates contradictory behavior expectations for the same query.
 
 ## Recommended Changes
 1) Align the trace-name search scenario with AND semantics, or change the parser to `websearch_to_tsquery` if OR semantics are required.
@@ -15,7 +15,7 @@
 
 ### Fix trace-name search semantics
 
-`openspec/changes/add-reliability-search-sessions/specs/search/spec.md` (replace the trace-name scenario):
+`openspec/implemented/add-reliability-search-sessions/specs/search/spec.md` (replace the trace-name scenario):
 
 ```markdown
 #### Scenario: Search by trace name
