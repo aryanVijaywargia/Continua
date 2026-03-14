@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react';
 import { Span } from '../api/client';
 import { StatusBadge } from './StatusBadge';
 import { JsonViewer } from './JsonViewer';
@@ -20,6 +21,9 @@ export function SpanDetail({ span }: SpanDetailProps) {
   }
 
   const totalTokens = (span.tokens_in ?? 0) + (span.tokens_out ?? 0);
+  const showLLMContext =
+    span.kind === 'LLM' &&
+    (span.model !== undefined || span.provider !== undefined);
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -66,8 +70,19 @@ export function SpanDetail({ span }: SpanDetailProps) {
         </div>
       )}
 
+      {/* LLM context */}
+      {showLLMContext && (
+        <div className="mb-6">
+          <h3 className="mb-2 text-sm font-medium text-gray-700">LLM Context</h3>
+          <div className="rounded bg-gray-50 p-3 text-sm">
+            <DetailRow label="Model" value={span.model} />
+            <DetailRow label="Provider" value={span.provider} className="mt-1" />
+          </div>
+        </div>
+      )}
+
       {/* Input */}
-      {span.input && (
+      {span.input !== undefined && (
         <div className="mb-6">
           <h3 className="text-sm font-medium text-gray-700 mb-2">Input</h3>
           <JsonViewer data={span.input} />
@@ -75,7 +90,7 @@ export function SpanDetail({ span }: SpanDetailProps) {
       )}
 
       {/* Output */}
-      {span.output && (
+      {span.output !== undefined && (
         <div className="mb-6">
           <h3 className="text-sm font-medium text-gray-700 mb-2">Output</h3>
           <JsonViewer data={span.output} />
@@ -94,19 +109,15 @@ export function SpanDetail({ span }: SpanDetailProps) {
       <div className="mb-6">
         <h3 className="text-sm font-medium text-gray-700 mb-2">Identifiers</h3>
         <div className="bg-gray-50 rounded p-3 text-sm">
-          <div className="flex justify-between mb-1">
-            <span className="text-gray-600">Span ID:</span>
-            <span className="font-mono text-xs">{span.id}</span>
-          </div>
-          <div className="flex justify-between mb-1">
-            <span className="text-gray-600">Trace ID:</span>
-            <span className="font-mono text-xs">{span.trace_id}</span>
-          </div>
+          <DetailRow label="Span ID" value={span.id} mono />
+          <DetailRow label="Trace ID" value={span.trace_id} mono className="mt-1" />
           {span.parent_span_id && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Parent Span ID:</span>
-              <span className="font-mono text-xs">{span.parent_span_id}</span>
-            </div>
+            <DetailRow
+              label="Parent Span ID"
+              value={span.parent_span_id}
+              mono
+              className="mt-1"
+            />
           )}
         </div>
       </div>
@@ -115,19 +126,18 @@ export function SpanDetail({ span }: SpanDetailProps) {
       <div>
         <h3 className="text-sm font-medium text-gray-700 mb-2">Timestamps</h3>
         <div className="bg-gray-50 rounded p-3 text-sm">
-          <div className="flex justify-between mb-1">
-            <span className="text-gray-600">Started:</span>
-            <span className="font-mono text-xs">
-              {new Date(span.started_at).toISOString()}
-            </span>
-          </div>
+          <DetailRow
+            label="Started"
+            value={new Date(span.started_at).toISOString()}
+            mono
+          />
           {span.ended_at && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Ended:</span>
-              <span className="font-mono text-xs">
-                {new Date(span.ended_at).toISOString()}
-              </span>
-            </div>
+            <DetailRow
+              label="Ended"
+              value={new Date(span.ended_at).toISOString()}
+              mono
+              className="mt-1"
+            />
           )}
         </div>
       </div>
@@ -145,6 +155,30 @@ function MetricCard({ label, value }: MetricCardProps) {
     <div className="bg-gray-50 rounded p-3 text-center">
       <div className="text-xl font-semibold text-gray-900">{value}</div>
       <div className="text-xs text-gray-500 mt-1">{label}</div>
+    </div>
+  );
+}
+
+interface DetailRowProps {
+  label: string;
+  value?: ReactNode;
+  mono?: boolean;
+  className?: string;
+}
+
+function DetailRow({ label, value, mono = false, className = '' }: DetailRowProps) {
+  const hasValue = value !== undefined && value !== null && value !== '';
+
+  return (
+    <div className={`flex justify-between gap-4 ${className}`.trim()}>
+      <span className="text-gray-600">{label}:</span>
+      {hasValue ? (
+        <span className={mono ? 'font-mono text-xs text-right' : 'text-right'}>
+          {value}
+        </span>
+      ) : (
+        <span className="text-gray-400">-</span>
+      )}
     </div>
   );
 }

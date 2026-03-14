@@ -139,9 +139,16 @@ const (
 
 // Defines values for TraceStatus.
 const (
-	COMPLETED TraceStatus = "COMPLETED"
-	FAILED    TraceStatus = "FAILED"
-	RUNNING   TraceStatus = "RUNNING"
+	TraceStatusCOMPLETED TraceStatus = "COMPLETED"
+	TraceStatusFAILED    TraceStatus = "FAILED"
+	TraceStatusRUNNING   TraceStatus = "RUNNING"
+)
+
+// Defines values for TraceDetailStatus.
+const (
+	TraceDetailStatusCOMPLETED TraceDetailStatus = "COMPLETED"
+	TraceDetailStatusFAILED    TraceDetailStatus = "FAILED"
+	TraceDetailStatusRUNNING   TraceDetailStatus = "RUNNING"
 )
 
 // Defines values for ListTracesParamsStatus.
@@ -345,17 +352,25 @@ type Span struct {
 	Id           openapi_types.UUID `json:"id"`
 
 	// Input Span input payload (any valid JSON)
-	Input     interface{}             `json:"input,omitempty"`
-	Kind      SpanKind                `json:"kind"`
-	LatencyMs *int                    `json:"latency_ms,omitempty"`
-	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
-	Name      string                  `json:"name"`
+	Input                  interface{}             `json:"input,omitempty"`
+	InputOriginalSizeBytes *int64                  `json:"input_original_size_bytes,omitempty"`
+	InputTruncated         *bool                   `json:"input_truncated,omitempty"`
+	InputTruncationReason  *string                 `json:"input_truncation_reason,omitempty"`
+	Kind                   SpanKind                `json:"kind"`
+	LatencyMs              *int                    `json:"latency_ms,omitempty"`
+	Metadata               *map[string]interface{} `json:"metadata,omitempty"`
+	Model                  *string                 `json:"model,omitempty"`
+	Name                   string                  `json:"name"`
 
 	// Output Span output payload (any valid JSON)
-	Output interface{} `json:"output,omitempty"`
+	Output                  interface{} `json:"output,omitempty"`
+	OutputOriginalSizeBytes *int64      `json:"output_original_size_bytes,omitempty"`
+	OutputTruncated         *bool       `json:"output_truncated,omitempty"`
+	OutputTruncationReason  *string     `json:"output_truncation_reason,omitempty"`
 
 	// ParentSpanId External parent span identifier
 	ParentSpanId *string `json:"parent_span_id,omitempty"`
+	Provider     *string `json:"provider,omitempty"`
 
 	// SpanId External span identifier (used for parent-child relationships)
 	SpanId    string             `json:"span_id"`
@@ -444,6 +459,37 @@ type Trace struct {
 
 // TraceStatus defines model for Trace.Status.
 type TraceStatus string
+
+// TraceDetail defines model for TraceDetail.
+type TraceDetail struct {
+	EndedAt     *time.Time `json:"ended_at,omitempty"`
+	Environment *string    `json:"environment,omitempty"`
+
+	// ErrorCount Count of failed spans in this trace
+	ErrorCount *int               `json:"error_count,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Input Trace input payload (any valid JSON)
+	Input    interface{}             `json:"input,omitempty"`
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Name     string                  `json:"name"`
+
+	// Output Trace output payload (any valid JSON)
+	Output         interface{}         `json:"output,omitempty"`
+	Release        *string             `json:"release,omitempty"`
+	SessionId      *openapi_types.UUID `json:"session_id,omitempty"`
+	StartedAt      time.Time           `json:"started_at"`
+	Status         TraceDetailStatus   `json:"status"`
+	Tags           *[]string           `json:"tags,omitempty"`
+	TotalCostUsd   *float32            `json:"total_cost_usd,omitempty"`
+	TotalTokensIn  *int                `json:"total_tokens_in,omitempty"`
+	TotalTokensOut *int                `json:"total_tokens_out,omitempty"`
+	TraceId        *string             `json:"trace_id,omitempty"`
+	UserId         *string             `json:"user_id,omitempty"`
+}
+
+// TraceDetailStatus defines model for TraceDetail.Status.
+type TraceDetailStatus string
 
 // TraceList defines model for TraceList.
 type TraceList struct {

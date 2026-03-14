@@ -69,7 +69,7 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
-	resp := traceToAPI(&trace)
+	resp := traceDetailToAPI(&trace)
 	writeJSON(w, http.StatusOK, resp)
 }
 

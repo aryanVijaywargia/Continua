@@ -67,6 +67,52 @@ func traceToAPI(t *platform.Trace) Trace {
 	return trace
 }
 
+// traceDetailToAPI converts a database trace to the detail API schema by
+// composing the summary mapper output with debugger-specific fields.
+// NOTE: oapi-codegen currently flattens TraceDetail's allOf shape, so any new
+// summary fields added to traceToAPI must also be copied into TraceDetail here.
+func traceDetailToAPI(t *platform.Trace) TraceDetail {
+	summary := traceToAPI(t)
+	trace := TraceDetail{
+		Id:             summary.Id,
+		Name:           summary.Name,
+		Status:         TraceDetailStatus(summary.Status),
+		StartedAt:      summary.StartedAt,
+		EndedAt:        summary.EndedAt,
+		SessionId:      summary.SessionId,
+		TotalTokensIn:  summary.TotalTokensIn,
+		TotalTokensOut: summary.TotalTokensOut,
+		TotalCostUsd:   summary.TotalCostUsd,
+		ErrorCount:     summary.ErrorCount,
+		Metadata:       summary.Metadata,
+	}
+
+	if t.TraceID != "" {
+		trace.TraceId = &t.TraceID
+	}
+	if t.UserID != nil {
+		trace.UserId = t.UserID
+	}
+	if len(t.Tags) > 0 {
+		tags := append([]string(nil), t.Tags...)
+		trace.Tags = &tags
+	}
+	if t.Environment != nil {
+		trace.Environment = t.Environment
+	}
+	if t.Release != nil {
+		trace.Release = t.Release
+	}
+	if input, ok := parseJSONValue(t.Input); ok {
+		trace.Input = input
+	}
+	if output, ok := parseJSONValue(t.Output); ok {
+		trace.Output = output
+	}
+
+	return trace
+}
+
 // spanToAPI converts a database span to an API span.
 func spanToAPI(sp *platform.Span) Span {
 	span := Span{
@@ -126,19 +172,38 @@ func spanToAPI(sp *platform.Span) Span {
 	}
 
 	// Input payload (JSON from DB bytes - can be any valid JSON)
-	if len(sp.Input) > 0 {
-		var input interface{}
-		if err := parseJSON(sp.Input, &input); err == nil {
-			span.Input = &input
-		}
+	if input, ok := parseJSONValue(sp.Input); ok {
+		span.Input = input
 	}
 
 	// Output payload (JSON from DB bytes - can be any valid JSON)
-	if len(sp.Output) > 0 {
-		var output interface{}
-		if err := parseJSON(sp.Output, &output); err == nil {
-			span.Output = &output
-		}
+	if output, ok := parseJSONValue(sp.Output); ok {
+		span.Output = output
+	}
+
+	if sp.Model != nil {
+		span.Model = sp.Model
+	}
+	if sp.Provider != nil {
+		span.Provider = sp.Provider
+	}
+	if sp.InputTruncated != nil {
+		span.InputTruncated = sp.InputTruncated
+	}
+	if sp.InputOriginalSizeBytes != nil {
+		span.InputOriginalSizeBytes = sp.InputOriginalSizeBytes
+	}
+	if sp.InputTruncationReason != nil {
+		span.InputTruncationReason = sp.InputTruncationReason
+	}
+	if sp.OutputTruncated != nil {
+		span.OutputTruncated = sp.OutputTruncated
+	}
+	if sp.OutputOriginalSizeBytes != nil {
+		span.OutputOriginalSizeBytes = sp.OutputOriginalSizeBytes
+	}
+	if sp.OutputTruncationReason != nil {
+		span.OutputTruncationReason = sp.OutputTruncationReason
 	}
 
 	return span
@@ -345,6 +410,28 @@ func parseJSON(data []byte, v interface{}) error {
 		return nil
 	}
 	return json.Unmarshal(data, v)
+}
+
+func parseJSONValue(data []byte) (interface{}, bool) {
+	if len(data) == 0 {
+		return nil, false
+	}
+
+	var value interface{}
+	if err := parseJSON(data, &value); err != nil {
+		return nil, false
+	}
+	if value == nil {
+		return jsonNull{}, true
+	}
+
+	return value, true
+}
+
+type jsonNull struct{}
+
+func (jsonNull) MarshalJSON() ([]byte, error) {
+	return []byte("null"), nil
 }
 
 // numericToFloat32 converts a pgtype.Numeric to float32.
