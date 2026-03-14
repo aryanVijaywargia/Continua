@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSpans, fetchTrace, type Span } from '../api/client';
+import { CopyButton } from '../components/CopyButton';
 import { FailureSummary } from '../components/FailureSummary';
 import { JsonViewer } from '../components/JsonViewer';
 import { SpanDetail } from '../components/SpanDetail';
@@ -9,6 +10,7 @@ import { SpanTree } from '../components/SpanTree';
 import { StatusBadge } from '../components/StatusBadge';
 import { Timeline } from '../components/Timeline';
 import { useRequireApiKey } from '../hooks/useRequireApiKey';
+import { useTraceDetailSearchParams } from '../hooks/useTraceDetailSearchParams';
 import { useTraceTimeline } from './useTraceTimeline';
 import {
   calculateDuration,
@@ -25,6 +27,7 @@ import {
   evaluateStaleTraceSignal,
   type StaleTraceSignal,
 } from '../utils/failureAnalysis';
+import { serializeSpanParam } from '../utils/traceDetailSearchParams';
 
 /**
  * Trace detail page with span tree, detail panel, and merged event timeline.
@@ -85,9 +88,11 @@ function TraceDetailContent({
   traceId,
 }: TraceDetailContentProps) {
   const location = useLocation();
+  const { spanParam, setSpanParam } = useTraceDetailSearchParams();
   const [selectedSpanExternalId, setSelectedSpanExternalId] = useState<string | null>(
     null
   );
+  const [revealPath, setRevealPath] = useState<Set<string>>(new Set());
   const [revealPathVersion, setRevealPathVersion] = useState(0);
   const [userHasSelected, setUserHasSelected] = useState(false);
   const traceQuery = useQuery({
@@ -120,10 +125,6 @@ function TraceDetailContent({
     () => buildBreadcrumbPath(selectedSpan, spanIndex),
     [selectedSpan, spanIndex]
   );
-  const revealPath = useMemo(
-    () => new Set(selectedBreadcrumbPath.map((segment) => segment.spanId)),
-    [selectedBreadcrumbPath]
-  );
   const staleTraceSignal = useMemo(
     () =>
       timeline.hasSnapshot
@@ -137,41 +138,97 @@ function TraceDetailContent({
     [spans, timeline.events, timeline.hasSnapshot, timelineStatus, trace?.started_at]
   );
 
-  const selectSpan = (spanId: string | null, manualSelection: boolean) => {
+  const updateSelectedSpan = useCallback((spanId: string | null) => {
     setSelectedSpanExternalId(spanId);
+
     if (spanId) {
+      const breadcrumbPath = buildBreadcrumbPath(spanIndex.get(spanId), spanIndex);
+      setRevealPath(new Set(breadcrumbPath.map((segment) => segment.spanId)));
       setRevealPathVersion((version) => version + 1);
+      return;
     }
-    if (manualSelection) {
-      setUserHasSelected(true);
-    }
-  };
+
+    setRevealPath(new Set());
+  }, [spanIndex]);
+
+  const handleSelectSpan = useCallback((spanId: string) => {
+    updateSelectedSpan(spanId);
+    setUserHasSelected(true);
+    setSpanParam(spanId);
+  }, [setSpanParam, updateSelectedSpan]);
+
+  const buildCopyTraceUrl = useCallback(() => {
+    const searchParams = serializeSpanParam(
+      new URLSearchParams(location.search),
+      selectedSpanExternalId
+    );
+    const nextSearch = searchParams.toString();
+
+    return new URL(
+      `${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`,
+      window.location.origin
+    ).toString();
+  }, [location.pathname, location.search, selectedSpanExternalId]);
 
   useEffect(() => {
-    if (!selectedSpanExternalId) {
+    if (!spansQuery.isSuccess) {
       return;
     }
 
-    if (spanIndex.has(selectedSpanExternalId)) {
+    if (spanParam !== null) {
+      if (spanIndex.has(spanParam)) {
+        if (selectedSpanExternalId !== spanParam || !userHasSelected) {
+          updateSelectedSpan(spanParam);
+        }
+        if (!userHasSelected) {
+          setUserHasSelected(true);
+        }
+        return;
+      }
+
+      updateSelectedSpan(null);
+      setUserHasSelected(false);
+      setSpanParam(null);
       return;
     }
 
-    const nextSelectedSpanId =
-      failureAnalysis.summary.primaryFailedSpan?.span_id ?? null;
-
-    setSelectedSpanExternalId(nextSelectedSpanId);
-    if (nextSelectedSpanId) {
-      setRevealPathVersion((version) => version + 1);
+    if (!userHasSelected) {
+      return;
     }
+
+    updateSelectedSpan(null);
     setUserHasSelected(false);
   }, [
-    failureAnalysis.summary.primaryFailedSpan,
     selectedSpanExternalId,
+    setSpanParam,
     spanIndex,
+    spanParam,
+    spansQuery.isSuccess,
+    updateSelectedSpan,
+    userHasSelected,
   ]);
 
   useEffect(() => {
-    if (timelineStatus !== 'FAILED' || userHasSelected) {
+    if (!selectedSpanExternalId || spanIndex.has(selectedSpanExternalId)) {
+      return;
+    }
+
+    updateSelectedSpan(null);
+    setUserHasSelected(false);
+
+    if (spanParam !== null) {
+      setSpanParam(null);
+    }
+  }, [
+    selectedSpanExternalId,
+    setSpanParam,
+    spanIndex,
+    spanParam,
+    updateSelectedSpan,
+  ]);
+
+  useEffect(() => {
+    if (timelineStatus !== 'FAILED' || userHasSelected || spanParam !== null) {
       return;
     }
 
@@ -182,14 +239,13 @@ function TraceDetailContent({
       return;
     }
 
-    setSelectedSpanExternalId(nextSelectedSpanId);
-    if (nextSelectedSpanId) {
-      setRevealPathVersion((version) => version + 1);
-    }
+    updateSelectedSpan(nextSelectedSpanId);
   }, [
     failureAnalysis.summary.primaryFailedSpan,
     selectedSpanExternalId,
+    spanParam,
     timelineStatus,
+    updateSelectedSpan,
     userHasSelected,
   ]);
 
@@ -266,7 +322,7 @@ function TraceDetailContent({
           {timelineStatus === 'FAILED' && (
             <FailureSummary
               summary={failureAnalysis.summary}
-              onJumpToPrimaryFailedSpan={(spanId) => selectSpan(spanId, true)}
+              onJumpToPrimaryFailedSpan={handleSelectSpan}
             />
           )}
 
@@ -289,20 +345,31 @@ function TraceDetailContent({
           )}
 
           <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
               <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-600">
                 Trace Context
               </h2>
+              <CopyButton
+                aria-label="Copy Trace URL"
+                className="shrink-0"
+                getValue={buildCopyTraceUrl}
+                idleLabel="Copy Trace URL"
+                successLabel="Copied URL"
+              />
             </div>
             <div className="space-y-6 p-4">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <TraceContextField
                   label="ID"
                   value={renderContextText(trace.id, true)}
+                  copyValue={trace.id}
+                  copyButtonLabel="Copy trace UUID"
                 />
                 <TraceContextField
                   label="External Trace ID"
                   value={renderContextText(trace.trace_id, true)}
+                  copyValue={trace.trace_id}
+                  copyButtonLabel="Copy external trace ID"
                 />
                 <TraceContextField
                   label="Session UUID"
@@ -316,6 +383,8 @@ function TraceDetailContent({
                   ) : (
                     renderContextText(undefined)
                   )}
+                  copyValue={trace.session_id}
+                  copyButtonLabel="Copy session UUID"
                 />
                 <TraceContextField
                   label="User ID"
@@ -373,7 +442,7 @@ function TraceDetailContent({
                 <SpanTree
                   spans={spans}
                   selectedSpanId={selectedSpanExternalId}
-                  onSelectSpan={(spanId) => selectSpan(spanId, true)}
+                  onSelectSpan={handleSelectSpan}
                   failedSpanIds={failureAnalysis.failedSpanIds}
                   primaryAncestorPath={failureAnalysis.primaryAncestorPath}
                   revealPath={revealPath}
@@ -393,7 +462,8 @@ function TraceDetailContent({
                 <SpanDetail
                   span={selectedSpan}
                   breadcrumbPath={selectedBreadcrumbPath}
-                  onSelectSpan={(spanId) => selectSpan(spanId, true)}
+                  onSelectSpan={handleSelectSpan}
+                  spanIndex={spanIndex}
                 />
               </div>
             </section>
@@ -406,7 +476,8 @@ function TraceDetailContent({
             isLoading={timeline.isLoading}
             error={timeline.error}
             selectedSpanId={selectedSpanExternalId}
-            onSelectSpan={(spanId) => selectSpan(spanId, true)}
+            onSelectSpan={handleSelectSpan}
+            spanIndex={spanIndex}
           />
         </div>
       </div>
@@ -418,15 +489,32 @@ interface TraceContextFieldProps {
   label: string;
   value: ReactNode;
   className?: string;
+  copyValue?: string;
+  copyButtonLabel?: string;
 }
 
-function TraceContextField({ label, value, className = '' }: TraceContextFieldProps) {
+function TraceContextField({
+  label,
+  value,
+  className = '',
+  copyValue,
+  copyButtonLabel,
+}: TraceContextFieldProps) {
   return (
     <div className={`rounded-lg border border-gray-200 bg-gray-50 p-4 ${className}`.trim()}>
       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
         {label}
       </div>
-      <div className="mt-2 text-sm text-gray-900">{value}</div>
+      <div className="mt-2 flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 text-sm text-gray-900">{value}</div>
+        {copyValue && copyButtonLabel ? (
+          <CopyButton
+            aria-label={copyButtonLabel}
+            className="shrink-0"
+            value={copyValue}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
