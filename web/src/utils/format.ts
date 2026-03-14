@@ -33,6 +33,17 @@ export function formatCost(amount: number | undefined | null): string {
 }
 
 /**
+ * Format a byte count using binary units.
+ */
+export function formatBytes(bytes: number | undefined | null): string {
+  if (bytes === undefined || bytes === null) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+/**
  * Format a date to relative time (e.g., "2m ago").
  */
 export function formatRelativeTime(dateStr: string | undefined | null): string {

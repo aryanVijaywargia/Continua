@@ -225,14 +225,20 @@ function createQueryClient() {
   });
 }
 
-function renderTraceRoutes(initialEntries: Array<string | { pathname: string; state?: unknown }>) {
+function renderTraceRoutes(
+  initialEntries: Array<string | { pathname: string; state?: unknown }>,
+  options: { initialIndex?: number } = {}
+) {
   const queryClient = createQueryClient();
   const router = createMemoryRouter(
     [
       { path: '/traces', element: <TracesPage /> },
       { path: '/traces/:id', element: <TraceDetailPage /> },
     ],
-    { initialEntries }
+    {
+      initialEntries,
+      initialIndex: options.initialIndex,
+    }
   );
 
   const view = render(
@@ -242,6 +248,17 @@ function renderTraceRoutes(initialEntries: Array<string | { pathname: string; st
   );
 
   return { ...view, queryClient, router };
+}
+
+function mockClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+
+  Object.defineProperty(window.navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+
+  return writeText;
 }
 
 async function waitForListFetch(search: string) {
@@ -282,6 +299,10 @@ afterEach(() => {
   localStorage.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  Object.defineProperty(window.navigator, 'clipboard', {
+    configurable: true,
+    value: undefined,
+  });
 });
 
 describe('TracesPage', () => {
@@ -819,11 +840,12 @@ describe('TraceDetailPage', () => {
       })
     );
 
-    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect(
       await screen.findByRole('heading', { name: 'Failure Summary' })
     ).toBeInTheDocument();
+    expect(view.router.state.location.search).toBe('');
 
     const detailBreadcrumb = screen.getByLabelText('Span breadcrumb');
     expect(within(detailBreadcrumb).getByText('Failed tool')).toBeInTheDocument();
@@ -875,6 +897,480 @@ describe('TraceDetailPage', () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByLabelText('Span breadcrumb')).getByText('Failed tool')
+    ).toBeInTheDocument();
+  });
+
+  it('selects a valid span from the URL and does not let failure-first auto-selection override it', async () => {
+    const rootSpan = createSpan({
+      span_id: 'url-root',
+      name: 'URL root',
+      status: 'COMPLETED',
+    });
+    const requestedSpan = createSpan({
+      span_id: 'url-child',
+      name: 'URL child',
+      parent_span_id: 'url-root',
+      status: 'COMPLETED',
+    });
+    const failedSpan = createSpan({
+      span_id: 'url-failed',
+      name: 'URL failed',
+      parent_span_id: 'url-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Failure preview',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [rootSpan, requestedSpan, failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'url-error',
+                span_id: 'url-failed',
+                span_name: 'URL failed',
+                event_type: 'error',
+                message: 'Failure preview',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}?span=url-child`]);
+
+    expect(
+      await screen.findByRole('button', { name: 'Select span URL child' })
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('URL child')
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).queryByText('URL failed')
+    ).not.toBeInTheDocument();
+    expect(view.router.state.location.search).toBe('?span=url-child');
+  });
+
+  it('removes unknown span params while preserving unrelated params and re-running failure-first selection', async () => {
+    const rootSpan = createSpan({
+      span_id: 'cleanup-root',
+      name: 'Cleanup root',
+      status: 'COMPLETED',
+    });
+    const failedSpan = createSpan({
+      span_id: 'cleanup-failed',
+      name: 'Cleanup failed',
+      parent_span_id: 'cleanup-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Cleanup failure',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [rootSpan, failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'cleanup-error',
+                span_id: 'cleanup-failed',
+                span_name: 'Cleanup failed',
+                event_type: 'error',
+                message: 'Cleanup failure',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes([
+      `/traces/${TRACE_ONE.id}?debug=true&span=missing-span`,
+    ]);
+
+    await waitFor(() => {
+      expect(view.router.state.location.search).toBe('?debug=true');
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Select span Cleanup failed' })
+      ).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
+  it('reacts to browser back and forward span changes while staying on the same trace', async () => {
+    const rootSpan = createSpan({
+      span_id: 'history-root',
+      name: 'History root',
+      status: 'COMPLETED',
+    });
+    const alphaSpan = createSpan({
+      span_id: 'history-alpha',
+      name: 'History alpha',
+      parent_span_id: 'history-root',
+      status: 'COMPLETED',
+    });
+    const betaSpan = createSpan({
+      span_id: 'history-beta',
+      name: 'History beta',
+      parent_span_id: 'history-root',
+      status: 'COMPLETED',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse({
+            ...TRACE_DETAIL,
+            status: 'COMPLETED',
+            error_count: 0,
+          }),
+        spans: () => jsonResponse({ spans: [rootSpan, alphaSpan, betaSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes(
+      [
+        `/traces/${TRACE_ONE.id}?span=history-alpha`,
+        `/traces/${TRACE_ONE.id}?span=history-beta`,
+      ],
+      { initialIndex: 1 }
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Select span History beta' })
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    await act(async () => {
+      await view.router.navigate(-1);
+    });
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByLabelText('Span breadcrumb')).getByText('History alpha')
+      ).toBeInTheDocument();
+    });
+    expect(view.router.state.location.search).toBe('?span=history-alpha');
+  });
+
+  it('re-runs auto-selection when browser back removes the span param', async () => {
+    const rootSpan = createSpan({
+      span_id: 'back-root',
+      name: 'Back root',
+      status: 'COMPLETED',
+    });
+    const manualSpan = createSpan({
+      span_id: 'back-manual',
+      name: 'Back manual',
+      parent_span_id: 'back-root',
+      status: 'COMPLETED',
+    });
+    const failedSpan = createSpan({
+      span_id: 'back-failed',
+      name: 'Back failed',
+      parent_span_id: 'back-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Back failure',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [rootSpan, manualSpan, failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'back-error',
+                span_id: 'back-failed',
+                span_name: 'Back failed',
+                event_type: 'error',
+                message: 'Back failure',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes(
+      [
+        `/traces/${TRACE_ONE.id}`,
+        `/traces/${TRACE_ONE.id}?span=back-manual`,
+      ],
+      { initialIndex: 1 }
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Select span Back manual' })
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    await act(async () => {
+      await view.router.navigate(-1);
+    });
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByLabelText('Span breadcrumb')).getByText('Back failed')
+      ).toBeInTheDocument();
+    });
+    expect(view.router.state.location.search).toBe('');
+  });
+
+  it('keeps trace detail selection changes local and does not refetch trace or span data', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'query-root',
+      name: 'Query root',
+      status: 'COMPLETED',
+    });
+    const childSpan = createSpan({
+      span_id: 'query-child',
+      name: 'Query child',
+      parent_span_id: 'query-root',
+      status: 'COMPLETED',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse({
+            ...TRACE_DETAIL,
+            status: 'COMPLETED',
+            error_count: 0,
+          }),
+        spans: () => jsonResponse({ spans: [rootSpan, childSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+
+    fetchMock.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Select span Query child' }));
+
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Query child')
+    ).toBeInTheDocument();
+    expect(view.router.state.location.search).toBe('?span=query-child');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('copies an absolute trace URL that preserves unrelated params and includes the effective selected span', async () => {
+    const user = userEvent.setup();
+    const writeText = mockClipboard();
+    const rootSpan = createSpan({
+      span_id: 'copy-root',
+      name: 'Copy root',
+      status: 'COMPLETED',
+    });
+    const failedSpan = createSpan({
+      span_id: 'copy-failed',
+      name: 'Copy failed',
+      parent_span_id: 'copy-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Copy failure',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [rootSpan, failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'copy-error',
+                span_id: 'copy-failed',
+                span_name: 'Copy failed',
+                event_type: 'error',
+                message: 'Copy failure',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}?debug=true`]);
+    expect(
+      await screen.findByRole('button', { name: 'Select span Copy failed' })
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Copy Trace URL' }));
+
+    expect(writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/traces/trace-checkout?debug=true&span=copy-failed`
+    );
+  });
+
+  it('returns to the filtered trace list after span inspection without stepping through span history', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'history-return-root',
+      name: 'History return root',
+      status: 'COMPLETED',
+    });
+    const failedSpan = createSpan({
+      span_id: 'history-return-failed',
+      name: 'History return failed',
+      parent_span_id: 'history-return-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'History return failure',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [rootSpan, failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'history-return-error',
+                span_id: 'history-return-failed',
+                span_name: 'History return failed',
+                event_type: 'error',
+                message: 'History return failure',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes(['/traces?status=failed']);
+    await user.click(await screen.findByRole('link', { name: 'Checkout Trace' }));
+    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Select span History return root' })
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Select span History return failed' })
+    );
+
+    await act(async () => {
+      await view.router.navigate(-1);
+    });
+
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    expect(view.router.state.location.pathname).toBe('/traces');
+    expect(view.router.state.location.search).toBe('?status=failed');
+  });
+
+  it('keeps tree, detail, parent navigation, failure summary, and timeline selections synchronized with the URL', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'sync-root',
+      name: 'Sync root',
+      status: 'COMPLETED',
+    });
+    const failedSpan = createSpan({
+      span_id: 'sync-failed',
+      name: 'Sync failed',
+      parent_span_id: 'sync-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Sync failure',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [rootSpan, failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'sync-root-event',
+                span_id: 'sync-root',
+                event_type: 'message',
+                message: 'Root event',
+                timestamp: '2026-03-14T10:00:05.000Z',
+              }),
+              createTimelineEvent({
+                id: 'sync-error-event',
+                span_id: 'sync-failed',
+                span_name: 'Sync failed',
+                event_type: 'error',
+                message: 'Sync failure',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(
+      await screen.findByRole('button', { name: 'Select span Sync failed' })
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Select parent span sync-root' })
+    );
+    expect(view.router.state.location.search).toBe('?span=sync-root');
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Sync root')
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Select span Sync failed' }));
+    expect(view.router.state.location.search).toBe('?span=sync-failed');
+
+    const timelineSection = screen
+      .getByRole('heading', { name: 'Timeline' })
+      .closest('section');
+    if (!timelineSection) {
+      throw new Error('Expected timeline section');
+    }
+
+    await user.click(within(timelineSection).getByRole('button', { name: 'sync-root' }));
+    expect(view.router.state.location.search).toBe('?span=sync-root');
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Sync root')
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Jump to failed span Sync failed' })
+    );
+    expect(view.router.state.location.search).toBe('?span=sync-failed');
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Sync failed')
     ).toBeInTheDocument();
   });
 
@@ -942,7 +1438,7 @@ describe('TraceDetailPage', () => {
       })
     );
 
-    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
     expect(
       await screen.findByRole('button', { name: 'Select span Running child' })
     ).toBeInTheDocument();
@@ -953,6 +1449,7 @@ describe('TraceDetailPage', () => {
     expect(
       within(screen.getByLabelText('Span breadcrumb')).getByText('Running child')
     ).toBeInTheDocument();
+    expect(view.router.state.location.search).toBe('?span=running-child');
 
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 3100));
@@ -962,6 +1459,7 @@ describe('TraceDetailPage', () => {
       expect(
         within(screen.getByLabelText('Span breadcrumb')).getByText('Running child')
       ).toBeInTheDocument();
+      expect(view.router.state.location.search).toBe('?span=running-child');
     },
     10000
   );
@@ -1189,6 +1687,7 @@ describe('TraceDetailPage', () => {
     await user.click(
       screen.getByRole('button', { name: 'Select span Trace A root' })
     );
+    expect(view.router.state.location.search).toBe('?span=trace-a-root');
     await user.click(screen.getByRole('button', { name: 'Show error events only' }));
     expect(screen.getByRole('button', { name: 'Show error events only' })).toHaveAttribute(
       'aria-pressed',
@@ -1200,6 +1699,7 @@ describe('TraceDetailPage', () => {
     });
 
     expect(await screen.findByText('Trace B')).toBeInTheDocument();
+    expect(view.router.state.location.search).toBe('');
     expect(screen.getByText('Select a span to view details')).toBeInTheDocument();
     expect(screen.getByText('Beta info event')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Show error events only' })).toHaveAttribute(
@@ -1419,8 +1919,68 @@ describe('TraceDetailPage', () => {
     expect(screen.getByText('Select a span to view details')).toBeInTheDocument();
   });
 
+  it('renders truncation banners for span payloads only', async () => {
+    const rootSpan = createSpan({
+      span_id: 'trunc-root',
+      name: 'Trunc root',
+      status: 'COMPLETED',
+    });
+    const failedSpan = createSpan({
+      span_id: 'trunc-failed',
+      name: 'Trunc failed',
+      parent_span_id: 'trunc-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Trunc failure',
+      input: { prompt: 'large input' },
+      input_truncated: true,
+      input_original_size_bytes: 2048,
+      input_truncation_reason: 'size_limit',
+      output: { answer: 'large output' },
+      output_truncated: true,
+      output_original_size_bytes: 1048576,
+      metadata: { mode: 'debug' },
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse({
+            ...TRACE_DETAIL,
+            input: { trace: 'input' },
+            output: { trace: 'output' },
+          }),
+        spans: () => jsonResponse({ spans: [rootSpan, failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'trunc-error',
+                span_id: 'trunc-failed',
+                span_name: 'Trunc failed',
+                event_type: 'error',
+                message: 'Trunc failure',
+                timestamp: '2026-03-14T10:00:10.000Z',
+                payload: { trace: 'timeline payload' },
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(
+      await screen.findByRole('button', { name: 'Select span Trunc failed' })
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByText('Payload truncated')).toHaveLength(2);
+    expect(screen.getByText(/Original size: 2.0 KB/)).toBeInTheDocument();
+    expect(screen.getByText(/Original size: 1.0 MB/)).toBeInTheDocument();
+  });
+
   it('falls back to the primary failed span when the selected span disappears after a refresh', async () => {
-    const user = userEvent.setup();
     const rootSpan = createSpan({
       span_id: 'fallback-root',
       name: 'Fallback root',
@@ -1466,14 +2026,12 @@ describe('TraceDetailPage', () => {
       })
     );
 
-    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    const view = renderTraceRoutes([
+      `/traces/${TRACE_ONE.id}?span=disappearing-child`,
+    ]);
     expect(
       await screen.findByRole('button', { name: 'Select span Disappearing child' })
     ).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole('button', { name: 'Select span Disappearing child' })
-    );
     expect(
       within(screen.getByLabelText('Span breadcrumb')).getByText('Disappearing child')
     ).toBeInTheDocument();
@@ -1489,6 +2047,7 @@ describe('TraceDetailPage', () => {
         within(screen.getByLabelText('Span breadcrumb')).getByText('Fallback failed')
       ).toBeInTheDocument();
     });
+    expect(view.router.state.location.search).toBe('');
   });
 
   it('waits for the initial timeline snapshot before evaluating the stale trace signal', async () => {

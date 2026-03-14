@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TimelineEvent, TimelineTraceStatus } from '../api/client';
+import { Span, TimelineEvent, TimelineTraceStatus } from '../api/client';
 import { JsonViewer } from './JsonViewer';
 import {
   isTimelineErrorEvent,
@@ -14,6 +14,7 @@ interface TimelineProps {
   error?: string | null;
   selectedSpanId?: string | null;
   onSelectSpan: (spanId: string) => void;
+  spanIndex: Map<string, Span>;
 }
 
 /**
@@ -27,6 +28,7 @@ export function Timeline({
   error = null,
   selectedSpanId = null,
   onSelectSpan,
+  spanIndex,
 }: TimelineProps) {
   const [showErrorsOnly, setShowErrorsOnly] = useState(false);
   const visibleEvents = showErrorsOnly
@@ -93,6 +95,7 @@ export function Timeline({
               event={event}
               isSelectedSpan={selectedSpanId === event.span_id}
               onSelectSpan={onSelectSpan}
+              spanIndex={spanIndex}
             />
           ))}
         </div>
@@ -105,12 +108,18 @@ interface TimelineRowProps {
   event: TimelineEvent;
   isSelectedSpan: boolean;
   onSelectSpan: (spanId: string) => void;
+  spanIndex: Map<string, Span>;
 }
 
-function TimelineRow({ event, isSelectedSpan, onSelectSpan }: TimelineRowProps) {
+function TimelineRow({
+  event,
+  isSelectedSpan,
+  onSelectSpan,
+  spanIndex,
+}: TimelineRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasDetails = Boolean(event.message || event.payload);
-  const hasNavigableSpan = Boolean(event.span_id && event.span_name);
+  const hasNavigableSpan = Boolean(event.span_id && spanIndex.has(event.span_id));
   const isError = isTimelineErrorEvent(event);
   const rowAccent = isError
     ? 'border-red-200 bg-red-50/70'
@@ -169,7 +178,7 @@ function TimelineRow({ event, isSelectedSpan, onSelectSpan }: TimelineRowProps) 
                       }`}
                       onClick={() => onSelectSpan(event.span_id!)}
                     >
-                      {event.span_name}
+                      {event.span_name ?? event.span_id}
                     </button>
                   ) : (
                     <span className="rounded-full bg-white px-3 py-1 font-mono text-gray-600 ring-1 ring-gray-200">

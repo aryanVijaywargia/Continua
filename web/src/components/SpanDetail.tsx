@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { Span } from '../api/client';
+import { CopyButton } from './CopyButton';
 import { StatusBadge } from './StatusBadge';
 import { JsonViewer } from './JsonViewer';
 import {
@@ -10,11 +11,13 @@ import {
 } from '../utils/format';
 import type { BreadcrumbSegment } from '../utils/failureAnalysis';
 import { SpanBreadcrumb } from './SpanBreadcrumb';
+import { TruncationBanner } from './TruncationBanner';
 
 interface SpanDetailProps {
   span: Span | null;
   breadcrumbPath: BreadcrumbSegment[];
   onSelectSpan: (spanId: string) => void;
+  spanIndex: Map<string, Span>;
 }
 
 /**
@@ -24,6 +27,7 @@ export function SpanDetail({
   span,
   breadcrumbPath,
   onSelectSpan,
+  spanIndex,
 }: SpanDetailProps) {
   if (!span) {
     return (
@@ -37,6 +41,9 @@ export function SpanDetail({
   const showLLMContext =
     span.kind === 'LLM' &&
     (span.model !== undefined || span.provider !== undefined);
+  const parentSpan = span.parent_span_id
+    ? spanIndex.get(span.parent_span_id) ?? null
+    : null;
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -103,6 +110,12 @@ export function SpanDetail({
       {span.input !== undefined && (
         <div className="mb-6">
           <h3 className="text-sm font-medium text-gray-700 mb-2">Input</h3>
+          <TruncationBanner
+            title="Input payload"
+            truncated={span.input_truncated}
+            originalSizeBytes={span.input_original_size_bytes}
+            reason={span.input_truncation_reason}
+          />
           <JsonViewer data={span.input} />
         </div>
       )}
@@ -111,6 +124,12 @@ export function SpanDetail({
       {span.output !== undefined && (
         <div className="mb-6">
           <h3 className="text-sm font-medium text-gray-700 mb-2">Output</h3>
+          <TruncationBanner
+            title="Output payload"
+            truncated={span.output_truncated}
+            originalSizeBytes={span.output_original_size_bytes}
+            reason={span.output_truncation_reason}
+          />
           <JsonViewer data={span.output} />
         </div>
       )}
@@ -127,14 +146,45 @@ export function SpanDetail({
       <div className="mb-6">
         <h3 className="text-sm font-medium text-gray-700 mb-2">Identifiers</h3>
         <div className="bg-gray-50 rounded p-3 text-sm">
-          <DetailRow label="Span ID" value={span.id} mono />
+          <DetailRow label="Span UUID" value={span.id} mono />
+          <DetailRow
+            label="Span ID"
+            value={span.span_id}
+            mono
+            className="mt-1"
+            action={
+              <CopyButton
+                aria-label="Copy span ID"
+                value={span.span_id}
+              />
+            }
+          />
           <DetailRow label="Trace ID" value={span.trace_id} mono className="mt-1" />
           {span.parent_span_id && (
             <DetailRow
               label="Parent Span ID"
-              value={span.parent_span_id}
+              value={
+                parentSpan ? (
+                  <button
+                    type="button"
+                    aria-label={`Select parent span ${span.parent_span_id}`}
+                    className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    onClick={() => onSelectSpan(parentSpan.span_id)}
+                  >
+                    {span.parent_span_id}
+                  </button>
+                ) : (
+                  span.parent_span_id
+                )
+              }
               mono
               className="mt-1"
+              action={
+                <CopyButton
+                  aria-label="Copy parent span ID"
+                  value={span.parent_span_id}
+                />
+              }
             />
           )}
         </div>
@@ -182,17 +232,27 @@ interface DetailRowProps {
   value?: ReactNode;
   mono?: boolean;
   className?: string;
+  action?: ReactNode;
 }
 
-function DetailRow({ label, value, mono = false, className = '' }: DetailRowProps) {
+function DetailRow({
+  label,
+  value,
+  mono = false,
+  className = '',
+  action,
+}: DetailRowProps) {
   const hasValue = value !== undefined && value !== null && value !== '';
 
   return (
     <div className={`flex justify-between gap-4 ${className}`.trim()}>
       <span className="text-gray-600">{label}:</span>
       {hasValue ? (
-        <span className={mono ? 'font-mono text-xs text-right' : 'text-right'}>
-          {value}
+        <span className="flex min-w-0 items-center justify-end gap-2">
+          <span className={mono ? 'font-mono text-xs text-right' : 'text-right'}>
+            {value}
+          </span>
+          {action}
         </span>
       ) : (
         <span className="text-gray-400">-</span>
