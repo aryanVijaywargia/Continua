@@ -78,6 +78,14 @@ export async function fetchAPI<T>(
 /**
  * Trace types from the API.
  */
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
 export interface Trace {
   id: string;
   session_id?: string;
@@ -90,6 +98,16 @@ export interface Trace {
   total_cost_usd?: number;
   error_count?: number;
   metadata?: Record<string, unknown>;
+}
+
+export interface TraceDetail extends Trace {
+  trace_id?: string;
+  user_id?: string;
+  tags?: string[];
+  environment?: string;
+  release?: string;
+  input?: JsonValue;
+  output?: JsonValue;
 }
 
 export interface TraceList {
@@ -112,8 +130,16 @@ export interface Span {
   cost_usd?: number;
   latency_ms?: number;
   error_message?: string;
-  input?: Record<string, unknown>;
-  output?: Record<string, unknown>;
+  model?: string;
+  provider?: string;
+  input?: JsonValue;
+  input_truncated?: boolean;
+  input_original_size_bytes?: number;
+  input_truncation_reason?: string;
+  output?: JsonValue;
+  output_truncated?: boolean;
+  output_original_size_bytes?: number;
+  output_truncation_reason?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -179,8 +205,8 @@ export async function fetchTraces(limit = 20, offset = 0): Promise<TraceList> {
 /**
  * Fetch a single trace by ID.
  */
-export async function fetchTrace(id: string): Promise<Trace> {
-  return fetchAPI<Trace>(`/api/traces/${id}`);
+export async function fetchTrace(id: string): Promise<TraceDetail> {
+  return fetchAPI<TraceDetail>(`/api/traces/${id}`);
 }
 
 /**

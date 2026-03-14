@@ -266,6 +266,240 @@ func TestGetTraceEvents_ProjectScopingReturns404(t *testing.T) {
 	assert.Equal(t, "not_found", resp.Code)
 }
 
+func TestGetTrace_ReturnsTraceDetailFields(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	userID := "user@example.com"
+	environment := "production"
+	release := "v1.2.3"
+	start := time.Date(2026, 3, 7, 14, 0, 0, 0, time.UTC)
+	end := start.Add(90 * time.Second)
+
+	trace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID:   projectID,
+		TraceID:     "external-trace-123",
+		Name:        testutil.StrPtr("Debugger Detail Trace"),
+		UserID:      &userID,
+		Tags:        []string{"prod", "v2"},
+		Environment: &environment,
+		Release:     &release,
+		Input:       []byte(`{"prompt":"hello"}`),
+		Output:      []byte(`["done",false]`),
+		Status:      "completed",
+		StartTime:   testutil.PgtypeTimestamptz(start),
+		EndTime:     testutil.PgtypeTimestamptz(end),
+	})
+
+	rec := invokeGetTrace(t, server, projectID, trace.ID)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[TraceDetail](t, rec)
+	require.NotNil(t, resp.TraceId)
+	assert.Equal(t, "external-trace-123", *resp.TraceId)
+	require.NotNil(t, resp.UserId)
+	assert.Equal(t, userID, *resp.UserId)
+	require.NotNil(t, resp.Tags)
+	assert.Equal(t, []string{"prod", "v2"}, *resp.Tags)
+	require.NotNil(t, resp.Environment)
+	assert.Equal(t, environment, *resp.Environment)
+	require.NotNil(t, resp.Release)
+	assert.Equal(t, release, *resp.Release)
+	assertJSONValue(t, resp.Input, `{"prompt":"hello"}`)
+	assertJSONValue(t, resp.Output, `["done",false]`)
+}
+
+func TestGetTrace_JSONIsFlat(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	trace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "flat-trace-123",
+		Name:      testutil.StrPtr("Flat Trace"),
+		Status:    "running",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 15, 0, 0, 0, time.UTC)),
+	})
+
+	rec := invokeGetTrace(t, server, projectID, trace.ID)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+
+	assert.Contains(t, body, "id")
+	assert.Contains(t, body, "trace_id")
+	assert.NotContains(t, body, "trace")
+}
+
+func TestListSpansByTrace_ReturnsLLMContextAndTruncationFields(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	trace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "span-trace-123",
+		Name:      testutil.StrPtr("Span Trace"),
+		Status:    "running",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 16, 0, 0, 0, time.UTC)),
+	})
+
+	model := "gpt-4o"
+	provider := "openai"
+	inputTruncated := true
+	outputTruncated := true
+	inputSize := int64(524288)
+	outputSize := int64(1048576)
+	reason := "size_limit"
+
+	upsertSpanRecord(ctx, t, q, platform.UpsertSpanParams{
+		ProjectID:               projectID,
+		TraceID:                 trace.ID,
+		SpanID:                  "llm-span-1",
+		Name:                    "LLM Span",
+		Type:                    "llm",
+		Status:                  "completed",
+		Level:                   "default",
+		StartTime:               time.Date(2026, 3, 7, 16, 0, 1, 0, time.UTC),
+		EndTime:                 testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 16, 0, 2, 0, time.UTC)),
+		Model:                   &model,
+		Provider:                &provider,
+		InputTruncated:          &inputTruncated,
+		InputOriginalSizeBytes:  &inputSize,
+		InputTruncationReason:   &reason,
+		OutputTruncated:         &outputTruncated,
+		OutputOriginalSizeBytes: &outputSize,
+		OutputTruncationReason:  &reason,
+		TotalCost:               testutil.PgtypeNumericFromFloat64(0),
+	})
+
+	rec := invokeListSpansByTrace(t, server, projectID, trace.ID)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[SpanList](t, rec)
+	require.Len(t, resp.Spans, 1)
+
+	span := resp.Spans[0]
+	require.NotNil(t, span.Model)
+	assert.Equal(t, model, *span.Model)
+	require.NotNil(t, span.Provider)
+	assert.Equal(t, provider, *span.Provider)
+	require.NotNil(t, span.InputTruncated)
+	assert.True(t, *span.InputTruncated)
+	require.NotNil(t, span.InputOriginalSizeBytes)
+	assert.Equal(t, inputSize, *span.InputOriginalSizeBytes)
+	require.NotNil(t, span.InputTruncationReason)
+	assert.Equal(t, reason, *span.InputTruncationReason)
+	require.NotNil(t, span.OutputTruncated)
+	assert.True(t, *span.OutputTruncated)
+	require.NotNil(t, span.OutputOriginalSizeBytes)
+	assert.Equal(t, outputSize, *span.OutputOriginalSizeBytes)
+	require.NotNil(t, span.OutputTruncationReason)
+	assert.Equal(t, reason, *span.OutputTruncationReason)
+}
+
+func TestListTraces_OmitsDetailFields(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	userID := "user@example.com"
+	environment := "production"
+	release := "v1.2.3"
+
+	upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID:   projectID,
+		TraceID:     "summary-trace-123",
+		Name:        testutil.StrPtr("Summary Trace"),
+		UserID:      &userID,
+		Tags:        []string{"prod"},
+		Environment: &environment,
+		Release:     &release,
+		Input:       []byte(`{"prompt":"hello"}`),
+		Output:      []byte(`{"result":"ok"}`),
+		Status:      "completed",
+		StartTime:   testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 17, 0, 0, 0, time.UTC)),
+	})
+
+	rec := invokeListTraces(t, server, projectID, ListTracesParams{})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body struct {
+		Traces []map[string]json.RawMessage `json:"traces"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Traces, 1)
+
+	for _, key := range []string{"trace_id", "user_id", "tags", "environment", "release", "input", "output"} {
+		assert.NotContains(t, body.Traces[0], key)
+	}
+}
+
+func TestGetTrace_ProjectScopingReturns404(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectAID := testutil.CreateTestProject(t, ctx, q)
+	projectBID := testutil.CreateTestProject(t, ctx, q)
+
+	trace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectBID,
+		TraceID:   "scoped-trace-123",
+		Name:      testutil.StrPtr("Scoped Trace"),
+		Status:    "running",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 18, 0, 0, 0, time.UTC)),
+	})
+
+	rec := invokeGetTrace(t, server, projectAID, trace.ID)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+
+	resp := decodeJSONBody[Error](t, rec)
+	assert.Equal(t, "not_found", resp.Code)
+}
+
+func TestListSpansByTrace_ProjectScopingReturns404(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectAID := testutil.CreateTestProject(t, ctx, q)
+	projectBID := testutil.CreateTestProject(t, ctx, q)
+
+	trace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectBID,
+		TraceID:   "scoped-span-trace-123",
+		Name:      testutil.StrPtr("Scoped Span Trace"),
+		Status:    "running",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 19, 0, 0, 0, time.UTC)),
+	})
+
+	rec := invokeListSpansByTrace(t, server, projectAID, trace.ID)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+
+	resp := decodeJSONBody[Error](t, rec)
+	assert.Equal(t, "not_found", resp.Code)
+}
+
 func invokeGetTraceEvents(t *testing.T, server *Server, projectID, traceID uuid.UUID, params GetTraceEventsParams) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -274,6 +508,42 @@ func invokeGetTraceEvents(t *testing.T, server *Server, projectID, traceID uuid.
 	rec := httptest.NewRecorder()
 
 	server.GetTraceEvents(rec, req.WithContext(ctx), traceID, params)
+
+	return rec
+}
+
+func invokeGetTrace(t *testing.T, server *Server, projectID, traceID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/traces/"+traceID.String(), nil)
+	ctx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
+	rec := httptest.NewRecorder()
+
+	server.GetTrace(rec, req.WithContext(ctx), traceID)
+
+	return rec
+}
+
+func invokeListSpansByTrace(t *testing.T, server *Server, projectID, traceID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/traces/"+traceID.String()+"/spans", nil)
+	ctx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
+	rec := httptest.NewRecorder()
+
+	server.ListSpansByTrace(rec, req.WithContext(ctx), traceID)
+
+	return rec
+}
+
+func invokeListTraces(t *testing.T, server *Server, projectID uuid.UUID, params ListTracesParams) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
+	ctx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
+	rec := httptest.NewRecorder()
+
+	server.ListTraces(rec, req.WithContext(ctx), params)
 
 	return rec
 }
@@ -297,6 +567,20 @@ func createTimelineTrace(
 		StartTime: testutil.PgtypeTimestamptz(start),
 		EndTime:   testutil.PgtypeTimestamptzPtr(end),
 	})
+	require.NoError(t, err)
+
+	return trace
+}
+
+func upsertTraceRecord(
+	ctx context.Context,
+	t *testing.T,
+	q *platform.Queries,
+	params platform.UpsertTraceParams,
+) platform.Trace {
+	t.Helper()
+
+	trace, err := q.UpsertTrace(ctx, params)
 	require.NoError(t, err)
 
 	return trace
@@ -328,6 +612,20 @@ func createTimelineSpan(
 		EndTime:   testutil.PgtypeTimestamptzPtr(end),
 		TotalCost: testutil.PgtypeNumericFromFloat64(0),
 	})
+	require.NoError(t, err)
+
+	return span
+}
+
+func upsertSpanRecord(
+	ctx context.Context,
+	t *testing.T,
+	q *platform.Queries,
+	params platform.UpsertSpanParams,
+) platform.Span {
+	t.Helper()
+
+	span, err := q.UpsertSpan(ctx, params)
 	require.NoError(t, err)
 
 	return span

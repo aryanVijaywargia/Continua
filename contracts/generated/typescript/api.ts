@@ -181,6 +181,17 @@ export interface components {
             error_count?: number;
             metadata?: Record<string, never>;
         };
+        TraceDetail: components["schemas"]["Trace"] & {
+            trace_id?: string;
+            user_id?: string;
+            tags?: string[];
+            environment?: string;
+            release?: string;
+            /** @description Trace input payload (any valid JSON) */
+            input?: unknown;
+            /** @description Trace output payload (any valid JSON) */
+            output?: unknown;
+        };
         TraceList: {
             traces: components["schemas"]["Trace"][];
             total: number;
@@ -208,10 +219,20 @@ export interface components {
             cost_usd?: number;
             latency_ms?: number;
             error_message?: string;
+            model?: string;
+            provider?: string;
             /** @description Span input payload (any valid JSON) */
             input?: unknown;
+            input_truncated?: boolean;
+            /** Format: int64 */
+            input_original_size_bytes?: number;
+            input_truncation_reason?: string;
             /** @description Span output payload (any valid JSON) */
             output?: unknown;
+            output_truncated?: boolean;
+            /** Format: int64 */
+            output_original_size_bytes?: number;
+            output_truncation_reason?: string;
             metadata?: Record<string, never>;
         };
         SpanList: {
@@ -614,7 +635,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Trace"];
+                    "application/json": components["schemas"]["TraceDetail"];
                 };
             };
             /** @description Unauthorized - missing or invalid API key */
