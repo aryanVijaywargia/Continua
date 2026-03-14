@@ -2,16 +2,29 @@ import { type ReactNode } from 'react';
 import { Span } from '../api/client';
 import { StatusBadge } from './StatusBadge';
 import { JsonViewer } from './JsonViewer';
-import { formatDuration, formatTokens, formatCost } from '../utils/format';
+import {
+  formatCost,
+  formatDuration,
+  formatTimestamp,
+  formatTokens,
+} from '../utils/format';
+import type { BreadcrumbSegment } from '../utils/failureAnalysis';
+import { SpanBreadcrumb } from './SpanBreadcrumb';
 
 interface SpanDetailProps {
   span: Span | null;
+  breadcrumbPath: BreadcrumbSegment[];
+  onSelectSpan: (spanId: string) => void;
 }
 
 /**
  * Panel showing detailed information about a selected span.
  */
-export function SpanDetail({ span }: SpanDetailProps) {
+export function SpanDetail({
+  span,
+  breadcrumbPath,
+  onSelectSpan,
+}: SpanDetailProps) {
   if (!span) {
     return (
       <div className="h-full flex items-center justify-center text-gray-500">
@@ -29,6 +42,11 @@ export function SpanDetail({ span }: SpanDetailProps) {
     <div className="h-full overflow-y-auto p-4">
       {/* Header */}
       <div className="mb-4">
+        <SpanBreadcrumb
+          path={breadcrumbPath}
+          onSelectSpan={onSelectSpan}
+          className="mb-3"
+        />
         <h2 className="text-lg font-semibold text-gray-900">{span.name}</h2>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-sm text-gray-500">{span.kind}</span>
@@ -128,13 +146,13 @@ export function SpanDetail({ span }: SpanDetailProps) {
         <div className="bg-gray-50 rounded p-3 text-sm">
           <DetailRow
             label="Started"
-            value={new Date(span.started_at).toISOString()}
+            value={formatTimestamp(span.started_at)}
             mono
           />
           {span.ended_at && (
             <DetailRow
               label="Ended"
-              value={new Date(span.ended_at).toISOString()}
+              value={formatTimestamp(span.ended_at)}
               mono
               className="mt-1"
             />

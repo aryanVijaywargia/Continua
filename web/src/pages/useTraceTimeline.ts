@@ -1,5 +1,5 @@
 import { startTransition, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchTimelineEvents,
   TimelineEvent,
@@ -19,6 +19,7 @@ interface TimelineSnapshot {
 export function useTraceTimeline(traceId: string) {
   const [timelineSnapshot, setTimelineSnapshot] = useState<TimelineSnapshot | null>(null);
   const [needsTerminalRefresh, setNeedsTerminalRefresh] = useState(false);
+  const queryClient = useQueryClient();
 
   const timelineBootstrapQuery = useQuery({
     queryKey: ['timeline', traceId, 'bootstrap'],
@@ -61,6 +62,10 @@ export function useTraceTimeline(traceId: string) {
     const pollResult = timelinePollQuery.data;
 
     if (pollResult.trace_status !== 'RUNNING') {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['trace', traceId] }),
+        queryClient.invalidateQueries({ queryKey: ['spans', traceId] }),
+      ]);
       setNeedsTerminalRefresh(true);
     }
 
@@ -77,7 +82,7 @@ export function useTraceTimeline(traceId: string) {
         };
       });
     });
-  }, [timelinePollQuery.data]);
+  }, [queryClient, timelinePollQuery.data, traceId]);
 
   const timelineTerminalRefreshQuery = useQuery({
     queryKey: ['timeline', traceId, 'terminal-refresh', needsTerminalRefresh],
@@ -101,6 +106,7 @@ export function useTraceTimeline(traceId: string) {
   return {
     events: timelineSnapshot?.events ?? [],
     traceStatus: timelineSnapshot?.traceStatus ?? null,
+    hasSnapshot: timelineSnapshot !== null,
     isLive: pollingEnabled,
     isLoading: !timelineSnapshot && timelineBootstrapQuery.isLoading,
     error: resolveTimelineError(

@@ -28,6 +28,11 @@ export function Timeline({
   selectedSpanId = null,
   onSelectSpan,
 }: TimelineProps) {
+  const [showErrorsOnly, setShowErrorsOnly] = useState(false);
+  const visibleEvents = showErrorsOnly
+    ? events.filter((event) => isTimelineErrorEvent(event))
+    : events;
+
   return (
     <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
@@ -39,13 +44,32 @@ export function Timeline({
             Chronological trace events with lifecycle markers and payload inspection.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600">
-          <span
-            className={`h-2.5 w-2.5 rounded-full ${
-              isLive ? 'animate-pulse bg-emerald-500' : traceStatus === 'FAILED' ? 'bg-red-500' : 'bg-gray-400'
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+              showErrorsOnly
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-100'
             }`}
-          />
-          <span>{timelineStatusLabel(traceStatus, isLive)}</span>
+            aria-label="Show error events only"
+            aria-pressed={showErrorsOnly}
+            onClick={() => setShowErrorsOnly((active) => !active)}
+          >
+            Errors only
+          </button>
+          <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                isLive
+                  ? 'animate-pulse bg-emerald-500'
+                  : traceStatus === 'FAILED'
+                    ? 'bg-red-500'
+                    : 'bg-gray-400'
+              }`}
+            />
+            <span>{timelineStatusLabel(traceStatus, isLive)}</span>
+          </div>
         </div>
       </div>
 
@@ -55,13 +79,15 @@ export function Timeline({
         </div>
       ) : error && events.length === 0 ? (
         <div className="px-4 py-12 text-center text-sm text-red-600">{error}</div>
-      ) : events.length === 0 ? (
+      ) : visibleEvents.length === 0 ? (
         <div className="px-4 py-12 text-center text-sm text-gray-500">
-          No timeline events recorded for this trace yet.
+          {showErrorsOnly
+            ? 'No error events for this trace.'
+            : 'No timeline events recorded for this trace yet.'}
         </div>
       ) : (
         <div className="divide-y divide-gray-100">
-          {events.map((event) => (
+          {visibleEvents.map((event) => (
             <TimelineRow
               key={event.id}
               event={event}

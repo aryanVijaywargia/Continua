@@ -10,7 +10,14 @@ import {
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearApiKey, setApiKey, type Trace, type TraceDetail } from '../api/client';
+import {
+  clearApiKey,
+  setApiKey,
+  type Span,
+  type TimelineEvent,
+  type Trace,
+  type TraceDetail,
+} from '../api/client';
 import { localDateToISOEnd, localDateToISOStart } from '../utils/tracesSearchParams';
 import { TraceDetailPage } from './TraceDetailPage';
 import { TracesPage } from './TracesPage';
@@ -75,6 +82,8 @@ const TRACE_DETAIL: TraceDetail = {
   output: { answer: 'world' },
 };
 
+let testEntityCounter = 0;
+
 type RequestInput = string | URL | Request;
 
 type JsonHandler = (url: URL) => Promise<Response> | Response;
@@ -134,6 +143,57 @@ function buildFetchHandler({
     }
 
     throw new Error(`Unhandled request: ${url.pathname}${url.search}`);
+  };
+}
+
+function createSpan(overrides: Partial<Span> = {}): Span {
+  testEntityCounter += 1;
+  const spanId = overrides.span_id ?? `span-${testEntityCounter}`;
+
+  return {
+    id: overrides.id ?? `uuid-${spanId}`,
+    trace_id: overrides.trace_id ?? TRACE_ONE.id,
+    span_id: spanId,
+    parent_span_id: overrides.parent_span_id,
+    name: overrides.name ?? `Span ${testEntityCounter}`,
+    kind: overrides.kind ?? 'CHAIN',
+    status: overrides.status ?? 'COMPLETED',
+    started_at: overrides.started_at ?? '2026-03-14T10:00:00.000Z',
+    ended_at: overrides.ended_at,
+    tokens_in: overrides.tokens_in,
+    tokens_out: overrides.tokens_out,
+    cost_usd: overrides.cost_usd,
+    latency_ms: overrides.latency_ms ?? 1000,
+    error_message: overrides.error_message,
+    model: overrides.model,
+    provider: overrides.provider,
+    input: overrides.input,
+    input_truncated: overrides.input_truncated,
+    input_original_size_bytes: overrides.input_original_size_bytes,
+    input_truncation_reason: overrides.input_truncation_reason,
+    output: overrides.output,
+    output_truncated: overrides.output_truncated,
+    output_original_size_bytes: overrides.output_original_size_bytes,
+    output_truncation_reason: overrides.output_truncation_reason,
+    metadata: overrides.metadata,
+  };
+}
+
+function createTimelineEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
+  testEntityCounter += 1;
+
+  return {
+    id: overrides.id ?? `event-${testEntityCounter}`,
+    trace_id: overrides.trace_id ?? TRACE_ONE.id,
+    span_id: overrides.span_id,
+    span_name: overrides.span_name,
+    event_type: overrides.event_type ?? 'message',
+    timestamp: overrides.timestamp ?? '2026-03-14T10:00:00.000Z',
+    source: overrides.source ?? 'explicit',
+    level: overrides.level,
+    sequence: overrides.sequence,
+    message: overrides.message,
+    payload: overrides.payload,
   };
 }
 
@@ -210,6 +270,7 @@ function createDeferredResponse() {
 }
 
 beforeEach(() => {
+  testEntityCounter = 0;
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   localStorage.clear();
@@ -219,6 +280,7 @@ beforeEach(() => {
 afterEach(() => {
   clearApiKey();
   localStorage.clear();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -694,5 +756,856 @@ describe('TracesPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Clear Search filter' })
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('TraceDetailPage', () => {
+  it('auto-selects the primary failed span, highlights the failure path, and reveals it from the summary jump action', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'root-agent',
+      name: 'Root agent',
+      status: 'COMPLETED',
+      ended_at: '2026-03-14T10:00:05.000Z',
+    });
+    const primaryFailedSpan = createSpan({
+      span_id: 'failed-tool',
+      name: 'Failed tool',
+      kind: 'TOOL',
+      parent_span_id: 'root-agent',
+      status: 'FAILED',
+      started_at: '2026-03-14T10:00:05.000Z',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Primary failure preview',
+    });
+    const siblingFailedSpan = createSpan({
+      span_id: 'sibling-failure',
+      name: 'Sibling failure',
+      parent_span_id: 'root-agent',
+      status: 'FAILED',
+      started_at: '2026-03-14T10:00:12.000Z',
+      ended_at: '2026-03-14T10:00:15.000Z',
+      error_message: 'Secondary failure preview',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () =>
+          jsonResponse({
+            spans: [rootSpan, primaryFailedSpan, siblingFailedSpan],
+          }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                span_id: 'failed-tool',
+                span_name: 'Failed tool',
+                event_type: 'error',
+                timestamp: '2026-03-14T10:00:10.000Z',
+                message: 'Primary failure preview',
+              }),
+              createTimelineEvent({
+                span_id: 'sibling-failure',
+                span_name: 'Sibling failure',
+                event_type: 'span_failed',
+                timestamp: '2026-03-14T10:00:15.000Z',
+                message: 'Sibling failure synthetic event',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Failure Summary' })
+    ).toBeInTheDocument();
+
+    const detailBreadcrumb = screen.getByLabelText('Span breadcrumb');
+    expect(within(detailBreadcrumb).getByText('Failed tool')).toBeInTheDocument();
+    expect(
+      within(detailBreadcrumb).getByRole('button', {
+        name: 'Select ancestor span Root agent',
+      })
+    ).toBeInTheDocument();
+
+    const rootRow = screen.getByRole('button', {
+      name: 'Select span Root agent',
+    });
+    const primaryRow = screen.getByRole('button', {
+      name: 'Select span Failed tool',
+    });
+    const siblingRow = screen.getByRole('button', {
+      name: 'Select span Sibling failure',
+    });
+
+    expect(rootRow).toHaveClass('bg-amber-50');
+    expect(rootRow).toHaveAttribute('aria-pressed', 'false');
+    expect(within(rootRow).getByText('Failure path')).toBeInTheDocument();
+    expect(primaryRow).toHaveClass('bg-blue-50');
+    expect(primaryRow).toHaveAttribute('aria-pressed', 'true');
+    expect(within(primaryRow).getByText('Selected')).toBeInTheDocument();
+    expect(within(primaryRow).getByText('Failure path')).toBeInTheDocument();
+    expect(siblingRow).toHaveClass('bg-red-50/80');
+    expect(
+      within(siblingRow).queryByText('Failure path')
+    ).not.toBeInTheDocument();
+
+    await user.click(rootRow);
+    await user.click(
+      screen.getByRole('button', { name: 'Collapse span Root agent' })
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Select span Failed tool' })
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Jump to failed span Failed tool',
+      })
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Select span Failed tool' })
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Failed tool')
+    ).toBeInTheDocument();
+  });
+
+  it(
+    'preserves a manual selection across running-trace polling updates',
+    async () => {
+      const user = userEvent.setup();
+    const runningTraceDetail: TraceDetail = {
+      ...TRACE_DETAIL,
+      status: 'RUNNING',
+      ended_at: undefined,
+      error_count: 0,
+    };
+    const rootSpan = createSpan({
+      span_id: 'running-root',
+      name: 'Running root',
+      status: 'STARTED',
+    });
+    const childSpan = createSpan({
+      span_id: 'running-child',
+      name: 'Running child',
+      parent_span_id: 'running-root',
+      status: 'STARTED',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(runningTraceDetail),
+        spans: () => jsonResponse({ spans: [rootSpan, childSpan] }),
+        timeline: (url) => {
+          if (url.searchParams.get('after') === 'cursor-running') {
+            return jsonResponse({
+              events: [
+                createTimelineEvent({
+                  id: 'poll-running-event',
+                  span_id: 'running-child',
+                  span_name: 'Running child',
+                  event_type: 'message',
+                  timestamp: '2026-03-14T10:00:05.000Z',
+                  message: 'Poll update',
+                }),
+              ],
+              trace_status: 'RUNNING',
+              has_more: false,
+              poll_cursor: 'cursor-running',
+            });
+          }
+
+          return jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'bootstrap-running-event',
+                span_id: 'running-root',
+                span_name: 'Running root',
+                event_type: 'message',
+                timestamp: '2026-03-14T10:00:00.000Z',
+                message: 'Initial event',
+              }),
+            ],
+            trace_status: 'RUNNING',
+            has_more: false,
+            poll_cursor: 'cursor-running',
+          });
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(
+      await screen.findByRole('button', { name: 'Select span Running child' })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Select span Running child' })
+    );
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Running child')
+    ).toBeInTheDocument();
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3100));
+      });
+
+      expect(await screen.findByText('Poll update')).toBeInTheDocument();
+      expect(
+        within(screen.getByLabelText('Span breadcrumb')).getByText('Running child')
+      ).toBeInTheDocument();
+    },
+    10000
+  );
+
+  it(
+    'refetches trace and span data when a running trace transitions to failed and then auto-selects the refreshed failed span',
+    async () => {
+    const runningTraceDetail: TraceDetail = {
+      ...TRACE_DETAIL,
+      status: 'RUNNING',
+      ended_at: undefined,
+      error_count: 0,
+    };
+    const failedTraceDetail: TraceDetail = {
+      ...TRACE_DETAIL,
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:20.000Z',
+      error_count: 1,
+    };
+    const rootSpan = createSpan({
+      span_id: 'transition-root',
+      name: 'Transition root',
+      status: 'STARTED',
+    });
+    const inFlightSpan = createSpan({
+      span_id: 'in-flight',
+      name: 'In-flight work',
+      parent_span_id: 'transition-root',
+      status: 'STARTED',
+    });
+    const failedSpan = createSpan({
+      span_id: 'transition-failed',
+      name: 'Transition failed',
+      parent_span_id: 'transition-root',
+      kind: 'TOOL',
+      status: 'FAILED',
+      started_at: '2026-03-14T10:00:05.000Z',
+      ended_at: '2026-03-14T10:00:12.000Z',
+      error_message: 'Transition failure preview',
+    });
+
+    let detailCalls = 0;
+    let spansCalls = 0;
+    let fullTimelineCalls = 0;
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => {
+          detailCalls += 1;
+          return jsonResponse(detailCalls === 1 ? runningTraceDetail : failedTraceDetail);
+        },
+        spans: () => {
+          spansCalls += 1;
+          return jsonResponse({
+            spans:
+              spansCalls === 1 ? [rootSpan, inFlightSpan] : [rootSpan, failedSpan],
+          });
+        },
+        timeline: (url) => {
+          if (url.searchParams.get('after') === 'cursor-transition') {
+            return jsonResponse({
+              events: [
+                createTimelineEvent({
+                  id: 'transition-error',
+                  span_id: 'transition-failed',
+                  span_name: 'Transition failed',
+                  event_type: 'error',
+                  timestamp: '2026-03-14T10:00:12.000Z',
+                  message: 'Transition failure preview',
+                }),
+              ],
+              trace_status: 'FAILED',
+              has_more: false,
+              poll_cursor: 'cursor-terminal',
+            });
+          }
+
+          fullTimelineCalls += 1;
+          if (fullTimelineCalls === 1) {
+            return jsonResponse({
+              events: [],
+              trace_status: 'RUNNING',
+              has_more: false,
+              poll_cursor: 'cursor-transition',
+            });
+          }
+
+          return jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'terminal-error',
+                span_id: 'transition-failed',
+                span_name: 'Transition failed',
+                event_type: 'error',
+                timestamp: '2026-03-14T10:00:12.000Z',
+                message: 'Transition failure preview',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+            poll_cursor: 'cursor-terminal',
+          });
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3100));
+      });
+
+      expect(
+        await screen.findByRole('button', {
+          name: 'Jump to failed span Transition failed',
+        })
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(detailCalls).toBeGreaterThanOrEqual(2);
+        expect(spansCalls).toBeGreaterThanOrEqual(2);
+      });
+      expect(
+        within(screen.getByLabelText('Span breadcrumb')).getByText('Transition failed')
+      ).toBeInTheDocument();
+    },
+    10000
+  );
+
+  it('resets selection and timeline filter state when navigating between traces', async () => {
+    const user = userEvent.setup();
+    const traceADetail: TraceDetail = {
+      ...TRACE_DETAIL,
+      id: 'trace-a',
+      name: 'Trace A',
+    };
+    const traceBDetail: TraceDetail = {
+      ...TRACE_DETAIL,
+      id: 'trace-b',
+      name: 'Trace B',
+      status: 'COMPLETED',
+      ended_at: '2026-03-14T10:00:20.000Z',
+      error_count: 0,
+    };
+    const traceASpans = [
+      createSpan({
+        trace_id: 'trace-a',
+        span_id: 'trace-a-root',
+        name: 'Trace A root',
+        status: 'COMPLETED',
+      }),
+      createSpan({
+        trace_id: 'trace-a',
+        span_id: 'trace-a-failed',
+        name: 'Trace A failed child',
+        parent_span_id: 'trace-a-root',
+        status: 'FAILED',
+        ended_at: '2026-03-14T10:00:10.000Z',
+        error_message: 'Trace A failure',
+      }),
+    ];
+    const traceBSpans = [
+      createSpan({
+        trace_id: 'trace-b',
+        span_id: 'trace-b-root',
+        name: 'Trace B root',
+        status: 'COMPLETED',
+      }),
+    ];
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: (url) =>
+          url.pathname.endsWith('/trace-b')
+            ? jsonResponse(traceBDetail)
+            : jsonResponse(traceADetail),
+        spans: (url) =>
+          url.pathname.includes('/trace-b/')
+            ? jsonResponse({ spans: traceBSpans })
+            : jsonResponse({ spans: traceASpans }),
+        timeline: (url) =>
+          url.pathname.includes('/trace-b/')
+            ? jsonResponse({
+                events: [
+                  createTimelineEvent({
+                    trace_id: 'trace-b',
+                    span_id: 'trace-b-root',
+                    span_name: 'Trace B root',
+                    event_type: 'message',
+                    message: 'Beta info event',
+                    timestamp: '2026-03-14T10:00:15.000Z',
+                  }),
+                ],
+                trace_status: 'COMPLETED',
+                has_more: false,
+              })
+            : jsonResponse({
+                events: [
+                  createTimelineEvent({
+                    trace_id: 'trace-a',
+                    span_id: 'trace-a-failed',
+                    span_name: 'Trace A failed child',
+                    event_type: 'error',
+                    message: 'Trace A error event',
+                    timestamp: '2026-03-14T10:00:10.000Z',
+                  }),
+                  createTimelineEvent({
+                    trace_id: 'trace-a',
+                    span_id: 'trace-a-root',
+                    span_name: 'Trace A root',
+                    event_type: 'message',
+                    message: 'Trace A info event',
+                    timestamp: '2026-03-14T10:00:05.000Z',
+                  }),
+                ],
+                trace_status: 'FAILED',
+                has_more: false,
+              }),
+      })
+    );
+
+    const view = renderTraceRoutes(['/traces/trace-a']);
+    expect(await screen.findByText('Trace A')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Select span Trace A root' })
+    );
+    await user.click(screen.getByRole('button', { name: 'Show error events only' }));
+    expect(screen.getByRole('button', { name: 'Show error events only' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+
+    await act(async () => {
+      await view.router.navigate('/traces/trace-b');
+    });
+
+    expect(await screen.findByText('Trace B')).toBeInTheDocument();
+    expect(screen.getByText('Select a span to view details')).toBeInTheDocument();
+    expect(screen.getByText('Beta info event')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show error events only' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+  });
+
+  it('filters the timeline to error events only and restores all events when toggled off', async () => {
+    const user = userEvent.setup();
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'info-event',
+                event_type: 'message',
+                message: 'Informational update',
+                timestamp: '2026-03-14T10:00:05.000Z',
+              }),
+              createTimelineEvent({
+                id: 'error-event',
+                event_type: 'error',
+                message: 'Critical failure',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Informational update')).toBeInTheDocument();
+    expect(screen.getByText('Critical failure')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show error events only' }));
+
+    expect(screen.getByText('Critical failure')).toBeInTheDocument();
+    expect(screen.queryByText('Informational update')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show error events only' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Show error events only' }));
+
+    expect(await screen.findByText('Informational update')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show error events only' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+  });
+
+  it('shows the filtered empty state when error-only mode has no matches', async () => {
+    const user = userEvent.setup();
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse({
+            ...TRACE_DETAIL,
+            status: 'COMPLETED',
+            error_count: 0,
+          }),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'message-only-event',
+                event_type: 'message',
+                message: 'Only info here',
+              }),
+            ],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Only info here')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show error events only' }));
+
+    expect(
+      screen.getByText('No error events for this trace.')
+    ).toBeInTheDocument();
+  });
+
+  it('supports keyboard activation for the summary jump, breadcrumb ancestor, and error-only toggle', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'keyboard-root',
+      name: 'Keyboard root',
+      status: 'COMPLETED',
+      ended_at: '2026-03-14T10:00:05.000Z',
+    });
+    const failedSpan = createSpan({
+      span_id: 'keyboard-failed',
+      name: 'Keyboard failed',
+      parent_span_id: 'keyboard-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Keyboard failure',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [rootSpan, failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'keyboard-info',
+                span_id: 'keyboard-root',
+                span_name: 'Keyboard root',
+                event_type: 'message',
+                message: 'Keyboard info',
+                timestamp: '2026-03-14T10:00:05.000Z',
+              }),
+              createTimelineEvent({
+                id: 'keyboard-error',
+                span_id: 'keyboard-failed',
+                span_name: 'Keyboard failed',
+                event_type: 'error',
+                message: 'Keyboard error',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(
+      await screen.findByRole('button', {
+        name: 'Jump to failed span Keyboard failed',
+      })
+    ).toBeInTheDocument();
+
+    const errorsOnlyToggle = screen.getByRole('button', {
+      name: 'Show error events only',
+    });
+    errorsOnlyToggle.focus();
+    await user.keyboard('{Enter}');
+    expect(errorsOnlyToggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Keyboard info')).not.toBeInTheDocument();
+
+    const breadcrumbAncestor = within(
+      screen.getByLabelText('Span breadcrumb')
+    ).getByRole('button', {
+      name: 'Select ancestor span Keyboard root',
+    });
+    breadcrumbAncestor.focus();
+    await user.keyboard('{Enter}');
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Keyboard root')
+    ).toBeInTheDocument();
+
+    const jumpButton = screen.getByRole('button', {
+      name: 'Jump to failed span Keyboard failed',
+    });
+    jumpButton.focus();
+    await user.keyboard('{Enter}');
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Keyboard failed')
+    ).toBeInTheDocument();
+  });
+
+  it('renders the generic failure summary when a failed trace has no failed spans', async () => {
+    const rootSpan = createSpan({
+      span_id: 'no-failed-root',
+      name: 'No failed root',
+      status: 'COMPLETED',
+      ended_at: '2026-03-14T10:00:05.000Z',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'no-failed-error-log',
+                event_type: 'log',
+                level: 'error',
+                message: 'Top-level failure log',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(
+      await screen.findByText(
+        'This trace is marked as failed, but no failed span could be identified from the current span data.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Jump to failed span/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Select a span to view details')).toBeInTheDocument();
+  });
+
+  it('falls back to the primary failed span when the selected span disappears after a refresh', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'fallback-root',
+      name: 'Fallback root',
+      status: 'COMPLETED',
+      ended_at: '2026-03-14T10:00:05.000Z',
+    });
+    const disappearingSpan = createSpan({
+      span_id: 'disappearing-child',
+      name: 'Disappearing child',
+      parent_span_id: 'fallback-root',
+      status: 'COMPLETED',
+      ended_at: '2026-03-14T10:00:07.000Z',
+    });
+    const fallbackFailedSpan = createSpan({
+      span_id: 'fallback-failed',
+      name: 'Fallback failed',
+      parent_span_id: 'fallback-root',
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Fallback failure preview',
+    });
+    let currentSpans = [rootSpan, disappearingSpan, fallbackFailedSpan];
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () => jsonResponse({ spans: currentSpans }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'fallback-error',
+                span_id: 'fallback-failed',
+                span_name: 'Fallback failed',
+                event_type: 'error',
+                message: 'Fallback failure preview',
+                timestamp: '2026-03-14T10:00:10.000Z',
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(
+      await screen.findByRole('button', { name: 'Select span Disappearing child' })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Select span Disappearing child' })
+    );
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Disappearing child')
+    ).toBeInTheDocument();
+
+    currentSpans = [rootSpan, fallbackFailedSpan];
+
+    await act(async () => {
+      await view.queryClient.invalidateQueries({ queryKey: ['spans', TRACE_ONE.id] });
+    });
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByLabelText('Span breadcrumb')).getByText('Fallback failed')
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('waits for the initial timeline snapshot before evaluating the stale trace signal', async () => {
+    const now = Date.now();
+    const staleStartedAt = new Date(now - 20 * 60 * 1000).toISOString();
+    const recentActivityAt = new Date(now - 60 * 1000).toISOString();
+    const timelineResponse = createDeferredResponse();
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse({
+            ...TRACE_DETAIL,
+            status: 'RUNNING',
+            started_at: staleStartedAt,
+            ended_at: undefined,
+            error_count: 0,
+          }),
+        spans: () =>
+          jsonResponse({
+            spans: [
+              createSpan({
+                span_id: 'deferred-stale-root',
+                name: 'Deferred stale root',
+                status: 'STARTED',
+                started_at: staleStartedAt,
+              }),
+            ],
+          }),
+        timeline: () => timelineResponse.promise,
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/still marked running\. recent activity is sparse/i)
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      timelineResponse.resolve(
+        jsonResponse({
+          events: [
+            createTimelineEvent({
+              id: 'deferred-recent-event',
+              span_id: 'deferred-stale-root',
+              span_name: 'Deferred stale root',
+              event_type: 'message',
+              message: 'Recent activity',
+              timestamp: recentActivityAt,
+            }),
+          ],
+          trace_status: 'RUNNING',
+          has_more: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText('Recent activity')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/still marked running\. recent activity is sparse/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the stale trace signal as static informational text', async () => {
+    const now = Date.now();
+    const staleStartedAt = new Date(now - 20 * 60 * 1000).toISOString();
+    const latestActivityAt = new Date(now - 7 * 60 * 1000).toISOString();
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse({
+            ...TRACE_DETAIL,
+            status: 'RUNNING',
+            started_at: staleStartedAt,
+            ended_at: undefined,
+            error_count: 0,
+          }),
+        spans: () =>
+          jsonResponse({
+            spans: [
+              createSpan({
+                span_id: 'stale-root',
+                name: 'Stale root',
+                status: 'STARTED',
+                started_at: staleStartedAt,
+              }),
+            ],
+          }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'stale-event',
+                span_id: 'stale-root',
+                span_name: 'Stale root',
+                event_type: 'message',
+                timestamp: latestActivityAt,
+                message: 'Last known activity',
+              }),
+            ],
+            trace_status: 'RUNNING',
+            has_more: false,
+            poll_cursor: 'cursor-stale',
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    const staleSignal = await screen.findByText(
+      /still marked running\. recent activity is sparse/i
+    );
+    expect(staleSignal).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(staleSignal.closest('[aria-live]')).toBeNull();
   });
 });
