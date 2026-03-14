@@ -51,7 +51,7 @@ func TestTraceDetailToAPI_MapsSummaryAndDetailFields(t *testing.T) {
 	require.NotNil(t, detail.EndedAt)
 	assert.Equal(t, end, *detail.EndedAt)
 	require.NotNil(t, detail.SessionId)
-	assert.Equal(t, sessionID, uuid.UUID(*detail.SessionId))
+	assert.Equal(t, sessionID, *detail.SessionId)
 	require.NotNil(t, detail.TotalTokensIn)
 	assert.Equal(t, 12, *detail.TotalTokensIn)
 	require.NotNil(t, detail.TotalTokensOut)
