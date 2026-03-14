@@ -53,6 +53,14 @@ export function formatRelativeTime(dateStr: string | undefined | null): string {
 }
 
 /**
+ * Format a timestamp as an absolute ISO string.
+ */
+export function formatTimestamp(dateStr: string | undefined | null): string {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toISOString();
+}
+
+/**
  * Calculate duration from start and end times.
  */
 export function calculateDuration(

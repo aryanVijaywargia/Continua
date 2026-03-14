@@ -1,11 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  fetchSpans,
-  fetchTrace,
-  Span,
-} from '../api/client';
+import { fetchSpans, fetchTrace, type Span } from '../api/client';
+import { FailureSummary } from '../components/FailureSummary';
 import { JsonViewer } from '../components/JsonViewer';
 import { SpanDetail } from '../components/SpanDetail';
 import { SpanTree } from '../components/SpanTree';
@@ -17,16 +14,32 @@ import {
   calculateDuration,
   formatCost,
   formatDuration,
+  formatRelativeTime,
   formatTokens,
+  formatTimestamp,
 } from '../utils/format';
+import {
+  buildBreadcrumbPath,
+  buildFailureAnalysis,
+  buildSpanIndex,
+  evaluateStaleTraceSignal,
+  type StaleTraceSignal,
+} from '../utils/failureAnalysis';
 
 /**
  * Trace detail page with span tree, detail panel, and merged event timeline.
  */
+const EMPTY_SPANS: Span[] = [];
+const EMPTY_STALE_TRACE_SIGNAL: StaleTraceSignal = {
+  shouldDisplay: false,
+  latestActivityAt: null,
+  runtimeMs: null,
+  inactivityMs: null,
+};
+
 export function TraceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { hasApiKey, prompt } = useRequireApiKey();
-  const [selectedSpan, setSelectedSpan] = useState<Span | null>(null);
 
   if (!hasApiKey) {
     return prompt;
@@ -42,17 +55,14 @@ export function TraceDetailPage() {
 
   return (
     <TraceDetailContent
+      key={id}
       traceId={id}
-      selectedSpan={selectedSpan}
-      onSelectSpan={setSelectedSpan}
     />
   );
 }
 
 interface TraceDetailContentProps {
   traceId: string;
-  selectedSpan: Span | null;
-  onSelectSpan: (span: Span | null) => void;
 }
 
 function getReturnToDestination(state: unknown): string {
@@ -73,10 +83,13 @@ function getReturnToDestination(state: unknown): string {
 
 function TraceDetailContent({
   traceId,
-  selectedSpan,
-  onSelectSpan,
 }: TraceDetailContentProps) {
   const location = useLocation();
+  const [selectedSpanExternalId, setSelectedSpanExternalId] = useState<string | null>(
+    null
+  );
+  const [revealPathVersion, setRevealPathVersion] = useState(0);
+  const [userHasSelected, setUserHasSelected] = useState(false);
   const traceQuery = useQuery({
     queryKey: ['trace', traceId],
     queryFn: () => fetchTrace(traceId),
@@ -87,6 +100,98 @@ function TraceDetailContent({
     queryFn: () => fetchSpans(traceId),
   });
   const timeline = useTraceTimeline(traceId);
+  const trace = traceQuery.data ?? null;
+  const spans = spansQuery.data?.spans ?? EMPTY_SPANS;
+  const timelineStatus = trace ? timeline.traceStatus ?? trace.status : timeline.traceStatus;
+  const duration = trace ? calculateDuration(trace.started_at, trace.ended_at) : null;
+  const totalTokens = trace
+    ? (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0)
+    : 0;
+  const returnTo = getReturnToDestination(location.state);
+  const spanIndex = useMemo(() => buildSpanIndex(spans), [spans]);
+  const failureAnalysis = useMemo(
+    () => buildFailureAnalysis(spans, timeline.events, spanIndex),
+    [spanIndex, spans, timeline.events]
+  );
+  const selectedSpan = selectedSpanExternalId
+    ? spanIndex.get(selectedSpanExternalId) ?? null
+    : null;
+  const selectedBreadcrumbPath = useMemo(
+    () => buildBreadcrumbPath(selectedSpan, spanIndex),
+    [selectedSpan, spanIndex]
+  );
+  const revealPath = useMemo(
+    () => new Set(selectedBreadcrumbPath.map((segment) => segment.spanId)),
+    [selectedBreadcrumbPath]
+  );
+  const staleTraceSignal = useMemo(
+    () =>
+      timeline.hasSnapshot
+        ? evaluateStaleTraceSignal({
+            traceStatus: timelineStatus,
+            traceStartedAt: trace?.started_at,
+            spans,
+            events: timeline.events,
+          })
+        : EMPTY_STALE_TRACE_SIGNAL,
+    [spans, timeline.events, timeline.hasSnapshot, timelineStatus, trace?.started_at]
+  );
+
+  const selectSpan = (spanId: string | null, manualSelection: boolean) => {
+    setSelectedSpanExternalId(spanId);
+    if (spanId) {
+      setRevealPathVersion((version) => version + 1);
+    }
+    if (manualSelection) {
+      setUserHasSelected(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedSpanExternalId) {
+      return;
+    }
+
+    if (spanIndex.has(selectedSpanExternalId)) {
+      return;
+    }
+
+    const nextSelectedSpanId =
+      failureAnalysis.summary.primaryFailedSpan?.span_id ?? null;
+
+    setSelectedSpanExternalId(nextSelectedSpanId);
+    if (nextSelectedSpanId) {
+      setRevealPathVersion((version) => version + 1);
+    }
+    setUserHasSelected(false);
+  }, [
+    failureAnalysis.summary.primaryFailedSpan,
+    selectedSpanExternalId,
+    spanIndex,
+  ]);
+
+  useEffect(() => {
+    if (timelineStatus !== 'FAILED' || userHasSelected) {
+      return;
+    }
+
+    const nextSelectedSpanId =
+      failureAnalysis.summary.primaryFailedSpan?.span_id ?? null;
+
+    if (selectedSpanExternalId === nextSelectedSpanId) {
+      return;
+    }
+
+    setSelectedSpanExternalId(nextSelectedSpanId);
+    if (nextSelectedSpanId) {
+      setRevealPathVersion((version) => version + 1);
+    }
+  }, [
+    failureAnalysis.summary.primaryFailedSpan,
+    selectedSpanExternalId,
+    timelineStatus,
+    userHasSelected,
+  ]);
 
   if (traceQuery.isLoading || spansQuery.isLoading) {
     return (
@@ -122,9 +227,6 @@ function TraceDetailContent({
     );
   }
 
-  const trace = traceQuery.data;
-  const spans = spansQuery.data?.spans ?? [];
-
   if (!trace) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -132,12 +234,6 @@ function TraceDetailContent({
       </div>
     );
   }
-
-  const timelineStatus = timeline.traceStatus ?? trace.status;
-  const duration = calculateDuration(trace.started_at, trace.ended_at);
-  const totalTokens =
-    (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
-  const returnTo = getReturnToDestination(location.state);
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
@@ -151,7 +247,7 @@ function TraceDetailContent({
               <h1 className="truncate text-xl font-semibold text-gray-900">
                 {trace.name}
               </h1>
-              <StatusBadge status={timelineStatus} />
+              <StatusBadge status={timelineStatus!} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500">
               <span>{formatDuration(duration)}</span>
@@ -167,6 +263,31 @@ function TraceDetailContent({
 
       <div className="flex-1 overflow-y-auto p-4">
         <div className="mx-auto flex max-w-7xl flex-col gap-4">
+          {timelineStatus === 'FAILED' && (
+            <FailureSummary
+              summary={failureAnalysis.summary}
+              onJumpToPrimaryFailedSpan={(spanId) => selectSpan(spanId, true)}
+            />
+          )}
+
+          {staleTraceSignal.shouldDisplay && (
+            <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-800">
+                Experimental stale trace signal
+              </div>
+              <p className="mt-2">
+                Still marked running. Recent activity is sparse, so this trace may
+                be stale or incomplete.
+              </p>
+              {staleTraceSignal.latestActivityAt && (
+                <p className="mt-2 text-xs text-amber-800">
+                  Latest activity: {formatTimestamp(staleTraceSignal.latestActivityAt)} (
+                  {formatRelativeTime(staleTraceSignal.latestActivityAt)})
+                </p>
+              )}
+            </section>
+          )}
+
           <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
               <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-600">
@@ -251,8 +372,13 @@ function TraceDetailContent({
               <div className="h-[32rem] overflow-y-auto">
                 <SpanTree
                   spans={spans}
-                  selectedSpanId={selectedSpan?.id ?? null}
-                  onSelectSpan={onSelectSpan}
+                  selectedSpanId={selectedSpanExternalId}
+                  onSelectSpan={(spanId) => selectSpan(spanId, true)}
+                  failedSpanIds={failureAnalysis.failedSpanIds}
+                  primaryAncestorPath={failureAnalysis.primaryAncestorPath}
+                  revealPath={revealPath}
+                  revealKey={revealPathVersion}
+                  inlineErrorPreviews={failureAnalysis.inlineErrorPreviews}
                 />
               </div>
             </section>
@@ -264,7 +390,11 @@ function TraceDetailContent({
                 </h2>
               </div>
               <div className="h-[32rem]">
-                <SpanDetail span={selectedSpan} />
+                <SpanDetail
+                  span={selectedSpan}
+                  breadcrumbPath={selectedBreadcrumbPath}
+                  onSelectSpan={(spanId) => selectSpan(spanId, true)}
+                />
               </div>
             </section>
           </div>
@@ -275,13 +405,8 @@ function TraceDetailContent({
             isLive={timeline.isLive}
             isLoading={timeline.isLoading}
             error={timeline.error}
-            selectedSpanId={selectedSpan?.span_id ?? null}
-            onSelectSpan={(spanId) => {
-              const span = spans.find((candidate) => candidate.span_id === spanId) ?? null;
-              if (span) {
-                onSelectSpan(span);
-              }
-            }}
+            selectedSpanId={selectedSpanExternalId}
+            onSelectSpan={(spanId) => selectSpan(spanId, true)}
           />
         </div>
       </div>
