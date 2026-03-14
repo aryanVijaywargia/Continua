@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
   fetchSession,
-  fetchTracesBySession,
+  fetchTraces,
   Trace,
 } from '../api/client';
 import { PaginationControls } from '../components/PaginationControls';
@@ -70,7 +70,12 @@ function SessionDetailContent({
     error: tracesError,
   } = useQuery({
     queryKey: ['session-traces', sessionId, offset],
-    queryFn: () => fetchTracesBySession(sessionId, PAGE_SIZE, offset),
+    queryFn: () =>
+      fetchTraces({
+        session_id: sessionId,
+        limit: PAGE_SIZE,
+        offset,
+      }),
   });
 
   if (isSessionLoading) {

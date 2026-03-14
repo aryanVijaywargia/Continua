@@ -3,7 +3,14 @@
  * Uses fetch with API key header from localStorage.
  */
 
+import {
+  buildCanonicalQueryString,
+  type FetchTracesParams,
+} from '../utils/tracesSearchParams';
+
 const API_KEY_STORAGE_KEY = 'continua_api_key';
+
+export type { FetchTracesParams } from '../utils/tracesSearchParams';
 
 /**
  * Get the stored API key.
@@ -196,10 +203,12 @@ export interface SessionList {
 }
 
 /**
- * Fetch traces with pagination.
+ * Fetch traces with filters and pagination.
  */
-export async function fetchTraces(limit = 20, offset = 0): Promise<TraceList> {
-  return fetchAPI<TraceList>(`/api/traces?limit=${limit}&offset=${offset}`);
+export async function fetchTraces(params: FetchTracesParams = {}): Promise<TraceList> {
+  const query = buildCanonicalQueryString(params);
+  const path = query ? `/api/traces?${query}` : '/api/traces';
+  return fetchAPI<TraceList>(path);
 }
 
 /**
@@ -253,17 +262,4 @@ export async function fetchSessions(limit = 20, offset = 0): Promise<SessionList
  */
 export async function fetchSession(id: string): Promise<Session> {
   return fetchAPI<Session>(`/api/sessions/${id}`);
-}
-
-/**
- * Fetch traces filtered by session ID.
- */
-export async function fetchTracesBySession(
-  sessionId: string,
-  limit = 20,
-  offset = 0
-): Promise<TraceList> {
-  return fetchAPI<TraceList>(
-    `/api/traces?session_id=${sessionId}&limit=${limit}&offset=${offset}`
-  );
 }

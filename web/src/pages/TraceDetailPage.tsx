@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchSpans,
@@ -55,11 +55,28 @@ interface TraceDetailContentProps {
   onSelectSpan: (span: Span | null) => void;
 }
 
+function getReturnToDestination(state: unknown): string {
+  if (
+    typeof state !== 'object' ||
+    state === null ||
+    !('returnTo' in state) ||
+    typeof state.returnTo !== 'string'
+  ) {
+    return '/traces';
+  }
+
+  const { returnTo } = state;
+  return returnTo === '/traces' || returnTo.startsWith('/traces?')
+    ? returnTo
+    : '/traces';
+}
+
 function TraceDetailContent({
   traceId,
   selectedSpan,
   onSelectSpan,
 }: TraceDetailContentProps) {
+  const location = useLocation();
   const traceQuery = useQuery({
     queryKey: ['trace', traceId],
     queryFn: () => fetchTrace(traceId),
@@ -120,12 +137,13 @@ function TraceDetailContent({
   const duration = calculateDuration(trace.started_at, trace.ended_at);
   const totalTokens =
     (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
+  const returnTo = getReturnToDestination(location.state);
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <header className="border-b bg-white px-6 py-4">
         <div className="flex items-center gap-4">
-          <Link to="/traces" className="text-gray-500 hover:text-gray-700">
+          <Link to={returnTo} className="text-gray-500 hover:text-gray-700">
             ← Traces
           </Link>
           <div className="min-w-0 flex-1">

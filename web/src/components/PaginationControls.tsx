@@ -19,11 +19,13 @@ export function PaginationControls({
   return (
     <div className="mt-4 flex items-center justify-between">
       <button
+        type="button"
+        aria-label="Previous page"
         onClick={() => onOffsetChange(Math.max(0, offset - pageSize))}
         disabled={!hasPrevPage}
         className={`px-4 py-2 rounded-lg ${
           hasPrevPage
-            ? 'bg-blue-600 text-white hover:bg-blue-700'
+            ? 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200'
             : 'bg-gray-200 text-gray-400 cursor-not-allowed'
         }`}
       >
@@ -33,11 +35,13 @@ export function PaginationControls({
         Showing {showingFrom} - {showingTo} of {total}
       </span>
       <button
+        type="button"
+        aria-label="Next page"
         onClick={() => onOffsetChange(offset + pageSize)}
         disabled={!hasNextPage}
         className={`px-4 py-2 rounded-lg ${
           hasNextPage
-            ? 'bg-blue-600 text-white hover:bg-blue-700'
+            ? 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200'
             : 'bg-gray-200 text-gray-400 cursor-not-allowed'
         }`}
       >
