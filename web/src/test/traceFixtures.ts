@@ -1,11 +1,32 @@
-import type { Span, TimelineEvent, Trace, TraceDetail } from '../api/client';
+import type { Session, Span, TimelineEvent, Trace, TraceDetail } from '../api/client';
 
 export const SESSION_ID = '123e4567-e89b-12d3-a456-426614174000';
 export const OTHER_SESSION_ID = '123e4567-e89b-12d3-a456-426614174001';
+export const SESSION_EXTERNAL_ID = 'conv-checkout-123';
+export const OTHER_SESSION_EXTERNAL_ID = 'conv-latency-456';
+
+export const SESSION_ONE: Session = {
+  id: SESSION_ID,
+  external_id: SESSION_EXTERNAL_ID,
+  name: 'Checkout Session',
+  user_id: 'user-123',
+  trace_count: 2,
+  created_at: '2026-03-14T09:00:00.000Z',
+};
+
+export const SESSION_TWO: Session = {
+  id: OTHER_SESSION_ID,
+  external_id: OTHER_SESSION_EXTERNAL_ID,
+  name: 'Latency Session',
+  user_id: 'user-456',
+  trace_count: 1,
+  created_at: '2026-03-14T10:00:00.000Z',
+};
 
 export const TRACE_ONE: Trace = {
   id: 'trace-checkout',
   session_id: SESSION_ID,
+  session_external_id: SESSION_EXTERNAL_ID,
   name: 'Checkout Trace',
   status: 'FAILED',
   started_at: '2026-03-14T10:00:00.000Z',
@@ -19,6 +40,7 @@ export const TRACE_ONE: Trace = {
 export const TRACE_TWO: Trace = {
   id: 'trace-latency',
   session_id: OTHER_SESSION_ID,
+  session_external_id: OTHER_SESSION_EXTERNAL_ID,
   name: 'Latency Trace',
   status: 'RUNNING',
   started_at: '2026-03-14T11:00:00.000Z',
@@ -31,6 +53,7 @@ export const TRACE_TWO: Trace = {
 export const TRACE_THREE: Trace = {
   id: 'trace-alpha',
   session_id: SESSION_ID,
+  session_external_id: SESSION_EXTERNAL_ID,
   name: 'Alpha Trace',
   status: 'COMPLETED',
   started_at: '2026-03-14T09:00:00.000Z',
@@ -46,6 +69,7 @@ export const TRACE_ZETA: Trace = {
   id: 'trace-zeta',
   name: 'Zeta Trace',
   session_id: OTHER_SESSION_ID,
+  session_external_id: OTHER_SESSION_EXTERNAL_ID,
   error_count: 1,
 };
 

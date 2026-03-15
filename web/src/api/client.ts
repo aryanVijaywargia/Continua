@@ -7,10 +7,19 @@ import {
   buildCanonicalQueryString,
   type FetchTracesParams,
 } from '../utils/tracesSearchParams';
+import {
+  buildSessionsQueryString,
+  type FetchSessionsParams,
+} from '../utils/sessionsSearchParams';
 
 const API_KEY_STORAGE_KEY = 'continua_api_key';
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
+export type {
+  FetchSessionsParams,
+  SessionSortBy,
+  SortDirection,
+} from '../utils/sessionsSearchParams';
 
 /**
  * Get the stored API key.
@@ -96,6 +105,7 @@ export type JsonValue =
 export interface Trace {
   id: string;
   session_id?: string;
+  session_external_id?: string;
   name: string;
   status: 'RUNNING' | 'COMPLETED' | 'FAILED';
   started_at: string;
@@ -251,10 +261,14 @@ export async function fetchTimelineEvents(
 }
 
 /**
- * Fetch sessions with pagination.
+ * Fetch sessions with filters and pagination.
  */
-export async function fetchSessions(limit = 20, offset = 0): Promise<SessionList> {
-  return fetchAPI<SessionList>(`/api/sessions?limit=${limit}&offset=${offset}`);
+export async function fetchSessions(
+  params: FetchSessionsParams = {}
+): Promise<SessionList> {
+  const query = buildSessionsQueryString(params);
+  const path = query ? `/api/sessions?${query}` : '/api/sessions';
+  return fetchAPI<SessionList>(path);
 }
 
 /**

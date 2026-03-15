@@ -5,7 +5,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/continua-ai/continua/db/gen/go/platform"
+	"github.com/continua-ai/continua/internal/store"
 )
 
 // ListTraces returns a paginated list of traces with optional filtering.
@@ -19,12 +19,13 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 
 	limit, offset := normalizePagination(params.Limit, params.Offset)
 
-	var traces []platform.Trace
+	var traces []store.TraceRead
 	var total int64
 	var err error
 
-	filter, hasFilters := traceFilterFromParams(projectID, &params, limit, offset)
-	if hasFilters {
+	filter := traceFilterFromParams(projectID, &params, limit, offset)
+	switch {
+	case traceNeedsDynamicQuery(&filter):
 		result, err := s.store.ListTracesFiltered(r.Context(), filter)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to search traces")
@@ -32,8 +33,19 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 		}
 		traces = result.Traces
 		total = result.Total
-	} else {
-		traces, err = s.store.ListTraces(r.Context(), projectID, limit, offset)
+	case filter.SessionID != nil:
+		traces, err = s.store.ListTracesBySession(r.Context(), projectID, *filter.SessionID, limit, offset, filter.SortDir)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
+			return
+		}
+		total, err = s.store.CountTracesBySession(r.Context(), projectID, *filter.SessionID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count traces")
+			return
+		}
+	default:
+		traces, err = s.store.ListTraces(r.Context(), projectID, limit, offset, filter.SortDir)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
 			return

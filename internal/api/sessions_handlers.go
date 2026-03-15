@@ -17,16 +17,32 @@ func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params Lis
 
 	limit, offset := normalizePagination(params.Limit, params.Offset)
 
-	sessions, err := s.store.ListSessionsWithTraceCount(r.Context(), projectID, limit, offset)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list sessions")
-		return
-	}
+	filter := sessionFilterFromParams(projectID, &params, limit, offset)
 
-	total, err := s.store.CountSessions(r.Context(), projectID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count sessions")
-		return
+	var sessions []store.SessionWithCount
+	var total int64
+	var err error
+
+	if sessionNeedsDynamicQuery(&filter) {
+		result, err := s.store.ListSessionsFiltered(r.Context(), filter)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list sessions")
+			return
+		}
+		sessions = result.Sessions
+		total = result.Total
+	} else {
+		sessions, err = s.store.ListSessionsWithTraceCount(r.Context(), projectID, limit, offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list sessions")
+			return
+		}
+
+		total, err = s.store.CountSessions(r.Context(), projectID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count sessions")
+			return
+		}
 	}
 
 	apiSessions := make([]Session, len(sessions))

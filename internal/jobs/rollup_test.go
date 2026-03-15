@@ -90,12 +90,12 @@ func TestRollupJob_Execution(t *testing.T) {
 	updatedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
 
-	require.NotNil(t, updatedTrace.TotalSpans)
-	assert.Equal(t, int32(4), *updatedTrace.TotalSpans, "total_spans should be 4")
-	assert.Equal(t, int64(300), updatedTrace.TotalTokensIn, "total_tokens_in should be 300 (100 * 3)")
-	assert.Equal(t, int64(150), updatedTrace.TotalTokensOut, "total_tokens_out should be 150 (50 * 3)")
-	require.NotNil(t, updatedTrace.ErrorCount)
-	assert.Equal(t, int32(1), *updatedTrace.ErrorCount, "error_count should be 1")
+	require.NotNil(t, updatedTrace.Trace.TotalSpans)
+	assert.Equal(t, int32(4), *updatedTrace.Trace.TotalSpans, "total_spans should be 4")
+	assert.Equal(t, int64(300), updatedTrace.Trace.TotalTokensIn, "total_tokens_in should be 300 (100 * 3)")
+	assert.Equal(t, int64(150), updatedTrace.Trace.TotalTokensOut, "total_tokens_out should be 150 (50 * 3)")
+	require.NotNil(t, updatedTrace.Trace.ErrorCount)
+	assert.Equal(t, int32(1), *updatedTrace.Trace.ErrorCount, "error_count should be 1")
 }
 
 func TestRollupJob_RetryDoesNotDoubleCount(t *testing.T) {
@@ -147,10 +147,10 @@ func TestRollupJob_RetryDoesNotDoubleCount(t *testing.T) {
 	updatedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
 
-	require.NotNil(t, updatedTrace.TotalSpans)
-	assert.Equal(t, int32(2), *updatedTrace.TotalSpans, "total_spans should be 2, not 4")
-	assert.Equal(t, int64(60), updatedTrace.TotalTokensIn, "total_tokens_in should be 60, not 120")
-	assert.Equal(t, int64(40), updatedTrace.TotalTokensOut, "total_tokens_out should be 40, not 80")
+	require.NotNil(t, updatedTrace.Trace.TotalSpans)
+	assert.Equal(t, int32(2), *updatedTrace.Trace.TotalSpans, "total_spans should be 2, not 4")
+	assert.Equal(t, int64(60), updatedTrace.Trace.TotalTokensIn, "total_tokens_in should be 60, not 120")
+	assert.Equal(t, int64(40), updatedTrace.Trace.TotalTokensOut, "total_tokens_out should be 40, not 80")
 }
 
 func TestRollupJob_EmptyTrace(t *testing.T) {
@@ -181,8 +181,8 @@ func TestRollupJob_EmptyTrace(t *testing.T) {
 	updatedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
 
-	require.NotNil(t, updatedTrace.TotalSpans)
-	assert.Equal(t, int32(0), *updatedTrace.TotalSpans, "total_spans should be 0")
+	require.NotNil(t, updatedTrace.Trace.TotalSpans)
+	assert.Equal(t, int32(0), *updatedTrace.Trace.TotalSpans, "total_spans should be 0")
 }
 
 func TestRollupJob_MultipleLLMCalls(t *testing.T) {
@@ -228,6 +228,6 @@ func TestRollupJob_MultipleLLMCalls(t *testing.T) {
 	updatedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(550), updatedTrace.TotalTokensIn, "total_tokens_in should be sum of prompt_tokens")
-	assert.Equal(t, int64(375), updatedTrace.TotalTokensOut, "total_tokens_out should be sum of completion_tokens")
+	assert.Equal(t, int64(550), updatedTrace.Trace.TotalTokensIn, "total_tokens_in should be sum of prompt_tokens")
+	assert.Equal(t, int64(375), updatedTrace.Trace.TotalTokensOut, "total_tokens_out should be sum of completion_tokens")
 }

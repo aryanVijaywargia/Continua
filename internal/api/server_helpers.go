@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/continua-ai/continua/db/gen/go/platform"
 	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/store"
@@ -90,49 +89,116 @@ func projectIDOrUnauthorized(w http.ResponseWriter, r *http.Request) (uuid.UUID,
 	return projectID, true
 }
 
-func traceFilterFromParams(projectID uuid.UUID, params *ListTracesParams, limit, offset int32) (store.TraceFilter, bool) {
+func traceSortDirectionFromParams(params *ListTracesParams) store.SortDirection {
+	if params.SortBy != nil && *params.SortBy != StartedAt {
+		return store.SortDirectionDesc
+	}
+	if params.SortDir != nil && *params.SortDir == ListTracesParamsSortDirAsc {
+		return store.SortDirectionAsc
+	}
+	return store.SortDirectionDesc
+}
+
+func traceFilterFromParams(projectID uuid.UUID, params *ListTracesParams, limit, offset int32) store.TraceFilter {
 	filter := store.TraceFilter{
 		ProjectID: projectID,
+		SortDir:   traceSortDirectionFromParams(params),
 		Limit:     limit,
 		Offset:    offset,
 	}
-	hasFilters := false
 
 	if params.Q != nil {
 		filter.Query = *params.Q
-		hasFilters = true
 	}
 	if params.Status != nil {
 		filter.Status = string(*params.Status)
-		hasFilters = true
 	}
 	if params.StartTimeFrom != nil {
 		filter.StartTimeFrom = params.StartTimeFrom
-		hasFilters = true
 	}
 	if params.StartTimeTo != nil {
 		filter.StartTimeTo = params.StartTimeTo
-		hasFilters = true
 	}
 	if params.UserId != nil {
 		filter.UserID = *params.UserId
-		hasFilters = true
 	}
 	if params.SessionId != nil {
 		id := *params.SessionId
 		filter.SessionID = &id
-		hasFilters = true
 	}
 	if params.HasErrors != nil {
 		filter.HasErrors = params.HasErrors
-		hasFilters = true
 	}
 	if params.MinDurationMs != nil {
 		filter.MinDurationMs = params.MinDurationMs
-		hasFilters = true
 	}
 
-	return filter, hasFilters
+	return filter
+}
+
+func traceHasSearchQuery(filter *store.TraceFilter) bool {
+	return strings.TrimSpace(filter.Query) != ""
+}
+
+func traceNeedsDynamicQuery(filter *store.TraceFilter) bool {
+	return traceHasSearchQuery(filter) ||
+		filter.Status != "" ||
+		filter.StartTimeFrom != nil ||
+		filter.StartTimeTo != nil ||
+		filter.UserID != "" ||
+		filter.HasErrors != nil ||
+		filter.MinDurationMs != nil
+}
+
+func sessionSortFromParams(params *ListSessionsParams) (store.SessionSortBy, store.SortDirection) {
+	if params.SortBy != nil {
+		switch *params.SortBy {
+		case CreatedAt:
+			if params.SortDir != nil && *params.SortDir == ListSessionsParamsSortDirAsc {
+				return store.SessionSortByCreatedAt, store.SortDirectionAsc
+			}
+			return store.SessionSortByCreatedAt, store.SortDirectionDesc
+		case TraceCount:
+			if params.SortDir != nil && *params.SortDir == ListSessionsParamsSortDirAsc {
+				return store.SessionSortByTraceCount, store.SortDirectionAsc
+			}
+			return store.SessionSortByTraceCount, store.SortDirectionDesc
+		default:
+			return store.SessionSortByCreatedAt, store.SortDirectionDesc
+		}
+	}
+
+	if params.SortDir != nil && *params.SortDir == ListSessionsParamsSortDirAsc {
+		return store.SessionSortByCreatedAt, store.SortDirectionAsc
+	}
+	return store.SessionSortByCreatedAt, store.SortDirectionDesc
+}
+
+func sessionFilterFromParams(projectID uuid.UUID, params *ListSessionsParams, limit, offset int32) store.SessionFilter {
+	sortBy, sortDir := sessionSortFromParams(params)
+	filter := store.SessionFilter{
+		ProjectID: projectID,
+		SortBy:    sortBy,
+		SortDir:   sortDir,
+		Limit:     limit,
+		Offset:    offset,
+	}
+
+	if params.Q != nil {
+		filter.Query = *params.Q
+	}
+	if params.UserId != nil {
+		filter.UserID = *params.UserId
+	}
+
+	return filter
+}
+
+func sessionNeedsDynamicQuery(filter *store.SessionFilter) bool {
+	return strings.TrimSpace(filter.Query) != "" ||
+		filter.UserID != "" ||
+		filter.SortBy != store.SessionSortByCreatedAt ||
+		filter.SortDir != store.SortDirectionDesc
 }
 
 func apiIngestResponse(result *ingest.IngestResponse, includeCounts bool) IngestResponse {
@@ -184,19 +250,19 @@ func apiBatchStatus(status *ingest.BatchStatus) BatchStatusResponse {
 	return resp
 }
 
-func (s *Server) getScopedTrace(ctx context.Context, w http.ResponseWriter, projectID, traceID openapi_types.UUID) (platform.Trace, bool) {
+func (s *Server) getScopedTrace(ctx context.Context, w http.ResponseWriter, projectID, traceID openapi_types.UUID) (store.TraceRead, bool) {
 	trace, err := s.store.GetTrace(ctx, traceID)
 	if store.IsNotFound(err) {
 		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
-		return platform.Trace{}, false
+		return store.TraceRead{}, false
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get trace")
-		return platform.Trace{}, false
+		return store.TraceRead{}, false
 	}
 	if trace.ProjectID != projectID {
 		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
-		return platform.Trace{}, false
+		return store.TraceRead{}, false
 	}
 
 	return trace, true

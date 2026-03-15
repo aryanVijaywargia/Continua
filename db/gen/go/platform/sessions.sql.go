@@ -147,7 +147,7 @@ func (q *Queries) GetSessionWithTraceCount(ctx context.Context, id uuid.UUID) (G
 const listSessions = `-- name: ListSessions :many
 SELECT id, project_id, name, user_id, metadata, created_at, updated_at, external_id FROM sessions
 WHERE project_id = $1
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3
 `
 
@@ -191,7 +191,7 @@ SELECT s.id, s.project_id, s.name, s.user_id, s.metadata, s.created_at, s.update
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
 WHERE s.project_id = $1
-ORDER BY s.created_at DESC
+ORDER BY s.created_at DESC, s.id DESC
 LIMIT $2 OFFSET $3
 `
 

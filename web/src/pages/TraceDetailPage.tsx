@@ -272,7 +272,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       <header className="border-b bg-white px-6 py-4">
         <div className="flex items-center gap-4">
           <Link to={returnTo} className="text-gray-500 hover:text-gray-700">
-            ← Traces
+            {returnTo.startsWith('/sessions/') ? '← Session' : '← Traces'}
           </Link>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
@@ -461,7 +461,9 @@ function getReturnToDestination(state: unknown): string {
   }
 
   const { returnTo } = state;
-  return returnTo === '/traces' || returnTo.startsWith('/traces?')
+  return returnTo === '/traces' ||
+    returnTo.startsWith('/traces?') ||
+    returnTo.startsWith('/sessions/')
     ? returnTo
     : '/traces';
 }
@@ -566,13 +568,18 @@ function TraceContextSection({
               copyButtonLabel="Copy external trace ID"
             />
             <TraceContextField
-              label="Session UUID"
+              label="Session"
               value={trace.session_id ? (
                 <Link
                   to={`/sessions/${trace.session_id}`}
-                  className="font-mono text-xs text-blue-600 hover:text-blue-800"
+                  className="inline-flex flex-col text-left text-blue-600 hover:text-blue-800"
                 >
-                  {trace.session_id}
+                  <span className="text-sm font-medium text-gray-900">
+                    {trace.session_external_id ?? trace.session_id}
+                  </span>
+                  <span className="font-mono text-xs text-gray-500">
+                    {trace.session_id}
+                  </span>
                 </Link>
               ) : (
                 renderContextText(undefined)

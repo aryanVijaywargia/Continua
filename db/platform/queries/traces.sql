@@ -1,5 +1,8 @@
 -- name: GetTrace :one
-SELECT * FROM traces WHERE id = $1;
+SELECT sqlc.embed(t), s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.id = $1;
 
 -- name: GetTraceVersion :one
 -- Get trace version for optimistic concurrency checks (e.g., rollup re-enqueue).
@@ -12,15 +15,35 @@ SELECT * FROM traces WHERE project_id = $1 AND trace_id = $2;
 SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2;
 
 -- name: ListTraces :many
-SELECT * FROM traces
-WHERE project_id = $1
-ORDER BY COALESCE(start_time, server_received_at) DESC
+SELECT sqlc.embed(t), s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.project_id = $1
+ORDER BY COALESCE(t.start_time, t.server_received_at) DESC, t.id DESC
+LIMIT $2 OFFSET $3;
+
+-- name: ListTracesAsc :many
+SELECT sqlc.embed(t), s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.project_id = $1
+ORDER BY COALESCE(t.start_time, t.server_received_at) ASC, t.id ASC
 LIMIT $2 OFFSET $3;
 
 -- name: ListTracesBySession :many
-SELECT * FROM traces
-WHERE project_id = $1 AND session_id = $2
-ORDER BY COALESCE(start_time, server_received_at) DESC
+SELECT sqlc.embed(t), s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.project_id = $1 AND t.session_id = $2
+ORDER BY COALESCE(t.start_time, t.server_received_at) DESC, t.id DESC
+LIMIT $3 OFFSET $4;
+
+-- name: ListTracesBySessionAsc :many
+SELECT sqlc.embed(t), s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.project_id = $1 AND t.session_id = $2
+ORDER BY COALESCE(t.start_time, t.server_received_at) ASC, t.id ASC
 LIMIT $3 OFFSET $4;
 
 -- name: CountTraces :one

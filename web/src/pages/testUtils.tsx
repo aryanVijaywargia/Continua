@@ -3,8 +3,12 @@ import { render } from '@testing-library/react';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import {
+  OTHER_SESSION_EXTERNAL_ID,
   OTHER_SESSION_ID,
+  SESSION_EXTERNAL_ID,
   SESSION_ID,
+  SESSION_ONE,
+  SESSION_TWO,
   TRACE_DETAIL,
   TRACE_ONE,
   TRACE_THREE,
@@ -15,10 +19,16 @@ import {
   resetTestEntityCounter,
 } from '../test/traceFixtures';
 import { TraceDetailPage } from './TraceDetailPage';
+import { SessionDetailPage } from './SessionDetailPage';
+import { SessionsPage } from './SessionsPage';
 import { TracesPage } from './TracesPage';
 export {
+  OTHER_SESSION_EXTERNAL_ID,
   OTHER_SESSION_ID,
+  SESSION_EXTERNAL_ID,
   SESSION_ID,
+  SESSION_ONE,
+  SESSION_TWO,
   TRACE_DETAIL,
   TRACE_ONE,
   TRACE_THREE,
@@ -45,11 +55,15 @@ export function jsonResponse(data: unknown, status = 200): Response {
 export function buildFetchHandler({
   list,
   detail,
+  sessionsList,
+  sessionDetail,
   spans,
   timeline,
 }: {
   list?: JsonHandler;
   detail?: JsonHandler;
+  sessionsList?: JsonHandler;
+  sessionDetail?: JsonHandler;
   spans?: JsonHandler;
   timeline?: JsonHandler;
 } = {}) {
@@ -83,6 +97,31 @@ export function buildFetchHandler({
 
     if (/^\/api\/traces\/[^/]+$/.test(url.pathname)) {
       return detail?.(url) ?? jsonResponse(TRACE_DETAIL);
+    }
+
+    if (url.pathname === '/api/sessions') {
+      return (
+        sessionsList?.(url) ??
+        jsonResponse({
+          sessions: [SESSION_ONE, SESSION_TWO],
+          total: 2,
+        })
+      );
+    }
+
+    if (/^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
+      if (sessionDetail) {
+        return sessionDetail(url);
+      }
+
+      const sessionId = url.pathname.split('/').at(-1);
+      if (sessionId === SESSION_ID) {
+        return jsonResponse(SESSION_ONE);
+      }
+      if (sessionId === OTHER_SESSION_ID) {
+        return jsonResponse(SESSION_TWO);
+      }
+      return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
     }
 
     throw new Error(`Unhandled request: ${url.pathname}${url.search}`);
@@ -129,6 +168,8 @@ export function renderTraceRoutes(
     [
       { path: '/traces', element: <TracesPage /> },
       { path: '/traces/:id', element: <TraceDetailPage /> },
+      { path: '/sessions', element: <SessionsPage /> },
+      { path: '/sessions/:id', element: <SessionDetailPage /> },
     ],
     {
       initialEntries,

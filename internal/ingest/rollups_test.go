@@ -64,8 +64,8 @@ func TestRollups_TokenAggregation(t *testing.T) {
 	updatedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(225), updatedTrace.TotalTokensIn, "total_tokens_in should equal sum of prompt_tokens")
-	assert.Equal(t, int64(225), updatedTrace.TotalTokensOut, "total_tokens_out should equal sum of completion_tokens")
+	assert.Equal(t, int64(225), updatedTrace.Trace.TotalTokensIn, "total_tokens_in should equal sum of prompt_tokens")
+	assert.Equal(t, int64(225), updatedTrace.Trace.TotalTokensOut, "total_tokens_out should equal sum of completion_tokens")
 }
 
 func TestRollups_CostAggregation(t *testing.T) {
@@ -108,7 +108,7 @@ func TestRollups_CostAggregation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Note: TotalCost is pgtype.Numeric, compare validity instead of exact value
-	assert.True(t, updatedTrace.TotalCost.Valid, "total_cost should be set")
+	assert.True(t, updatedTrace.Trace.TotalCost.Valid, "total_cost should be set")
 }
 
 func TestRollups_SpanCount(t *testing.T) {
@@ -148,8 +148,8 @@ func TestRollups_SpanCount(t *testing.T) {
 	updatedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
 
-	require.NotNil(t, updatedTrace.TotalSpans)
-	assert.Equal(t, int32(5), *updatedTrace.TotalSpans, "total_spans should be 5")
+	require.NotNil(t, updatedTrace.Trace.TotalSpans)
+	assert.Equal(t, int32(5), *updatedTrace.Trace.TotalSpans, "total_spans should be 5")
 }
 
 func TestRollups_ErrorCounting(t *testing.T) {
@@ -192,8 +192,8 @@ func TestRollups_ErrorCounting(t *testing.T) {
 	require.NoError(t, err)
 
 	// 3 failed/error spans
-	require.NotNil(t, updatedTrace.ErrorCount)
-	assert.Equal(t, int32(3), *updatedTrace.ErrorCount, "error_count should be 3")
+	require.NotNil(t, updatedTrace.Trace.ErrorCount)
+	assert.Equal(t, int32(3), *updatedTrace.Trace.ErrorCount, "error_count should be 3")
 }
 
 func TestRollups_DurationComputation(t *testing.T) {
@@ -228,8 +228,8 @@ func TestRollups_DurationComputation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Duration should be approximately 5000ms
-	require.NotNil(t, updatedTrace.DurationMs)
-	assert.InDelta(t, 5000, *updatedTrace.DurationMs, 100, "duration should be ~5000ms")
+	require.NotNil(t, updatedTrace.Trace.DurationMs)
+	assert.InDelta(t, 5000, *updatedTrace.Trace.DurationMs, 100, "duration should be ~5000ms")
 }
 
 func TestRollups_FailureNonBlocking(t *testing.T) {
@@ -261,7 +261,7 @@ func TestRollups_FailureNonBlocking(t *testing.T) {
 	// Trace should exist regardless of rollup computation
 	fetchedTrace, err := q.GetTrace(ctx, trace.ID)
 	require.NoError(t, err)
-	assert.Equal(t, traceID, fetchedTrace.TraceID)
+	assert.Equal(t, traceID, fetchedTrace.Trace.TraceID)
 }
 
 // =============================================================================

@@ -151,6 +151,29 @@ const (
 	TraceDetailStatusRUNNING   TraceDetailStatus = "RUNNING"
 )
 
+// Defines values for ListSessionsParamsSortBy.
+const (
+	CreatedAt  ListSessionsParamsSortBy = "created_at"
+	TraceCount ListSessionsParamsSortBy = "trace_count"
+)
+
+// Defines values for ListSessionsParamsSortDir.
+const (
+	ListSessionsParamsSortDirAsc  ListSessionsParamsSortDir = "asc"
+	ListSessionsParamsSortDirDesc ListSessionsParamsSortDir = "desc"
+)
+
+// Defines values for ListTracesParamsSortBy.
+const (
+	StartedAt ListTracesParamsSortBy = "started_at"
+)
+
+// Defines values for ListTracesParamsSortDir.
+const (
+	ListTracesParamsSortDirAsc  ListTracesParamsSortDir = "asc"
+	ListTracesParamsSortDirDesc ListTracesParamsSortDir = "desc"
+)
+
 // Defines values for ListTracesParamsStatus.
 const (
 	Completed ListTracesParamsStatus = "completed"
@@ -445,16 +468,17 @@ type Trace struct {
 	EndedAt *time.Time `json:"ended_at,omitempty"`
 
 	// ErrorCount Count of failed spans in this trace
-	ErrorCount     *int                    `json:"error_count,omitempty"`
-	Id             openapi_types.UUID      `json:"id"`
-	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
-	Name           string                  `json:"name"`
-	SessionId      *openapi_types.UUID     `json:"session_id,omitempty"`
-	StartedAt      time.Time               `json:"started_at"`
-	Status         TraceStatus             `json:"status"`
-	TotalCostUsd   *float32                `json:"total_cost_usd,omitempty"`
-	TotalTokensIn  *int                    `json:"total_tokens_in,omitempty"`
-	TotalTokensOut *int                    `json:"total_tokens_out,omitempty"`
+	ErrorCount        *int                    `json:"error_count,omitempty"`
+	Id                openapi_types.UUID      `json:"id"`
+	Metadata          *map[string]interface{} `json:"metadata,omitempty"`
+	Name              string                  `json:"name"`
+	SessionExternalId *string                 `json:"session_external_id,omitempty"`
+	SessionId         *openapi_types.UUID     `json:"session_id,omitempty"`
+	StartedAt         time.Time               `json:"started_at"`
+	Status            TraceStatus             `json:"status"`
+	TotalCostUsd      *float32                `json:"total_cost_usd,omitempty"`
+	TotalTokensIn     *int                    `json:"total_tokens_in,omitempty"`
+	TotalTokensOut    *int                    `json:"total_tokens_out,omitempty"`
 }
 
 // TraceStatus defines model for Trace.Status.
@@ -475,17 +499,18 @@ type TraceDetail struct {
 	Name     string                  `json:"name"`
 
 	// Output Trace output payload (any valid JSON)
-	Output         interface{}         `json:"output,omitempty"`
-	Release        *string             `json:"release,omitempty"`
-	SessionId      *openapi_types.UUID `json:"session_id,omitempty"`
-	StartedAt      time.Time           `json:"started_at"`
-	Status         TraceDetailStatus   `json:"status"`
-	Tags           *[]string           `json:"tags,omitempty"`
-	TotalCostUsd   *float32            `json:"total_cost_usd,omitempty"`
-	TotalTokensIn  *int                `json:"total_tokens_in,omitempty"`
-	TotalTokensOut *int                `json:"total_tokens_out,omitempty"`
-	TraceId        *string             `json:"trace_id,omitempty"`
-	UserId         *string             `json:"user_id,omitempty"`
+	Output            interface{}         `json:"output,omitempty"`
+	Release           *string             `json:"release,omitempty"`
+	SessionExternalId *string             `json:"session_external_id,omitempty"`
+	SessionId         *openapi_types.UUID `json:"session_id,omitempty"`
+	StartedAt         time.Time           `json:"started_at"`
+	Status            TraceDetailStatus   `json:"status"`
+	Tags              *[]string           `json:"tags,omitempty"`
+	TotalCostUsd      *float32            `json:"total_cost_usd,omitempty"`
+	TotalTokensIn     *int                `json:"total_tokens_in,omitempty"`
+	TotalTokensOut    *int                `json:"total_tokens_out,omitempty"`
+	TraceId           *string             `json:"trace_id,omitempty"`
+	UserId            *string             `json:"user_id,omitempty"`
 }
 
 // TraceDetailStatus defines model for TraceDetail.Status.
@@ -501,7 +526,25 @@ type TraceList struct {
 type ListSessionsParams struct {
 	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Q Search sessions by external ID or name
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// UserId Filter sessions by exact user ID
+	UserId *string `form:"user_id,omitempty" json:"user_id,omitempty"`
+
+	// SortBy Sort sessions by creation time or trace count. Ignored when q is present.
+	SortBy *ListSessionsParamsSortBy `form:"sort_by,omitempty" json:"sort_by,omitempty"`
+
+	// SortDir Sort direction for the selected session sort field. Ignored when q is present.
+	SortDir *ListSessionsParamsSortDir `form:"sort_dir,omitempty" json:"sort_dir,omitempty"`
 }
+
+// ListSessionsParamsSortBy defines parameters for ListSessions.
+type ListSessionsParamsSortBy string
+
+// ListSessionsParamsSortDir defines parameters for ListSessions.
+type ListSessionsParamsSortDir string
 
 // ListTracesParams defines parameters for ListTraces.
 type ListTracesParams struct {
@@ -511,6 +554,12 @@ type ListTracesParams struct {
 
 	// Q Full-text search query (searches trace name and user_id)
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// SortBy Sort traces by started time. Ignored when q is present.
+	SortBy *ListTracesParamsSortBy `form:"sort_by,omitempty" json:"sort_by,omitempty"`
+
+	// SortDir Sort direction for started time. Ignored when q is present.
+	SortDir *ListTracesParamsSortDir `form:"sort_dir,omitempty" json:"sort_dir,omitempty"`
 
 	// Status Filter by trace status
 	Status *ListTracesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
@@ -530,6 +579,12 @@ type ListTracesParams struct {
 	// MinDurationMs Filter traces with duration >= this value in milliseconds
 	MinDurationMs *int64 `form:"min_duration_ms,omitempty" json:"min_duration_ms,omitempty"`
 }
+
+// ListTracesParamsSortBy defines parameters for ListTraces.
+type ListTracesParamsSortBy string
+
+// ListTracesParamsSortDir defines parameters for ListTraces.
+type ListTracesParamsSortDir string
 
 // ListTracesParamsStatus defines parameters for ListTraces.
 type ListTracesParamsStatus string
@@ -676,6 +731,38 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "user_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "user_id", r.URL.Query(), &params.UserId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sort_by" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort_by", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort_by", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sort_dir" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort_dir", r.URL.Query(), &params.SortDir)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort_dir", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListSessions(w, r, params)
 	}))
@@ -761,6 +848,22 @@ func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Req
 	err = runtime.BindQueryParameter("form", true, false, "q", r.URL.Query(), &params.Q)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sort_by" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort_by", r.URL.Query(), &params.SortBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort_by", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sort_dir" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort_dir", r.URL.Query(), &params.SortDir)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort_dir", Err: err})
 		return
 	}
 

@@ -167,6 +167,7 @@ export interface components {
             id: string;
             /** Format: uuid */
             session_id?: string;
+            session_external_id?: string;
             name: string;
             /** @enum {string} */
             status: "RUNNING" | "COMPLETED" | "FAILED";
@@ -579,6 +580,10 @@ export interface operations {
                 session_id?: string;
                 /** @description Full-text search query (searches trace name and user_id) */
                 q?: string;
+                /** @description Sort traces by started time. Ignored when q is present. */
+                sort_by?: "started_at";
+                /** @description Sort direction for started time. Ignored when q is present. */
+                sort_dir?: "asc" | "desc";
                 /** @description Filter by trace status */
                 status?: "running" | "completed" | "failed";
                 /** @description Filter traces starting at or after this time */
@@ -757,6 +762,14 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                /** @description Search sessions by external ID or name */
+                q?: string;
+                /** @description Filter sessions by exact user ID */
+                user_id?: string;
+                /** @description Sort sessions by creation time or trace count. Ignored when q is present. */
+                sort_by?: "created_at" | "trace_count";
+                /** @description Sort direction for the selected session sort field. Ignored when q is present. */
+                sort_dir?: "asc" | "desc";
             };
             header?: never;
             path?: never;

@@ -6,9 +6,64 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
 )
+
+// TraceRead is the unified trace read model across sqlc and handwritten search paths.
+type TraceRead struct {
+	platform.Trace
+	SessionExternalID *string
+}
+
+type traceReadRow interface {
+	platform.GetTraceRow |
+		platform.ListTracesRow |
+		platform.ListTracesAscRow |
+		platform.ListTracesBySessionRow |
+		platform.ListTracesBySessionAscRow
+}
+
+func mapTraceReadRow[T traceReadRow](row T) TraceRead {
+	switch row := any(row).(type) {
+	case platform.GetTraceRow:
+		return TraceRead{
+			Trace:             row.Trace,
+			SessionExternalID: row.SessionExternalID,
+		}
+	case platform.ListTracesRow:
+		return TraceRead{
+			Trace:             row.Trace,
+			SessionExternalID: row.SessionExternalID,
+		}
+	case platform.ListTracesAscRow:
+		return TraceRead{
+			Trace:             row.Trace,
+			SessionExternalID: row.SessionExternalID,
+		}
+	case platform.ListTracesBySessionRow:
+		return TraceRead{
+			Trace:             row.Trace,
+			SessionExternalID: row.SessionExternalID,
+		}
+	case platform.ListTracesBySessionAscRow:
+		return TraceRead{
+			Trace:             row.Trace,
+			SessionExternalID: row.SessionExternalID,
+		}
+	default:
+		return TraceRead{}
+	}
+}
+
+func mapTraceReadRows[T traceReadRow](rows []T) []TraceRead {
+	result := make([]TraceRead, len(rows))
+	for i := range rows {
+		result[i] = mapTraceReadRow(rows[i])
+	}
+	return result
+}
 
 // CreateTraceTx creates a new trace within a transaction.
 func (t *Tx) CreateTrace(ctx context.Context, params *platform.CreateTraceParams) (platform.Trace, error) {
@@ -16,12 +71,15 @@ func (t *Tx) CreateTrace(ctx context.Context, params *platform.CreateTraceParams
 }
 
 // GetTrace retrieves a trace by its internal UUID.
-func (s *Store) GetTrace(ctx context.Context, id uuid.UUID) (platform.Trace, error) {
+func (s *Store) GetTrace(ctx context.Context, id uuid.UUID) (TraceRead, error) {
 	trace, err := s.q.GetTrace(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return platform.Trace{}, ErrNotFound
+		return TraceRead{}, ErrNotFound
 	}
-	return trace, err
+	if err != nil {
+		return TraceRead{}, err
+	}
+	return mapTraceReadRow(trace), nil
 }
 
 // GetTraceByExternalIDTx retrieves a trace by external ID within a transaction.
@@ -62,17 +120,72 @@ func (t *Tx) GetTraceUUID(ctx context.Context, projectID uuid.UUID, traceID stri
 }
 
 // ListTraces returns paginated traces for a project.
-func (s *Store) ListTraces(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]platform.Trace, error) {
-	return s.q.ListTraces(ctx, platform.ListTracesParams{
+func (s *Store) ListTraces(ctx context.Context, projectID uuid.UUID, limit, offset int32, sortDir SortDirection) ([]TraceRead, error) {
+	if normalizeSortDirection(sortDir) == SortDirectionAsc {
+		rows, err := s.q.ListTracesAsc(ctx, platform.ListTracesAscParams{
+			ProjectID: projectID,
+			Limit:     limit,
+			Offset:    offset,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return mapTraceReadRows(rows), nil
+	}
+
+	rows, err := s.q.ListTraces(ctx, platform.ListTracesParams{
 		ProjectID: projectID,
 		Limit:     limit,
 		Offset:    offset,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return mapTraceReadRows(rows), nil
+}
+
+// ListTracesBySession returns paginated traces for a session.
+func (s *Store) ListTracesBySession(
+	ctx context.Context,
+	projectID uuid.UUID,
+	sessionID uuid.UUID,
+	limit,
+	offset int32,
+	sortDir SortDirection,
+) ([]TraceRead, error) {
+	params := platform.ListTracesBySessionParams{
+		ProjectID: projectID,
+		SessionID: pgtype.UUID{Bytes: sessionID, Valid: true},
+		Limit:     limit,
+		Offset:    offset,
+	}
+
+	if normalizeSortDirection(sortDir) == SortDirectionAsc {
+		rows, err := s.q.ListTracesBySessionAsc(ctx, platform.ListTracesBySessionAscParams(params))
+		if err != nil {
+			return nil, err
+		}
+		return mapTraceReadRows(rows), nil
+	}
+
+	rows, err := s.q.ListTracesBySession(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return mapTraceReadRows(rows), nil
 }
 
 // CountTraces returns the total number of traces for a project.
 func (s *Store) CountTraces(ctx context.Context, projectID uuid.UUID) (int64, error) {
 	return s.q.CountTraces(ctx, projectID)
+}
+
+// CountTracesBySession returns the total number of traces for a session.
+func (s *Store) CountTracesBySession(ctx context.Context, projectID, sessionID uuid.UUID) (int64, error) {
+	return s.q.CountTracesBySession(ctx, platform.CountTracesBySessionParams{
+		ProjectID: projectID,
+		SessionID: pgtype.UUID{Bytes: sessionID, Valid: true},
+	})
 }
 
 // UpdateTraceStatusTx updates trace status within a transaction.

@@ -8,10 +8,11 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+	"github.com/continua-ai/continua/internal/store"
 )
 
 // traceToAPI converts a database trace to an API trace.
-func traceToAPI(t *platform.Trace) Trace {
+func traceToAPI(t *store.TraceRead) Trace {
 	trace := Trace{
 		Id:     t.ID,
 		Name:   deref(t.Name),
@@ -22,6 +23,9 @@ func traceToAPI(t *platform.Trace) Trace {
 	if t.SessionID.Valid {
 		id := openapi_types.UUID(t.SessionID.Bytes)
 		trace.SessionId = &id
+	}
+	if t.SessionExternalID != nil {
+		trace.SessionExternalId = t.SessionExternalID
 	}
 
 	// Start time
@@ -71,20 +75,21 @@ func traceToAPI(t *platform.Trace) Trace {
 // composing the summary mapper output with debugger-specific fields.
 // NOTE: oapi-codegen currently flattens TraceDetail's allOf shape, so any new
 // summary fields added to traceToAPI must also be copied into TraceDetail here.
-func traceDetailToAPI(t *platform.Trace) TraceDetail {
+func traceDetailToAPI(t *store.TraceRead) TraceDetail {
 	summary := traceToAPI(t)
 	trace := TraceDetail{
-		Id:             summary.Id,
-		Name:           summary.Name,
-		Status:         TraceDetailStatus(summary.Status),
-		StartedAt:      summary.StartedAt,
-		EndedAt:        summary.EndedAt,
-		SessionId:      summary.SessionId,
-		TotalTokensIn:  summary.TotalTokensIn,
-		TotalTokensOut: summary.TotalTokensOut,
-		TotalCostUsd:   summary.TotalCostUsd,
-		ErrorCount:     summary.ErrorCount,
-		Metadata:       summary.Metadata,
+		Id:                summary.Id,
+		Name:              summary.Name,
+		Status:            TraceDetailStatus(summary.Status),
+		StartedAt:         summary.StartedAt,
+		EndedAt:           summary.EndedAt,
+		SessionId:         summary.SessionId,
+		SessionExternalId: summary.SessionExternalId,
+		TotalTokensIn:     summary.TotalTokensIn,
+		TotalTokensOut:    summary.TotalTokensOut,
+		TotalCostUsd:      summary.TotalCostUsd,
+		ErrorCount:        summary.ErrorCount,
+		Metadata:          summary.Metadata,
 	}
 
 	if t.TraceID != "" {

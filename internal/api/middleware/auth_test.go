@@ -288,7 +288,7 @@ func TestMultiTenancy_ListTracesScoped(t *testing.T) {
 
 	// Should only see project A's trace
 	assert.Len(t, tracesA, 1)
-	assert.Equal(t, "trace-project-a", tracesA[0].TraceID)
+	assert.Equal(t, "trace-project-a", tracesA[0].Trace.TraceID)
 
 	// Query traces for project B
 	tracesB, err := q.ListTraces(ctx, platform.ListTracesParams{
@@ -300,7 +300,7 @@ func TestMultiTenancy_ListTracesScoped(t *testing.T) {
 
 	// Should only see project B's trace
 	assert.Len(t, tracesB, 1)
-	assert.Equal(t, "trace-project-b", tracesB[0].TraceID)
+	assert.Equal(t, "trace-project-b", tracesB[0].Trace.TraceID)
 }
 
 func TestMultiTenancy_GetTraceReturns404ForOtherProject(t *testing.T) {
