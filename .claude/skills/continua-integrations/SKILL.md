@@ -1,140 +1,49 @@
 ---
 name: continua-integrations
-description: Guide for Continua's integration methods - LLM proxy, Python SDK, TypeScript SDK, and framework adapters. Use when developing SDKs, proxy capture layer, or framework integrations.
+description: Guide for Continua's integration surfaces as they exist today. Use when working on the Python SDK, contract-driven SDK generation, the TypeScript SDK stub, or planning new proxy/adapter work from the current scaffolded baseline.
 ---
 
 # Continua Integrations
 
-## Purpose
+## Read first
+- [../../references/decisions.md](../../references/decisions.md)
 
-Continua provides three integration methods for capturing AI agent traces. This skill covers development patterns for each method.
+## Use this skill when
+- changing `sdks/python/`
+- changing `sdks/typescript/`
+- changing contract generation that affects SDK types
+- evaluating work in `internal/proxy/`
 
-## When to Use This Skill
+## Current integration reality
+- The Python SDK is real and actively usable.
+- The TypeScript SDK is only a stub package.
+- `internal/proxy/` is a placeholder directory, not a live proxy implementation.
+- Framework adapters are not implemented in this repo today.
 
-Activates when working on:
-- LLM proxy in `internal/proxy/`
-- Python SDK in `sdks/python/`
-- TypeScript SDK in `sdks/typescript/`
-- Framework adapters (LangChain, CrewAI)
+## Practical guidance
 
----
+### Python SDK
+- treat `sdks/python/` as the main integration surface
+- keep batching/retry behavior in `client.py` and `batch.py`
+- keep context logic in `trace.py`, `span.py`, and `session.py`
+- preserve the current behavior where tracing quietly skips if the global client is not initialized
 
-## Integration Methods
+### TypeScript SDK
+- do not assume a tracing client already exists
+- current package exposes only a version constant and a minimal `ContinuaClient`
+- substantial TS SDK expansion should usually start with OpenSpec because it changes product scope, not just docs
 
-### 1. Zero-Code LLM Proxy
+### Proxy or framework adapters
+- treat proxy/adapter work as new capability work
+- do not extend from imagined handler/provider files that are not present
+- verify contract, product, and runtime implications before writing code
 
-Intercepts LLM API calls without code changes.
+## Contract generation rule
+- if an SDK change is driven by OpenAPI, update `contracts/openapi/openapi.yaml` first and run `make generate`
+- Python types are regenerated from the OpenAPI bundle
+- the TS SDK is not currently generated from a full runtime client implementation
 
-```
-Your App → Continua Proxy → OpenAI/Anthropic
-              ↓
-        Captures traces
-```
-
-**Best for:** Quick setup, existing applications
-
-### 2. SDK Instrumentation
-
-Explicit tracing with full control.
-
-```python
-with continua.trace("agent_run"):
-    with continua.span("llm_call", kind="LLM"):
-        response = openai.chat.completions.create(...)
-```
-
-**Best for:** Custom agents, granular control
-
-### 3. Framework Adapters
-
-Auto-instrumentation for popular frameworks.
-
-```python
-from continua.langchain import ContinuaCallback
-chain.invoke(input, config={"callbacks": [ContinuaCallback()]})
-```
-
-**Best for:** LangChain, CrewAI, etc.
-
----
-
-## SDK Design Principles
-
-### 1. Minimal Dependencies
-
-```toml
-# sdks/python/pyproject.toml
-dependencies = [
-    "httpx>=0.24",   # HTTP client
-    "pydantic>=2.0", # Validation (optional)
-]
-```
-
-### 2. Context Propagation
-
-```python
-# Thread-local context for trace/span
-_context = threading.local()
-
-@contextmanager
-def trace(name: str):
-    parent = getattr(_context, 'current_trace', None)
-    trace_id = create_trace(name, parent_id=parent)
-    _context.current_trace = trace_id
-    try:
-        yield trace_id
-    finally:
-        complete_trace(trace_id)
-        _context.current_trace = parent
-```
-
-### 3. Type Safety
-
-```typescript
-// sdks/typescript/src/types.ts
-export interface SpanOptions {
-    name: string;
-    kind: SpanKind;
-    metadata?: Record<string, unknown>;
-}
-
-export type SpanKind = 'LLM' | 'TOOL' | 'CHAIN' | 'AGENT' | 'CUSTOM';
-```
-
-### 4. Graceful Degradation
-
-```python
-def capture_span(func):
-    def wrapper(*args, **kwargs):
-        try:
-            with span(func.__name__):
-                return func(*args, **kwargs)
-        except ContinuaError:
-            # Continua unavailable, proceed without tracing
-            return func(*args, **kwargs)
-    return wrapper
-```
-
----
-
-## Quick Reference
-
-| SDK | Location | Test Command |
-|-----|----------|--------------|
-| Python | `sdks/python/` | `uv run pytest` |
-| TypeScript | `sdks/typescript/` | `pnpm test` |
-
----
-
-## Navigation
-
-| Need to... | Read this |
-|------------|-----------|
-| Build the LLM proxy | [proxy.md](resources/proxy.md) |
-| Develop Python SDK | [python-sdk.md](resources/python-sdk.md) |
-| Develop TypeScript SDK | [typescript-sdk.md](resources/typescript-sdk.md) |
-
----
-
-**Skill Status**: COMPLETE
-**Line Count**: ~100
+## Useful references
+- [python-sdk.md](resources/python-sdk.md)
+- [typescript-sdk.md](resources/typescript-sdk.md)
+- [proxy.md](resources/proxy.md)

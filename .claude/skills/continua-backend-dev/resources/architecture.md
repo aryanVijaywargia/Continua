@@ -1,80 +1,81 @@
-# Architecture Overview
+# Backend Architecture
 
-## Monorepo Structure
+## Live server composition
 
-Continua uses a **Go workspace** (`go.work`) with multiple modules:
+`cmd/continua/main.go` starts an Fx app with:
+- `internal/config`
+- `internal/store`
+- `internal/jobs`
+- `internal/ingest`
+- `internal/api`
 
-```
-continua/                 # Root
-├── go.work               # Workspace definition
-├── cmd/continua/         # Main server binary
-├── internal/             # Private packages
-├── pkg/                  # Public shared libraries
-├── engine/               # Separate module (replay engine)
-├── contracts/            # API contracts (OpenAPI, Zod)
-├── db/                   # Database schemas + queries
-├── web/                  # React frontend
-└── sdks/                 # Client SDKs
-```
+The Go server is the current platform runtime. `engine/` is a separate module but is not part of the active product path.
 
-## Request Flow
+## Request and job flow
 
-```
-HTTP Request
-    ↓
-Chi Router (contracts/generated/go/server_gen.go)
-    ↓
-Handler (internal/api/handlers.go)
-    ↓
-SQLC Queries (db/gen/go/platform/)
-    ↓
-PostgreSQL
-    ↓
-Map to API types (internal/api/mapper.go)
-    ↓
-JSON Response
-```
+### Protected REST request
+1. Chi router in `internal/api/router.go`
+2. API-key auth in `internal/api/middleware/auth.go`
+3. feature handler in `internal/api/*_handlers.go`
+4. store/service call
+5. mapper in `internal/api/mapper.go`
+6. JSON response
 
-## Module Boundaries
+### Ingest flow
+1. `POST /v1/ingest` in `internal/api/ingest_handlers.go`
+2. project-scoped accept logic in `internal/ingest/service.go`
+3. shared validation/write path in `internal/ingest/processor.go`
+4. async batches and rollups through River workers in `internal/jobs`
 
-### `internal/` - Private to this module
-- `internal/api/` - HTTP handlers
-- `internal/web/` - Static file embedding
+## Active vs scaffolded packages
 
-### `pkg/` - Shared across modules
-- `pkg/infra/` - Database connections, config
-- `pkg/idempotency/` - Request deduplication
-- `pkg/redaction/` - PII masking
+### Actively extended today
+- `internal/api`
+- `internal/ingest`
+- `internal/jobs`
+- `internal/store`
+- `internal/config`
+- `internal/web`
 
-### `engine/` - Separate Go module
-- Has own `go.mod`
-- Replay and debugging logic
-- Separate database schema
+### Present but mostly placeholders
+- `internal/proxy`
+- `internal/ws`
+- `internal/replay`
+- `internal/alerts`
+- `internal/export`
+- `internal/state`
+- `internal/telemetry`
+- `engine/`
 
-## Generated Code Locations
+## Generated code path
 
-| Source | Generated | Command |
-|--------|-----------|---------|
-| `contracts/openapi/openapi.yaml` | `contracts/generated/go/server_gen.go` | `make generate` |
-| `db/platform/queries/*.sql` | `db/gen/go/platform/*.go` | `make generate` |
-| `contracts/openapi/openapi.yaml` | `contracts/generated/typescript/api.ts` | `make generate` |
+| Source | Generated output |
+|--------|------------------|
+| `contracts/openapi/openapi.yaml` | `contracts/generated/go/server_gen.go` |
+| `contracts/generated/go/server_gen.go` | `internal/api/server_gen.go` |
+| `contracts/openapi/openapi.yaml` | `contracts/generated/typescript/api.ts` |
+| `db/platform/queries/*.sql` | `db/gen/go/platform/*.go` |
+| `contracts/websocket/events.ts` | `contracts/websocket/events.schema.json` |
 
-## Configuration
+Run `make generate` for all of the above.
 
-Config is loaded via `config.yaml` (see `config.example.yaml`):
+## Config reality
 
-```yaml
-server:
-  addr: ":8080"
-database:
-  url: "postgres://localhost:5432/continua"
-```
+Runtime config comes from `internal/config/config.go`, not from YAML files.
 
-Access in code via config structs, never `os.Getenv()` directly.
+Current env vars include:
+- `DATABASE_URL`
+- `HOST`
+- `PORT`
+- `INGEST_TRUE_ASYNC_DEFAULT`
+- `INGEST_DEPENDENCY_RETRY_WINDOW`
+- `INGEST_FAILED_PAYLOAD_RETENTION`
+- `RIVER_QUEUE_*`
 
-## Frontend Embedding
+`config.example.yaml` is future-facing and not a reliable implementation reference.
 
-Web UI is built with Vite, output to `web/dist/`, then:
-1. `make build-web` copies to `internal/web/static/`
-2. `internal/web/embed.go` embeds via `//go:embed`
-3. Single binary serves both API and UI
+## Build outputs
+
+- `make build-web` copies `web/dist/` into `internal/web/static/`
+- `internal/web/embed.go` embeds `internal/web/static/`
+- the Go server serves both API routes and the embedded SPA

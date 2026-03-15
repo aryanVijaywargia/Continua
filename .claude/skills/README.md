@@ -1,145 +1,31 @@
 # Continua Skills
 
-Domain-focused skills for Claude Code, following the pattern from `claude-code-infrastructure-showcase`.
+These are the Claude-facing Continua skills. They should stay aligned with the repo-local Codex skills for the overlapping Continua domains.
 
-## Design Principles
+## Current repo reality these skills assume
+- The implemented platform is REST ingest + Postgres + River + React debugger UI.
+- The strongest active areas are `internal/api`, `internal/ingest`, `internal/jobs`, `internal/store`, `web/src`, and `sdks/python`.
+- The engine, proxy runtime, WebSocket runtime, replay system, and TypeScript SDK are mostly scaffolded.
 
-1. **Domain-level, not niche** - "continua-backend-dev" not "go-service" or "sqlc-queries"
-2. **Concise SKILL.md** - ~150-200 lines, quick reference only
-3. **Progressive disclosure** - Detailed content in `resources/` folder
-4. **Project-specific decisions** - Things Claude doesn't know about Continua
+## Continua skills
 
-## Skills (5 total)
+### `continua-backend-dev`
+- Use for current Go platform server work in `cmd/`, `internal/`, `db/`, and `contracts/`
+- Covers OpenAPI-first backend changes, sqlc/store work, ingest/jobs boundaries, and API mapping rules
 
-### continua-backend-dev
-**Purpose:** Backend development patterns for Continua's Go monorepo
+### `continua-observability`
+- Use for trace/span/session/event semantics, async ingest lifecycle, rollups, timeline behavior, and debugger data surfaces
+- Explicitly calls out that WebSocket runtime and replay are not implemented today
 
-**Covers:**
-- Contract-first development (OpenAPI → Go)
-- SQLC queries and migrations
-- Chi routing and handler patterns
-- The 10 Architecture Rules
+### `continua-integrations`
+- Use for Python SDK work, contract-driven SDK generation, TypeScript SDK stub work, and planning new proxy/adapter features
+- Treats proxy and framework adapters as future capability work, not active runtime surfaces
 
-**When to use:** Working on `cmd/`, `internal/`, `db/`, `contracts/`
+### `continua-testing`
+- Use for suite selection, real-DB backend test patterns, web Vitest coverage, and SDK verification
 
-### continua-observability
-**Purpose:** Domain-specific guide for Continua's trace/span data model
+### `skill-developer`
+- Meta-skill for building or updating skills themselves
 
-**Covers:**
-- Trace/span tree structure
-- WebSocket real-time events
-- Token counting and cost calculation
-- Replay system
-
-**When to use:** Working on trace ingestion, WebSocket handlers, replay functionality
-
-### continua-integrations
-**Purpose:** SDK and proxy development patterns
-
-**Covers:**
-- LLM proxy implementation
-- Python SDK patterns
-- TypeScript SDK patterns
-- Framework adapters (LangChain, etc.)
-
-**When to use:** Working on `sdks/`, `internal/proxy/`
-
-### continua-testing
-**Purpose:** Testing strategy and commands
-
-**Covers:**
-- Unit vs integration test scope
-- Make targets (`make test`, `make test-go`, etc.)
-- SDK testing commands
-- Coverage expectations
-
-**When to use:** Adding tests, fixing bugs, changing API/DB behavior
-
-### skill-developer
-**Purpose:** Meta-skill for creating and managing Claude Code skills
-
-**Covers:**
-- Skill structure and YAML frontmatter
-- Trigger types (keywords, intent patterns, file paths, content patterns)
-- Hook mechanisms (UserPromptSubmit, PreToolUse)
-- Enforcement levels (block, suggest, warn)
-- The 500-line rule and progressive disclosure
-
-**When to use:** Creating new skills, debugging skill activation, extending Claude Code setup
-
-## Shared References
-
-### references/decisions.md
-Critical shared knowledge about Continua:
-- Source of truth locations (contracts, data model docs)
-- Generated files list (do not edit)
-- Codegen commands (`make generate`)
-- Database requirements (Postgres + SQLite parity)
-
-## Structure
-
-```
-skills/
-├── README.md
-├── references/
-│   └── decisions.md          # Shared decisions across all skills
-├── continua-backend-dev/
-│   ├── SKILL.md
-│   └── resources/
-│       ├── architecture.md
-│       ├── api-patterns.md
-│       ├── database.md
-│       └── testing.md
-├── continua-observability/
-│   ├── SKILL.md
-│   └── resources/
-│       ├── trace-lifecycle.md
-│       ├── websocket-events.md
-│       └── replay.md
-├── continua-integrations/
-│   ├── SKILL.md
-│   └── resources/
-│       ├── proxy.md
-│       ├── python-sdk.md
-│       └── typescript-sdk.md
-└── continua-testing/
-    ├── SKILL.md
-    └── references/
-        ├── strategy.md
-        └── commands.md
-└── skill-developer/
-    ├── SKILL.md
-    ├── TRIGGER_TYPES.md
-    ├── SKILL_RULES_REFERENCE.md
-    ├── HOOK_MECHANISMS.md
-    ├── PATTERNS_LIBRARY.md
-    ├── TROUBLESHOOTING.md
-    └── ADVANCED.md
-```
-
-## Token Efficiency
-
-| Skill | SKILL.md Lines | Resources |
-|-------|----------------|-----------|
-| continua-backend-dev | ~150 | 4 files |
-| continua-observability | ~140 | 3 files |
-| continua-integrations | ~100 | 3 files |
-| continua-testing | ~15 | 2 files |
-| skill-developer | ~420 | 6 files |
-
-Claude loads only SKILL.md initially. Resources are loaded on-demand when Claude needs deeper information.
-
-## Why Not More Skills?
-
-The codex_claude_setup has additional skills like:
-- `continua-contracts-openapi`
-- `continua-db-sqlc`
-- `continua-sdk-generation`
-- `continua-tracing-model`
-
-These are **not included** because:
-1. `continua-backend-dev` already covers contracts, DB, and general patterns
-2. `continua-observability` covers tracing model
-3. Adding more would create overlap and bloat
-
-The 4 Continua skills + skill-developer + shared references provide complete coverage without redundancy.
+## Shared reference
+- `references/decisions.md`: source-of-truth order, generated-file boundaries, runtime/scaffolded split, and current repo realities shared by the Continua skills

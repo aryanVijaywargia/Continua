@@ -6,13 +6,15 @@ These rules are adapted from the project's Claude hooks so Codex sessions keep t
 - Do not edit generated outputs directly:
   - `contracts/generated/`
   - `internal/api/server_gen.go`
-  - `db/platform/gen/`
+  - `db/gen/go/platform/`
   - `engine/db/gen/`
   - `web/dist/`
+  - `internal/web/static/`
 - Do not edit lockfiles or module manifests casually:
   - `go.mod`, `go.sum`
   - `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`
 - Avoid reading or writing `.env*` files from Codex. Handle secrets manually outside the agent.
+- Do not treat `config.example.yaml` as the live config contract; runtime config is env-only in `internal/config/config.go`.
 
 ## Migration safety
 - Existing SQL migrations under `db/platform/migrations/` and `engine/db/migrations/` are treated as immutable.
@@ -28,3 +30,4 @@ These rules are adapted from the project's Claude hooks so Codex sessions keep t
 - If you change OpenAPI, WebSocket contracts, SQLC queries, SQLC config, or migrations, run `make generate`.
 - If you edit Go source, run `gofmt` and `goimports` when available.
 - If a task touches protected or generated areas, prefer changing the source inputs, not the derived files.
+- Treat placeholder directories such as `internal/proxy`, `internal/ws`, `internal/replay`, and `engine/` as future work unless the task is explicitly expanding them.

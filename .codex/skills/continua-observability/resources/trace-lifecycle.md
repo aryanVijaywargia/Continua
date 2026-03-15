@@ -1,173 +1,62 @@
-# Trace Lifecycle
+# Trace lifecycle
 
-## Ingestion Flow
-
-```
-SDK/Proxy → HTTP POST → Validation → Database → WebSocket Broadcast
-```
-
-### 1. Trace Creation
-
-```go
-// Trace starts when agent begins execution
-trace, err := queries.CreateTrace(ctx, platform.CreateTraceParams{
-    ID:        uuid.New(),
-    SessionID: sessionID,  // Optional
-    Name:      "chat_completion",
-    Status:    "RUNNING",
-    Metadata:  metadata,
-})
-```
-
-### 2. Span Creation
-
-```go
-// Each operation creates a span
-span, err := queries.CreateSpan(ctx, platform.CreateSpanParams{
-    ID:           uuid.New(),
-    TraceID:      traceID,
-    ParentSpanID: parentSpanID,  // NULL for root
-    Name:         "gpt-4-call",
-    Kind:         "LLM",
-    Status:       "STARTED",
-})
-
-// Broadcast to WebSocket subscribers
-broadcast(SpanCreatedEvent{
-    Type:         "span.created",
-    TraceID:      traceID,
-    SpanID:       span.ID,
-    ParentSpanID: parentSpanID,
-    Name:         span.Name,
-    Kind:         span.Kind,
-    Status:       span.Status,
-    StartedAt:    span.StartedAt,
-})
-```
-
-### 3. Payload Capture
-
-```go
-// Store request payload
-queries.CreatePayload(ctx, platform.CreatePayloadParams{
-    SpanID:      spanID,
-    Direction:   "request",
-    ContentType: "application/json",
-    Body:        requestBody,
-})
-
-// Store response payload (after LLM responds)
-queries.CreatePayload(ctx, platform.CreatePayloadParams{
-    SpanID:      spanID,
-    Direction:   "response",
-    ContentType: "application/json",
-    Body:        responseBody,
-})
-```
-
-### 4. Span Completion
-
-```go
-// Update span with final metrics
-queries.UpdateSpan(ctx, platform.UpdateSpanParams{
-    ID:        spanID,
-    Status:    "COMPLETED",
-    EndedAt:   time.Now(),
-    TokensIn:  promptTokens,
-    TokensOut: completionTokens,
-    CostUSD:   calculatedCost,
-    LatencyMs: duration.Milliseconds(),
-})
-
-// Broadcast update
-broadcast(SpanUpdatedEvent{
-    Type:      "span.updated",
-    SpanID:    spanID,
-    Status:    "COMPLETED",
-    EndedAt:   endedAt,
-    TokensIn:  tokensIn,
-    TokensOut: tokensOut,
-    CostUSD:   costUSD,
-    LatencyMs: latencyMs,
-})
-```
-
-### 5. Trace Completion
-
-```go
-// When all spans complete
-queries.UpdateTraceStatus(ctx, platform.UpdateTraceStatusParams{
-    ID:      traceID,
-    Status:  "COMPLETED",  // or "FAILED"
-    EndedAt: time.Now(),
-})
-
-// Aggregate metrics
-stats, _ := queries.GetTraceStats(ctx, traceID)
-queries.UpdateTraceTokens(ctx, platform.UpdateTraceTokensParams{
-    ID:             traceID,
-    TotalTokensIn:  stats.TotalTokensIn,
-    TotalTokensOut: stats.TotalTokensOut,
-    TotalCostUSD:   stats.TotalCost,
-})
-
-// Final broadcast
-broadcast(TraceCompletedEvent{
-    Type:            "trace.completed",
-    TraceID:         traceID,
-    Status:          "COMPLETED",
-    TotalCostUSD:    totalCost,
-    TotalDurationMs: duration,
-    SpanCount:       spanCount,
-    ErrorCount:      errorCount,
-})
-```
-
-## Error Handling
-
-### Span Failure
-
-```go
-queries.UpdateSpan(ctx, platform.UpdateSpanParams{
-    ID:           spanID,
-    Status:       "FAILED",
-    EndedAt:      time.Now(),
-    ErrorMessage: err.Error(),
-})
-```
-
-### Trace Failure
-
-If any span fails with `kind=LLM` or `kind=AGENT`, the trace should be marked `FAILED`:
-
-```go
-// Check for critical failures
-if hasFailedCriticalSpan(traceID) {
-    queries.UpdateTraceStatus(ctx, traceID, "FAILED", time.Now())
-}
-```
-
-## Status State Machine
+## Current ingest path
 
 ```
-Trace:
-  RUNNING ─┬─> COMPLETED (all spans done successfully)
-           └─> FAILED (critical span failed)
-
-Span:
-  SCHEDULED ─> STARTED ─┬─> COMPLETED
-                        └─> FAILED
+Python SDK or custom client
+    -> POST /v1/ingest
+    -> auth / project scope
+    -> validate request shape
+    -> claim batch idempotency row
+    -> sync write path or async batch acceptance
+    -> River rollup jobs
+    -> debugger UI reads traces, spans, sessions, timeline
 ```
 
-## Idempotency
+## What is persisted
+- traces
+- spans
+- explicit span events
+- async ingest batch rows and stored payloads
 
-Use span ID for idempotency on ingestion:
+There is no active payload table for span request/response bodies. Trace and span payloads are stored on the `traces` and `spans` rows themselves.
 
-```go
-// Client provides span ID
-span, err := queries.UpsertSpan(ctx, clientProvidedSpanID, ...)
-if err != nil && isConflict(err) {
-    // Already exists, return existing
-    return queries.GetSpan(ctx, clientProvidedSpanID)
-}
-```
+## Batch lifecycle
+
+### Sync path
+- handler calls `ingest.Service.Ingest`
+- service validates via `Processor.Validate`
+- service claims batch idempotency inside a transaction
+- processor upserts traces, spans, and events
+- service enqueues trace rollup jobs in the same transaction
+- batch is marked completed before commit
+
+### True async path
+- handler calls `ingest.Service.AcceptAsync`
+- request is validated before acceptance
+- batch row is claimed
+- compressed request payload is stored in `ingest_batch_payloads`
+- River ingest job is enqueued
+- worker later marks the batch `processing`, runs `Processor.ProcessBatch`, enqueues rollups, deletes payload on success, and marks terminal state
+
+## Identity model
+- project: internal UUID, derived from API key
+- session: internal UUID plus external `external_id`
+- trace: internal UUID plus external `trace_id`
+- span: internal UUID plus external `span_id`
+- span tree parent link: external `parent_span_id`
+
+## Status mapping
+- ingest input status values are lower-case (`running`, `completed`, `failed`)
+- API trace statuses are mapped to `RUNNING`, `COMPLETED`, `FAILED`
+- API span statuses are mapped to `SCHEDULED`, `STARTED`, `COMPLETED`, `FAILED`
+
+## Timeline model
+- explicit events come from `span_events`
+- synthetic lifecycle events are derived from span start/end/status data
+- `/api/traces/{id}/events` merges both and returns cursor-based pages
+- the frontend polls this endpoint every 3 seconds for running traces
+
+## Rollups
+- trace totals are computed from spans
+- River rollup jobs coalesce by trace ID and rerun in-process if the trace version changes mid-rollup
