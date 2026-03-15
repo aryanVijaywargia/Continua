@@ -116,39 +116,48 @@ func (q *Queries) CreateTrace(ctx context.Context, arg CreateTraceParams) (Trace
 }
 
 const getTrace = `-- name: GetTrace :one
-SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out FROM traces WHERE id = $1
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.id = $1
 `
 
-func (q *Queries) GetTrace(ctx context.Context, id uuid.UUID) (Trace, error) {
+type GetTraceRow struct {
+	Trace             Trace   `json:"trace"`
+	SessionExternalID *string `json:"session_external_id"`
+}
+
+func (q *Queries) GetTrace(ctx context.Context, id uuid.UUID) (GetTraceRow, error) {
 	row := q.db.QueryRow(ctx, getTrace, id)
-	var i Trace
+	var i GetTraceRow
 	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.SessionID,
-		&i.TraceID,
-		&i.Name,
-		&i.UserID,
-		&i.Tags,
-		&i.Environment,
-		&i.Release,
-		&i.Metadata,
-		&i.Input,
-		&i.Output,
-		&i.Status,
-		&i.StartTime,
-		&i.EndTime,
-		&i.ServerReceivedAt,
-		&i.DurationMs,
-		&i.TotalSpans,
-		&i.TotalCost,
-		&i.ErrorCount,
-		&i.Version,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.SearchVector,
-		&i.TotalTokensIn,
-		&i.TotalTokensOut,
+		&i.Trace.ID,
+		&i.Trace.ProjectID,
+		&i.Trace.SessionID,
+		&i.Trace.TraceID,
+		&i.Trace.Name,
+		&i.Trace.UserID,
+		&i.Trace.Tags,
+		&i.Trace.Environment,
+		&i.Trace.Release,
+		&i.Trace.Metadata,
+		&i.Trace.Input,
+		&i.Trace.Output,
+		&i.Trace.Status,
+		&i.Trace.StartTime,
+		&i.Trace.EndTime,
+		&i.Trace.ServerReceivedAt,
+		&i.Trace.DurationMs,
+		&i.Trace.TotalSpans,
+		&i.Trace.TotalCost,
+		&i.Trace.ErrorCount,
+		&i.Trace.Version,
+		&i.Trace.CreatedAt,
+		&i.Trace.UpdatedAt,
+		&i.Trace.SearchVector,
+		&i.Trace.TotalTokensIn,
+		&i.Trace.TotalTokensOut,
+		&i.SessionExternalID,
 	)
 	return i, err
 }
@@ -225,9 +234,11 @@ func (q *Queries) GetTraceVersion(ctx context.Context, id uuid.UUID) (*int32, er
 }
 
 const listTraces = `-- name: ListTraces :many
-SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out FROM traces
-WHERE project_id = $1
-ORDER BY COALESCE(start_time, server_received_at) DESC
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.project_id = $1
+ORDER BY COALESCE(t.start_time, t.server_received_at) DESC, t.id DESC
 LIMIT $2 OFFSET $3
 `
 
@@ -237,42 +248,116 @@ type ListTracesParams struct {
 	Offset    int32     `json:"offset"`
 }
 
-func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]Trace, error) {
+type ListTracesRow struct {
+	Trace             Trace   `json:"trace"`
+	SessionExternalID *string `json:"session_external_id"`
+}
+
+func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]ListTracesRow, error) {
 	rows, err := q.db.Query(ctx, listTraces, arg.ProjectID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Trace{}
+	items := []ListTracesRow{}
 	for rows.Next() {
-		var i Trace
+		var i ListTracesRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.ProjectID,
-			&i.SessionID,
-			&i.TraceID,
-			&i.Name,
-			&i.UserID,
-			&i.Tags,
-			&i.Environment,
-			&i.Release,
-			&i.Metadata,
-			&i.Input,
-			&i.Output,
-			&i.Status,
-			&i.StartTime,
-			&i.EndTime,
-			&i.ServerReceivedAt,
-			&i.DurationMs,
-			&i.TotalSpans,
-			&i.TotalCost,
-			&i.ErrorCount,
-			&i.Version,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.SearchVector,
-			&i.TotalTokensIn,
-			&i.TotalTokensOut,
+			&i.Trace.ID,
+			&i.Trace.ProjectID,
+			&i.Trace.SessionID,
+			&i.Trace.TraceID,
+			&i.Trace.Name,
+			&i.Trace.UserID,
+			&i.Trace.Tags,
+			&i.Trace.Environment,
+			&i.Trace.Release,
+			&i.Trace.Metadata,
+			&i.Trace.Input,
+			&i.Trace.Output,
+			&i.Trace.Status,
+			&i.Trace.StartTime,
+			&i.Trace.EndTime,
+			&i.Trace.ServerReceivedAt,
+			&i.Trace.DurationMs,
+			&i.Trace.TotalSpans,
+			&i.Trace.TotalCost,
+			&i.Trace.ErrorCount,
+			&i.Trace.Version,
+			&i.Trace.CreatedAt,
+			&i.Trace.UpdatedAt,
+			&i.Trace.SearchVector,
+			&i.Trace.TotalTokensIn,
+			&i.Trace.TotalTokensOut,
+			&i.SessionExternalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTracesAsc = `-- name: ListTracesAsc :many
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.project_id = $1
+ORDER BY COALESCE(t.start_time, t.server_received_at) ASC, t.id ASC
+LIMIT $2 OFFSET $3
+`
+
+type ListTracesAscParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Limit     int32     `json:"limit"`
+	Offset    int32     `json:"offset"`
+}
+
+type ListTracesAscRow struct {
+	Trace             Trace   `json:"trace"`
+	SessionExternalID *string `json:"session_external_id"`
+}
+
+func (q *Queries) ListTracesAsc(ctx context.Context, arg ListTracesAscParams) ([]ListTracesAscRow, error) {
+	rows, err := q.db.Query(ctx, listTracesAsc, arg.ProjectID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTracesAscRow{}
+	for rows.Next() {
+		var i ListTracesAscRow
+		if err := rows.Scan(
+			&i.Trace.ID,
+			&i.Trace.ProjectID,
+			&i.Trace.SessionID,
+			&i.Trace.TraceID,
+			&i.Trace.Name,
+			&i.Trace.UserID,
+			&i.Trace.Tags,
+			&i.Trace.Environment,
+			&i.Trace.Release,
+			&i.Trace.Metadata,
+			&i.Trace.Input,
+			&i.Trace.Output,
+			&i.Trace.Status,
+			&i.Trace.StartTime,
+			&i.Trace.EndTime,
+			&i.Trace.ServerReceivedAt,
+			&i.Trace.DurationMs,
+			&i.Trace.TotalSpans,
+			&i.Trace.TotalCost,
+			&i.Trace.ErrorCount,
+			&i.Trace.Version,
+			&i.Trace.CreatedAt,
+			&i.Trace.UpdatedAt,
+			&i.Trace.SearchVector,
+			&i.Trace.TotalTokensIn,
+			&i.Trace.TotalTokensOut,
+			&i.SessionExternalID,
 		); err != nil {
 			return nil, err
 		}
@@ -285,9 +370,11 @@ func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]Trace
 }
 
 const listTracesBySession = `-- name: ListTracesBySession :many
-SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out FROM traces
-WHERE project_id = $1 AND session_id = $2
-ORDER BY COALESCE(start_time, server_received_at) DESC
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.project_id = $1 AND t.session_id = $2
+ORDER BY COALESCE(t.start_time, t.server_received_at) DESC, t.id DESC
 LIMIT $3 OFFSET $4
 `
 
@@ -298,7 +385,12 @@ type ListTracesBySessionParams struct {
 	Offset    int32       `json:"offset"`
 }
 
-func (q *Queries) ListTracesBySession(ctx context.Context, arg ListTracesBySessionParams) ([]Trace, error) {
+type ListTracesBySessionRow struct {
+	Trace             Trace   `json:"trace"`
+	SessionExternalID *string `json:"session_external_id"`
+}
+
+func (q *Queries) ListTracesBySession(ctx context.Context, arg ListTracesBySessionParams) ([]ListTracesBySessionRow, error) {
 	rows, err := q.db.Query(ctx, listTracesBySession,
 		arg.ProjectID,
 		arg.SessionID,
@@ -309,36 +401,111 @@ func (q *Queries) ListTracesBySession(ctx context.Context, arg ListTracesBySessi
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Trace{}
+	items := []ListTracesBySessionRow{}
 	for rows.Next() {
-		var i Trace
+		var i ListTracesBySessionRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.ProjectID,
-			&i.SessionID,
-			&i.TraceID,
-			&i.Name,
-			&i.UserID,
-			&i.Tags,
-			&i.Environment,
-			&i.Release,
-			&i.Metadata,
-			&i.Input,
-			&i.Output,
-			&i.Status,
-			&i.StartTime,
-			&i.EndTime,
-			&i.ServerReceivedAt,
-			&i.DurationMs,
-			&i.TotalSpans,
-			&i.TotalCost,
-			&i.ErrorCount,
-			&i.Version,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.SearchVector,
-			&i.TotalTokensIn,
-			&i.TotalTokensOut,
+			&i.Trace.ID,
+			&i.Trace.ProjectID,
+			&i.Trace.SessionID,
+			&i.Trace.TraceID,
+			&i.Trace.Name,
+			&i.Trace.UserID,
+			&i.Trace.Tags,
+			&i.Trace.Environment,
+			&i.Trace.Release,
+			&i.Trace.Metadata,
+			&i.Trace.Input,
+			&i.Trace.Output,
+			&i.Trace.Status,
+			&i.Trace.StartTime,
+			&i.Trace.EndTime,
+			&i.Trace.ServerReceivedAt,
+			&i.Trace.DurationMs,
+			&i.Trace.TotalSpans,
+			&i.Trace.TotalCost,
+			&i.Trace.ErrorCount,
+			&i.Trace.Version,
+			&i.Trace.CreatedAt,
+			&i.Trace.UpdatedAt,
+			&i.Trace.SearchVector,
+			&i.Trace.TotalTokensIn,
+			&i.Trace.TotalTokensOut,
+			&i.SessionExternalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTracesBySessionAsc = `-- name: ListTracesBySessionAsc :many
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+FROM traces t
+LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
+WHERE t.project_id = $1 AND t.session_id = $2
+ORDER BY COALESCE(t.start_time, t.server_received_at) ASC, t.id ASC
+LIMIT $3 OFFSET $4
+`
+
+type ListTracesBySessionAscParams struct {
+	ProjectID uuid.UUID   `json:"project_id"`
+	SessionID pgtype.UUID `json:"session_id"`
+	Limit     int32       `json:"limit"`
+	Offset    int32       `json:"offset"`
+}
+
+type ListTracesBySessionAscRow struct {
+	Trace             Trace   `json:"trace"`
+	SessionExternalID *string `json:"session_external_id"`
+}
+
+func (q *Queries) ListTracesBySessionAsc(ctx context.Context, arg ListTracesBySessionAscParams) ([]ListTracesBySessionAscRow, error) {
+	rows, err := q.db.Query(ctx, listTracesBySessionAsc,
+		arg.ProjectID,
+		arg.SessionID,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTracesBySessionAscRow{}
+	for rows.Next() {
+		var i ListTracesBySessionAscRow
+		if err := rows.Scan(
+			&i.Trace.ID,
+			&i.Trace.ProjectID,
+			&i.Trace.SessionID,
+			&i.Trace.TraceID,
+			&i.Trace.Name,
+			&i.Trace.UserID,
+			&i.Trace.Tags,
+			&i.Trace.Environment,
+			&i.Trace.Release,
+			&i.Trace.Metadata,
+			&i.Trace.Input,
+			&i.Trace.Output,
+			&i.Trace.Status,
+			&i.Trace.StartTime,
+			&i.Trace.EndTime,
+			&i.Trace.ServerReceivedAt,
+			&i.Trace.DurationMs,
+			&i.Trace.TotalSpans,
+			&i.Trace.TotalCost,
+			&i.Trace.ErrorCount,
+			&i.Trace.Version,
+			&i.Trace.CreatedAt,
+			&i.Trace.UpdatedAt,
+			&i.Trace.SearchVector,
+			&i.Trace.TotalTokensIn,
+			&i.Trace.TotalTokensOut,
+			&i.SessionExternalID,
 		); err != nil {
 			return nil, err
 		}

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_sessions_project_created_id_desc;

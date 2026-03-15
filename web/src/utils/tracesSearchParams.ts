@@ -1,10 +1,16 @@
+import { DEFAULT_PAGE_SIZE, normalizeUiPageSize } from './pagination';
+
 export type TraceStatusFilter = 'running' | 'completed' | 'failed';
+export type TraceSortBy = 'started_at';
+export type SortDirection = 'asc' | 'desc';
 
 export interface FetchTracesParams {
   limit?: number;
   offset?: number;
   session_id?: string;
   q?: string;
+  sort_by?: TraceSortBy;
+  sort_dir?: SortDirection;
   status?: TraceStatusFilter;
   start_time_from?: string;
   start_time_to?: string;
@@ -14,9 +20,12 @@ export interface FetchTracesParams {
 }
 
 export interface TracesFilterState {
+  limit: number;
   offset: number;
   session_id?: string;
   q?: string;
+  sort_by?: TraceSortBy;
+  sort_dir?: SortDirection;
   status?: TraceStatusFilter;
   start_time_from?: string;
   start_time_to?: string;
@@ -55,6 +64,8 @@ const CANONICAL_PARAM_ORDER: Array<keyof FetchTracesParams> = [
   'offset',
   'session_id',
   'q',
+  'sort_by',
+  'sort_dir',
   'status',
   'start_time_from',
   'start_time_to',
@@ -78,6 +89,20 @@ function normalizeStatus(value: string | null | undefined): TraceStatusFilter | 
   return VALID_STATUSES.has(normalized as TraceStatusFilter)
     ? (normalized as TraceStatusFilter)
     : undefined;
+}
+
+function normalizeTraceSortBy(value: string | null | undefined): TraceSortBy | undefined {
+  return value?.trim() === 'started_at' ? 'started_at' : undefined;
+}
+
+function normalizeSortDirection(
+  value: string | null | undefined
+): SortDirection | undefined {
+  if (value === 'asc' || value === 'desc') {
+    return value;
+  }
+
+  return undefined;
 }
 
 function normalizeUUID(value: string | null | undefined): string | undefined {
@@ -133,10 +158,15 @@ function normalizeTracesParams(
   params: NormalizableTracesParams
 ): NormalizedTracesParams {
   return {
-    limit: normalizePositiveInteger(params.limit),
+    limit:
+      params.limit === undefined
+        ? undefined
+        : normalizeUiPageSize(params.limit),
     offset: normalizeNonNegativeInteger(params.offset) ?? 0,
     session_id: normalizeUUID(params.session_id),
     q: normalizeOptionalText(params.q),
+    sort_by: normalizeTraceSortBy(params.sort_by),
+    sort_dir: normalizeSortDirection(params.sort_dir),
     status: normalizeStatus(params.status),
     start_time_from: normalizeISODateTime(params.start_time_from),
     start_time_to: normalizeISODateTime(params.start_time_to),
@@ -147,11 +177,15 @@ function normalizeTracesParams(
 }
 
 function toQueryEntries(
-  params: NormalizedTracesParams
+  params: NormalizedTracesParams,
+  options: { includeDefaultLimit: boolean }
 ): Array<[keyof FetchTracesParams, string]> {
   const entries: Array<[keyof FetchTracesParams, string]> = [];
 
-  if (params.limit !== undefined) {
+  if (
+    params.limit !== undefined &&
+    (options.includeDefaultLimit || params.limit !== DEFAULT_PAGE_SIZE)
+  ) {
     entries.push(['limit', String(params.limit)]);
   }
   if (params.offset > 0) {
@@ -162,6 +196,12 @@ function toQueryEntries(
   }
   if (params.q) {
     entries.push(['q', params.q]);
+  }
+  if (params.sort_by) {
+    entries.push(['sort_by', params.sort_by]);
+  }
+  if (params.sort_dir) {
+    entries.push(['sort_dir', params.sort_dir]);
   }
   if (params.status) {
     entries.push(['status', params.status]);
@@ -216,9 +256,12 @@ function parseLocalDate(date: string): Date | null {
 
 export function parseTracesParams(searchParams: URLSearchParams): TracesFilterState {
   const normalized = normalizeTracesParams({
+    limit: searchParams.get('limit') ?? undefined,
     offset: searchParams.get('offset') ?? undefined,
     session_id: searchParams.get('session_id') ?? undefined,
     q: searchParams.get('q') ?? undefined,
+    sort_by: searchParams.get('sort_by') ?? undefined,
+    sort_dir: searchParams.get('sort_dir') ?? undefined,
     status: searchParams.get('status') ?? undefined,
     start_time_from: searchParams.get('start_time_from') ?? undefined,
     start_time_to: searchParams.get('start_time_to') ?? undefined,
@@ -228,9 +271,12 @@ export function parseTracesParams(searchParams: URLSearchParams): TracesFilterSt
   });
 
   return {
+    limit: normalized.limit ?? DEFAULT_PAGE_SIZE,
     offset: normalized.offset,
     session_id: normalized.session_id,
     q: normalized.q,
+    sort_by: normalized.sort_by,
+    sort_dir: normalized.sort_dir,
     status: normalized.status,
     start_time_from: normalized.start_time_from,
     start_time_to: normalized.start_time_to,
@@ -244,7 +290,7 @@ export function serializeTracesParams(state: TracesFilterState): URLSearchParams
   const normalized = normalizeTracesParams(state);
   const params = new URLSearchParams();
 
-  toQueryEntries(normalized).forEach(([key, value]) => {
+  toQueryEntries(normalized, { includeDefaultLimit: false }).forEach(([key, value]) => {
     params.set(key, value);
   });
 
@@ -257,7 +303,7 @@ export function buildCanonicalQueryString(
   const normalized = normalizeTracesParams(params);
   const query = new URLSearchParams();
 
-  toQueryEntries(normalized).forEach(([key, value]) => {
+  toQueryEntries(normalized, { includeDefaultLimit: normalized.limit !== undefined }).forEach(([key, value]) => {
     query.set(key, value);
   });
 

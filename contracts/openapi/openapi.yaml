@@ -139,6 +139,18 @@ paths:
           description: Full-text search query (searches trace name and user_id)
           schema:
             type: string
+        - name: sort_by
+          in: query
+          description: Sort traces by started time. Ignored when q is present.
+          schema:
+            type: string
+            enum: [started_at]
+        - name: sort_dir
+          in: query
+          description: Sort direction for started time. Ignored when q is present.
+          schema:
+            type: string
+            enum: [asc, desc]
         - name: status
           in: query
           description: Filter by trace status
@@ -318,6 +330,28 @@ paths:
           schema:
             type: integer
             default: 0
+        - name: q
+          in: query
+          description: Search sessions by external ID or name
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          description: Filter sessions by exact user ID
+          schema:
+            type: string
+        - name: sort_by
+          in: query
+          description: Sort sessions by creation time or trace count. Ignored when q is present.
+          schema:
+            type: string
+            enum: [created_at, trace_count]
+        - name: sort_dir
+          in: query
+          description: Sort direction for the selected session sort field. Ignored when q is present.
+          schema:
+            type: string
+            enum: [asc, desc]
       responses:
         '200':
           description: List of sessions
@@ -401,6 +435,8 @@ components:
         session_id:
           type: string
           format: uuid
+        session_external_id:
+          type: string
         name:
           type: string
         status:

@@ -26,7 +26,8 @@ describe('tracesSearchParams', () => {
 
     const parsed = parseTracesParams(params);
 
-    expect(parsed).toEqual({
+    expect(parsed).toMatchObject({
+      limit: 20,
       offset: 20,
       q: 'checkout flow',
       status: 'failed',
@@ -67,7 +68,7 @@ describe('tracesSearchParams', () => {
       })
     );
 
-    expect(parsed).toEqual({ offset: 0 });
+    expect(parsed).toMatchObject({ limit: 20, offset: 0 });
     expect(deriveActiveChips(parsed)).toEqual([]);
   });
 
@@ -124,7 +125,8 @@ describe('tracesSearchParams', () => {
       },
     ]);
 
-    expect(clearChip(state, 'q')).toEqual({
+    expect(clearChip(state, 'q')).toMatchObject({
+      limit: 20,
       offset: 0,
       has_errors: true,
       session_id: '123e4567-e89b-12d3-a456-426614174000',
@@ -157,7 +159,7 @@ describe('tracesSearchParams', () => {
     );
 
     expect(first).toBe(
-      'offset=20&session_id=123e4567-e89b-12d3-a456-426614174000&q=flow&status=failed&has_errors=true'
+      'limit=20&offset=20&session_id=123e4567-e89b-12d3-a456-426614174000&q=flow&status=failed&has_errors=true'
     );
     expect(second).toBe(first);
   });

@@ -450,6 +450,158 @@ func TestListTraces_OmitsDetailFields(t *testing.T) {
 	}
 }
 
+func TestListTracesAndGetTrace_IncludeSessionExternalID(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	session, err := q.CreateSession(ctx, platform.CreateSessionParams{
+		ProjectID:  projectID,
+		ExternalID: "conv-abc-123",
+	})
+	require.NoError(t, err)
+
+	withSession := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		SessionID: testutil.PgtypeUUID(session.ID),
+		TraceID:   "trace-with-session",
+		Name:      testutil.StrPtr("Trace With Session"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 8, 9, 0, 0, 0, time.UTC)),
+	})
+
+	withoutSession := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "trace-without-session",
+		Name:      testutil.StrPtr("Trace Without Session"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 8, 10, 0, 0, 0, time.UTC)),
+	})
+
+	listRec := invokeListTraces(t, server, projectID, ListTracesParams{})
+	require.Equal(t, http.StatusOK, listRec.Code)
+
+	listResp := decodeJSONBody[TraceList](t, listRec)
+	withSessionAPI := findTraceByID(t, listResp.Traces, withSession.ID)
+	withoutSessionAPI := findTraceByID(t, listResp.Traces, withoutSession.ID)
+
+	require.NotNil(t, withSessionAPI.SessionExternalId)
+	assert.Equal(t, session.ExternalID, *withSessionAPI.SessionExternalId)
+	assert.Nil(t, withoutSessionAPI.SessionExternalId)
+
+	detailRec := invokeGetTrace(t, server, projectID, withSession.ID)
+	require.Equal(t, http.StatusOK, detailRec.Code)
+
+	detailResp := decodeJSONBody[TraceDetail](t, detailRec)
+	require.NotNil(t, detailResp.SessionExternalId)
+	assert.Equal(t, session.ExternalID, *detailResp.SessionExternalId)
+}
+
+func TestListTraces_SortDirectionAndDefaultOrdering(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	earliest := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "trace-earliest",
+		Name:      testutil.StrPtr("Earliest"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 8, 9, 0, 0, 0, time.UTC)),
+	})
+	middle := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "trace-middle",
+		Name:      testutil.StrPtr("Middle"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 8, 10, 0, 0, 0, time.UTC)),
+	})
+	latest := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "trace-latest",
+		Name:      testutil.StrPtr("Latest"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 8, 11, 0, 0, 0, time.UTC)),
+	})
+
+	defaultRec := invokeListTraces(t, server, projectID, ListTracesParams{})
+	require.Equal(t, http.StatusOK, defaultRec.Code)
+	defaultResp := decodeJSONBody[TraceList](t, defaultRec)
+	assert.Equal(t, []uuid.UUID{latest.ID, middle.ID, earliest.ID}, apiTraceIDs(defaultResp.Traces))
+
+	ascRec := invokeListTraces(t, server, projectID, ListTracesParams{
+		SortBy:  testutil.Ptr(StartedAt),
+		SortDir: testutil.Ptr(ListTracesParamsSortDirAsc),
+	})
+	require.Equal(t, http.StatusOK, ascRec.Code)
+	ascResp := decodeJSONBody[TraceList](t, ascRec)
+	assert.Equal(t, []uuid.UUID{earliest.ID, middle.ID, latest.ID}, apiTraceIDs(ascResp.Traces))
+
+	descRec := invokeListTraces(t, server, projectID, ListTracesParams{
+		SortBy:  testutil.Ptr(StartedAt),
+		SortDir: testutil.Ptr(ListTracesParamsSortDirDesc),
+	})
+	require.Equal(t, http.StatusOK, descRec.Code)
+	descResp := decodeJSONBody[TraceList](t, descRec)
+	assert.Equal(t, []uuid.UUID{latest.ID, middle.ID, earliest.ID}, apiTraceIDs(descResp.Traces))
+}
+
+func TestListTraces_SearchOverridesSortParams(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	base := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+
+	nameMatch := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "trace-name-match",
+		Name:      testutil.StrPtr("checkout"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(base),
+	})
+
+	spanOnlyMatch := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "trace-span-only",
+		Name:      testutil.StrPtr("background work"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(base.Add(2 * time.Hour)),
+	})
+
+	upsertSpanRecord(ctx, t, q, platform.UpsertSpanParams{
+		ProjectID: projectID,
+		TraceID:   spanOnlyMatch.ID,
+		SpanID:    "span-checkout",
+		Name:      "checkout",
+		Type:      "tool",
+		Status:    "completed",
+		Level:     "default",
+		StartTime: base.Add(2 * time.Hour),
+		TotalCost: testutil.PgtypeNumericFromFloat64(0),
+	})
+
+	rec := invokeListTraces(t, server, projectID, ListTracesParams{
+		Q:       testutil.StrPtr("checkout"),
+		SortBy:  testutil.Ptr(StartedAt),
+		SortDir: testutil.Ptr(ListTracesParamsSortDirAsc),
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[TraceList](t, rec)
+	require.Len(t, resp.Traces, 2)
+	assert.Equal(t, []uuid.UUID{nameMatch.ID, spanOnlyMatch.ID}, apiTraceIDs(resp.Traces))
+}
+
 func TestGetTrace_ProjectScopingReturns404(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
@@ -546,6 +698,27 @@ func invokeListTraces(t *testing.T, server *Server, projectID uuid.UUID, params 
 	server.ListTraces(rec, req.WithContext(ctx), params)
 
 	return rec
+}
+
+func findTraceByID(t *testing.T, traces []Trace, traceID uuid.UUID) Trace {
+	t.Helper()
+
+	for i := range traces {
+		if traces[i].Id == traceID {
+			return traces[i]
+		}
+	}
+
+	t.Fatalf("trace %s not found in response", traceID)
+	return Trace{}
+}
+
+func apiTraceIDs(traces []Trace) []uuid.UUID {
+	ids := make([]uuid.UUID, len(traces))
+	for i := range traces {
+		ids[i] = traces[i].Id
+	}
+	return ids
 }
 
 func createTimelineTrace(

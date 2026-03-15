@@ -10,7 +10,7 @@ WHERE s.id = $1;
 -- name: ListSessions :many
 SELECT * FROM sessions
 WHERE project_id = $1
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3;
 
 -- name: ListSessionsWithTraceCount :many
@@ -18,7 +18,7 @@ SELECT s.*,
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
 WHERE s.project_id = $1
-ORDER BY s.created_at DESC
+ORDER BY s.created_at DESC, s.id DESC
 LIMIT $2 OFFSET $3;
 
 -- name: CountSessions :one

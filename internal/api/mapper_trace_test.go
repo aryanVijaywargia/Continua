@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+	"github.com/continua-ai/continua/internal/store"
 	"github.com/continua-ai/continua/internal/testutil"
 )
 
@@ -19,6 +20,7 @@ func TestTraceDetailToAPI_MapsSummaryAndDetailFields(t *testing.T) {
 	end := start.Add(45 * time.Second)
 	sessionID := uuid.New()
 	name := "Debugger Trace"
+	sessionExternalID := "conv-123"
 	userID := "user@example.com"
 	environment := "production"
 	release := "v1.2.3"
@@ -42,7 +44,10 @@ func TestTraceDetailToAPI_MapsSummaryAndDetailFields(t *testing.T) {
 		ServerReceivedAt: start.Add(-time.Second),
 	}
 
-	detail := traceDetailToAPI(&trace)
+	detail := traceDetailToAPI(&store.TraceRead{
+		Trace:             trace,
+		SessionExternalID: &sessionExternalID,
+	})
 
 	assert.Equal(t, trace.ID, detail.Id)
 	assert.Equal(t, name, detail.Name)
@@ -52,6 +57,8 @@ func TestTraceDetailToAPI_MapsSummaryAndDetailFields(t *testing.T) {
 	assert.Equal(t, end, *detail.EndedAt)
 	require.NotNil(t, detail.SessionId)
 	assert.Equal(t, sessionID, *detail.SessionId)
+	require.NotNil(t, detail.SessionExternalId)
+	assert.Equal(t, sessionExternalID, *detail.SessionExternalId)
 	require.NotNil(t, detail.TotalTokensIn)
 	assert.Equal(t, 12, *detail.TotalTokensIn)
 	require.NotNil(t, detail.TotalTokensOut)
@@ -81,7 +88,7 @@ func TestTraceDetailToAPI_TagsMapping(t *testing.T) {
 			Tags:      []string{},
 		}
 
-		detail := traceDetailToAPI(&trace)
+		detail := traceDetailToAPI(&store.TraceRead{Trace: trace})
 		assert.Nil(t, detail.Tags)
 	})
 
@@ -95,7 +102,7 @@ func TestTraceDetailToAPI_TagsMapping(t *testing.T) {
 			Tags:      []string{"prod", "v2"},
 		}
 
-		detail := traceDetailToAPI(&trace)
+		detail := traceDetailToAPI(&store.TraceRead{Trace: trace})
 		require.NotNil(t, detail.Tags)
 		assert.Equal(t, []string{"prod", "v2"}, *detail.Tags)
 	})
@@ -126,7 +133,7 @@ func TestTraceDetailToAPI_PreservesArbitraryJSON(t *testing.T) {
 				Output:    []byte(tc.json),
 			}
 
-			detail := traceDetailToAPI(&trace)
+			detail := traceDetailToAPI(&store.TraceRead{Trace: trace})
 
 			payload, err := json.Marshal(detail)
 			require.NoError(t, err)

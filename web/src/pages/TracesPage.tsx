@@ -3,9 +3,11 @@ import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { fetchTraces, type Trace } from '../api/client';
 import { PaginationControls } from '../components/PaginationControls';
+import { SortableHeader } from '../components/SortableHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { useTracesSearchParams } from '../hooks/useTracesSearchParams';
+import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import {
   buildCanonicalQueryString,
   deriveActiveChips,
@@ -21,7 +23,6 @@ import {
   formatTokens,
 } from '../utils/format';
 
-const PAGE_SIZE = 20;
 const DEBOUNCE_MS = 300;
 
 function normalizeTrimmedDraft(value: string): string {
@@ -201,10 +202,8 @@ function TracesContent() {
   const dateRangeError = getDateRangeError(startDate, endDate);
   const activeChips = deriveActiveChips(filters);
   const hasActiveFilters = activeChips.length > 0;
-  const queryParams = {
-    ...filters,
-    limit: PAGE_SIZE,
-  };
+  const isSearchActive = Boolean(filters.q);
+  const queryParams = { ...filters };
   const canonicalQueryString = buildCanonicalQueryString(queryParams);
   const tracesQuery = useQuery({
     queryKey: ['traces', canonicalQueryString],
@@ -222,11 +221,28 @@ function TracesContent() {
       return;
     }
 
-    const lastValidOffset = Math.floor((total - 1) / PAGE_SIZE) * PAGE_SIZE;
+    const lastValidOffset = getLastValidOffset(total, filters.limit ?? DEFAULT_PAGE_SIZE);
     if (lastValidOffset !== filters.offset) {
       setFilters({ offset: lastValidOffset }, 'replace');
     }
-  }, [filters.offset, setFilters, total, traces.length]);
+  }, [filters.limit, filters.offset, setFilters, total, traces.length]);
+
+  const handleStartedSortToggle = useCallback(() => {
+    if (isSearchActive) {
+      return;
+    }
+
+    setFilters(
+      {
+        sort_by: 'started_at',
+        sort_dir:
+          filters.sort_by === 'started_at' && filters.sort_dir === 'asc'
+            ? 'desc'
+            : 'asc',
+      },
+      'push'
+    );
+  }, [filters.sort_by, filters.sort_dir, isSearchActive, setFilters]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -522,7 +538,13 @@ function TracesContent() {
                       Cost
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                      Started
+                      <SortableHeader
+                        label="Started"
+                        isActive={filters.sort_by === 'started_at'}
+                        isAscending={filters.sort_dir === 'asc'}
+                        isDisabled={isSearchActive}
+                        onClick={handleStartedSortToggle}
+                      />
                     </th>
                   </tr>
                 </thead>
@@ -539,9 +561,12 @@ function TracesContent() {
             </div>
             <PaginationControls
               offset={filters.offset}
-              pageSize={PAGE_SIZE}
+              pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
               total={total}
+              currentItemCount={traces.length}
               onOffsetChange={(offset) => setFilters({ offset }, 'push')}
+              onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
+              onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
             />
           </>
         )}
@@ -580,9 +605,12 @@ function TraceRow({ trace, returnTo }: TraceRowProps) {
           {trace.session_id && (
             <Link
               to={`/sessions/${trace.session_id}`}
-              className="mt-1 inline-flex text-xs text-gray-500 transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="mt-1 inline-flex flex-col text-left text-xs transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
             >
-              Session {trace.session_id.slice(0, 8)}...
+              <span className="font-medium text-gray-600">
+                {trace.session_external_id ?? trace.session_id}
+              </span>
+              <span className="font-mono text-gray-400">{trace.session_id}</span>
             </Link>
           )}
         </div>

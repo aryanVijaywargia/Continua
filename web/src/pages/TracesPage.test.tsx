@@ -282,7 +282,7 @@ describe('TracesPage', () => {
       `?limit=20&offset=20&session_id=${SESSION_ID}&q=checkout&has_errors=true`
     );
 
-    expect(screen.getByText(SESSION_ID)).toBeInTheDocument();
+    expect(screen.getAllByText(SESSION_ID).length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('button', { name: 'Clear Search filter' }));
     await waitForListFetch(`?limit=20&session_id=${SESSION_ID}&has_errors=true`);
@@ -536,5 +536,53 @@ describe('TracesPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Clear Search filter' })
     ).not.toBeInTheDocument();
+  });
+
+  it('toggles started sorting and resets offset when the page size changes', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: (url) =>
+          jsonResponse({
+            traces: url.searchParams.get('offset') === '20' ? [TRACE_TWO] : [TRACE_ONE],
+            total: 60,
+          }),
+      })
+    );
+
+    const { router } = renderTraceRoutes(['/traces']);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Started' }));
+    await waitForListFetch('?limit=20&sort_by=started_at&sort_dir=asc');
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await waitForListFetch('?limit=20&offset=20&sort_by=started_at&sort_dir=asc');
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Rows per page' }), '50');
+    await waitForListFetch('?limit=50&sort_by=started_at&sort_dir=asc');
+    await waitFor(() => {
+      expect(router.state.location.search).toBe('?limit=50&sort_by=started_at&sort_dir=asc');
+    });
+  });
+
+  it('disables the started sort header while search is active', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes(['/traces?q=checkout']);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: 'Started' })).not.toBeInTheDocument();
+    expect(screen.getByText('Started')).toBeInTheDocument();
+  });
+
+  it('renders session external ID first on trace rows', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes(['/traces']);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+
+    expect(screen.getByText('conv-checkout-123')).toBeInTheDocument();
+    expect(screen.getByText(SESSION_ID)).toBeInTheDocument();
   });
 });

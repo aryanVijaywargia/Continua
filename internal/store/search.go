@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/continua-ai/continua/db/gen/go/platform"
 )
 
 // TraceFilter defines filter options for trace search.
@@ -22,19 +20,14 @@ type TraceFilter struct {
 	SessionID     *uuid.UUID // Filter by session_id
 	HasErrors     *bool      // Filter by error_count > 0
 	MinDurationMs *int64     // Filter by duration in milliseconds
+	SortDir       SortDirection
 	Limit         int32
 	Offset        int32
 }
 
-// TraceWithTotal represents a trace with the total count for pagination.
-type TraceWithTotal struct {
-	platform.Trace
-	Total int64
-}
-
 // TraceSearchResult contains the results of a trace search.
 type TraceSearchResult struct {
-	Traces []platform.Trace
+	Traces []TraceRead
 	Total  int64
 }
 
@@ -50,7 +43,7 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	var whereClauses []string
 	var args []any
 	argNum := 1
-	fromClause := "FROM traces t"
+	fromClause := "FROM traces t LEFT JOIN sessions sess ON sess.id = t.session_id AND sess.project_id = t.project_id"
 
 	// Always filter by project
 	whereClauses = append(whereClauses, fmt.Sprintf("t.project_id = $%d", argNum))
@@ -65,7 +58,7 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	// Full-text search query - searches both trace fields and span names
 	if hasSearchQuery {
 		searchArgNum = argNum
-		fromClause = fmt.Sprintf("FROM traces t CROSS JOIN (SELECT plainto_tsquery('english', $%d) AS search_query) q", searchArgNum)
+		fromClause = fmt.Sprintf("%s CROSS JOIN (SELECT plainto_tsquery('english', $%d) AS search_query) q", fromClause, searchArgNum)
 		// Search traces.search_vector OR any span.search_vector matches
 		// Use EXISTS for efficient span search with proper project scoping
 		whereClauses = append(whereClauses, `(
@@ -169,9 +162,15 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 			CASE WHEN %s > 0 THEN 1 ELSE 0 END AS trace_match_priority,
 			GREATEST(%s, %s) AS combined_rank
 		`, traceRankExpr, traceRankExpr, spanRankExpr)
-		orderByClause = "trace_match_priority DESC, combined_rank DESC, sort_time DESC"
+		orderByClause = "trace_match_priority DESC, combined_rank DESC, sort_time DESC, t.id DESC"
 	} else {
-		orderByClause = "sort_time DESC"
+		sortDirectionSQL := "DESC"
+		idDirectionSQL := "DESC"
+		if normalizeSortDirection(filter.SortDir) == SortDirectionAsc {
+			sortDirectionSQL = "ASC"
+			idDirectionSQL = "ASC"
+		}
+		orderByClause = fmt.Sprintf("sort_time %s, t.id %s", sortDirectionSQL, idDirectionSQL)
 	}
 
 	// Main query with limit and offset
@@ -179,9 +178,10 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	offsetArg := argNum + 1
 
 	selectQuery := fmt.Sprintf(`
-		SELECT DISTINCT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.status, t.user_id, t.tags, t.environment, t.release,
-		       t.metadata, t.start_time, t.end_time, t.server_received_at, t.total_spans, t.total_tokens_in, t.total_tokens_out, t.total_cost,
-		       t.error_count, t.created_at, t.updated_at%s%s
+		SELECT DISTINCT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release,
+		       t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost,
+		       t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out,
+		       sess.external_id AS session_external_id%s%s
 		%s
 		WHERE %s
 		ORDER BY %s
@@ -197,16 +197,17 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	defer rows.Close()
 
 	for rows.Next() {
-		var t platform.Trace
+		var trace TraceRead
 		var traceMatchPriority int
 		var combinedRank float32
 		var sortTime time.Time
 
 		scanArgs := []any{
-			&t.ID, &t.ProjectID, &t.SessionID, &t.TraceID, &t.Name, &t.Status, &t.UserID,
-			&t.Tags, &t.Environment, &t.Release, &t.Metadata, &t.StartTime, &t.EndTime,
-			&t.ServerReceivedAt, &t.TotalSpans, &t.TotalTokensIn, &t.TotalTokensOut, &t.TotalCost, &t.ErrorCount,
-			&t.CreatedAt, &t.UpdatedAt,
+			&trace.ID, &trace.ProjectID, &trace.SessionID, &trace.TraceID, &trace.Name, &trace.UserID,
+			&trace.Tags, &trace.Environment, &trace.Release, &trace.Metadata, &trace.Input, &trace.Output,
+			&trace.Status, &trace.StartTime, &trace.EndTime, &trace.ServerReceivedAt, &trace.DurationMs,
+			&trace.TotalSpans, &trace.TotalCost, &trace.ErrorCount, &trace.Version, &trace.CreatedAt,
+			&trace.UpdatedAt, &trace.SearchVector, &trace.TotalTokensIn, &trace.TotalTokensOut, &trace.SessionExternalID,
 		}
 		if hasSearchQuery {
 			scanArgs = append(scanArgs, &traceMatchPriority, &combinedRank)
@@ -217,7 +218,7 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 		if err != nil {
 			return result, fmt.Errorf("scan trace: %w", err)
 		}
-		result.Traces = append(result.Traces, t)
+		result.Traces = append(result.Traces, trace)
 	}
 
 	if err := rows.Err(); err != nil {

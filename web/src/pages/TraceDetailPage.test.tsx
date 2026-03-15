@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearApiKey, setApiKey, type TraceDetail } from '../api/client';
 import { setMatchMediaMatches } from '../test/matchMedia';
 import {
+  SESSION_EXTERNAL_ID,
+  SESSION_ID,
   TRACE_DETAIL,
   TRACE_ONE,
   buildFetchHandler,
@@ -1278,5 +1280,35 @@ describe('TraceDetailPage', () => {
         screen.queryByRole('button', { name: 'Select span Needle child' })
       ).not.toBeInTheDocument();
     });
+  });
+
+  it('accepts session-detail returnTo links', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes([
+      {
+        pathname: `/traces/${TRACE_ONE.id}`,
+        state: { returnTo: `/sessions/${SESSION_ID}?sort_by=started_at&offset=20` },
+      },
+    ]);
+
+    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '← Session' })).toHaveAttribute(
+      'href',
+      `/sessions/${SESSION_ID}?sort_by=started_at&offset=20`
+    );
+  });
+
+  it('shows session external ID before the UUID in trace context', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    await screen.findByText('Trace Context');
+
+    await user.click(screen.getByRole('button', { name: /Trace Context/i }));
+
+    expect(screen.getByText(SESSION_EXTERNAL_ID)).toBeInTheDocument();
+    expect(screen.getByText(SESSION_ID)).toBeInTheDocument();
   });
 });

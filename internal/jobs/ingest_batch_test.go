@@ -341,9 +341,9 @@ func TestLegacyDefaultQueueRollupJobExecutesDuringTransition(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		updatedTrace, getErr := q.GetTrace(ctx, trace.ID)
-		if getErr != nil || updatedTrace.TotalSpans == nil {
+		if getErr != nil || updatedTrace.Trace.TotalSpans == nil {
 			return false
 		}
-		return *updatedTrace.TotalSpans == 1 && updatedTrace.TotalTokensIn == 11 && updatedTrace.TotalTokensOut == 7
+		return *updatedTrace.Trace.TotalSpans == 1 && updatedTrace.Trace.TotalTokensIn == 11 && updatedTrace.Trace.TotalTokensOut == 7
 	}, 5*time.Second, 100*time.Millisecond)
 }
