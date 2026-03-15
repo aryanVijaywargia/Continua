@@ -1,52 +1,28 @@
-server:
-  host: "0.0.0.0"
-  port: 8080
-  read_timeout: 30s
-  write_timeout: 30s
-  shutdown_timeout: 10s
+# Continua currently loads runtime configuration from environment variables only.
+# This file is a reference template for the env vars consumed by
+# `internal/config/config.go`; the server does not read this YAML directly.
+#
+# Typical usage:
+#   export DATABASE_URL="postgres://continua:continua@localhost:5432/continua?sslmode=disable"
+#   export HOST="0.0.0.0"
+#   export PORT="8080"
+#   go run ./cmd/continua serve
 
-proxy:
-  enabled: true
-  port: 8081
-  providers:
-    openai:
-      base_url: https://api.openai.com
-      enabled: true
-    anthropic:
-      base_url: https://api.anthropic.com
-      enabled: true
+environment:
+  # Required
+  DATABASE_URL: "postgres://continua:continua@localhost:5432/continua?sslmode=disable"
 
-database:
-  driver: postgres
-  postgres:
-    host: localhost
-    port: 5432
-    user: continua
-    password: ""
-    database: continua
-    ssl_mode: disable
-    max_conns: 25
-    min_conns: 5
-  sqlite:
-    path: ~/.continua/data.db
+  # HTTP server
+  HOST: "0.0.0.0"
+  PORT: "8080"
 
-migrations:
-  source: embed
+  # Async ingest behavior
+  INGEST_TRUE_ASYNC_DEFAULT: "false"
+  INGEST_DEPENDENCY_RETRY_WINDOW: "15m"
+  INGEST_FAILED_PAYLOAD_RETENTION: "168h"
 
-security:
-  api_key:
-    enabled: true
-    header: Authorization
-    prefix: Bearer
-  scrub_headers:
-    - Authorization
-    - Cookie
-    - X-Api-Key
-
-logging:
-  level: info
-  format: json
-
-metrics:
-  enabled: true
-  path: /metrics
+  # River worker counts
+  RIVER_QUEUE_INGEST_WORKERS: "4"
+  RIVER_QUEUE_ROLLUP_WORKERS: "10"
+  RIVER_QUEUE_MAINTENANCE_WORKERS: "1"
+  RIVER_QUEUE_DEFAULT_WORKERS: "1"

@@ -1,171 +1,56 @@
-# API Patterns
+# API patterns
 
-## Contract-First Workflow
+## Current endpoint families
+- ingest: `POST /v1/ingest`, `GET /v1/ingest/batches/{id}`
+- traces: list, detail, spans, events
+- sessions: list and detail
+- health: `GET /api/health` is routed directly in Chi and stays outside OpenAPI auth handling
 
-1. **Edit OpenAPI spec** (source of truth):
-   ```yaml
-   # contracts/openapi/openapi.yaml
-   paths:
-     /api/spans/{id}/payload:
-       get:
-         operationId: getSpanPayload
-         parameters:
-           - name: id
-             in: path
-             required: true
-             schema:
-               type: string
-               format: uuid
-         responses:
-           '200':
-             content:
-               application/json:
-                 schema:
-                   $ref: '#/components/schemas/Payload'
-   ```
+## Contract-first flow
+1. Edit `contracts/openapi/openapi.yaml`
+2. Run `make generate`
+3. Implement the generated interface in `internal/api`
+4. Update mappers and tests
 
-2. **Regenerate**:
-   ```bash
-   make generate
-   ```
+Do not add handler-only fields without first updating OpenAPI.
 
-3. **Implement handler** (compiler tells you what's missing):
-   ```go
-   // internal/api/handlers.go
-   func (s *Server) GetSpanPayload(w http.ResponseWriter, r *http.Request, id string) {
-       // Implementation
-   }
-   ```
+## Current `internal/api` patterns
 
-## Handler Structure
+### Router
+- public health route
+- protected OpenAPI-generated routes under API-key auth
+- embedded SPA fallback at `/`
 
-```go
-type Server struct {
-    queries *platform.Queries
-}
+### Handler shape
+- get `project_id` from middleware context with `projectIDOrUnauthorized`
+- normalize query params with helpers in `server_helpers.go`
+- call store or ingest service
+- map store models to API types
+- return spec-compliant errors with `writeError`
 
-func NewServer(queries *platform.Queries) *Server {
-    return &Server{queries: queries}
-}
+### Mapper rules
+- `traceToAPI`, `traceDetailToAPI`, `spanToAPI`, `sessionToAPI`
+- map lower-case DB statuses/types to public API enums
+- parse JSON bytes into API payloads in the mapper layer
+- never return sqlc structs directly
 
-func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id string) {
-    ctx := r.Context()
+## Trace and timeline specifics
+- trace list uses `ListTracesFiltered` in `internal/store/search.go` when filters are present
+- trace detail and spans are project-scoped
+- timeline API merges:
+  - explicit `span_events`
+  - synthetic span lifecycle events derived from spans
+- timeline pagination is cursor-based and implemented in `internal/api/timeline.go`
 
-    // 1. Parse/validate input
-    traceID, err := uuid.Parse(id)
-    if err != nil {
-        writeError(w, http.StatusBadRequest, "INVALID_ID", "Invalid UUID format")
-        return
-    }
+## Error and auth conventions
+- missing/invalid API key -> `401`
+- project-scoped misses -> `404`
+- validation errors for ingest -> `400`
+- unsupported async-version header -> `400 unsupported_async_version`
 
-    // 2. Call database via SQLC
-    trace, err := s.queries.GetTrace(ctx, traceID)
-    if err != nil {
-        if errors.Is(err, pgx.ErrNoRows) {
-            writeError(w, http.StatusNotFound, "NOT_FOUND", "Trace not found")
-            return
-        }
-        slog.ErrorContext(ctx, "failed to get trace", "error", err)
-        writeError(w, http.StatusInternalServerError, "INTERNAL", "Internal error")
-        return
-    }
-
-    // 3. Map to API type and respond
-    writeJSON(w, http.StatusOK, mapTraceToAPI(trace))
-}
-```
-
-## Response Helpers
-
-```go
-func writeJSON(w http.ResponseWriter, status int, v any) {
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(status)
-    json.NewEncoder(w).Encode(v)
-}
-
-func writeError(w http.ResponseWriter, status int, code, message string) {
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(status)
-    json.NewEncoder(w).Encode(Error{Code: code, Message: message})
-}
-```
-
-## Type Mapping
-
-**Rule #10: Domain types never leak into API responses**
-
-```go
-// internal/api/mapper.go
-
-// mapTraceToAPI converts database row to API response
-func mapTraceToAPI(t platform.Trace) Trace {
-    return Trace{
-        Id:             t.ID.String(),
-        SessionId:      ptrString(t.SessionID),
-        Name:           t.Name,
-        Status:         TraceStatus(t.Status),
-        StartedAt:      t.StartedAt.Time,
-        EndedAt:        ptrTime(t.EndedAt),
-        TotalTokensIn:  int(t.TotalTokensIn.Int32),
-        TotalTokensOut: int(t.TotalTokensOut.Int32),
-        TotalCostUsd:   t.TotalCostUsd.Float64,
-        Metadata:       t.Metadata,
-    }
-}
-
-// Helper for nullable UUIDs
-func ptrString(id pgtype.UUID) *string {
-    if !id.Valid {
-        return nil
-    }
-    s := id.Bytes.String()
-    return &s
-}
-
-// Helper for nullable timestamps
-func ptrTime(t pgtype.Timestamptz) *time.Time {
-    if !t.Valid {
-        return nil
-    }
-    return &t.Time
-}
-```
-
-## HTTP Status Code Usage
-
-| Code | When |
-|------|------|
-| 200 | Success with body |
-| 201 | Created new resource |
-| 204 | Success, no body |
-| 400 | Invalid input (bad UUID, missing field) |
-| 401 | Missing/invalid auth |
-| 404 | Resource not found |
-| 500 | Internal error (log it!) |
-
-## Pagination Pattern
-
-```yaml
-# OpenAPI
-parameters:
-  - name: limit
-    in: query
-    schema:
-      type: integer
-      default: 50
-      maximum: 100
-  - name: offset
-    in: query
-    schema:
-      type: integer
-      default: 0
-```
-
-```go
-// Handler
-limit := 50
-if params.Limit != nil && *params.Limit <= 100 {
-    limit = *params.Limit
-}
-```
+## Good boundaries
+- auth logic in middleware
+- request normalization in `server_helpers.go`
+- feature logic in feature handler files
+- state translation in mappers
+- business persistence in store/service layers
