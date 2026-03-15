@@ -17,7 +17,7 @@ interface SpanDetailProps {
   span: Span | null;
   breadcrumbPath: BreadcrumbSegment[];
   onSelectSpan: (spanId: string) => void;
-  spanIndex: Map<string, Span>;
+  spanIndex: ReadonlyMap<string, Span>;
 }
 
 /**

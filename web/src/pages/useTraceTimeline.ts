@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchTimelineEvents,
@@ -32,10 +32,8 @@ export function useTraceTimeline(traceId: string) {
       return;
     }
 
-    startTransition(() => {
-      setTimelineSnapshot(timelineBootstrapQuery.data);
-      setNeedsTerminalRefresh(false);
-    });
+    setTimelineSnapshot(timelineBootstrapQuery.data);
+    setNeedsTerminalRefresh(false);
   }, [timelineBootstrapQuery.data]);
 
   const pollingEnabled =
@@ -69,18 +67,16 @@ export function useTraceTimeline(traceId: string) {
       setNeedsTerminalRefresh(true);
     }
 
-    startTransition(() => {
-      setTimelineSnapshot((current) => {
-        if (!current) {
-          return current;
-        }
+    setTimelineSnapshot((current) => {
+      if (!current) {
+        return current;
+      }
 
-        return {
-          events: mergeTimelineEvents(current.events, pollResult.events),
-          traceStatus: pollResult.trace_status,
-          pollCursor: pollResult.poll_cursor ?? current.pollCursor,
-        };
-      });
+      return {
+        events: mergeTimelineEvents(current.events, pollResult.events),
+        traceStatus: pollResult.trace_status,
+        pollCursor: pollResult.poll_cursor ?? current.pollCursor,
+      };
     });
   }, [queryClient, timelinePollQuery.data, traceId]);
 
@@ -97,10 +93,8 @@ export function useTraceTimeline(traceId: string) {
       return;
     }
 
-    startTransition(() => {
-      setTimelineSnapshot(timelineTerminalRefreshQuery.data);
-      setNeedsTerminalRefresh(false);
-    });
+    setTimelineSnapshot(timelineTerminalRefreshQuery.data);
+    setNeedsTerminalRefresh(false);
   }, [timelineTerminalRefreshQuery.data]);
 
   return {
