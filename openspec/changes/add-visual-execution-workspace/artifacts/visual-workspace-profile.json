@@ -1,0 +1,179 @@
+{
+  "generatedAt": "2026-03-15T15:00:39.588Z",
+  "methodology": {
+    "environment": "jsdom via Vite SSR module loader",
+    "iterations": 15,
+    "warmupIterations": 3,
+    "spanCounts": [
+      200,
+      400,
+      800,
+      1200
+    ],
+    "note": "Measurements are conservative development-mode timings on the local machine. They capture React render/commit wall time in the benchmark harness."
+  },
+  "machine": {
+    "platform": "darwin 25.3.0",
+    "cpu": "Apple M2",
+    "memoryGb": 8,
+    "node": "v22.16.0"
+  },
+  "results": {
+    "200": {
+      "expandAll": {
+        "iterations": 15,
+        "meanMs": 4.98,
+        "p95Ms": 7.36,
+        "minMs": 2.64,
+        "maxMs": 7.36
+      },
+      "collapseAll": {
+        "iterations": 15,
+        "meanMs": 0.21,
+        "p95Ms": 0.42,
+        "minMs": 0.12,
+        "maxMs": 0.42
+      },
+      "waterfallRender": {
+        "iterations": 15,
+        "meanMs": 6.04,
+        "p95Ms": 11.94,
+        "minMs": 2.54,
+        "maxMs": 11.94
+      },
+      "searchInputCommit": {
+        "iterations": 15,
+        "meanMs": 0.02,
+        "p95Ms": 0.03,
+        "minMs": 0.01,
+        "maxMs": 0.03
+      },
+      "searchDeferredSettle": {
+        "iterations": 15,
+        "meanMs": 4.12,
+        "p95Ms": 15.87,
+        "minMs": 0.68,
+        "maxMs": 15.87
+      }
+    },
+    "400": {
+      "expandAll": {
+        "iterations": 15,
+        "meanMs": 5.82,
+        "p95Ms": 14.29,
+        "minMs": 2.31,
+        "maxMs": 14.29
+      },
+      "collapseAll": {
+        "iterations": 15,
+        "meanMs": 0.38,
+        "p95Ms": 0.85,
+        "minMs": 0.14,
+        "maxMs": 0.85
+      },
+      "waterfallRender": {
+        "iterations": 15,
+        "meanMs": 6.3,
+        "p95Ms": 14.83,
+        "minMs": 2.57,
+        "maxMs": 14.83
+      },
+      "searchInputCommit": {
+        "iterations": 15,
+        "meanMs": 0.04,
+        "p95Ms": 0.14,
+        "minMs": 0.01,
+        "maxMs": 0.14
+      },
+      "searchDeferredSettle": {
+        "iterations": 15,
+        "meanMs": 2.8,
+        "p95Ms": 10.15,
+        "minMs": 0.45,
+        "maxMs": 10.15
+      }
+    },
+    "800": {
+      "expandAll": {
+        "iterations": 15,
+        "meanMs": 5.87,
+        "p95Ms": 11.58,
+        "minMs": 2.71,
+        "maxMs": 11.58
+      },
+      "collapseAll": {
+        "iterations": 15,
+        "meanMs": 0.29,
+        "p95Ms": 0.91,
+        "minMs": 0.12,
+        "maxMs": 0.91
+      },
+      "waterfallRender": {
+        "iterations": 15,
+        "meanMs": 4.47,
+        "p95Ms": 8.95,
+        "minMs": 2.55,
+        "maxMs": 8.95
+      },
+      "searchInputCommit": {
+        "iterations": 15,
+        "meanMs": 0.02,
+        "p95Ms": 0.06,
+        "minMs": 0.01,
+        "maxMs": 0.06
+      },
+      "searchDeferredSettle": {
+        "iterations": 15,
+        "meanMs": 1.46,
+        "p95Ms": 3.21,
+        "minMs": 0.45,
+        "maxMs": 3.21
+      }
+    },
+    "1200": {
+      "expandAll": {
+        "iterations": 15,
+        "meanMs": 3.26,
+        "p95Ms": 7.04,
+        "minMs": 1.99,
+        "maxMs": 7.04
+      },
+      "collapseAll": {
+        "iterations": 15,
+        "meanMs": 0.15,
+        "p95Ms": 0.53,
+        "minMs": 0.1,
+        "maxMs": 0.53
+      },
+      "waterfallRender": {
+        "iterations": 15,
+        "meanMs": 3.77,
+        "p95Ms": 5.01,
+        "minMs": 2.64,
+        "maxMs": 5.01
+      },
+      "searchInputCommit": {
+        "iterations": 15,
+        "meanMs": 0.01,
+        "p95Ms": 0.03,
+        "minMs": 0.01,
+        "maxMs": 0.03
+      },
+      "searchDeferredSettle": {
+        "iterations": 15,
+        "meanMs": 1.18,
+        "p95Ms": 3.68,
+        "minMs": 0.44,
+        "maxMs": 3.68
+      }
+    }
+  },
+  "conclusions": {
+    "expandCollapseWithinOneFrameUnder500": true,
+    "waterfallRenderUnder100Ms": true,
+    "searchInputNotBlockedBeyondDeferredCycle": true,
+    "expandAllRevealThreshold": 700,
+    "thresholdFinalized": true,
+    "thresholdRationale": "Benchmarks at 200, 400, 800, and 1200 spans stayed within the Phase 9 budgets. The 700-row reveal guard remains a conservative cutoff that warns before very large expansions without prompting on smaller traces."
+  }
+}

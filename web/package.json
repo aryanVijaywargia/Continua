@@ -11,6 +11,7 @@
     "lint:fix": "eslint . --ext ts,tsx --fix",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
+    "profile:workspace": "node ./scripts/profile-visual-workspace.mjs",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "lucide-react": "0.453.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "react-resizable-panels": "^4.7.3",
     "react-router-dom": "6.28.0",
     "tailwind-merge": "2.5.4"
   },
