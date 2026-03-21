@@ -6,7 +6,7 @@ import { SessionsPage } from './pages/SessionsPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { Navigation } from './components/Navigation';
 import { SettingsPage } from './pages/SettingsPage';
-import { ThemeProvider } from './hooks/useTheme';
+import { ThemeProvider } from './hooks/ThemeProvider';
 
 const queryClient = new QueryClient();
 

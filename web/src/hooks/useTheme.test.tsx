@@ -1,7 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setMatchMediaMatches } from '../test/matchMedia';
-import { THEME_STORAGE_KEY, ThemeProvider, useTheme } from './useTheme';
+import { ThemeProvider } from './ThemeProvider';
+import { THEME_STORAGE_KEY, useTheme } from './useTheme';
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <ThemeProvider>{children}</ThemeProvider>;
