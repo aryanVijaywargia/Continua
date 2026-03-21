@@ -78,6 +78,22 @@ describe('TracesPage', () => {
     expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument();
   });
 
+  it('shows the auth recovery banner when the traces request returns 401', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ message: 'Invalid or missing API key' }, 401),
+      })
+    );
+
+    renderTraceRoutes(['/traces']);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
+    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+      'href',
+      '/settings'
+    );
+  });
+
   it('pre-populates controls from a deep link and issues the filtered request', async () => {
     const start = localDateToISOStart('2026-03-10');
     const end = localDateToISOEnd('2026-03-12');

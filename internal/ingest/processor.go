@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -204,6 +205,8 @@ func (p *Processor) validateBatch(req *IngestRequest) []string {
 		if event.Level != nil && !isValidIngestEventLevel(*event.Level) {
 			errs = append(errs, fmt.Sprintf("event[%d] invalid level: %s", i, *event.Level))
 		}
+
+		warnForMissingSemanticPayloadFields(event)
 	}
 
 	return errs
@@ -211,11 +214,52 @@ func (p *Processor) validateBatch(req *IngestRequest) []string {
 
 func isValidIngestEventType(eventType string) bool {
 	switch eventType {
-	case "log", "error", "exception", "message", "metric", "custom":
+	case "log", "error", "exception", "message", "metric", "custom", "state_change", "decision":
 		return true
 	default:
 		return false
 	}
+}
+
+func warnForMissingSemanticPayloadFields(event *EventInput) {
+	eventType := defaultString(event.EventType, "log")
+
+	switch eventType {
+	case "state_change":
+		if !hasSemanticStringField(event.Payload, "key") {
+			log.Printf(
+				"[WARN] ingest state_change event missing semantic payload field 'key' for trace %s span %s",
+				event.TraceID,
+				event.SpanID,
+			)
+		}
+	case "decision":
+		missingQuestion := !hasSemanticStringField(event.Payload, "question")
+		missingChosen := !hasSemanticStringField(event.Payload, "chosen")
+		if missingQuestion || missingChosen {
+			log.Printf(
+				"[WARN] ingest decision event missing semantic payload fields for trace %s span %s (question=%t chosen=%t)",
+				event.TraceID,
+				event.SpanID,
+				missingQuestion,
+				missingChosen,
+			)
+		}
+	}
+}
+
+func hasSemanticStringField(payload map[string]any, field string) bool {
+	if payload == nil {
+		return false
+	}
+
+	value, ok := payload[field]
+	if !ok {
+		return false
+	}
+
+	text, ok := value.(string)
+	return ok && text != ""
 }
 
 func isValidIngestEventLevel(level string) bool {

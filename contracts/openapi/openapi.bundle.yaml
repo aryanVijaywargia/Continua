@@ -785,6 +785,8 @@ components:
         - message
         - metric
         - custom
+        - state_change
+        - decision
     IngestEventLevel:
       type: string
       enum:
@@ -822,6 +824,8 @@ components:
           type: string
         payload:
           type: object
+          description: |
+            Free-form event payload. Semantic debugger conventions apply for some event types: `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
         idempotency_key:
           type: string
           description: Optional key for event-level deduplication
@@ -834,6 +838,8 @@ components:
         - message
         - metric
         - custom
+        - state_change
+        - decision
         - span_started
         - span_completed
         - span_failed

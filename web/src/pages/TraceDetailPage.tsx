@@ -14,16 +14,19 @@ import { useQuery } from '@tanstack/react-query';
 import {
   fetchSpans,
   fetchTrace,
+  isAuthError,
   type Span,
   type TimelineEvent,
   type TraceDetail,
 } from '../api/client';
+import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { CopyButton } from '../components/CopyButton';
 import { ExecutionWaterfall } from '../components/ExecutionWaterfall';
 import { FailureSummary } from '../components/FailureSummary';
 import { InspectorTabs } from '../components/InspectorTabs';
 import { JsonViewer } from '../components/JsonViewer';
 import { SpanDetail } from '../components/SpanDetail';
+import { StateDiffViewer } from '../components/StateDiffViewer';
 import { StatusBadge } from '../components/StatusBadge';
 import { TreeRail } from '../components/TreeRail';
 import { Timeline } from '../components/Timeline';
@@ -51,6 +54,7 @@ import {
   evaluateStaleTraceSignal,
   type StaleTraceSignal,
 } from '../utils/failureAnalysis';
+import { extractStateChanges } from '../utils/stateChanges';
 import { serializeSpanParam } from '../utils/traceDetailSearchParams';
 import {
   buildSpanTree,
@@ -68,6 +72,10 @@ const EMPTY_STALE_TRACE_SIGNAL: StaleTraceSignal = {
 };
 const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
 
+function queryErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
 export function TraceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { hasApiKey, prompt } = useRequireApiKey();
@@ -78,7 +86,7 @@ export function TraceDetailPage() {
 
   if (!id) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="text-red-600">Trace ID is required</div>
       </div>
     );
@@ -115,11 +123,16 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const timeline = useTraceTimeline(traceId);
   const trace = traceQuery.data ?? null;
   const spans = spansQuery.data?.spans ?? EMPTY_SPANS;
+  const timelineAuthError = isAuthError(timeline.rawError);
   const timelineStatus = trace ? timeline.traceStatus ?? trace.status : timeline.traceStatus;
   const duration = trace ? calculateDuration(trace.started_at, trace.ended_at) : null;
   const totalTokens = trace
     ? (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0)
     : 0;
+  const stateChanges = useMemo(
+    () => extractStateChanges(timeline.events),
+    [timeline.events]
+  );
   const returnTo = getReturnToDestination(location.state);
   const spanIndex = useMemo(() => buildSpanIndex(spans), [spans]);
   const failureAnalysis = useMemo(
@@ -194,20 +207,23 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
 
   if (traceQuery.isLoading || spansQuery.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-gray-500">Loading trace...</div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="text-slate-500 dark:text-slate-400">Loading trace...</div>
       </div>
     );
   }
 
   if (traceQuery.error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-red-600">
-          Error loading trace:{' '}
-          {traceQuery.error instanceof Error
-            ? traceQuery.error.message
-            : 'Unknown error'}
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+          {isAuthError(traceQuery.error) ? (
+            <AuthErrorBanner message={queryErrorMessage(traceQuery.error)} />
+          ) : (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+              Error loading trace: {queryErrorMessage(traceQuery.error)}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -215,12 +231,15 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
 
   if (spansQuery.error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-red-600">
-          Error loading spans:{' '}
-          {spansQuery.error instanceof Error
-            ? spansQuery.error.message
-            : 'Unknown error'}
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+          {isAuthError(spansQuery.error) ? (
+            <AuthErrorBanner message={queryErrorMessage(spansQuery.error)} />
+          ) : (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+              Error loading spans: {queryErrorMessage(spansQuery.error)}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -228,7 +247,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
 
   if (!trace) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="text-red-600">Trace not found</div>
       </div>
     );
@@ -243,6 +262,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       selectedBreadcrumbPath={selectedBreadcrumbPath}
       selectedSpan={selectedSpan}
       spanIndex={spanIndex}
+      events={timeline.events}
       traceContext={isDesktop ? null : (
         <TraceContextSection
           buildCopyTraceUrl={buildCopyTraceUrl}
@@ -260,33 +280,34 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       traceStatus={timelineStatus}
       isLive={timeline.isLive}
       isLoading={timeline.isLoading}
-      error={timeline.error}
+      error={timelineAuthError ? null : timeline.error}
       selectedSpanId={selectedSpanExternalId}
       onSelectSpan={handleSelectSpanAndShowDetails}
       spanIndex={spanIndex}
     />
   );
+  const stateContent = <StateDiffViewer changes={stateChanges} />;
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
-      <header className="border-b bg-white px-6 py-4">
+    <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
+      <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center gap-4">
-          <Link to={returnTo} className="text-gray-500 hover:text-gray-700">
+          <Link to={returnTo} className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
             {returnTo.startsWith('/sessions/') ? '← Session' : '← Traces'}
           </Link>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="truncate text-xl font-semibold text-gray-900">
+              <h1 className="truncate text-xl font-semibold text-slate-900 dark:text-slate-100">
                 {trace.name}
               </h1>
               <StatusBadge status={timelineStatus ?? trace.status} />
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500">
+            <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
               <span>{formatDuration(duration)}</span>
               <span>{formatTokens(totalTokens)} tokens</span>
               <span>{formatCost(trace.total_cost_usd)}</span>
               {trace.error_count && trace.error_count > 0 ? (
-                <span className="text-red-600">{trace.error_count} errors</span>
+                <span className="text-red-600 dark:text-red-300">{trace.error_count} errors</span>
               ) : null}
             </div>
           </div>
@@ -295,6 +316,10 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
 
       <div className="min-h-0 flex-1 overflow-hidden p-4">
         <div className="mx-auto flex h-full max-w-[96rem] flex-col gap-4">
+          {timelineAuthError ? (
+            <AuthErrorBanner message={queryErrorMessage(timeline.rawError)} />
+          ) : null}
+
           {isDesktop ? (
             <TraceContextSection
               buildCopyTraceUrl={buildCopyTraceUrl}
@@ -327,6 +352,8 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
             spanIndex={spanIndex}
             spanTree={spanTree}
             spans={spans}
+            stateChangeCount={stateChanges.length}
+            stateContent={stateContent}
             timelineContent={timelineContent}
             traceEndedAt={trace.ended_at}
             traceStartedAt={trace.started_at}
@@ -360,6 +387,8 @@ interface TraceWorkspaceProps {
   spanIndex: ReadonlyMap<string, Span>;
   spanTree: SpanTreeNode[];
   spans: Span[];
+  stateChangeCount: number;
+  stateContent: ReactNode;
   timelineContent: ReactNode;
   traceEndedAt?: string;
   traceStartedAt?: string;
@@ -388,6 +417,8 @@ function TraceWorkspace({
   spanIndex,
   spanTree,
   spans,
+  stateChangeCount,
+  stateContent,
   timelineContent,
   traceEndedAt,
   traceStartedAt,
@@ -439,11 +470,14 @@ function TraceWorkspace({
         <InspectorTabs
           details={detailsContent}
           timeline={timelineContent}
+          state={stateContent}
+          stateCount={stateChangeCount}
           switchToDetailsRef={inspectorSwitchToDetailsRef}
         />
       }
       mobileDetails={detailsContent}
       mobileTimeline={timelineContent}
+      mobileState={stateContent}
       activeMobileTab={activeMobileTab}
       onMobileTabChange={onMobileTabChange}
     />
@@ -476,6 +510,7 @@ function TraceDetailsSurface({
   selectedBreadcrumbPath,
   selectedSpan,
   spanIndex,
+  events,
   traceContext,
 }: {
   staleTraceSignal: StaleTraceSignal;
@@ -485,10 +520,11 @@ function TraceDetailsSurface({
   selectedBreadcrumbPath: ReturnType<typeof buildBreadcrumbPath>;
   selectedSpan: Span | null;
   spanIndex: ReadonlyMap<string, Span>;
+  events: TimelineEvent[];
   traceContext: ReactNode;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-gray-50 p-4">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-slate-50 p-4 dark:bg-slate-950">
       <div className="space-y-4">
         {traceContext}
 
@@ -503,12 +539,13 @@ function TraceDetailsSurface({
           <StaleTraceSignalPanel staleTraceSignal={staleTraceSignal} />
         ) : null}
 
-        <div className="min-h-[22rem] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="min-h-[22rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <SpanDetail
             span={selectedSpan}
             breadcrumbPath={selectedBreadcrumbPath}
             onSelectSpan={onSelectSpan}
             spanIndex={spanIndex}
+            events={events}
           />
         </div>
       </div>
@@ -528,18 +565,18 @@ function TraceContextSection({
   trace: TraceDetail;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70">
         <button
           type="button"
           className="flex items-center gap-3 text-left"
           aria-expanded={open}
           onClick={onToggle}
         >
-          <span className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-600">
+          <span className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
             Trace Context
           </span>
-          <span className="rounded-full bg-white px-2 py-1 text-xs font-medium text-gray-500 ring-1 ring-gray-200">
+          <span className="rounded-full bg-white px-2 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
             {open ? 'Hide' : 'Show'}
           </span>
         </button>
@@ -572,12 +609,12 @@ function TraceContextSection({
               value={trace.session_id ? (
                 <Link
                   to={`/sessions/${trace.session_id}`}
-                  className="inline-flex flex-col text-left text-blue-600 hover:text-blue-800"
+                  className="inline-flex flex-col text-left text-blue-600 hover:text-blue-800 dark:text-sky-400 dark:hover:text-sky-300"
                 >
-                  <span className="text-sm font-medium text-gray-900">
+                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
                     {trace.session_external_id ?? trace.session_id}
                   </span>
-                  <span className="font-mono text-xs text-gray-500">
+                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
                     {trace.session_id}
                   </span>
                 </Link>
@@ -607,7 +644,7 @@ function TraceContextSection({
                   {trace.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="rounded-full border border-gray-200 bg-white px-3 py-1 font-mono text-xs text-gray-700"
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       {tag}
                     </span>
@@ -649,12 +686,12 @@ function TraceContextField({
   copyButtonLabel?: string;
 }) {
   return (
-    <div className={`rounded-lg border border-gray-200 bg-gray-50 p-4 ${className}`.trim()}>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
+    <div className={`rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/70 ${className}`.trim()}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
         {label}
       </div>
       <div className="mt-2 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1 text-sm text-gray-900">{value}</div>
+        <div className="min-w-0 flex-1 text-sm text-slate-900 dark:text-slate-100">{value}</div>
         {copyValue && copyButtonLabel ? (
           <CopyButton
             aria-label={copyButtonLabel}
@@ -669,9 +706,9 @@ function TraceContextField({
 
 function TracePayloadPanel({ title, data }: { title: string; data: unknown }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-      <h3 className="mb-2 text-sm font-medium text-gray-700">{title}</h3>
-      <JsonViewer data={data} className="max-h-80 overflow-y-auto bg-white" />
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+      <h3 className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">{title}</h3>
+      <JsonViewer data={data} className="max-h-80 overflow-y-auto bg-white dark:bg-slate-900" />
     </div>
   );
 }
@@ -702,11 +739,17 @@ function StaleTraceSignalPanel({
 
 function renderContextText(value: string | undefined, monospace = false) {
   if (value === undefined) {
-    return <span className="text-sm text-gray-400">-</span>;
+    return <span className="text-sm text-slate-400 dark:text-slate-500">-</span>;
   }
 
   return (
-    <span className={monospace ? 'font-mono text-xs text-gray-900' : 'text-sm text-gray-900'}>
+    <span
+      className={
+        monospace
+          ? 'font-mono text-xs text-slate-900 dark:text-slate-100'
+          : 'text-sm text-slate-900 dark:text-slate-100'
+      }
+    >
       {value}
     </span>
   );

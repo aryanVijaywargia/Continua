@@ -77,6 +77,43 @@ describe('TraceDetailPage', () => {
     );
   });
 
+  it('shows the auth recovery banner when the trace request returns 401', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ message: 'Invalid or missing API key' }, 401),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
+    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+      'href',
+      '/settings'
+    );
+  });
+
+  it('shows the auth recovery banner when the timeline request returns 401', async () => {
+    const rootSpan = createSpan({ span_id: 'timeline-auth-root', name: 'Timeline auth root' });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', error_count: 0 }),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () => jsonResponse({ message: 'Invalid or missing API key' }, 401),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
+    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+      'href',
+      '/settings'
+    );
+    expect(screen.getByRole('heading', { name: 'Execution Waterfall' })).toBeInTheDocument();
+  });
+
   it('renders the non-desktop stacked layout with Details active by default', async () => {
     setMatchMediaMatches(false);
     const rootSpan = createSpan({ span_id: 'mobile-root', name: 'Mobile root' });
@@ -107,6 +144,105 @@ describe('TraceDetailPage', () => {
       'aria-expanded',
       'false'
     );
+  });
+
+  it('renders the state tab with a badge and shows span decisions in details', async () => {
+    const statefulSpan = createSpan({
+      span_id: 'decision-span',
+      name: 'Decision span',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', error_count: 0 }),
+        spans: () => jsonResponse({ spans: [statefulSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'state-change',
+                span_id: 'decision-span',
+                span_name: 'Decision span',
+                event_type: 'state_change',
+                payload: {
+                  key: 'status',
+                  namespace: 'order',
+                  old_value: 'pending',
+                  new_value: 'approved',
+                },
+              }),
+              createTimelineEvent({
+                id: 'decision-event',
+                span_id: 'decision-span',
+                span_name: 'Decision span',
+                event_type: 'decision',
+                payload: {
+                  question: 'Which model?',
+                  chosen: 'gpt-4.1',
+                  reasoning: 'Need higher accuracy',
+                },
+              }),
+            ],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}?span=decision-span`]);
+
+    const decisionsHeading = await screen.findByText('Decisions');
+    expect(
+      within(decisionsHeading.parentElement!).getByText('Which model?')
+    ).toBeInTheDocument();
+
+    const stateTab = screen.getByRole('button', { name: 'State' });
+    expect(stateTab).toHaveTextContent('1');
+
+    await userEvent.setup().click(stateTab);
+    expect((await screen.findAllByText('status')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('pending').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('approved').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the state tab available in the mobile workspace', async () => {
+    setMatchMediaMatches(false);
+    const mobileSpan = createSpan({ span_id: 'mobile-state', name: 'Mobile state span' });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', error_count: 0 }),
+        spans: () => jsonResponse({ spans: [mobileSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'mobile-state-change',
+                span_id: 'mobile-state',
+                span_name: 'Mobile state span',
+                event_type: 'state_change',
+                payload: {
+                  key: 'phase',
+                  old_value: 'queued',
+                  new_value: 'running',
+                },
+              }),
+            ],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}?span=mobile-state`]);
+
+    const stateTab = await screen.findByRole('button', { name: 'State' });
+    expect(stateTab).toBeInTheDocument();
+
+    await userEvent.setup().click(stateTab);
+    expect((await screen.findAllByText('phase')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('queued').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('running').length).toBeGreaterThan(0);
   });
 
   it('shows and hides inline tree metrics from the tree-rail toggle', async () => {

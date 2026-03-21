@@ -60,6 +60,22 @@ describe('SessionsPage', () => {
     expect(screen.getByRole('combobox', { name: 'Rows per page' })).toHaveDisplayValue('50');
   });
 
+  it('shows the auth recovery banner when the sessions request returns 401', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionsList: () => jsonResponse({ message: 'Invalid or missing API key' }, 401),
+      })
+    );
+
+    renderTraceRoutes(['/sessions']);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
+    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+      'href',
+      '/settings'
+    );
+  });
+
   it('normalizes malformed params in the URL', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 

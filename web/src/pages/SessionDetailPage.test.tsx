@@ -51,6 +51,22 @@ describe('SessionDetailPage', () => {
     await waitForSessionTraceFetch(`?limit=20&session_id=${SESSION_ID}`);
   });
 
+  it('shows the auth recovery banner when the session request returns 401', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionDetail: () => jsonResponse({ message: 'Invalid or missing API key' }, 401),
+      })
+    );
+
+    renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
+    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+      'href',
+      '/settings'
+    );
+  });
+
   it('rehydrates URL state, toggles sorting, and updates page size', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(

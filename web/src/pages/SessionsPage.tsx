@@ -1,7 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { fetchSessions, type Session } from '../api/client';
+import { fetchSessions, isAuthError, type Session } from '../api/client';
+import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
 import { useRequireApiKey } from '../hooks/useRequireApiKey';
@@ -138,29 +139,29 @@ function SessionsContent() {
   }, [filters.limit, filters.offset, sessions.length, setFilters, total]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Sessions</h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Sessions</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Search sessions by external ID, filter by user, and sort for scale.
             </p>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-slate-500 dark:text-slate-400">
             <span>{total} total</span>
             {sessionsQuery.isFetching && !sessionsQuery.isPending && (
-              <span className="ml-2 text-blue-600">Updating...</span>
+              <span className="ml-2 text-blue-600 dark:text-sky-400">Updating...</span>
             )}
           </div>
         </div>
 
-        <section className="mb-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label
                 htmlFor="session-search"
-                className="mb-1 block text-sm font-medium text-gray-700"
+                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
               >
                 Search
               </label>
@@ -170,14 +171,14 @@ function SessionsContent() {
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
                 placeholder="Search external ID or name"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
               />
             </div>
 
             <div>
               <label
                 htmlFor="session-user-id"
-                className="mb-1 block text-sm font-medium text-gray-700"
+                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
               >
                 User ID
               </label>
@@ -187,7 +188,7 @@ function SessionsContent() {
                 value={userIdDraft}
                 onChange={(event) => setUserIdDraft(event.target.value)}
                 placeholder="Filter by exact user"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
               />
             </div>
           </div>
@@ -197,7 +198,7 @@ function SessionsContent() {
               <button
                 type="button"
                 onClick={clearAll}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:border-gray-400 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 dark:hover:text-slate-100"
               >
                 Clear filters
               </button>
@@ -206,24 +207,36 @@ function SessionsContent() {
         </section>
 
         {sessionsQuery.error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-            Error loading sessions:{' '}
-            {sessionsQuery.error instanceof Error
-              ? sessionsQuery.error.message
-              : 'Unknown error'}
-          </div>
+          isAuthError(sessionsQuery.error) ? (
+            <div className="mb-4">
+              <AuthErrorBanner
+                message={
+                  sessionsQuery.error instanceof Error
+                    ? sessionsQuery.error.message
+                    : 'Invalid or missing API key'
+                }
+              />
+            </div>
+          ) : (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+              Error loading sessions:{' '}
+              {sessionsQuery.error instanceof Error
+                ? sessionsQuery.error.message
+                : 'Unknown error'}
+            </div>
+          )
         )}
 
         {sessionsQuery.isPending && !sessionsQuery.data ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
             Loading sessions...
           </div>
         ) : sessions.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               {hasFilters ? 'No matching sessions' : 'No sessions yet'}
             </h2>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               {hasFilters
                 ? 'Try broadening the filters or clearing them.'
                 : 'Sessions are created when traces include a session identifier.'}
@@ -231,20 +244,20 @@ function SessionsContent() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-950/70">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Session
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       User ID
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       <SortableHeader
                         label="Traces"
                         isActive={filters.sort_by === 'trace_count'}
@@ -253,7 +266,7 @@ function SessionsContent() {
                         onClick={handleTraceCountSortToggle}
                       />
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       <SortableHeader
                         label="Created"
                         isActive={filters.sort_by === 'created_at'}
@@ -264,7 +277,7 @@ function SessionsContent() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
+                <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
                   {sessions.map((session) => (
                     <SessionRow
                       key={session.id}
@@ -300,29 +313,29 @@ function SessionRow({
   returnTo: string;
 }) {
   return (
-    <tr className="transition hover:bg-gray-50">
+    <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
       <td className="px-6 py-4 align-top">
         <div className="min-w-[14rem]">
           <Link
             to={`/sessions/${session.id}`}
             state={{ returnTo }}
-            className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-sky-400 dark:hover:text-sky-300"
           >
             {session.external_id}
           </Link>
-          <div className="mt-1 font-mono text-xs text-gray-400">{session.id}</div>
+          <div className="mt-1 font-mono text-xs text-slate-400 dark:text-slate-500">{session.id}</div>
         </div>
       </td>
-      <td className="px-6 py-4 text-sm text-gray-900 align-top">
+      <td className="px-6 py-4 text-sm text-slate-900 align-top dark:text-slate-100">
         {session.name || '-'}
       </td>
-      <td className="px-6 py-4 text-sm text-gray-500 align-top">
+      <td className="px-6 py-4 text-sm text-slate-500 align-top dark:text-slate-400">
         {session.user_id || '-'}
       </td>
-      <td className="px-6 py-4 text-sm text-gray-900 align-top">
+      <td className="px-6 py-4 text-sm text-slate-900 align-top dark:text-slate-100">
         {session.trace_count ?? 0}
       </td>
-      <td className="px-6 py-4 text-sm text-gray-500 align-top">
+      <td className="px-6 py-4 text-sm text-slate-500 align-top dark:text-slate-400">
         {formatRelativeTime(session.created_at)}
       </td>
     </tr>

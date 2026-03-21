@@ -40,7 +40,7 @@ generate: ## Generate ALL code (contracts, sqlc, API types)
 	fi
 	@echo "==> Generating Python SDK types..."
 	@if [ -f contracts/openapi/openapi.bundle.yaml ]; then \
-		cd sdks/python && uv run python scripts/generate_types.py 2>/dev/null || true; \
+		cd sdks/python && uv run --with datamodel-code-generator python scripts/generate_types.py; \
 	fi
 	@echo "✅ All code generated"
 

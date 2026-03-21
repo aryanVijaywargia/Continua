@@ -5,7 +5,8 @@ export type MobileWorkspaceTabId =
   | 'details'
   | 'waterfall'
   | 'tree'
-  | 'timeline';
+  | 'timeline'
+  | 'state';
 
 interface WorkspaceShellProps {
   isDesktop: boolean;
@@ -14,6 +15,7 @@ interface WorkspaceShellProps {
   inspector: ReactNode;
   mobileDetails: ReactNode;
   mobileTimeline: ReactNode;
+  mobileState: ReactNode;
   activeMobileTab: MobileWorkspaceTabId;
   onMobileTabChange: (tab: MobileWorkspaceTabId) => void;
 }
@@ -23,6 +25,7 @@ const MOBILE_TABS: Array<{ id: MobileWorkspaceTabId; label: string }> = [
   { id: 'waterfall', label: 'Waterfall' },
   { id: 'tree', label: 'Tree' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'state', label: 'State' },
 ];
 const USE_STATIC_DESKTOP_LAYOUT =
   typeof navigator !== 'undefined' && /\bjsdom\b/i.test(navigator.userAgent);
@@ -34,6 +37,7 @@ export function WorkspaceShell({
   inspector,
   mobileDetails,
   mobileTimeline,
+  mobileState,
   activeMobileTab,
   onMobileTabChange,
 }: WorkspaceShellProps) {
@@ -74,8 +78,8 @@ export function WorkspaceShell({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-      <div className="border-b border-gray-200 bg-gray-50 px-3 py-3">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="border-b border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-950/70">
         <div className="flex flex-wrap items-center gap-2">
           {MOBILE_TABS.map((tab) => (
             <button
@@ -83,8 +87,8 @@ export function WorkspaceShell({
               type="button"
               className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
                 activeMobileTab === tab.id
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100'
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
+                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800'
               }`}
               aria-pressed={activeMobileTab === tab.id}
               onClick={() => onMobileTabChange(tab.id)}
@@ -120,6 +124,12 @@ export function WorkspaceShell({
         >
           {mobileTimeline}
         </div>
+        <div
+          className="h-full"
+          style={{ display: activeMobileTab === 'state' ? 'block' : 'none' }}
+        >
+          {mobileState}
+        </div>
       </div>
     </section>
   );
@@ -133,9 +143,10 @@ function ResizeHandle({ horizontal = false }: { horizontal?: boolean }) {
       }`}
     >
       <div
-        className={`rounded-full bg-gray-200 transition group-hover:bg-gray-300 ${
+        className={`rounded-full transition group-hover:opacity-90 ${
           horizontal ? 'h-1 w-10' : 'h-10 w-1'
         }`}
+        style={{ backgroundColor: 'var(--continua-panel-separator)' }}
       />
     </Separator>
   );

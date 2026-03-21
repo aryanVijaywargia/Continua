@@ -1,7 +1,9 @@
 package ingest_test
 
 import (
+	"bytes"
 	"context"
+	"log"
 	"testing"
 	"time"
 
@@ -130,6 +132,157 @@ func TestIngest_RejectsSyntheticTimelineEventTypes(t *testing.T) {
 	var vErr *ingest.ValidationError
 	require.ErrorAs(t, err, &vErr)
 	assert.Contains(t, vErr.Errors, "event[0] invalid event_type: span_started")
+}
+
+func TestIngest_AcceptsSemanticEventTypes(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	svc := newTestService(s)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	traceID := "trace-" + uuid.NewString()[:8]
+	start := time.Now().UTC()
+	stateChangeType := "state_change"
+	decisionType := "decision"
+
+	resp, err := svc.Ingest(ctx, projectID, &ingest.IngestRequest{
+		BatchKey: "batch-" + uuid.NewString()[:8],
+		Traces: []ingest.TraceInput{
+			{
+				TraceID:   traceID,
+				Name:      testutil.StrPtr("semantic trace"),
+				StartTime: &start,
+			},
+		},
+		Spans: []ingest.SpanInput{
+			{
+				TraceID:   traceID,
+				SpanID:    "span-1",
+				Name:      "semantic span",
+				StartTime: start,
+			},
+		},
+		Events: []ingest.EventInput{
+			{
+				TraceID:   traceID,
+				SpanID:    "span-1",
+				EventType: &stateChangeType,
+				Payload: map[string]any{
+					"key":       "status",
+					"old_value": "pending",
+					"new_value": "running",
+				},
+			},
+			{
+				TraceID:   traceID,
+				SpanID:    "span-1",
+				EventType: &decisionType,
+				Payload: map[string]any{
+					"question": "route request?",
+					"chosen":   "fast-path",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, int32(2), resp.EventCount)
+
+	trace, err := q.GetTraceByExternalID(ctx, platform.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   traceID,
+	})
+	require.NoError(t, err)
+
+	events, err := q.ListSpanEventsByTrace(ctx, trace.ID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.ElementsMatch(
+		t,
+		[]string{stateChangeType, decisionType},
+		[]string{events[0].EventType, events[1].EventType},
+	)
+}
+
+func TestIngest_WarnsForMissingSemanticEventFieldsButStillAccepts(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	svc := newTestService(s)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	traceID := "trace-" + uuid.NewString()[:8]
+	start := time.Now().UTC()
+	stateChangeType := "state_change"
+	decisionType := "decision"
+
+	var logBuffer bytes.Buffer
+	originalWriter := log.Writer()
+	originalFlags := log.Flags()
+	log.SetOutput(&logBuffer)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(originalWriter)
+		log.SetFlags(originalFlags)
+	})
+
+	resp, err := svc.Ingest(ctx, projectID, &ingest.IngestRequest{
+		BatchKey: "batch-" + uuid.NewString()[:8],
+		Traces: []ingest.TraceInput{
+			{
+				TraceID:   traceID,
+				Name:      testutil.StrPtr("warning trace"),
+				StartTime: &start,
+			},
+		},
+		Spans: []ingest.SpanInput{
+			{
+				TraceID:   traceID,
+				SpanID:    "span-1",
+				Name:      "warning span",
+				StartTime: start,
+			},
+		},
+		Events: []ingest.EventInput{
+			{
+				TraceID:   traceID,
+				SpanID:    "span-1",
+				EventType: &stateChangeType,
+				Payload: map[string]any{
+					"old_value": "pending",
+					"new_value": "running",
+				},
+			},
+			{
+				TraceID:   traceID,
+				SpanID:    "span-1",
+				EventType: &decisionType,
+				Payload: map[string]any{
+					"question": "route request?",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, int32(2), resp.EventCount)
+
+	trace, err := q.GetTraceByExternalID(ctx, platform.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   traceID,
+	})
+	require.NoError(t, err)
+
+	events, err := q.ListSpanEventsByTrace(ctx, trace.ID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+
+	logOutput := logBuffer.String()
+	assert.Contains(t, logOutput, "[WARN] ingest state_change event missing semantic payload field 'key'")
+	assert.Contains(t, logOutput, "[WARN] ingest decision event missing semantic payload fields")
 }
 
 func TestIngest_RejectsInvalidEventLevel(t *testing.T) {

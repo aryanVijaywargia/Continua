@@ -257,6 +257,97 @@ class SpanContext:
             payload=metric_payload,
         )
 
+    def state_change(
+        self,
+        key: str,
+        old_value: Any,
+        new_value: Any,
+        namespace: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        """Emit a structured state change event for this span.
+
+        Args:
+            key: State field name that changed.
+            old_value: Previous value before the transition.
+            new_value: New value after the transition.
+            namespace: Optional grouping namespace for related state keys.
+            message: Optional human-readable summary shown in generic timeline fallbacks.
+
+        Returns:
+            None.
+
+        Example:
+            with span("validate_order") as s:
+                s.state_change(
+                    "status",
+                    "pending",
+                    "approved",
+                    namespace="order",
+                    message="Order approved after validation",
+                )
+        """
+        payload: dict[str, Any] = {
+            "key": key,
+            "old_value": old_value,
+            "new_value": new_value,
+        }
+        if namespace is not None:
+            payload["namespace"] = namespace
+
+        self._record_event(
+            event_type="state_change",
+            level="info",
+            message=message,
+            payload=payload,
+        )
+
+    def decision(
+        self,
+        question: str,
+        chosen: Any,
+        alternatives: list[Any] | None = None,
+        reasoning: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        """Emit a structured decision event for this span.
+
+        Args:
+            question: The question or branch point being evaluated.
+            chosen: The selected answer, option, or branch outcome.
+            alternatives: Optional rejected options considered alongside the choice.
+            reasoning: Optional explanation for why the choice was made.
+            message: Optional human-readable summary shown in generic timeline fallbacks.
+
+        Returns:
+            None.
+
+        Example:
+            with span("route_request") as s:
+                s.decision(
+                    "Which model should handle the request?",
+                    "gpt-4.1",
+                    alternatives=["gpt-4o-mini", "gpt-4.1"],
+                    reasoning="Escalated for higher quality on refund requests",
+                    message="Escalated to a higher-capability model",
+                )
+        """
+        payload: dict[str, Any] = {
+            "question": question,
+            "chosen": chosen,
+        }
+        if alternatives is not None:
+            payload["alternatives"] = alternatives
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
+
+        self._record_event(
+            event_type="decision",
+            level="info",
+            message=message,
+            payload=payload,
+        )
+
     def __enter__(self) -> SpanContext:
         """Enter the span context."""
         self._token = _current_span.set(self)

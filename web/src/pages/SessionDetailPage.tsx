@@ -1,11 +1,12 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { CopyButton } from '../components/CopyButton';
 import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
 import { StatusBadge } from '../components/StatusBadge';
-import { fetchSession, fetchTraces, type Trace } from '../api/client';
+import { fetchSession, fetchTraces, isAuthError, type Trace } from '../api/client';
 import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import { buildCanonicalQueryString, parseTracesParams, serializeTracesParams } from '../utils/tracesSearchParams';
@@ -97,6 +98,10 @@ function getSessionsReturnToDestination(state: unknown): string {
     : '/sessions';
 }
 
+function queryErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { hasApiKey, prompt } = useRequireApiKey();
@@ -107,7 +112,7 @@ export function SessionDetailPage() {
 
   if (!id) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center dark:bg-slate-950">
         <div className="text-red-600">Session ID is required</div>
       </div>
     );
@@ -169,20 +174,23 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
 
   if (sessionQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Loading session...</div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center dark:bg-slate-950">
+        <div className="text-slate-500 dark:text-slate-400">Loading session...</div>
       </div>
     );
   }
 
   if (sessionQuery.error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-red-600">
-          Error loading session:{' '}
-          {sessionQuery.error instanceof Error
-            ? sessionQuery.error.message
-            : 'Unknown error'}
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+          {isAuthError(sessionQuery.error) ? (
+            <AuthErrorBanner message={queryErrorMessage(sessionQuery.error)} />
+          ) : (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+              Error loading session: {queryErrorMessage(sessionQuery.error)}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -190,8 +198,8 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
 
   if (!sessionQuery.data) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Session not found</div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center dark:bg-slate-950">
+        <div className="text-slate-500 dark:text-slate-400">Session not found</div>
       </div>
     );
   }
@@ -199,20 +207,20 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
   const session = sessionQuery.data;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <Link
           to={returnTo}
-          className="text-blue-600 hover:text-blue-800 text-sm mb-4 inline-block"
+          className="mb-4 inline-block text-sm text-blue-600 hover:text-blue-800 dark:text-sky-400 dark:hover:text-sky-300"
         >
           &larr; Back to Sessions
         </Link>
 
-        <section className="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <section className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-bold text-gray-900">{session.external_id}</h1>
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{session.external_id}</h1>
                 <CopyButton
                   aria-label="Copy session external ID"
                   value={session.external_id}
@@ -221,7 +229,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                 />
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-3">
-                <span className="font-mono text-sm text-gray-500">{session.id}</span>
+                <span className="font-mono text-sm text-slate-500 dark:text-slate-400">{session.id}</span>
                 <CopyButton
                   aria-label="Copy session UUID"
                   value={session.id}
@@ -230,28 +238,28 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                 />
               </div>
               {session.name ? (
-                <p className="mt-3 text-sm text-gray-600">{session.name}</p>
+                <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{session.name}</p>
               ) : null}
             </div>
 
             <dl className="grid gap-4 sm:grid-cols-3">
               <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">
+                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                   User ID
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900">{session.user_id || '-'}</dd>
+                <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{session.user_id || '-'}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">
+                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                   Trace Count
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900">{session.trace_count ?? 0}</dd>
+                <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{session.trace_count ?? 0}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">
+                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                   Created
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900">
+                <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">
                   {formatRelativeTime(session.created_at)}
                 </dd>
               </div>
@@ -261,61 +269,64 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
 
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Traces</h2>
-            <p className="mt-1 text-sm text-gray-500">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Traces</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Sort by started time and preserve table state in the URL.
             </p>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-slate-500 dark:text-slate-400">
             <span>{total} traces</span>
             {tracesQuery.isFetching && !tracesQuery.isPending && (
-              <span className="ml-2 text-blue-600">Updating...</span>
+              <span className="ml-2 text-blue-600 dark:text-sky-400">Updating...</span>
             )}
           </div>
         </div>
 
         {tracesQuery.error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-            Error loading traces:{' '}
-            {tracesQuery.error instanceof Error
-              ? tracesQuery.error.message
-              : 'Unknown error'}
-          </div>
+          isAuthError(tracesQuery.error) ? (
+            <div className="mb-4">
+              <AuthErrorBanner message={queryErrorMessage(tracesQuery.error)} />
+            </div>
+          ) : (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+              Error loading traces: {queryErrorMessage(tracesQuery.error)}
+            </div>
+          )
         )}
 
         {tracesQuery.isPending && !tracesQuery.data ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
             Loading traces...
           </div>
         ) : traces.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">No traces in this session</h2>
-            <p className="mt-2 text-sm text-gray-500">
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">No traces in this session</h2>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               Traces will appear here as they are ingested for this session.
             </p>
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-950/70">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Duration
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Tokens
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Cost
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       <SortableHeader
                         label="Started"
                         isActive={filters.sort_by === 'started_at'}
@@ -325,7 +336,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
+                <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
                   {traces.map((trace) => (
                     <SessionTraceRow
                       key={trace.id}
@@ -364,12 +375,12 @@ function SessionTraceRow({
   const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
 
   return (
-    <tr className="transition hover:bg-gray-50">
+    <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
       <td className="px-6 py-4 align-top">
         <Link
           to={`/traces/${trace.id}`}
           state={{ returnTo }}
-          className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-sky-400 dark:hover:text-sky-300"
         >
           {trace.name}
         </Link>
@@ -377,16 +388,16 @@ function SessionTraceRow({
       <td className="px-6 py-4 whitespace-nowrap align-top">
         <StatusBadge status={trace.status} />
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 align-top">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
         {formatDuration(duration)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 align-top">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
         {formatTokens(totalTokens)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 align-top">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
         {formatCost(trace.total_cost_usd)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 align-top">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 align-top dark:text-slate-400">
         {formatRelativeTime(trace.started_at)}
       </td>
     </tr>

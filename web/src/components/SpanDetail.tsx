@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Span } from '../api/client';
+import { Span, TimelineEvent } from '../api/client';
 import { CopyButton } from './CopyButton';
 import { StatusBadge } from './StatusBadge';
 import { JsonViewer } from './JsonViewer';
@@ -10,6 +10,10 @@ import {
   formatTokens,
 } from '../utils/format';
 import type { BreadcrumbSegment } from '../utils/failureAnalysis';
+import {
+  formatInlineSemanticValue,
+  getDecisionDetails,
+} from '../utils/eventSemantics';
 import { SpanBreadcrumb } from './SpanBreadcrumb';
 import { TruncationBanner } from './TruncationBanner';
 
@@ -18,6 +22,7 @@ interface SpanDetailProps {
   breadcrumbPath: BreadcrumbSegment[];
   onSelectSpan: (spanId: string) => void;
   spanIndex: ReadonlyMap<string, Span>;
+  events?: TimelineEvent[];
 }
 
 /**
@@ -28,10 +33,11 @@ export function SpanDetail({
   breadcrumbPath,
   onSelectSpan,
   spanIndex,
+  events = [],
 }: SpanDetailProps) {
   if (!span) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-500">
+      <div className="h-full flex items-center justify-center text-slate-500 dark:text-slate-400">
         Select a span to view details
       </div>
     );
@@ -44,6 +50,14 @@ export function SpanDetail({
   const parentSpan = span.parent_span_id
     ? spanIndex.get(span.parent_span_id) ?? null
     : null;
+  const decisions = events.flatMap((event) => {
+    if (event.span_id !== span.span_id) {
+      return [];
+    }
+
+    const decision = getDecisionDetails(event);
+    return decision ? [{ event, ...decision }] : [];
+  });
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -54,9 +68,9 @@ export function SpanDetail({
           onSelectSpan={onSelectSpan}
           className="mb-3"
         />
-        <h2 className="text-lg font-semibold text-gray-900">{span.name}</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{span.name}</h2>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-sm text-gray-500">{span.kind}</span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">{span.kind}</span>
           <StatusBadge status={span.status} />
         </div>
       </div>
@@ -71,14 +85,14 @@ export function SpanDetail({
       {/* Token breakdown */}
       {(span.tokens_in || span.tokens_out) && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Token Breakdown</h3>
-          <div className="bg-gray-50 rounded p-3 text-sm">
+          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Token Breakdown</h3>
+          <div className="rounded bg-slate-50 p-3 text-sm dark:bg-slate-950/70">
             <div className="flex justify-between">
-              <span className="text-gray-600">Input tokens:</span>
+              <span className="text-slate-600 dark:text-slate-300">Input tokens:</span>
               <span className="font-mono">{span.tokens_in ?? 0}</span>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-gray-600">Output tokens:</span>
+              <span className="text-slate-600 dark:text-slate-300">Output tokens:</span>
               <span className="font-mono">{span.tokens_out ?? 0}</span>
             </div>
           </div>
@@ -98,8 +112,8 @@ export function SpanDetail({
       {/* LLM context */}
       {showLLMContext && (
         <div className="mb-6">
-          <h3 className="mb-2 text-sm font-medium text-gray-700">LLM Context</h3>
-          <div className="rounded bg-gray-50 p-3 text-sm">
+          <h3 className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">LLM Context</h3>
+          <div className="rounded bg-slate-50 p-3 text-sm dark:bg-slate-950/70">
             <DetailRow label="Model" value={span.model} />
             <DetailRow label="Provider" value={span.provider} className="mt-1" />
           </div>
@@ -109,7 +123,7 @@ export function SpanDetail({
       {/* Input */}
       {span.input !== undefined && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Input</h3>
+          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Input</h3>
           <TruncationBanner
             title="Input payload"
             truncated={span.input_truncated}
@@ -123,7 +137,7 @@ export function SpanDetail({
       {/* Output */}
       {span.output !== undefined && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Output</h3>
+          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Output</h3>
           <TruncationBanner
             title="Output payload"
             truncated={span.output_truncated}
@@ -137,15 +151,54 @@ export function SpanDetail({
       {/* Metadata */}
       {span.metadata && Object.keys(span.metadata).length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Metadata</h3>
+          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Metadata</h3>
           <JsonViewer data={span.metadata} />
+        </div>
+      )}
+
+      {decisions.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Decisions</h3>
+          <div className="space-y-3">
+            {decisions.map((decision) => (
+              <div
+                key={decision.event.id}
+                className="rounded border border-blue-100 bg-blue-50/70 p-3 dark:border-sky-500/30 dark:bg-sky-500/10"
+              >
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  {decision.question}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                  <span>Chosen</span>
+                  <DecisionValuePill tone="accent">
+                    {formatInlineSemanticValue(decision.chosen)}
+                  </DecisionValuePill>
+                </div>
+                {decision.reasoning ? (
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{decision.reasoning}</p>
+                ) : null}
+                {decision.alternatives && decision.alternatives.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <span>Alternatives</span>
+                    {decision.alternatives.map((alternative, index) => (
+                      <DecisionValuePill
+                        key={`${decision.event.id}-alternative-${index}`}
+                      >
+                        {formatInlineSemanticValue(alternative)}
+                      </DecisionValuePill>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {/* IDs */}
       <div className="mb-6">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">Identifiers</h3>
-        <div className="bg-gray-50 rounded p-3 text-sm">
+          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Identifiers</h3>
+          <div className="rounded bg-slate-50 p-3 text-sm dark:bg-slate-950/70">
           <DetailRow label="Span UUID" value={span.id} mono />
           <DetailRow
             label="Span ID"
@@ -168,7 +221,7 @@ export function SpanDetail({
                   <button
                     type="button"
                     aria-label={`Select parent span ${span.parent_span_id}`}
-                    className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                     onClick={() => onSelectSpan(parentSpan.span_id)}
                   >
                     {span.parent_span_id}
@@ -192,8 +245,8 @@ export function SpanDetail({
 
       {/* Timestamps */}
       <div>
-        <h3 className="text-sm font-medium text-gray-700 mb-2">Timestamps</h3>
-        <div className="bg-gray-50 rounded p-3 text-sm">
+        <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Timestamps</h3>
+        <div className="rounded bg-slate-50 p-3 text-sm dark:bg-slate-950/70">
           <DetailRow
             label="Started"
             value={formatTimestamp(span.started_at)}
@@ -220,10 +273,30 @@ interface MetricCardProps {
 
 function MetricCard({ label, value }: MetricCardProps) {
   return (
-    <div className="bg-gray-50 rounded p-3 text-center">
-      <div className="text-xl font-semibold text-gray-900">{value}</div>
-      <div className="text-xs text-gray-500 mt-1">{label}</div>
+    <div className="rounded p-3 text-center bg-slate-50 dark:bg-slate-950/70">
+      <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{value}</div>
+      <div className="text-xs text-slate-500 mt-1 dark:text-slate-400">{label}</div>
     </div>
+  );
+}
+
+function DecisionValuePill({
+  children,
+  tone = 'neutral',
+}: {
+  children: string;
+  tone?: 'neutral' | 'accent';
+}) {
+  return (
+    <span
+      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+        tone === 'accent'
+          ? 'border-blue-200 bg-white text-blue-800 dark:border-sky-500/40 dark:bg-slate-950 dark:text-sky-200'
+          : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200'
+      }`}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -246,7 +319,7 @@ function DetailRow({
 
   return (
     <div className={`flex justify-between gap-4 ${className}`.trim()}>
-      <span className="text-gray-600">{label}:</span>
+      <span className="text-slate-600 dark:text-slate-300">{label}:</span>
       {hasValue ? (
         <span className="flex min-w-0 items-center justify-end gap-2">
           <span className={mono ? 'font-mono text-xs text-right' : 'text-right'}>
@@ -255,7 +328,7 @@ function DetailRow({
           {action}
         </span>
       ) : (
-        <span className="text-gray-400">-</span>
+        <span className="text-slate-400 dark:text-slate-500">-</span>
       )}
     </div>
   );

@@ -14,8 +14,8 @@ export function FailureSummary({
   const primaryFailedSpan = summary.primaryFailedSpan;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-red-200 bg-white shadow-sm">
-      <div className="border-b border-red-200 bg-red-50 px-4 py-3">
+    <section className="overflow-hidden rounded-xl border border-red-200 bg-white shadow-sm dark:border-red-500/40 dark:bg-slate-900">
+      <div className="border-b border-red-200 bg-red-50 px-4 py-3 dark:border-red-500/30 dark:bg-red-500/10">
         <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">
           Failure Summary
         </h2>
@@ -30,18 +30,18 @@ export function FailureSummary({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold text-gray-900">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
                     {primaryFailedSpan.name}
                   </h3>
-                  <span className="rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white dark:bg-slate-100 dark:text-slate-950">
                     {primaryFailedSpan.kind}
                   </span>
                 </div>
 
                 {summary.errorPreview ? (
-                  <p className="mt-2 text-sm text-gray-700">{summary.errorPreview}</p>
+                  <p className="mt-2 text-sm text-slate-700 dark:text-slate-200">{summary.errorPreview}</p>
                 ) : (
-                  <p className="mt-2 text-sm text-gray-500">
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                     No inline error preview was available for the primary failed span.
                   </p>
                 )}
@@ -73,7 +73,7 @@ export function FailureSummary({
             </div>
 
             <div>
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                 Failure path
               </div>
               <SpanBreadcrumb
@@ -84,7 +84,7 @@ export function FailureSummary({
           </>
         ) : (
           <>
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-slate-700 dark:text-slate-200">
               This trace is marked as failed, but no failed span could be identified
               from the current span data.
             </p>
@@ -107,11 +107,11 @@ export function FailureSummary({
 
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/70">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
         {label}
       </div>
-      <div className="mt-2 text-sm font-medium text-gray-900">{value}</div>
+      <div className="mt-2 text-sm font-medium text-slate-900 dark:text-slate-100">{value}</div>
     </div>
   );
 }

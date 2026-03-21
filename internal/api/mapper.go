@@ -362,6 +362,10 @@ func mapExplicitTimelineEventType(eventType string) TimelineEventType {
 		return TimelineEventTypeMessage
 	case "metric":
 		return TimelineEventTypeMetric
+	case "state_change":
+		return TimelineEventTypeStateChange
+	case "decision":
+		return TimelineEventTypeDecision
 	default:
 		return TimelineEventTypeCustom
 	}

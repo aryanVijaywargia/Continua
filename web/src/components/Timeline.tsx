@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { Span, TimelineEvent, TimelineTraceStatus } from '../api/client';
 import { JsonViewer } from './JsonViewer';
 import {
+  formatInlineSemanticValue,
+  getDecisionDetails,
+  getStateChangeDetails,
+} from '../utils/eventSemantics';
+import {
   isTimelineErrorEvent,
   summarizeTimelineEvent,
 } from '../utils/timeline';
@@ -36,13 +41,13 @@ export function Timeline({
     : events;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-600">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
             Timeline
           </h2>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Chronological trace events with lifecycle markers and payload inspection.
           </p>
         </div>
@@ -52,7 +57,7 @@ export function Timeline({
             className={`rounded-full border px-3 py-1 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
               showErrorsOnly
                 ? 'border-red-200 bg-red-50 text-red-700'
-                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-100'
+                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
             }`}
             aria-label="Show error events only"
             aria-pressed={showErrorsOnly}
@@ -60,14 +65,14 @@ export function Timeline({
           >
             Errors only
           </button>
-          <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600">
+          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
             <span
               className={`h-2.5 w-2.5 rounded-full ${
                 isLive
                   ? 'animate-pulse bg-emerald-500'
                   : traceStatus === 'FAILED'
                     ? 'bg-red-500'
-                    : 'bg-gray-400'
+                    : 'bg-slate-400 dark:bg-slate-500'
               }`}
             />
             <span>{timelineStatusLabel(traceStatus, isLive)}</span>
@@ -76,19 +81,19 @@ export function Timeline({
       </div>
 
       {isLoading && events.length === 0 ? (
-        <div className="px-4 py-12 text-center text-sm text-gray-500">
+        <div className="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
           Loading timeline...
         </div>
       ) : error && events.length === 0 ? (
         <div className="px-4 py-12 text-center text-sm text-red-600">{error}</div>
       ) : visibleEvents.length === 0 ? (
-        <div className="px-4 py-12 text-center text-sm text-gray-500">
+        <div className="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
           {showErrorsOnly
             ? 'No error events for this trace.'
             : 'No timeline events recorded for this trace yet.'}
         </div>
       ) : (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {visibleEvents.map((event) => (
             <TimelineRow
               key={event.id}
@@ -121,20 +126,22 @@ function TimelineRow({
   const hasDetails = Boolean(event.message || event.payload);
   const hasNavigableSpan = Boolean(event.span_id && spanIndex.has(event.span_id));
   const isError = isTimelineErrorEvent(event);
+  const stateChange = getStateChangeDetails(event);
+  const decision = getDecisionDetails(event);
   const rowAccent = isError
-    ? 'border-red-200 bg-red-50/70'
+    ? 'border-red-200 bg-red-50/70 dark:border-red-500/40 dark:bg-red-500/10'
     : event.source === 'synthetic'
-      ? 'border-amber-200 bg-amber-50/70'
-      : 'border-gray-200 bg-white';
+      ? 'border-amber-200 bg-amber-50/70 dark:border-amber-500/40 dark:bg-amber-500/10'
+      : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900';
 
   return (
     <div className="p-4">
       <div className={`rounded-2xl border ${rowAccent} p-4 transition-colors`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 gap-4">
-            <div className="min-w-28 rounded-xl bg-gray-900 px-3 py-2 text-xs font-medium uppercase tracking-[0.18em] text-white">
+            <div className="min-w-28 rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium uppercase tracking-[0.18em] text-white dark:bg-slate-100 dark:text-slate-950">
               <div>{formatTimelineTime(event.timestamp)}</div>
-              <div className="mt-1 text-[10px] tracking-[0.25em] text-gray-300">
+              <div className="mt-1 text-[10px] tracking-[0.25em] text-slate-300 dark:text-slate-600">
                 {event.source}
               </div>
             </div>
@@ -147,25 +154,31 @@ function TimelineRow({
                       ? 'bg-red-100 text-red-700'
                       : event.source === 'synthetic'
                         ? 'bg-amber-100 text-amber-700'
-                        : 'bg-blue-100 text-blue-700'
+                        : 'bg-blue-100 text-blue-700 dark:bg-sky-500/15 dark:text-sky-200'
                   }`}
                 >
                   {formatEventType(event.event_type)}
                 </span>
                 {event.level && (
-                  <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-gray-600">
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
                     {event.level}
                   </span>
                 )}
               </div>
 
-              <p className="mt-3 text-sm font-medium leading-6 text-gray-900">
-                {summarizeTimelineEvent(event)}
-              </p>
+              {stateChange ? (
+                <StateChangePreview stateChange={stateChange} />
+              ) : decision ? (
+                <DecisionPreview decision={decision} />
+              ) : (
+                <p className="mt-3 text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
+                  {summarizeTimelineEvent(event)}
+                </p>
+              )}
 
               {(event.span_name || event.span_id) && (
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                  <span className="uppercase tracking-[0.18em] text-gray-400">
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                     span
                   </span>
                   {hasNavigableSpan && event.span_id ? (
@@ -173,15 +186,15 @@ function TimelineRow({
                       type="button"
                       className={`rounded-full px-3 py-1 font-medium transition ${
                         isSelectedSpan
-                          ? 'bg-gray-900 text-white'
-                          : 'bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100'
+                          ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
+                          : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-950 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800'
                       }`}
                       onClick={() => onSelectSpan(event.span_id!)}
                     >
                       {event.span_name ?? event.span_id}
                     </button>
                   ) : (
-                    <span className="rounded-full bg-white px-3 py-1 font-mono text-gray-600 ring-1 ring-gray-200">
+                    <span className="rounded-full bg-white px-3 py-1 font-mono text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700">
                       {event.span_name ?? event.span_id}
                     </span>
                   )}
@@ -193,7 +206,7 @@ function TimelineRow({
           {hasDetails && (
             <button
               type="button"
-              className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-100"
+              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
               onClick={() => setIsExpanded((expanded) => !expanded)}
             >
               {isExpanded ? 'Hide details' : 'Show details'}
@@ -202,20 +215,20 @@ function TimelineRow({
         </div>
 
         {isExpanded && hasDetails && (
-          <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
+          <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
             {event.message && (
               <div>
-                <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                   Message
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
                   {event.message}
                 </div>
               </div>
             )}
             {event.payload && (
               <div>
-                <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                   Payload
                 </div>
                 <JsonViewer data={event.payload} className="max-h-80 overflow-y-auto" />
@@ -225,6 +238,82 @@ function TimelineRow({
         )}
       </div>
     </div>
+  );
+}
+
+function StateChangePreview({
+  stateChange,
+}: {
+  stateChange: NonNullable<ReturnType<typeof getStateChangeDetails>>;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      {stateChange.namespace ? (
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+          {stateChange.namespace}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+        <span>{stateChange.key}</span>
+        <SemanticValuePill>
+          {formatInlineSemanticValue(stateChange.oldValue)}
+        </SemanticValuePill>
+        <span className="text-slate-400 dark:text-slate-500">→</span>
+        <SemanticValuePill tone="accent">
+          {formatInlineSemanticValue(stateChange.newValue)}
+        </SemanticValuePill>
+      </div>
+    </div>
+  );
+}
+
+function DecisionPreview({
+  decision,
+}: {
+  decision: NonNullable<ReturnType<typeof getDecisionDetails>>;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
+        {decision.question}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+        <span>Chosen</span>
+        <SemanticValuePill tone="accent">
+          {formatInlineSemanticValue(decision.chosen)}
+        </SemanticValuePill>
+      </div>
+      {decision.alternatives && decision.alternatives.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span>Alternatives</span>
+          {decision.alternatives.map((alternative, index) => (
+            <SemanticValuePill key={`${index}-${formatInlineSemanticValue(alternative)}`}>
+              {formatInlineSemanticValue(alternative)}
+            </SemanticValuePill>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SemanticValuePill({
+  children,
+  tone = 'neutral',
+}: {
+  children: string;
+  tone?: 'neutral' | 'accent';
+}) {
+  return (
+    <span
+      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+        tone === 'accent'
+          ? 'border-blue-200 bg-blue-100 text-blue-800 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-200'
+          : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200'
+      }`}
+    >
+      {children}
+    </span>
   );
 }
 

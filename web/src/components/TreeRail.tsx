@@ -110,14 +110,14 @@ export function TreeRail({
   ]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-      <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-600">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
               Spans ({spans.length})
             </h2>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Search, expand, and inspect the visible span hierarchy.
             </p>
           </div>
@@ -131,21 +131,21 @@ export function TreeRail({
               value={searchQueryInput}
               onChange={(event) => setSearchQueryInput(event.target.value)}
               placeholder="Search name, kind, span ID, status, model, provider, errors"
-              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
             />
           </label>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="rounded-full bg-white px-3 py-1.5 text-sm font-medium text-gray-600 ring-1 ring-gray-200 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="rounded-full bg-white px-3 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800"
               onClick={handleExpandAll}
             >
               Expand all
             </button>
             <button
               type="button"
-              className="rounded-full bg-white px-3 py-1.5 text-sm font-medium text-gray-600 ring-1 ring-gray-200 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="rounded-full bg-white px-3 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800"
               onClick={handleCollapseAll}
             >
               Collapse all
@@ -154,8 +154,8 @@ export function TreeRail({
               type="button"
               className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
                 showMetrics
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100'
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
+                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800'
               }`}
               aria-pressed={showMetrics}
               onClick={() => setShowMetrics((current) => !current)}
@@ -163,7 +163,7 @@ export function TreeRail({
               Show metrics
             </button>
             {matchedSpanIds !== null ? (
-              <span className="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">
+              <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                 {matchedSpanIds.size} match{matchedSpanIds.size === 1 ? '' : 'es'}
               </span>
             ) : null}

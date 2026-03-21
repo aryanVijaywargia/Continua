@@ -17,7 +17,7 @@ if [ -f contracts/generated/go/server_gen.go ]; then
 fi
 
 if [ -f contracts/openapi/openapi.bundle.yaml ]; then
-    cd sdks/python && uv run python scripts/generate_types.py && cd ../..
+    cd sdks/python && uv run --with datamodel-code-generator python scripts/generate_types.py && cd ../..
 fi
 
 echo "✅ All code generated"

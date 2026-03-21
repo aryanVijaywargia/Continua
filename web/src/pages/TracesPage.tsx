@@ -1,7 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { fetchTraces, type Trace } from '../api/client';
+import { fetchTraces, isAuthError, type Trace } from '../api/client';
+import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -245,29 +246,29 @@ function TracesContent() {
   }, [filters.sort_by, filters.sort_dir, isSearchActive, setFilters]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Traces</h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Traces</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Find traces by name, owner, time window, or error signals.
             </p>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-slate-500 dark:text-slate-400">
             <span>{total} total</span>
             {tracesQuery.isFetching && !tracesQuery.isPending && (
-              <span className="ml-2 text-blue-600">Updating...</span>
+              <span className="ml-2 text-blue-600 dark:text-sky-400">Updating...</span>
             )}
           </div>
         </div>
 
-        <section className="mb-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <div className="xl:col-span-2">
               <label
                 htmlFor="trace-search"
-                className="mb-1 block text-sm font-medium text-gray-700"
+                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
               >
                 Search
               </label>
@@ -283,9 +284,9 @@ function TracesContent() {
                 }
                 aria-describedby="trace-search-hint"
                 placeholder="Search traces"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
               />
-              <p id="trace-search-hint" className="mt-1 text-xs text-gray-500">
+              <p id="trace-search-hint" className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Search names, user IDs, and matching span names.
               </p>
             </div>
@@ -293,7 +294,7 @@ function TracesContent() {
             <div>
               <label
                 htmlFor="trace-status"
-                className="mb-1 block text-sm font-medium text-gray-700"
+                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
               >
                 Status
               </label>
@@ -310,7 +311,7 @@ function TracesContent() {
                     'push'
                   )
                 }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
               >
                 <option value="">All statuses</option>
                 <option value="running">Running</option>
@@ -322,7 +323,7 @@ function TracesContent() {
             <div>
               <label
                 htmlFor="trace-start-date"
-                className="mb-1 block text-sm font-medium text-gray-700"
+                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
               >
                 Start Date
               </label>
@@ -340,14 +341,14 @@ function TracesContent() {
                     'push'
                   )
                 }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
               />
             </div>
 
             <div>
               <label
                 htmlFor="trace-end-date"
-                className="mb-1 block text-sm font-medium text-gray-700"
+                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
               >
                 End Date
               </label>
@@ -365,7 +366,7 @@ function TracesContent() {
                     'push'
                   )
                 }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
               />
             </div>
 
@@ -395,7 +396,7 @@ function TracesContent() {
               <div>
                 <label
                   htmlFor="trace-min-duration"
-                  className="mb-1 block text-sm font-medium text-gray-700"
+                  className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
                 >
                   Min Duration (ms)
                 </label>
@@ -412,11 +413,11 @@ function TracesContent() {
                     handleEnterCommit(event, commitMinDuration, minDurationDraft)
                   }
                   placeholder="e.g. 1500"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
                 />
               </div>
 
-              <label className="flex items-end gap-2 text-sm font-medium text-gray-700 xl:pt-0">
+              <label className="flex items-end gap-2 text-sm font-medium text-slate-700 xl:pt-0 dark:text-slate-200">
                 <input
                   type="checkbox"
                   checked={Boolean(filters.has_errors)}
@@ -429,7 +430,7 @@ function TracesContent() {
                     )
                   }
                   aria-label="Only show traces with errors"
-                  className="mt-0 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
+                  className="mt-0 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950"
                 />
                 <span>Has errors</span>
               </label>
@@ -442,12 +443,12 @@ function TracesContent() {
         </section>
 
         {hasActiveFilters && (
-          <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-wrap items-center gap-2">
               {activeChips.map((chip) => (
                 <span
                   key={chip.key}
-                  className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-sm text-gray-700"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                 >
                   <span className="font-medium">{chip.label}:</span>
                   <span>{chip.value}</span>
@@ -455,7 +456,7 @@ function TracesContent() {
                     type="button"
                     onClick={() => clearChip(chip.key)}
                     aria-label={`Clear ${chip.label} filter`}
-                    className="rounded-full p-0.5 text-gray-500 transition hover:bg-gray-200 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    className="rounded-full p-0.5 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     ×
                   </button>
@@ -464,7 +465,7 @@ function TracesContent() {
               <button
                 type="button"
                 onClick={clearAll}
-                className="ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:border-gray-400 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 dark:hover:text-slate-100"
               >
                 Clear all
               </button>
@@ -473,71 +474,77 @@ function TracesContent() {
         )}
 
         {tracesQuery.error && (
-          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold">Could not load traces</p>
-              <p className="text-sm">{getErrorMessage(tracesQuery.error)}</p>
+          isAuthError(tracesQuery.error) ? (
+            <div className="mb-4">
+              <AuthErrorBanner message={getErrorMessage(tracesQuery.error)} />
             </div>
-            <button
-              type="button"
-              onClick={() => void tracesQuery.refetch()}
-              className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-200"
-            >
-              Retry
-            </button>
-          </div>
+          ) : (
+            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">Could not load traces</p>
+                <p className="text-sm">{getErrorMessage(tracesQuery.error)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void tracesQuery.refetch()}
+                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-200"
+              >
+                Retry
+              </button>
+            </div>
+          )
         )}
 
         {dateRangeError ? (
-          <div className="rounded-xl border border-dashed border-red-200 bg-white p-8 text-center text-sm text-gray-600 shadow-sm">
+          <div className="rounded-xl border border-dashed border-red-200 bg-white p-8 text-center text-sm text-slate-600 shadow-sm dark:border-red-500/40 dark:bg-slate-900 dark:text-slate-300">
             Fix the date range to load traces.
           </div>
         ) : tracesQuery.isPending && !tracesQuery.data ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
             Loading traces...
           </div>
         ) : tracesQuery.error && !tracesQuery.data ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-600 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
             Retry the request or adjust your filters to continue.
           </div>
         ) : traces.length === 0 ? (
           hasActiveFilters ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900">No matching traces</h2>
-              <p className="mt-2 text-sm text-gray-500">
+            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">No matching traces</h2>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                 Try broadening the filters or clearing them entirely.
               </p>
             </div>
           ) : (
-            <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900">No traces yet</h2>
-              <p className="mt-2 text-sm text-gray-500">
+            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">No traces yet</h2>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                 Start sending traces from your application to see them here.
               </p>
             </div>
           )
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-950/70">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Duration
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Tokens
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       Cost
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                       <SortableHeader
                         label="Started"
                         isActive={filters.sort_by === 'started_at'}
@@ -548,7 +555,7 @@ function TracesContent() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
+                <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
                   {traces.map((trace) => (
                     <TraceRow
                       key={trace.id}
@@ -585,19 +592,19 @@ function TraceRow({ trace, returnTo }: TraceRowProps) {
   const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
 
   return (
-    <tr className="transition hover:bg-gray-50">
+    <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
       <td className="px-6 py-4 align-top">
         <div className="min-w-[16rem]">
           <div className="flex flex-wrap items-center gap-2">
             <Link
               to={`/traces/${trace.id}`}
               state={{ returnTo }}
-              className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-sky-400 dark:hover:text-sky-300"
             >
               {trace.name}
             </Link>
             {trace.error_count && trace.error_count > 0 && (
-              <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+              <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-200">
                 {trace.error_count} error{trace.error_count === 1 ? '' : 's'}
               </span>
             )}
@@ -605,12 +612,12 @@ function TraceRow({ trace, returnTo }: TraceRowProps) {
           {trace.session_id && (
             <Link
               to={`/sessions/${trace.session_id}`}
-              className="mt-1 inline-flex flex-col text-left text-xs transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="mt-1 inline-flex flex-col text-left text-xs transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:hover:text-sky-300"
             >
-              <span className="font-medium text-gray-600">
+              <span className="font-medium text-slate-600 dark:text-slate-300">
                 {trace.session_external_id ?? trace.session_id}
               </span>
-              <span className="font-mono text-gray-400">{trace.session_id}</span>
+              <span className="font-mono text-slate-400 dark:text-slate-500">{trace.session_id}</span>
             </Link>
           )}
         </div>
@@ -618,16 +625,16 @@ function TraceRow({ trace, returnTo }: TraceRowProps) {
       <td className="px-6 py-4 whitespace-nowrap align-top">
         <StatusBadge status={trace.status} />
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 align-top">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
         {formatDuration(duration)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 align-top">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
         {formatTokens(totalTokens)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 align-top">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
         {formatCost(trace.total_cost_usd)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 align-top">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 align-top dark:text-slate-400">
         {formatRelativeTime(trace.started_at)}
       </td>
     </tr>

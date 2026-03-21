@@ -34,6 +34,7 @@ class Status(Enum):
 class Trace(BaseModel):
     id: UUID
     session_id: UUID | None = None
+    session_external_id: str | None = None
     name: str
     status: Status
     started_at: AwareDatetime
@@ -45,6 +46,18 @@ class Trace(BaseModel):
         None, description="Count of failed spans in this trace"
     )
     metadata: dict[str, Any] | None = None
+
+
+class TraceDetail(Trace):
+    trace_id: str | None = None
+    user_id: str | None = None
+    tags: list[str] | None = None
+    environment: str | None = None
+    release: str | None = None
+    input: Any | None = Field(None, description="Trace input payload (any valid JSON)")
+    output: Any | None = Field(
+        None, description="Trace output payload (any valid JSON)"
+    )
 
 
 class TraceList(BaseModel):
@@ -87,8 +100,16 @@ class Span(BaseModel):
     cost_usd: float | None = None
     latency_ms: int | None = None
     error_message: str | None = None
+    model: str | None = None
+    provider: str | None = None
     input: Any | None = Field(None, description="Span input payload (any valid JSON)")
+    input_truncated: bool | None = None
+    input_original_size_bytes: int | None = None
+    input_truncation_reason: str | None = None
     output: Any | None = Field(None, description="Span output payload (any valid JSON)")
+    output_truncated: bool | None = None
+    output_original_size_bytes: int | None = None
+    output_truncation_reason: str | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -203,6 +224,8 @@ class IngestEventType(Enum):
     message = "message"
     metric = "metric"
     custom = "custom"
+    state_change = "state_change"
+    decision = "decision"
 
 
 class IngestEventLevel(Enum):
@@ -220,7 +243,10 @@ class IngestEventInput(BaseModel):
     event_ts: AwareDatetime | None = None
     sequence: int | None = None
     message: str | None = None
-    payload: dict[str, Any] | None = None
+    payload: dict[str, Any] | None = Field(
+        None,
+        description="Free-form event payload. Semantic debugger conventions apply for some event types: `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.\n",
+    )
     idempotency_key: str | None = Field(
         None, description="Optional key for event-level deduplication"
     )
@@ -233,6 +259,8 @@ class TimelineEventType(Enum):
     message = "message"
     metric = "metric"
     custom = "custom"
+    state_change = "state_change"
+    decision = "decision"
     span_started = "span_started"
     span_completed = "span_completed"
     span_failed = "span_failed"

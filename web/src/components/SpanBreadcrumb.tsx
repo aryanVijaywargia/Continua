@@ -24,7 +24,7 @@ export function SpanBreadcrumb({
       aria-label={ariaLabel}
       className={`overflow-x-auto ${className}`.trim()}
     >
-      <ol className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-gray-500">
+      <ol className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
         {path.map((segment, index) => {
           const isCurrent = index === lastIndex;
           const isInteractive = !isCurrent && Boolean(onSelectSpan);
@@ -34,7 +34,7 @@ export function SpanBreadcrumb({
               {isInteractive ? (
                 <button
                   type="button"
-                  className="truncate rounded-full border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                   aria-label={`Select ancestor span ${segment.name}`}
                   onClick={() => onSelectSpan?.(segment.spanId)}
                 >
@@ -44,8 +44,8 @@ export function SpanBreadcrumb({
                 <span
                   className={`truncate rounded-full px-2.5 py-1 ${
                     isCurrent
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-gray-100 font-medium text-gray-700'
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
+                      : 'bg-slate-100 font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200'
                   }`}
                   aria-current={isCurrent ? 'page' : undefined}
                 >
