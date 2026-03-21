@@ -19,11 +19,11 @@ interface SpanTreeProps {
 }
 
 const kindColors: Record<string, string> = {
-  LLM: 'bg-purple-100 text-purple-800',
-  TOOL: 'bg-yellow-100 text-yellow-800',
-  CHAIN: 'bg-blue-100 text-blue-800',
-  AGENT: 'bg-green-100 text-green-800',
-  CUSTOM: 'bg-gray-100 text-gray-800',
+  LLM: 'bg-purple-100 text-purple-800 dark:bg-purple-500/15 dark:text-purple-200',
+  TOOL: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-200',
+  CHAIN: 'bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-200',
+  AGENT: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-200',
+  CUSTOM: 'bg-gray-100 text-gray-800 dark:bg-slate-800 dark:text-slate-200',
 };
 
 export function SpanTree({
@@ -54,7 +54,7 @@ export function SpanTree({
 
   if (rows.length === 0) {
     return (
-      <div className="p-4 text-center text-gray-500">
+      <div className="p-4 text-center text-slate-500 dark:text-slate-400">
         No spans found for this trace.
       </div>
     );
@@ -75,12 +75,12 @@ export function SpanTree({
         const shouldDim = matchedSpanIds !== null && !isMatch;
 
         const rowClasses = isSelected
-          ? 'border-blue-200 bg-blue-50 shadow-sm ring-1 ring-blue-200'
+          ? 'border-blue-200 bg-blue-50 shadow-sm ring-1 ring-blue-200 dark:border-sky-500/50 dark:bg-sky-500/10 dark:ring-sky-500/40'
           : isOnPrimaryPath
-            ? 'border-amber-300 bg-amber-50'
+            ? 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
             : isFailed
-              ? 'border-red-200 bg-red-50/80'
-              : 'border-transparent bg-white hover:bg-gray-50';
+              ? 'border-red-200 bg-red-50/80 dark:border-red-500/40 dark:bg-red-500/10'
+              : 'border-transparent bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/70';
 
         return (
           <div
@@ -103,7 +103,7 @@ export function SpanTree({
               {hasChildren ? (
                 <button
                   type="button"
-                  className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} span ${span.name}`}
                   onClick={() => onToggleExpand(span.span_id)}
                 >
@@ -111,7 +111,7 @@ export function SpanTree({
                 </button>
               ) : (
                 <span
-                  className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center text-gray-300"
+                  className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center text-slate-300 dark:text-slate-600"
                   aria-hidden="true"
                 >
                   ·
@@ -138,37 +138,37 @@ export function SpanTree({
                     <span
                       className={`truncate text-sm font-medium ${
                         isMatch
-                          ? 'rounded bg-amber-100 px-1 text-amber-950'
-                          : 'text-gray-900'
+                          ? 'rounded bg-amber-100 px-1 text-amber-950 dark:bg-amber-500/20 dark:text-amber-100'
+                          : 'text-slate-900 dark:text-slate-100'
                       }`}
                     >
                       {span.name}
                     </span>
                     {isSelected ? (
-                      <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
+                      <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700 dark:border-sky-500/40 dark:bg-slate-950 dark:text-sky-300">
                         Selected
                       </span>
                     ) : null}
                     {isOnPrimaryPath ? (
-                      <span className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">
+                      <span className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:border-amber-500/40 dark:bg-slate-950 dark:text-amber-200">
                         Failure path
                       </span>
                     ) : null}
                     {isFailed ? (
-                      <span className="rounded-full border border-red-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-red-700">
+                      <span className="rounded-full border border-red-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-red-700 dark:border-red-500/40 dark:bg-slate-950 dark:text-red-200">
                         Failed
                       </span>
                     ) : null}
                   </div>
 
                   {errorPreview ? (
-                    <p className="mt-2 text-sm text-red-700 line-clamp-2">
+                    <p className="mt-2 text-sm text-red-700 line-clamp-2 dark:text-red-200">
                       {errorPreview}
                     </p>
                   ) : null}
 
                   {showMetrics ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                       <span>{formatTokens((span.tokens_in ?? 0) + (span.tokens_out ?? 0))} tokens</span>
                       <span>{formatCost(span.cost_usd)}</span>
                     </div>
@@ -176,7 +176,7 @@ export function SpanTree({
 
                   <div
                     id={rowStateId}
-                    className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500"
+                    className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
                   >
                     <StatusBadge status={span.status} />
                     <span>{formatDuration(span.latency_ms)}</span>

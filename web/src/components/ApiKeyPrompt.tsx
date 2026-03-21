@@ -23,10 +23,10 @@ export function ApiKeyPrompt({ onSubmit }: ApiKeyPromptProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">API Key Required</h2>
-        <p className="text-gray-600 mb-6">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center dark:bg-slate-950">
+      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-lg dark:bg-slate-900">
+        <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-slate-100">API Key Required</h2>
+        <p className="mb-6 text-slate-600 dark:text-slate-300">
           Enter your Continua API key to view traces.
         </p>
         <form onSubmit={handleSubmit}>
@@ -38,7 +38,7 @@ export function ApiKeyPrompt({ onSubmit }: ApiKeyPromptProps) {
               setError('');
             }}
             placeholder="ck_live_..."
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
           {error && (
             <p className="mt-2 text-red-600 text-sm">{error}</p>

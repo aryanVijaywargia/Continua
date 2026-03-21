@@ -15,7 +15,9 @@ def main():
         sys.exit(1)
 
     cmd = [
-        "datamodel-codegen",
+        sys.executable,
+        "-m",
+        "datamodel_code_generator",
         "--input", str(openapi_path),
         "--output", str(output_path),
         "--input-file-type", "openapi",

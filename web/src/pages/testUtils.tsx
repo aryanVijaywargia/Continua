@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
+import { ThemeProvider } from '../hooks/useTheme';
 import {
   OTHER_SESSION_EXTERNAL_ID,
   OTHER_SESSION_ID,
@@ -21,6 +22,7 @@ import {
 import { TraceDetailPage } from './TraceDetailPage';
 import { SessionDetailPage } from './SessionDetailPage';
 import { SessionsPage } from './SessionsPage';
+import { SettingsPage } from './SettingsPage';
 import { TracesPage } from './TracesPage';
 export {
   OTHER_SESSION_EXTERNAL_ID,
@@ -170,6 +172,7 @@ export function renderTraceRoutes(
       { path: '/traces/:id', element: <TraceDetailPage /> },
       { path: '/sessions', element: <SessionsPage /> },
       { path: '/sessions/:id', element: <SessionDetailPage /> },
+      { path: '/settings', element: <SettingsPage /> },
     ],
     {
       initialEntries,
@@ -179,7 +182,9 @@ export function renderTraceRoutes(
 
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ThemeProvider>
+        <RouterProvider router={router} />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 

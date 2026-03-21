@@ -36,12 +36,14 @@ const (
 
 // Defines values for IngestEventType.
 const (
-	IngestEventTypeCustom    IngestEventType = "custom"
-	IngestEventTypeError     IngestEventType = "error"
-	IngestEventTypeException IngestEventType = "exception"
-	IngestEventTypeLog       IngestEventType = "log"
-	IngestEventTypeMessage   IngestEventType = "message"
-	IngestEventTypeMetric    IngestEventType = "metric"
+	IngestEventTypeCustom      IngestEventType = "custom"
+	IngestEventTypeDecision    IngestEventType = "decision"
+	IngestEventTypeError       IngestEventType = "error"
+	IngestEventTypeException   IngestEventType = "exception"
+	IngestEventTypeLog         IngestEventType = "log"
+	IngestEventTypeMessage     IngestEventType = "message"
+	IngestEventTypeMetric      IngestEventType = "metric"
+	IngestEventTypeStateChange IngestEventType = "state_change"
 )
 
 // Defines values for IngestResponseStatus.
@@ -120,6 +122,7 @@ const (
 // Defines values for TimelineEventType.
 const (
 	TimelineEventTypeCustom        TimelineEventType = "custom"
+	TimelineEventTypeDecision      TimelineEventType = "decision"
 	TimelineEventTypeError         TimelineEventType = "error"
 	TimelineEventTypeException     TimelineEventType = "exception"
 	TimelineEventTypeLog           TimelineEventType = "log"
@@ -128,6 +131,7 @@ const (
 	TimelineEventTypeSpanCompleted TimelineEventType = "span_completed"
 	TimelineEventTypeSpanFailed    TimelineEventType = "span_failed"
 	TimelineEventTypeSpanStarted   TimelineEventType = "span_started"
+	TimelineEventTypeStateChange   TimelineEventType = "state_change"
 )
 
 // Defines values for TimelineResponseTraceStatus.
@@ -214,11 +218,13 @@ type IngestEventInput struct {
 	EventType *IngestEventType `json:"event_type,omitempty"`
 
 	// IdempotencyKey Optional key for event-level deduplication
-	IdempotencyKey *string                 `json:"idempotency_key,omitempty"`
-	Level          *IngestEventLevel       `json:"level,omitempty"`
-	Message        *string                 `json:"message,omitempty"`
-	Payload        *map[string]interface{} `json:"payload,omitempty"`
-	Sequence       *int32                  `json:"sequence,omitempty"`
+	IdempotencyKey *string           `json:"idempotency_key,omitempty"`
+	Level          *IngestEventLevel `json:"level,omitempty"`
+	Message        *string           `json:"message,omitempty"`
+
+	// Payload Free-form event payload. Semantic debugger conventions apply for some event types: `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
+	Payload  *map[string]interface{} `json:"payload,omitempty"`
+	Sequence *int32                  `json:"sequence,omitempty"`
 
 	// SpanId External span identifier
 	SpanId string `json:"span_id"`

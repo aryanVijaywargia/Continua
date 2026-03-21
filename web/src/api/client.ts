@@ -56,6 +56,10 @@ export class ApiError extends Error {
   }
 }
 
+export function isAuthError(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 401;
+}
+
 /**
  * Fetch wrapper with API key authentication.
  */
@@ -178,6 +182,8 @@ export interface TimelineEvent {
     | 'message'
     | 'metric'
     | 'custom'
+    | 'state_change'
+    | 'decision'
     | 'span_started'
     | 'span_completed'
     | 'span_failed';

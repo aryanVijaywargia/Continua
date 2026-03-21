@@ -1,4 +1,9 @@
 import { TimelineEvent } from '../api/client';
+import {
+  formatInlineSemanticValue,
+  getDecisionDetails,
+  getStateChangeDetails,
+} from './eventSemantics';
 
 /**
  * Merge timeline pages and polling updates without duplicating already-rendered events.
@@ -56,11 +61,23 @@ export function isTimelineErrorEvent(event: TimelineEvent): boolean {
 }
 
 export function summarizeTimelineEvent(event: TimelineEvent): string {
-  if (event.message) {
-    return event.message;
-  }
-
   switch (event.event_type) {
+    case 'state_change': {
+      const details = getStateChangeDetails(event);
+      if (details) {
+        return `${details.key}: ${formatInlineSemanticValue(
+          details.oldValue
+        )} → ${formatInlineSemanticValue(details.newValue)}`;
+      }
+      return event.message ?? 'state change';
+    }
+    case 'decision': {
+      const details = getDecisionDetails(event);
+      if (details) {
+        return `${details.question} → ${formatInlineSemanticValue(details.chosen)}`;
+      }
+      return event.message ?? 'decision';
+    }
     case 'span_started':
       return `${event.span_name ?? event.span_id ?? 'Span'} started`;
     case 'span_completed':
@@ -70,6 +87,9 @@ export function summarizeTimelineEvent(event: TimelineEvent): string {
     case 'metric':
       return formatMetricSummary(event);
     default:
+      if (event.message) {
+        return event.message;
+      }
       return event.event_type.replace(/_/g, ' ');
   }
 }

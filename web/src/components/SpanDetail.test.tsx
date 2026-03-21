@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { Span } from '../api/client';
+import type { Span, TimelineEvent } from '../api/client';
 import { SpanDetail } from './SpanDetail';
 
 function createSpan(overrides: Partial<Span> = {}): Span {
@@ -123,5 +123,50 @@ describe('SpanDetail parent navigation', () => {
     await user.keyboard('{Enter}');
 
     expect(onSelectSpan).toHaveBeenCalledWith('root');
+  });
+
+  it('renders valid decision events and skips incomplete ones', () => {
+    const span = createSpan({ span_id: 'decision-span', name: 'Decision span' });
+    const events: TimelineEvent[] = [
+      {
+        id: 'decision-valid',
+        trace_id: 'trace-1',
+        span_id: 'decision-span',
+        event_type: 'decision',
+        timestamp: '2026-03-14T10:00:00.000Z',
+        source: 'explicit',
+        payload: {
+          question: 'Which model?',
+          chosen: 'gpt-4.1',
+          reasoning: 'Need higher accuracy',
+        },
+      },
+      {
+        id: 'decision-invalid',
+        trace_id: 'trace-1',
+        span_id: 'decision-span',
+        event_type: 'decision',
+        timestamp: '2026-03-14T10:00:01.000Z',
+        source: 'explicit',
+        payload: {
+          question: 'Should be hidden',
+        },
+      },
+    ];
+
+    render(
+      <SpanDetail
+        span={span}
+        breadcrumbPath={[{ spanId: 'decision-span', name: 'Decision span' }]}
+        onSelectSpan={vi.fn()}
+        spanIndex={new Map([['decision-span', span]])}
+        events={events}
+      />
+    );
+
+    expect(screen.getByText('Decisions')).toBeInTheDocument();
+    expect(screen.getByText('Which model?')).toBeInTheDocument();
+    expect(screen.getByText('gpt-4.1')).toBeInTheDocument();
+    expect(screen.queryByText('Should be hidden')).not.toBeInTheDocument();
   });
 });

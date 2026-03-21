@@ -1,3 +1,45 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --continua-panel-separator: rgba(203, 213, 225, 0.95);
+    --continua-waterfall-failed-bg: #fee2e2;
+    --continua-waterfall-failed-border: #fca5a5;
+    --continua-waterfall-running-bg: #dbeafe;
+    --continua-waterfall-running-border: #93c5fd;
+    --continua-waterfall-running-dot: #2563eb;
+    --continua-waterfall-success-bg: #dcfce7;
+    --continua-waterfall-success-border: #86efac;
+    --continua-waterfall-success-selected-bg: #bfdbfe;
+    --continua-waterfall-success-selected-border: #60a5fa;
+    --continua-waterfall-tick-color: rgba(148, 163, 184, 0.3);
+  }
+
+  html.dark {
+    color-scheme: dark;
+    --continua-panel-separator: rgba(51, 65, 85, 0.95);
+    --continua-waterfall-failed-bg: rgba(127, 29, 29, 0.5);
+    --continua-waterfall-failed-border: rgba(248, 113, 113, 0.55);
+    --continua-waterfall-running-bg: rgba(30, 64, 175, 0.45);
+    --continua-waterfall-running-border: rgba(96, 165, 250, 0.65);
+    --continua-waterfall-running-dot: #93c5fd;
+    --continua-waterfall-success-bg: rgba(6, 95, 70, 0.5);
+    --continua-waterfall-success-border: rgba(52, 211, 153, 0.6);
+    --continua-waterfall-success-selected-bg: rgba(37, 99, 235, 0.6);
+    --continua-waterfall-success-selected-border: rgba(125, 211, 252, 0.7);
+    --continua-waterfall-tick-color: rgba(71, 85, 105, 0.45);
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  }
+}

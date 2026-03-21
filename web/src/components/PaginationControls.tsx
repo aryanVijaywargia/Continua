@@ -19,7 +19,7 @@ interface PaginationControlsProps {
 function buttonClassName(enabled: boolean): string {
   return enabled
     ? 'rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200'
-    : 'cursor-not-allowed rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-400';
+    : 'cursor-not-allowed rounded-lg bg-slate-200 px-3 py-2 text-sm font-medium text-slate-400 dark:bg-slate-800 dark:text-slate-500';
 }
 
 export function PaginationControls({
@@ -54,7 +54,7 @@ export function PaginationControls({
   }, [currentItemCount, lastValidOffset, offset, onRepairOffset]);
 
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm md:flex-row md:items-center md:justify-between">
+    <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:flex-row md:items-center md:justify-between">
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -94,7 +94,7 @@ export function PaginationControls({
         </button>
       </div>
 
-      <div className="flex flex-col gap-2 text-sm text-gray-600 md:items-end">
+      <div className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-300 md:items-end">
         <span>
           Showing {showingFrom}-{showingTo} of {total}
         </span>
@@ -106,7 +106,7 @@ export function PaginationControls({
               aria-label="Rows per page"
               value={pageSize}
               onChange={(event) => onPageSizeChange(Number(event.target.value) || DEFAULT_PAGE_SIZE)}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
             >
               {pageSizeOptions.map((option) => (
                 <option key={option} value={option}>

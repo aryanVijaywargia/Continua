@@ -1,7 +1,24 @@
 """Tests for span context."""
 
+from continua.client import Continua
 from continua.span import SpanContext, get_current_span, span
 from continua.trace import TraceContext
+
+
+class StubClient:
+    def __init__(self) -> None:
+        self.traces: list[dict] = []
+        self.spans: list[dict] = []
+        self.events: list[dict] = []
+
+    def add_trace(self, trace: dict) -> None:
+        self.traces.append(trace)
+
+    def add_span(self, span: dict) -> None:
+        self.spans.append(span)
+
+    def add_event(self, event: dict) -> None:
+        self.events.append(event)
 
 
 def test_span_context_basic():
@@ -88,3 +105,73 @@ def test_span_helper_function():
             assert s.name == "test_span"
             assert s.kind == "tool"
             assert s.metadata == {"key": "value"}
+
+
+def test_state_change_helper_records_semantic_event():
+    """Test state_change helper payload construction."""
+    stub_client = StubClient()
+    previous_client = Continua._instance
+    Continua._instance = stub_client
+
+    try:
+        with TraceContext(name="test_trace"):
+            with span("stateful_span") as s:
+                s.state_change(
+                    "status",
+                    "pending",
+                    "approved",
+                    namespace="order",
+                    message="Order approved",
+                )
+    finally:
+        Continua._instance = previous_client
+
+    assert len(stub_client.events) == 1
+    assert stub_client.events[0] == {
+        "trace_id": stub_client.traces[0]["trace_id"],
+        "span_id": stub_client.spans[0]["span_id"],
+        "event_type": "state_change",
+        "level": "info",
+        "message": "Order approved",
+        "payload": {
+            "key": "status",
+            "old_value": "pending",
+            "new_value": "approved",
+            "namespace": "order",
+        },
+    }
+
+
+def test_decision_helper_records_semantic_event():
+    """Test decision helper payload construction."""
+    stub_client = StubClient()
+    previous_client = Continua._instance
+    Continua._instance = stub_client
+
+    try:
+        with TraceContext(name="test_trace"):
+            with span("decision_span") as s:
+                s.decision(
+                    "Which model?",
+                    "gpt-4.1",
+                    alternatives=["gpt-4o-mini", "gpt-4.1"],
+                    reasoning="Need better reasoning quality",
+                    message="Escalated to stronger model",
+                )
+    finally:
+        Continua._instance = previous_client
+
+    assert len(stub_client.events) == 1
+    assert stub_client.events[0] == {
+        "trace_id": stub_client.traces[0]["trace_id"],
+        "span_id": stub_client.spans[0]["span_id"],
+        "event_type": "decision",
+        "level": "info",
+        "message": "Escalated to stronger model",
+        "payload": {
+            "question": "Which model?",
+            "chosen": "gpt-4.1",
+            "alternatives": ["gpt-4o-mini", "gpt-4.1"],
+            "reasoning": "Need better reasoning quality",
+        },
+    }

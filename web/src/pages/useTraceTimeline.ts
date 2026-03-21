@@ -97,18 +97,21 @@ export function useTraceTimeline(traceId: string) {
     setNeedsTerminalRefresh(false);
   }, [timelineTerminalRefreshQuery.data]);
 
+  const rawError = selectTimelineError(
+    timelineSnapshot,
+    timelineBootstrapQuery.error,
+    timelinePollQuery.error,
+    timelineTerminalRefreshQuery.error
+  );
+
   return {
     events: timelineSnapshot?.events ?? [],
     traceStatus: timelineSnapshot?.traceStatus ?? null,
     hasSnapshot: timelineSnapshot !== null,
     isLive: pollingEnabled,
     isLoading: !timelineSnapshot && timelineBootstrapQuery.isLoading,
-    error: resolveTimelineError(
-      timelineSnapshot,
-      timelineBootstrapQuery.error,
-      timelinePollQuery.error,
-      timelineTerminalRefreshQuery.error
-    ),
+    rawError,
+    error: queryErrorMessage(rawError),
   };
 }
 
@@ -144,17 +147,17 @@ async function fetchFullTimelineSnapshot(traceId: string): Promise<TimelineSnaps
   };
 }
 
-function resolveTimelineError(
+function selectTimelineError(
   timelineSnapshot: TimelineSnapshot | null,
   bootstrapError: unknown,
   pollError: unknown,
   terminalRefreshError: unknown
-): string | null {
+): unknown {
   if (!timelineSnapshot) {
-    return queryErrorMessage(bootstrapError ?? terminalRefreshError);
+    return bootstrapError ?? terminalRefreshError;
   }
 
-  return queryErrorMessage(pollError ?? terminalRefreshError);
+  return pollError ?? terminalRefreshError;
 }
 
 function queryErrorMessage(error: unknown): string | null {
