@@ -38,12 +38,14 @@ const (
 const (
 	IngestEventTypeCustom      IngestEventType = "custom"
 	IngestEventTypeDecision    IngestEventType = "decision"
+	IngestEventTypeEffect      IngestEventType = "effect"
 	IngestEventTypeError       IngestEventType = "error"
 	IngestEventTypeException   IngestEventType = "exception"
 	IngestEventTypeLog         IngestEventType = "log"
 	IngestEventTypeMessage     IngestEventType = "message"
 	IngestEventTypeMetric      IngestEventType = "metric"
 	IngestEventTypeStateChange IngestEventType = "state_change"
+	IngestEventTypeWait        IngestEventType = "wait"
 )
 
 // Defines values for IngestResponseStatus.
@@ -123,6 +125,7 @@ const (
 const (
 	TimelineEventTypeCustom        TimelineEventType = "custom"
 	TimelineEventTypeDecision      TimelineEventType = "decision"
+	TimelineEventTypeEffect        TimelineEventType = "effect"
 	TimelineEventTypeError         TimelineEventType = "error"
 	TimelineEventTypeException     TimelineEventType = "exception"
 	TimelineEventTypeLog           TimelineEventType = "log"
@@ -132,6 +135,7 @@ const (
 	TimelineEventTypeSpanFailed    TimelineEventType = "span_failed"
 	TimelineEventTypeSpanStarted   TimelineEventType = "span_started"
 	TimelineEventTypeStateChange   TimelineEventType = "state_change"
+	TimelineEventTypeWait          TimelineEventType = "wait"
 )
 
 // Defines values for TimelineResponseTraceStatus.
@@ -222,7 +226,7 @@ type IngestEventInput struct {
 	Level          *IngestEventLevel `json:"level,omitempty"`
 	Message        *string           `json:"message,omitempty"`
 
-	// Payload Free-form event payload. Semantic debugger conventions apply for some event types: `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
+	// Payload Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
 	Payload  *map[string]interface{} `json:"payload,omitempty"`
 	Sequence *int32                  `json:"sequence,omitempty"`
 

@@ -787,6 +787,8 @@ components:
         - custom
         - state_change
         - decision
+        - effect
+        - wait
     IngestEventLevel:
       type: string
       enum:
@@ -825,7 +827,7 @@ components:
         payload:
           type: object
           description: |
-            Free-form event payload. Semantic debugger conventions apply for some event types: `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
+            Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
         idempotency_key:
           type: string
           description: Optional key for event-level deduplication
@@ -840,6 +842,8 @@ components:
         - custom
         - state_change
         - decision
+        - effect
+        - wait
         - span_started
         - span_completed
         - span_failed

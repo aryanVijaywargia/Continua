@@ -184,6 +184,8 @@ export interface TimelineEvent {
     | 'custom'
     | 'state_change'
     | 'decision'
+    | 'effect'
+    | 'wait'
     | 'span_started'
     | 'span_completed'
     | 'span_failed';

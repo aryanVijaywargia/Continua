@@ -183,6 +183,114 @@ func TestGetTraceEvents_CursorPaginationDoesNotDuplicate(t *testing.T) {
 	assert.NotEqual(t, *tailCursor, *incrementalPoll.PollCursor)
 }
 
+func TestGetTraceEvents_PaginationHandlesMixedKnownAndUnknownEventTypes(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	base := time.Date(2026, 3, 7, 11, 30, 0, 0, time.UTC)
+	trace := createTimelineTrace(ctx, t, q, projectID, "running", base, nil)
+
+	createTimelineSpan(ctx, t, q, projectID, trace.ID, "alpha", "Alpha Span", "running", base.Add(time.Second), nil)
+	createTimelineSpan(ctx, t, q, projectID, trace.ID, "beta", "Beta Span", "completed", base.Add(2*time.Second), testutil.Ptr(base.Add(5*time.Second)))
+
+	insertTimelineEvent(
+		ctx, t, q, projectID, trace.ID, "alpha", "effect", "info",
+		base.Add(1500*time.Millisecond), testutil.Int32Ptr(1), "effect emitted", map[string]any{"target": "cache"},
+	)
+	insertTimelineEvent(
+		ctx, t, q, projectID, trace.ID, "alpha", "wait", "warning",
+		base.Add(2500*time.Millisecond), testutil.Int32Ptr(2), "waiting", map[string]any{"reason": "network"},
+	)
+	insertTimelineEvent(
+		ctx, t, q, projectID, trace.ID, "beta", "workflow_step", "info",
+		base.Add(3*time.Second), testutil.Int32Ptr(3), "workflow step", map[string]any{"phase": "plan"},
+	)
+
+	full := decodeJSONBody[TimelineResponse](t, invokeGetTraceEvents(
+		t, server, projectID, trace.ID, GetTraceEventsParams{Limit: testutil.IntPtr(100)},
+	))
+	require.Len(t, full.Events, 6)
+
+	seen := make(map[string]struct{}, len(full.Events))
+	var after *string
+	var tailCursor *string
+	foundDowngradedUnknown := false
+
+	for {
+		page := decodeJSONBody[TimelineResponse](t, invokeGetTraceEvents(
+			t, server, projectID, trace.ID, GetTraceEventsParams{
+				After: after,
+				Limit: testutil.IntPtr(2),
+			},
+		))
+
+		for _, event := range page.Events {
+			if _, exists := seen[event.Id]; exists {
+				t.Fatalf("duplicate event returned across pages: %s", event.Id)
+			}
+			seen[event.Id] = struct{}{}
+
+			if event.EventType == TimelineEventTypeCustom {
+				require.NotNil(t, event.Payload)
+				assert.Equal(t, "workflow_step", (*event.Payload)[originalEventTypePayloadKey])
+				foundDowngradedUnknown = true
+			}
+		}
+
+		require.NotNil(t, page.PollCursor)
+		tailCursor = page.PollCursor
+
+		if !page.HasMore {
+			break
+		}
+
+		require.NotNil(t, page.NextCursor)
+		after = page.NextCursor
+	}
+
+	assert.Len(t, seen, len(full.Events))
+	assert.True(t, foundDowngradedUnknown)
+	require.NotNil(t, tailCursor)
+
+	emptyPoll := decodeJSONBody[TimelineResponse](t, invokeGetTraceEvents(
+		t, server, projectID, trace.ID, GetTraceEventsParams{
+			After: tailCursor,
+			Limit: testutil.IntPtr(2),
+		},
+	))
+	assert.Empty(t, emptyPoll.Events)
+	assert.False(t, emptyPoll.HasMore)
+	require.NotNil(t, emptyPoll.PollCursor)
+	assert.Equal(t, *tailCursor, *emptyPoll.PollCursor)
+
+	lateEventID := insertTimelineEvent(
+		ctx, t, q, projectID, trace.ID, "beta", "workflow_step", "info",
+		base.Add(4*time.Second), testutil.Int32Ptr(4), "late workflow step", map[string]any{"phase": "ship"},
+	)
+
+	incrementalPoll := decodeJSONBody[TimelineResponse](t, invokeGetTraceEvents(
+		t, server, projectID, trace.ID, GetTraceEventsParams{
+			After: tailCursor,
+			Limit: testutil.IntPtr(2),
+		},
+	))
+	require.Len(t, incrementalPoll.Events, 1)
+	assert.Equal(t, lateEventID.String(), incrementalPoll.Events[0].Id)
+	assert.Equal(t, TimelineEventTypeCustom, incrementalPoll.Events[0].EventType)
+	require.NotNil(t, incrementalPoll.Events[0].Payload)
+	assert.Equal(
+		t,
+		"workflow_step",
+		(*incrementalPoll.Events[0].Payload)[originalEventTypePayloadKey],
+	)
+	require.NotNil(t, incrementalPoll.PollCursor)
+	assert.NotEqual(t, *tailCursor, *incrementalPoll.PollCursor)
+}
+
 func TestGetTraceEvents_InvalidCursorReturns400(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()

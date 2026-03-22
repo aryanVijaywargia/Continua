@@ -226,6 +226,8 @@ class IngestEventType(Enum):
     custom = "custom"
     state_change = "state_change"
     decision = "decision"
+    effect = "effect"
+    wait = "wait"
 
 
 class IngestEventLevel(Enum):
@@ -245,7 +247,7 @@ class IngestEventInput(BaseModel):
     message: str | None = None
     payload: dict[str, Any] | None = Field(
         None,
-        description="Free-form event payload. Semantic debugger conventions apply for some event types: `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.\n",
+        description="Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.\n",
     )
     idempotency_key: str | None = Field(
         None, description="Optional key for event-level deduplication"
@@ -261,6 +263,8 @@ class TimelineEventType(Enum):
     custom = "custom"
     state_change = "state_change"
     decision = "decision"
+    effect = "effect"
+    wait = "wait"
     span_started = "span_started"
     span_completed = "span_completed"
     span_failed = "span_failed"
