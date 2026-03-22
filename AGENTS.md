@@ -22,7 +22,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Current Repo Baseline
 - Treat the checked-in code as the primary truth. Historical phase docs and some older architecture docs drift from the current implementation.
 - The live product path today is: authenticated REST ingest -> Postgres persistence -> River background jobs -> trace/session/timeline debugger UI.
-- The strongest repo-verified architecture summary is `docs/PHASE5_CURRENT_STATE_REPORT.md`. Use it for discovery, planning, and “what exists today” checks.
+- The current repo handoff doc is `docs/DEBUGGER_PLATFORM_BASELINE.md`. Use `docs/PHASE5_CURRENT_STATE_REPORT.md` as deeper historical context, not the shortest current-state baseline.
 - `openspec/specs/` is currently empty. That means OpenSpec is useful for active proposals and archived work, but not as a complete source of current-state specs.
 
 ## Implemented Vs Scaffolded
@@ -131,6 +131,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ### Repo-local skills
 - `continua-backend-dev`: current Go platform server, REST/API, sqlc/store, migrations, and River-backed backend workflows.
+- `continua-debugger-ui`: current React debugger UI, trace workspace, URL-state patterns, payload inspection, settings, command palette, and theming.
 - `continua-observability`: trace/span/session/event model, async ingest lifecycle, rollups, timeline semantics, and debugger data surfaces.
 - `continua-integrations`: Python SDK, contract-driven SDK generation, TypeScript SDK stub status, and integration-boundary planning.
 - `continua-testing`: suite selection, real-DB test patterns, web Vitest coverage, and SDK verification.
@@ -139,6 +140,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - Open the matching `.codex/skills/<skill>/SKILL.md` when the task fits the skill.
 - Load linked `resources/` or `references/` files only when needed.
 - Start with `.codex/references/decisions.md` for shared repo rules and current-state boundaries.
+- Prefer `continua-debugger-ui` for `web/` product work; use `continua-observability` alongside it when the task changes trace/session/event semantics rather than just UI behavior.
 
 ### Codex guardrails
 - Do not edit generated files directly; change the source inputs and run `make generate`.

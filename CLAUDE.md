@@ -34,9 +34,11 @@ Do not assume replay, WebSocket runtime, proxy capture, durable engine workflows
 
 Start discovery from:
 - `AGENTS.md`
-- `docs/PHASE5_CURRENT_STATE_REPORT.md`
-- `.codex/references/decisions.md`
+- `docs/DEBUGGER_PLATFORM_BASELINE.md`
+- `.claude/skills/references/decisions.md`
 - the live package you are editing
+
+Use `docs/PHASE5_CURRENT_STATE_REPORT.md` only as deeper historical context.
 
 ## What Exists Today
 
@@ -59,9 +61,17 @@ Start discovery from:
 ## Discovery Rules
 
 - Treat checked-in code as the primary truth.
-- Use `docs/PHASE5_CURRENT_STATE_REPORT.md` to understand repo reality quickly.
+- Use `docs/DEBUGGER_PLATFORM_BASELINE.md` to understand repo reality quickly.
 - Use OpenSpec for proposals and active change context, but remember `openspec/specs/` is currently empty.
 - If a doc conflicts with code, trust the code and update the doc if it is part of the task.
+
+## Claude Skill Map
+
+- `continua-backend-dev`: backend, REST/API, store, migrations, River jobs
+- `continua-debugger-ui`: debugger frontend, trace workspace, traces/sessions pages, settings, theming
+- `continua-observability`: trace/span/session/event semantics, ingest lifecycle, rollups, timeline semantics
+- `continua-integrations`: Python SDK, TypeScript SDK stub, contract-driven SDK generation, proxy boundary
+- `continua-testing`: test selection and verification strategy
 
 ## Core Architecture
 

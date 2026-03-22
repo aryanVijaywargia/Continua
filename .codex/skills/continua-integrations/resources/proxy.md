@@ -10,7 +10,7 @@ There is no implemented:
 
 ## How to treat proxy work
 - Proxy work is new capability work, not routine extension of existing code.
-- Start by checking OpenSpec and the current platform baseline in `docs/PHASE5_CURRENT_STATE_REPORT.md`.
+- Start by checking OpenSpec and the current platform baseline in `docs/DEBUGGER_PLATFORM_BASELINE.md`.
 - Expect proxy work to touch contracts, auth, ingest semantics, payload capture rules, and likely product scope.
 
 ## Do not assume

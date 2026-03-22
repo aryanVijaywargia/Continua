@@ -1,6 +1,6 @@
 # Continua
 
-AI Agent Observability Platform
+AI Agent Observability Debugger
 
 ## Quick Start
 
@@ -21,6 +21,8 @@ make dev-web       # Start web UI (in new terminal)
 - **Backend**: Go 1.22+ with Chi router
 - **Frontend**: Vite + React + TypeScript
 - **Database**: PostgreSQL / SQLite
+
+Current repo-state baseline: [docs/DEBUGGER_PLATFORM_BASELINE.md](./docs/DEBUGGER_PLATFORM_BASELINE.md)
 
 ## Commands
 

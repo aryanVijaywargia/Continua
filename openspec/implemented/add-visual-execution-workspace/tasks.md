@@ -13,7 +13,7 @@
 - [x] 2.1 Install `react-resizable-panels`
 - [x] 2.2 Create `WorkspaceShell` component with desktop split-panel layout: left tree rail, right panel with top/bottom split
 - [x] 2.3 Create non-desktop stacked fallback rendering the same underlying content
-- [ ] 2.4 Wire `TraceDetailPage` to render `WorkspaceShell` with tree rail (left), existing `SpanDetail` (right top), existing `Timeline` (right bottom)
+- [x] 2.4 Wire `TraceDetailPage` to render `WorkspaceShell` with tree rail (left), existing `SpanDetail` (right top), existing `Timeline` (right bottom)
 - [x] 2.5 Add integration tests for desktop layout rendering tree and detail panels side by side
 - [x] 2.6 Add integration tests for non-desktop stacked fallback
 
@@ -21,7 +21,7 @@
 
 - [x] 3.1 Create `InspectorTabs` component with `Details` (default) and `Timeline` tabs
 - [x] 3.2 Replace the bottom-right `Timeline` panel with `InspectorTabs`; the `Timeline` tab contains the existing Timeline content
-- [ ] 3.3 The `Details` tab contains Failure Summary, Stale Trace Signal, and a compact span summary (name, status, kind, breadcrumb) when a span is selected. When no span is selected, show the existing "Select a span to view details" empty state. Full SpanDetail content (payloads, identifiers, timestamps) remains in the top-right panel until PR 4 moves it here.
+- [x] 3.3 The `Details` tab contains Failure Summary, Stale Trace Signal, and a compact span summary (name, status, kind, breadcrumb) when a span is selected. When no span is selected, show the existing "Select a span to view details" empty state. Full SpanDetail content (payloads, identifiers, timestamps) remains in the top-right panel until PR 4 moves it here.
 - [x] 3.4 Keep both tabs mounted (CSS `display: none` for hidden) so timeline-local state survives tab switches
 - [x] 3.5 Expose `switchToDetails` callback from `InspectorTabs` for external panels to invoke
 - [x] 3.6 Add integration tests for tab switching within the same trace

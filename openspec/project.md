@@ -2,20 +2,42 @@
 
 ## Purpose
 
-Continua is an **AI Agent Observability Platform** for debugging AI agents by capturing and replaying execution traces. It provides:
+Continua is currently an **AI agent observability debugger**.
 
-- **Trace Capture**: Record agent execution flows, tool calls, and LLM interactions
-- **Trace Replay**: Debug and analyze agent behavior by replaying captured sessions
-- **Real-time Monitoring**: WebSocket-based live updates for running agent sessions
-- **SDK Integration**: Drop-in SDKs for TypeScript and Python to instrument AI agents
+The implemented product path today is:
+
+```text
+Python SDK / custom client
+  -> authenticated REST ingest
+  -> Postgres persistence
+  -> River background jobs
+  -> REST read APIs
+  -> embedded React debugger UI
+```
+
+Implemented product areas:
+- trace, span, event, and session ingest
+- durable idempotent batches plus true async ingest
+- trace rollups and timeline read paths
+- traces list, sessions list, and session detail pages
+- failure-first trace detail workspace with payload inspection, state diff, and semantic events
+- Python SDK support for traces, spans, sessions, batching, and async polling
+
+Not yet implemented as product runtime:
+- replay execution
+- live WebSocket runtime
+- proxy capture runtime
+- score APIs
+- TypeScript SDK parity
+- durable engine runtime
 
 ## Tech Stack
 
 ### Backend
-- **Go 1.22+** - Primary server language
-- **Chi** - HTTP router
+- **Go** - Primary server language
 - **Uber Fx** - Dependency injection
 - **pgx/v5** - PostgreSQL driver
+- **River** - Background jobs in Postgres
 - **sqlc** - Type-safe SQL code generation
 - **golang-migrate** - Database migrations
 - **Cobra** - CLI framework
@@ -23,43 +45,34 @@ Continua is an **AI Agent Observability Platform** for debugging AI agents by ca
 ### Frontend
 - **Vite** - Build tool
 - **React 18** - UI framework
-- **TypeScript 5.6** - Type safety
+- **TypeScript** - UI and generated API types
 - **TanStack Query** - Data fetching/caching
 - **Tailwind CSS** - Styling
 
 ### Database
 - **PostgreSQL** - Primary database
-- **SQLite** - Local development option
+- **SQLite** - Bootstrap scaffold only, not full runtime parity
 
 ### SDKs
-- **TypeScript SDK** - tsup (bundler), vitest (testing)
-- **Python SDK** - uv (package manager), pytest, pydantic
+- **Python SDK** - active SDK
+- **TypeScript SDK** - stub package only
 
-## Project Conventions
+## Source Of Truth
 
-### Code Style
+Use these in order:
+1. Live code in `cmd/`, `internal/`, `web/`, and `sdks/python/`
+2. Contracts in `contracts/`
+3. Platform schema and queries in `db/platform/`
+4. `docs/DEBUGGER_PLATFORM_BASELINE.md`
+5. `openspec/implemented/` and `openspec/changes/`
 
-**Go:**
-- Standard `gofmt` formatting
-- Generated files use `_gen.go` suffix (except sqlc output)
-- Package names match directory names
-- Domain types never leak into API responses - use mappers
-
-**TypeScript/React:**
-- ESLint + Prettier for formatting
-- Functional components with hooks
-- TanStack Query for server state
-
-**General:**
-- Prefer explicit over implicit
-- Keep functions focused and small
-- Document non-obvious behavior
+Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a complete current-state source on its own.
 
 ### Architecture Patterns
 
 **Contract-First Development:**
 1. OpenAPI spec (`contracts/openapi/openapi.yaml`) is source of truth for REST API
-2. Zod schemas (`contracts/websocket/events.ts`) define WebSocket events
+2. `contracts/websocket/events.ts` is the source of truth for the WebSocket schema, but not for an implemented live runtime
 3. `make generate` regenerates all derived code
 4. CI fails if generated code is out of sync
 
@@ -75,69 +88,52 @@ web/                 → Vite React SPA (embedded in Go binary)
 sdks/                → TypeScript and Python SDKs
 ```
 
-**10 Architecture Rules:**
-1. `make generate` is the ONE command for all code generation
-2. Contracts are source of truth — never hand-edit generated files
-3. Generated Go files use `_gen.go` suffix (except sqlc output)
-4. Track generated code in git, not build artifacts
-5. Module boundaries enforced by Go — engine/ cannot import internal/
-6. Platform and Engine have separate schemas
-7. Web UI is static-only — no SSR, embedded in Go binary
-8. One lockfile at root (pnpm-workspace)
-9. CI drift check is gatekeeper — fails if generated code differs
-10. Domain types never leak into API responses — use mappers
+**Current runtime shape:**
+- `internal/api` owns handlers, mapping, auth, and timeline helpers
+- `internal/ingest` owns sync vs async orchestration plus shared write-path logic
+- `internal/jobs` owns async ingest, rollups, and cleanup workers
+- `internal/store` stays thin over sqlc plus selective handwritten SQL for dynamic search
+- `web/src` is the active debugger frontend
+
+**Current frontend shape:**
+- `/traces` and `/sessions` are URL-driven list pages
+- `/traces/:id` is a desktop/mobile debugger workspace
+- running traces poll timeline events; there is no live WebSocket subscription
 
 ### Testing Strategy
 
-- **Go tests**: Run with race detector (`make test-go`)
-- **Integration tests**: Require running database (`make test-integration`)
-- **TypeScript tests**: Vitest for SDK and frontend tests
-- **Python tests**: pytest for SDK tests
-- **Pre-commit validation**: `make ci` runs full pipeline locally
+- Go tests live beside the code and many integration-style tests use real Postgres helpers
+- Frontend uses Vitest and Testing Library in `web/src`
+- Python SDK uses pytest in `sdks/python/tests`
+- Useful validation commands:
+  - `go test ./internal/api/...`
+  - `go test ./internal/ingest/...`
+  - `go test ./internal/store/...`
+  - `go test ./internal/jobs/...`
+  - `pnpm --filter web test`
+  - `cd sdks/python && uv run pytest`
 
-### Git Workflow
+## OpenSpec Conventions
 
-- Feature branches off `main`
-- Run `make ci` before pushing
-- Commit messages should be descriptive without Claude signature
-- Generated files should be committed (not gitignored)
+- Use `openspec/changes/` for active or proposed work.
+- Move completed changes into `openspec/implemented/`.
+- Treat `openspec/implemented/` as history, not as the sole source of current runtime truth.
+- When planning, prefer the live code plus `docs/DEBUGGER_PLATFORM_BASELINE.md` before older phase docs.
 
 ## Domain Context
 
 **Core Concepts:**
-- **Session**: A logical grouping of traces (e.g., a user conversation)
-- **Trace**: A single execution flow within a session
-- **Span**: A unit of work within a trace (LLM call, tool invocation, etc.)
-- **Payload**: Request/response bodies stored for spans
-
-**Span Hierarchy:**
-- Spans form a tree structure (parent/child relationships)
-- Root spans have no parent
-- Child spans represent nested operations
-
-**Real-time Updates:**
-- WebSocket connections push live span data
-- Clients can subscribe to specific sessions/traces
+- **Session**: ingest-linked grouping of traces with internal UUID plus `external_id`
+- **Trace**: a single execution flow with internal UUID plus external `trace_id`
+- **Span**: a unit of work with internal UUID plus external `span_id`
+- **Event**: explicit span event stored in `span_events`
+- **Timeline**: explicit events plus synthetic lifecycle markers derived from spans
 
 ## Important Constraints
 
-**Technical:**
 - Generated code must never be manually edited
 - Engine module cannot import from internal/ (Go enforced boundary)
 - Web UI must be static (no SSR) for Go binary embedding
 - All contract changes require `make generate` before commit
-
-**Operational:**
-- CI drift check gates all merges
-- Database migrations must be backward compatible
-- SDK changes require version bumps
-
-## External Dependencies
-
-**Infrastructure:**
-- PostgreSQL database (primary store)
-- Docker for local development
-
-**AI Provider Integrations (via SDKs):**
-- OpenAI API (peer dependency in TS SDK)
-- Anthropic API (peer dependency in TS SDK)
+- Existing migrations are immutable
+- Placeholder-heavy areas such as `internal/ws`, `internal/replay`, `internal/proxy`, and `engine/` should not be treated as implemented

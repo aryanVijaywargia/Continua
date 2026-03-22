@@ -6,7 +6,7 @@ description: Testing strategy for Continua (Go, engine, web, SDKs). Use when add
 # Continua Testing
 
 ## Read first
-- [../../references/decisions.md](../../references/decisions.md)
+- [../references/decisions.md](../references/decisions.md)
 - [references/strategy.md](references/strategy.md)
 - [references/commands.md](references/commands.md)
 

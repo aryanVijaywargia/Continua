@@ -6,7 +6,7 @@ description: Domain-specific guide for Continua's current observability core. Us
 # Continua Observability Domain
 
 ## Read first
-- [../../references/decisions.md](../../references/decisions.md)
+- [../references/decisions.md](../references/decisions.md)
 
 ## Use this skill when
 - changing ingest semantics or batch lifecycle
@@ -14,6 +14,7 @@ description: Domain-specific guide for Continua's current observability core. Us
 - changing rollup behavior
 - changing timeline ordering or debugger data surfaces
 - changing truncation or failure-analysis semantics
+- pairing backend semantics work with debugger UI work that depends on those semantics
 
 ## Current domain reality
 - Continua's active observability core is REST + Postgres + River + debugger UI.
@@ -33,3 +34,5 @@ description: Domain-specific guide for Continua's current observability core. Us
 - [trace-lifecycle.md](resources/trace-lifecycle.md)
 - [websocket-events.md](resources/websocket-events.md)
 - [replay.md](resources/replay.md)
+
+For UI-first work in `web/src`, use `continua-debugger-ui` alongside this skill when needed.

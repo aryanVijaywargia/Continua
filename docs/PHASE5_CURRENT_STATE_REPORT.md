@@ -1,5 +1,7 @@
 # Continua Current State Report
 
+Superseded note (2026-03-22): use [DEBUGGER_PLATFORM_BASELINE.md](./DEBUGGER_PLATFORM_BASELINE.md) for the current repo-state handoff. This report remains useful as a deeper Phase 5 archaeology snapshot.
+
 Status date: 2026-03-12
 
 Purpose: provide a code-verified architecture and implementation baseline for Phase 5 planning.
@@ -1294,4 +1296,3 @@ Interpretation:
 - code for these changes is substantially ahead of some checklist statuses
 - the repo needs archival and current-state spec cleanup
 - planning should use code and this report first, then repair the OpenSpec state as part of early Phase 5 work
-

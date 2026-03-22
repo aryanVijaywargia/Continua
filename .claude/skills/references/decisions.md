@@ -4,7 +4,7 @@
 1. Live code in `cmd/`, `internal/`, `web/`, and `sdks/python/`
 2. Contracts in `contracts/`
 3. Platform schema + queries in `db/platform/`
-4. `docs/PHASE5_CURRENT_STATE_REPORT.md` for the current architecture narrative
+4. `docs/DEBUGGER_PLATFORM_BASELINE.md` for the shortest current architecture narrative
 5. OpenSpec proposals and implemented changes for change history and planned direction
 
 Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a complete current-state spec set.
@@ -48,6 +48,11 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
   - `internal/config`
   - `internal/web`
 - Active frontend/UI runtime: `web/src`
+- Current user-facing frontend focus:
+  - traces list + sessions list URL state
+  - failure-first trace detail workspace
+  - payload inspection + state diff
+  - settings, auth recovery, command palette, theming
 - Real SDK: `sdks/python`
 - Stubbed or placeholder-heavy areas:
   - `engine/`
@@ -74,6 +79,7 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
 - `config.example.yaml` is not the implementation contract and currently contains future-state drift.
 
 ## Useful reference docs
+- `docs/DEBUGGER_PLATFORM_BASELINE.md`
 - `docs/PHASE5_CURRENT_STATE_REPORT.md`
 - `docs/architecture/RULES.md`
 - `docs/architecture/data-model.md`

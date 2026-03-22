@@ -12,7 +12,7 @@ description: Backend development guide for Continua's current Go platform server
 - adding migrations, store methods, handlers, or River worker behavior
 
 ## Read first
-- [../../references/decisions.md](../../references/decisions.md)
+- [../references/decisions.md](../references/decisions.md)
 
 ## Current backend shape
 - `cmd/continua/main.go` wires the Fx app.

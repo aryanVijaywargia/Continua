@@ -6,7 +6,7 @@ description: Guide for Continua's integration surfaces as they exist today. Use 
 # Continua Integrations
 
 ## Read first
-- [../../references/decisions.md](../../references/decisions.md)
+- [../references/decisions.md](../references/decisions.md)
 
 ## Use this skill when
 - changing `sdks/python/`

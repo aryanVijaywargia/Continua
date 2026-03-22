@@ -33,10 +33,13 @@ The frontend in `web/` is a Vite React SPA built into `internal/web/static/` and
 Implemented UI areas include:
 - traces list with URL-driven filtering
 - trace detail with failure-first triage
-- span tree and span detail panels
+- trace detail workspace with tree rail, execution waterfall, and inspector tabs
+- span tree and span detail surfaces
 - payload inspection and truncation banners
+- state diff and semantic state/decision events
 - merged timeline view backed by polling
 - sessions list and session detail views
+- settings, auth recovery, command palette, and theming
 
 ### Background Jobs
 
@@ -143,4 +146,4 @@ These exist as plans, contracts, or scaffolding, but not as full runtime capabil
 - replay execution runtime in `internal/replay`
 - feature-complete TypeScript SDK
 
-For the most current repo-verified narrative, see `docs/PHASE5_CURRENT_STATE_REPORT.md`.
+For the shortest current repo-verified handoff, see `docs/DEBUGGER_PLATFORM_BASELINE.md`.

@@ -4,13 +4,15 @@ Instructions for AI coding assistants using OpenSpec for spec-driven development
 
 ## TL;DR Quick Checklist
 
-- Search existing work: `openspec spec list --long`, `openspec list` (use `rg` only for full-text search)
+- Search existing work: `openspec list`, `openspec list --specs` (use `rg` only for full-text search)
 - Decide scope: new capability vs modify existing capability
 - Pick a unique `change-id`: kebab-case, verb-led (`add-`, `update-`, `remove-`, `refactor-`)
 - Scaffold: `proposal.md`, `tasks.md`, `design.md` (only if needed), and delta specs per affected capability
 - Write deltas: use `## ADDED|MODIFIED|REMOVED|RENAMED Requirements`; include at least one `#### Scenario:` per requirement
 - Validate: `openspec validate [change-id] --strict` and fix issues
 - Request approval: Do not start implementation until proposal is approved
+
+Repo note for Continua: completed changes are kept under `openspec/implemented/`, not `openspec/changes/archive/`.
 
 ## Three-Stage Workflow
 
@@ -58,9 +60,9 @@ Track these steps as TODOs and complete them one by one.
 
 ### Stage 3: Archiving Changes
 After deployment, create separate PR to:
-- Move `changes/[name]/` → `changes/archive/YYYY-MM-DD-[name]/`
+- Move `changes/[name]/` → `implemented/[name]/`
 - Update `specs/` if capabilities changed
-- Use `openspec archive <change-id> --skip-specs --yes` for tooling-only changes (always pass the change ID explicitly)
+- If you use OpenSpec CLI commands, adapt them to the repo layout instead of reintroducing `changes/archive/`
 - Run `openspec validate --strict` to confirm the archived change passes checks
 
 ## Before Any Task
@@ -79,8 +81,8 @@ After deployment, create separate PR to:
 - If request is ambiguous, ask 1–2 clarifying questions before scaffolding
 
 ### Search Guidance
-- Enumerate specs: `openspec spec list --long` (or `--json` for scripts)
-- Enumerate changes: `openspec list` (or `openspec change list --json` - deprecated but available)
+- Enumerate specs: `openspec list --specs`
+- Enumerate changes: `openspec list`
 - Show details:
   - Spec: `openspec show <spec-id> --type spec` (use `--json` for filters)
   - Change: `openspec show <change-id> --json --deltas-only`
@@ -137,7 +139,8 @@ openspec/
 │   │   └── specs/          # Delta changes
 │   │       └── [capability]/
 │   │           └── spec.md # ADDED/MODIFIED/REMOVED
-│   └── archive/            # Completed changes
+└── implemented/            # Completed changes in this repo
+    └── [change-name]/
 ```
 
 ## Creating Change Proposals
@@ -319,8 +322,8 @@ openspec show [spec] --json -r 1
 
 ```bash
 # 1) Explore current state
-openspec spec list --long
 openspec list
+openspec list --specs
 # Optional full-text search:
 # rg -n "Requirement:|Scenario:" openspec/specs
 # rg -n "^#|Requirement:" openspec/changes
@@ -435,9 +438,9 @@ Only add complexity with:
 ## Quick Reference
 
 ### Stage Indicators
-- `changes/` - Proposed, not yet built
-- `specs/` - Built and deployed
-- `archive/` - Completed changes
+- `changes/` - Proposed or still-active work
+- `specs/` - Built and deployed current-state specs (currently sparse in this repo)
+- `implemented/` - Completed change history in this repo
 
 ### File Purposes
 - `proposal.md` - Why and what
@@ -450,7 +453,7 @@ Only add complexity with:
 openspec list              # What's in progress?
 openspec show [item]       # View details
 openspec validate --strict # Is it correct?
-openspec archive <change-id> [--yes|-y]  # Mark complete (add --yes for automation)
+# Continua uses `openspec/implemented/` for completed changes; move the directory there when archiving.
 ```
 
 Remember: Specs are truth. Changes are proposals. Keep them in sync.
