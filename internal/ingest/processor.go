@@ -213,12 +213,19 @@ func (p *Processor) validateBatch(req *IngestRequest) []string {
 }
 
 func isValidIngestEventType(eventType string) bool {
-	switch eventType {
-	case "log", "error", "exception", "message", "metric", "custom", "state_change", "decision":
-		return true
-	default:
+	if eventType == "" {
 		return false
 	}
+
+	_, blocked := syntheticTimelineOnlyEventTypes[eventType]
+	return !blocked
+}
+
+var syntheticTimelineOnlyEventTypes = map[string]struct{}{
+	// keep in sync with synthetic timeline event types in contracts/openapi/openapi.yaml and internal/api/timeline.go
+	"span_started":   {},
+	"span_completed": {},
+	"span_failed":    {},
 }
 
 func warnForMissingSemanticPayloadFields(event *EventInput) {
@@ -385,15 +392,6 @@ func (p *Processor) upsertSpan(ctx context.Context, tx *store.Tx, projectID, tra
 }
 
 func (p *Processor) insertEvent(ctx context.Context, tx *store.Tx, projectID, traceUUID uuid.UUID, input *EventInput) (bool, error) {
-	var payloadData []byte
-	var truncated bool
-	var origSize *int64
-	var truncReason *string
-
-	if input.Payload != nil {
-		payloadData, truncated, origSize, truncReason = processPayload(input.Payload, truncation.DefaultMaxBytes)
-	}
-
 	var eventTs pgtype.Timestamptz
 	if input.EventTs != nil {
 		eventTs = pgtype.Timestamptz{Time: *input.EventTs, Valid: true}
@@ -401,6 +399,7 @@ func (p *Processor) insertEvent(ctx context.Context, tx *store.Tx, projectID, tr
 
 	eventType := defaultString(input.EventType, "log")
 	level := defaultString(input.Level, "info")
+	payloadData, truncated, origSize, truncReason := processEventPayload(eventType, input, truncation.DefaultMaxBytes)
 
 	id, err := tx.InsertSpanEvent(ctx, &platform.InsertSpanEventParams{
 		ProjectID:         projectID,
@@ -432,13 +431,7 @@ func processPayload(data any, maxBytes int) (jsonData []byte, truncated bool, or
 		return nil, false, nil, nil
 	}
 
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		wrapped := map[string]string{"error": "failed to serialize", "type": "unknown"}
-		jsonBytes, _ = json.Marshal(wrapped)
-	}
-
-	jsonBytes, _ = truncation.EnsureJSON(jsonBytes)
+	jsonBytes := marshalPayloadData(data)
 
 	if maxBytes <= 0 {
 		maxBytes = truncation.DefaultMaxBytes
@@ -452,6 +445,17 @@ func processPayload(data any, maxBytes int) (jsonData []byte, truncated bool, or
 
 	reasonStr := string(result.Reason)
 	return result.Data, true, &result.OriginalSizeBytes, &reasonStr
+}
+
+func marshalPayloadData(data any) []byte {
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		wrapped := map[string]string{"error": "failed to serialize", "type": "unknown"}
+		jsonBytes, _ = json.Marshal(wrapped)
+	}
+
+	jsonBytes, _ = truncation.EnsureJSON(jsonBytes)
+	return jsonBytes
 }
 
 // defaultString returns the value if non-nil, otherwise returns the default.

@@ -11,6 +11,8 @@ import (
 	"github.com/continua-ai/continua/internal/store"
 )
 
+const originalEventTypePayloadKey = "__continua_original_event_type"
+
 // traceToAPI converts a database trace to an API trace.
 func traceToAPI(t *store.TraceRead) Trace {
 	trace := Trace{
@@ -216,8 +218,9 @@ func spanToAPI(sp *platform.Span) Span {
 
 // explicitTimelineEventToAPI converts an explicit span event row to a timeline event.
 func explicitTimelineEventToAPI(ev *platform.SpanEvent, spanName *string) TimelineEvent {
+	eventType, recognized := mapExplicitTimelineEventType(ev.EventType)
 	event := TimelineEvent{
-		EventType: mapExplicitTimelineEventType(ev.EventType),
+		EventType: eventType,
 		Id:        ev.ID.String(),
 		Source:    Explicit,
 		Timestamp: timelineEventDisplayTimestamp(ev.EventTs, ev.ServerIngestedAt),
@@ -240,6 +243,12 @@ func explicitTimelineEventToAPI(ev *platform.SpanEvent, spanName *string) Timeli
 		event.Message = ev.Message
 	}
 	if payload := parseJSONObject(ev.Payload); payload != nil {
+		if !recognized {
+			payload = cloneTimelinePayloadWithOriginalType(payload, ev.EventType)
+		}
+		event.Payload = &payload
+	} else if !recognized {
+		payload := cloneTimelinePayloadWithOriginalType(nil, ev.EventType)
 		event.Payload = &payload
 	}
 
@@ -350,25 +359,42 @@ func mapSpanStatus(status string) string {
 	}
 }
 
-func mapExplicitTimelineEventType(eventType string) TimelineEventType {
+func mapExplicitTimelineEventType(eventType string) (TimelineEventType, bool) {
 	switch eventType {
 	case "log":
-		return TimelineEventTypeLog
+		return TimelineEventTypeLog, true
 	case "error":
-		return TimelineEventTypeError
+		return TimelineEventTypeError, true
 	case "exception":
-		return TimelineEventTypeException
+		return TimelineEventTypeException, true
 	case "message":
-		return TimelineEventTypeMessage
+		return TimelineEventTypeMessage, true
 	case "metric":
-		return TimelineEventTypeMetric
+		return TimelineEventTypeMetric, true
+	case "custom":
+		return TimelineEventTypeCustom, true
 	case "state_change":
-		return TimelineEventTypeStateChange
+		return TimelineEventTypeStateChange, true
 	case "decision":
-		return TimelineEventTypeDecision
+		return TimelineEventTypeDecision, true
+	case "effect":
+		return TimelineEventTypeEffect, true
+	case "wait":
+		return TimelineEventTypeWait, true
 	default:
-		return TimelineEventTypeCustom
+		return TimelineEventTypeCustom, false
 	}
+}
+
+func cloneTimelinePayloadWithOriginalType(payload map[string]interface{}, originalType string) map[string]interface{} {
+	cloned := make(map[string]interface{}, len(payload)+1)
+	for key, value := range payload {
+		cloned[key] = value
+	}
+
+	// TODO: consider pooling or lower-allocation path if this becomes hot
+	cloned[originalEventTypePayloadKey] = originalType
+	return cloned
 }
 
 func mapTimelineEventLevel(level string) *TimelineEventLevel {

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -158,6 +159,44 @@ func TestIngest_SyncTrueOverridesAsyncHeader(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, traceID, trace.TraceID)
+}
+
+func TestIngest_SyncTrueAcceptsUnknownExplicitEventType(t *testing.T) {
+	server, _, q, projectID := newAsyncIngestServer(t)
+	traceID := "trace-" + uuid.NewString()[:8]
+	startTime := time.Now().UTC().Format(time.RFC3339Nano)
+	sync := true
+
+	rec := invokeIngest(
+		t,
+		server,
+		projectID,
+		`{
+			"batch_key":"batch-unknown-explicit",
+			"traces":[{"trace_id":"`+traceID+`","name":"unknown explicit trace"}],
+			"spans":[{"trace_id":"`+traceID+`","span_id":"span-1","name":"unknown explicit span","start_time":"`+startTime+`"}],
+			"events":[{"trace_id":"`+traceID+`","span_id":"span-1","event_type":"workflow_step","message":"planning"}]
+		}`,
+		IngestParams{Sync: &sync},
+		nil,
+	)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	resp := decodeJSONBody[IngestResponse](t, rec)
+	assert.Equal(t, IngestResponseStatusOk, resp.Status)
+	require.NotNil(t, resp.EventCount)
+	assert.Equal(t, int32(1), *resp.EventCount)
+
+	trace, err := q.GetTraceByExternalID(context.Background(), platform.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   traceID,
+	})
+	require.NoError(t, err)
+
+	events, err := q.ListSpanEventsByTrace(context.Background(), trace.ID)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, "workflow_step", events[0].EventType)
 }
 
 func TestIngest_InvalidAsyncVersionReturnsBadRequest(t *testing.T) {
