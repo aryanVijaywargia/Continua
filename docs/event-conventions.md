@@ -10,10 +10,12 @@ Use them to explain what happened during trace execution, not to model checkpoin
 
 - Use `state_change` when an observable piece of state changes and you want the debugger to show the transition directly.
 - Use `decision` when the system chooses between alternatives and the debugger should show the branch point and rationale.
-- Use `custom` only when no existing semantic type fits or the payload is domain-specific and purely ad hoc.
+- Use `effect` when the span performs an external action or model invocation that matters for debugging.
+- Use `wait` when progress is blocked on a human, external dependency, timer, or similar resolution outside the current span's direct control.
 - Use `message` for lightweight narrative milestones.
 - Use `log`, `error`, and `exception` for operational logging and failures.
 - Use `metric` for structured numeric measurements.
+- Use `custom` only when no existing semantic type fits or the payload is domain-specific and purely ad hoc.
 
 ## Explicit Event Types
 
@@ -27,6 +29,10 @@ Use them to explain what happened during trace execution, not to model checkpoin
 | `custom` | Domain-specific event that does not fit another semantic type | Any optional structured payload | `info` |
 | `state_change` | Observable state transition that should render in the State view | `key`, optional `namespace`, optional `old_value`, optional `new_value` | `info` |
 | `decision` | Branch point or choice with a selected outcome | `question`, `chosen`, optional `alternatives`, optional `reasoning` | `info` |
+| `effect` | External side effect, tool call, or model invocation worth surfacing in the debugger | `effect_kind`, `has_external_side_effect`, optional `effect_id`, optional `idempotent`, optional `idempotency_key` | `info` |
+| `wait` | Blocked or deferred progress that depends on later resolution | `wait_kind`, `phase`, optional `wait_id`, optional `resolution` | `info` |
+
+`message` and `custom` remain supported event types in this phase, but the Python SDK does not add dedicated `span.message()` or `span.custom()` helpers yet.
 
 ## Payload Guidance
 
@@ -99,9 +105,102 @@ with span("route_request") as s:
     )
 ```
 
+### `effect`
+
+Use `effect` when a span performs work whose observable consequence matters outside the current call stack: model calls, tool invocations, outbound API calls, writes to external systems, or similarly meaningful side effects.
+
+Recommended payload shape:
+
+```json
+{
+  "effect_kind": "api_call",
+  "has_external_side_effect": true,
+  "effect_id": "effect_123",
+  "idempotent": false
+}
+```
+
+- `effect_kind` is a descriptive category. Common values include `model_call`, `tool_call`, `api_call`, and `custom`.
+- `has_external_side_effect` should be `false` for read-only or observational effects and `true` when the action can mutate external state.
+- `effect_id` is optional. When omitted, the server may derive it.
+- `idempotent` and `idempotency_key` are effect semantics in the payload, not ingest-level deduplication keys.
+
+Implicit Python SDK examples:
+
+```python
+with span("draft_reply", kind="llm") as s:
+    s.set_llm_response(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": "Summarize this ticket"}],
+        response={"role": "assistant", "content": "Summary"},
+        tokens_in=120,
+        tokens_out=48,
+    )
+```
+
+```python
+with span("lookup_weather", kind="tool") as s:
+    s.set_tool_call(
+        "weather_api",
+        {"city": "Berlin"},
+        {"temperature_c": 18},
+        has_external_side_effect=False,
+    )
+```
+
+Explicit Python SDK example:
+
+```python
+with span("sync_billing") as s:
+    s.effect(
+        "api_call",
+        has_external_side_effect=True,
+        effect_id="billing-sync-42",
+        payload={"target": "billing"},
+    )
+```
+
+### `wait`
+
+Use `wait` when the interesting debugging fact is that execution paused pending some later resolution.
+
+Recommended payload shape:
+
+```json
+{
+  "wait_kind": "human_approval",
+  "phase": "entered",
+  "wait_id": "wait_123"
+}
+```
+
+- `wait_kind` is the category of dependency. Common values include `human_approval`, `external`, `timer`, and `custom`.
+- `phase` describes the lifecycle point. Common values include `entered` and `resolved`.
+- `resolution` is optional and useful when the wait is resolved with a meaningful outcome such as `approved`, `rejected`, or `elapsed`.
+- `wait_id` is optional. When omitted, the server may derive it.
+
+Python SDK examples:
+
+```python
+with span("review_order") as s:
+    s.wait("human_approval", phase="entered", payload={"reviewer": "ops"})
+```
+
+```python
+with span("review_order") as s:
+    s.wait(
+        "human_approval",
+        phase="resolved",
+        wait_id="approval-42",
+        resolution="approved",
+    )
+```
+
 ## Quick Heuristics
 
 - If you want the debugger to show `old → new`, emit `state_change`.
 - If you want the debugger to show `question → chosen`, emit `decision`.
+- If you want the debugger to show "this span called out to something important", emit `effect`.
+- If you want the debugger to show "this span had to wait", emit `wait`.
 - If you only need a human-readable sentence, emit `message`.
 - If you need a free-form payload with no special UI, emit `custom`.

@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from tests.support import assert_event_metadata
+
 
 class TestCustomExceptions:
     """Tests for custom exception types."""
@@ -439,6 +441,52 @@ class TestSpanHelperMethods:
             assert span_data.get("total_tokens") is None
             assert span_data.get("input") == [{"role": "user", "content": "Hello"}]
             assert span_data.get("output") == {"role": "assistant", "content": "Hi there!"}
+            assert len(client._batch._events) == 1
+            event = client._batch._events[0]
+            assert_event_metadata(event, sequence=1)
+            assert event.get("event_type") == "effect"
+            assert event.get("message") == "Model call: gpt-4"
+            assert event.get("payload") == {
+                "effect_kind": "model_call",
+                "has_external_side_effect": False,
+            }
+            client.shutdown()
+
+    def test_set_llm_response_sets_optional_provider_and_cost(self):
+        """Scenario: Set optional LLM provider and cost
+        WHEN span.set_llm_response(..., provider=..., cost=...) is called
+        THEN the span stores the provider and total cost alongside the other LLM fields
+        """
+        with patch("continua.client.httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            from continua import Continua, trace
+            from continua.span import span
+
+            Continua._instance = None
+            client = Continua.init(api_key="test-key", endpoint="http://localhost:8080")
+
+            @trace()
+            def my_agent():
+                with span("llm_call", kind="llm") as s:
+                    s.set_llm_response(
+                        model="gpt-4",
+                        messages=[{"role": "user", "content": "Hello"}],
+                        response={"role": "assistant", "content": "Hi there!"},
+                        tokens_in=10,
+                        tokens_out=5,
+                        provider="openai",
+                        cost=0.42,
+                    )
+
+            my_agent()
+
+            assert len(client._batch._spans) >= 1
+            span_data = client._batch._spans[-1]
+            assert span_data.get("model") == "gpt-4"
+            assert span_data.get("provider") == "openai"
+            assert span_data.get("total_cost") == 0.42
             client.shutdown()
 
     def test_set_tool_call(self):
@@ -472,6 +520,56 @@ class TestSpanHelperMethods:
             assert span_data.get("name") == "get_weather"
             assert span_data.get("input") == {"city": "New York"}
             assert span_data.get("output") == {"temperature": 72, "conditions": "sunny"}
+            assert len(client._batch._events) == 1
+            event = client._batch._events[0]
+            assert_event_metadata(event, sequence=1)
+            assert event.get("event_type") == "effect"
+            assert event.get("message") == "Tool call: get_weather"
+            assert event.get("payload") == {
+                "effect_kind": "tool_call",
+                "has_external_side_effect": True,
+            }
+            client.shutdown()
+
+    def test_set_tool_call_preserves_three_positional_arg_compatibility(self):
+        """Scenario: Existing callers pass exactly three positional arguments
+        WHEN span.set_tool_call(tool_name, arguments, result) is called positionally
+        THEN the helper still updates the span and emits the default implicit effect
+        """
+        with patch("continua.client.httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            from continua import Continua, trace
+            from continua.span import span
+
+            Continua._instance = None
+            client = Continua.init(api_key="test-key", endpoint="http://localhost:8080")
+
+            @trace()
+            def my_agent():
+                with span("tool_call", kind="tool") as s:
+                    s.set_tool_call(
+                        "get_weather",
+                        {"city": "New York"},
+                        {"temperature": 72, "conditions": "sunny"},
+                    )
+
+            my_agent()
+
+            assert len(client._batch._spans) >= 1
+            span_data = client._batch._spans[-1]
+            assert span_data.get("name") == "get_weather"
+            assert span_data.get("input") == {"city": "New York"}
+            assert span_data.get("output") == {"temperature": 72, "conditions": "sunny"}
+            assert len(client._batch._events) == 1
+            event = client._batch._events[0]
+            assert_event_metadata(event, sequence=1)
+            assert event.get("message") == "Tool call: get_weather"
+            assert event.get("payload") == {
+                "effect_kind": "tool_call",
+                "has_external_side_effect": True,
+            }
             client.shutdown()
 
     def test_log_message(self):
@@ -505,10 +603,12 @@ class TestSpanHelperMethods:
             assert len(client._batch._events) == 2
 
             event1 = client._batch._events[0]
+            assert_event_metadata(event1, sequence=1)
             assert event1.get("message") == "Processing started"
             assert event1.get("level") == "info"
 
             event2 = client._batch._events[1]
+            assert_event_metadata(event2, sequence=2)
             assert event2.get("message") == "Found items"
             assert event2.get("level") == "debug"
             assert event2.get("payload") == {"count": 42, "items": ["a", "b"]}
@@ -539,6 +639,7 @@ class TestSpanHelperMethods:
             assert len(client._batch._events) == 1
 
             event = client._batch._events[0]
+            assert_event_metadata(event, sequence=1)
             assert event.get("trace_id") is not None
             assert event.get("span_id") is not None
             assert event.get("event_type") == "error"
@@ -575,6 +676,7 @@ class TestSpanHelperMethods:
             assert len(client._batch._events) == 1
 
             event = client._batch._events[0]
+            assert_event_metadata(event, sequence=1)
             payload = event.get("payload")
             assert event.get("event_type") == "exception"
             assert event.get("level") == "error"
@@ -611,6 +713,7 @@ class TestSpanHelperMethods:
             assert len(client._batch._events) == 2
 
             first_metric = client._batch._events[0]
+            assert_event_metadata(first_metric, sequence=1)
             assert first_metric.get("event_type") == "metric"
             assert first_metric.get("level") == "info"
             assert first_metric.get("payload") == {
@@ -621,6 +724,7 @@ class TestSpanHelperMethods:
             }
 
             second_metric = client._batch._events[1]
+            assert_event_metadata(second_metric, sequence=2)
             assert second_metric.get("payload") == {
                 "metric_name": "retry_count",
                 "metric_value": 3,
