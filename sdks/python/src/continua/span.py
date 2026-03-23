@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import traceback
 import uuid
 from contextvars import ContextVar
@@ -17,6 +18,7 @@ _current_span: ContextVar[SpanContext | None] = ContextVar(
 )
 
 SpanKind = Literal["llm", "tool", "agent", "chain", "retrieval", "embedding", "generation", "default"]
+_MAX_EVENT_SEQUENCE = 2_147_483_647
 
 
 def get_current_span() -> SpanContext | None:
@@ -76,6 +78,10 @@ class SpanContext:
         self._completion_tokens: int | None = None
         self._total_tokens: int | None = None
         self._total_cost: float | None = None
+        self._event_seq = 0
+        self._event_lock = threading.Lock()
+        self._implicit_llm_effect_emitted = False
+        self._implicit_tool_effect_emitted = False
 
         self._token: Any = None
 
@@ -136,6 +142,7 @@ class SpanContext:
         *,
         provider: str | None = None,
         cost: float | None = None,
+        emit_effect: bool = True,
     ) -> None:
         """Set LLM call details on this span.
 
@@ -147,6 +154,8 @@ class SpanContext:
             tokens_out: Number of output/completion tokens
             provider: Optional provider name (e.g., "openai", "anthropic")
             cost: Optional cost in USD
+            emit_effect: Emit an implicit effect event the first time this
+                helper is used on the span
         """
         self._model = model
         self._provider = provider
@@ -158,12 +167,22 @@ class SpanContext:
             self._total_tokens = (tokens_in or 0) + (tokens_out or 0)
         if cost is not None:
             self._total_cost = cost
+        if emit_effect:
+            self._emit_implicit_effect(
+                flag_name="_implicit_llm_effect_emitted",
+                effect_kind="model_call",
+                has_external_side_effect=False,
+                message=f"Model call: {model}",
+            )
 
     def set_tool_call(
         self,
         tool_name: str,
         arguments: Any,
         result: Any,
+        *,
+        has_external_side_effect: bool = True,
+        emit_effect: bool = True,
     ) -> None:
         """Set tool call details on this span.
 
@@ -171,10 +190,21 @@ class SpanContext:
             tool_name: Name of the tool being called
             arguments: The tool arguments/input
             result: The tool execution result
+            has_external_side_effect: Whether the tool can mutate external
+                state
+            emit_effect: Emit an implicit effect event the first time this
+                helper is used on the span
         """
         self.name = tool_name  # Override span name with tool name
         self._input = arguments
         self._output = result
+        if emit_effect:
+            self._emit_implicit_effect(
+                flag_name="_implicit_tool_effect_emitted",
+                effect_kind="tool_call",
+                has_external_side_effect=has_external_side_effect,
+                message=f"Tool call: {tool_name}",
+            )
 
     def log(
         self,
@@ -348,6 +378,72 @@ class SpanContext:
             payload=payload,
         )
 
+    def effect(
+        self,
+        kind: str,
+        *,
+        has_external_side_effect: bool,
+        effect_id: str | None = None,
+        idempotent: bool | None = None,
+        idempotency_key: str | None = None,
+        message: str | None = None,
+        payload: dict[str, Any] | None = None,
+        level: str = "info",
+    ) -> None:
+        """Emit a structured effect event for this span."""
+        self._require_non_empty_string("kind", kind)
+        effect_payload = self._merge_reserved_payload(
+            payload,
+            reserved_fields={
+                "effect_kind": kind,
+                "has_external_side_effect": has_external_side_effect,
+                "effect_id": effect_id,
+                "idempotent": idempotent,
+                "idempotency_key": idempotency_key,
+            },
+            empty_string_keys=frozenset({"effect_id", "idempotency_key"}),
+        )
+
+        self._record_event(
+            event_type="effect",
+            level=level,
+            message=message or f"Effect: {self._normalize_event_label(kind)}",
+            payload=effect_payload,
+        )
+
+    def wait(
+        self,
+        kind: str,
+        *,
+        phase: str,
+        resolution: str | None = None,
+        wait_id: str | None = None,
+        message: str | None = None,
+        payload: dict[str, Any] | None = None,
+        level: str = "info",
+    ) -> None:
+        """Emit a structured wait event for this span."""
+        self._require_non_empty_string("kind", kind)
+        self._require_non_empty_string("phase", phase)
+        wait_payload = self._merge_reserved_payload(
+            payload,
+            reserved_fields={
+                "wait_kind": kind,
+                "phase": phase,
+                "wait_id": wait_id,
+                "resolution": resolution,
+            },
+            empty_string_keys=frozenset({"wait_id"}),
+        )
+        phase_label = self._normalize_event_label(phase).capitalize()
+
+        self._record_event(
+            event_type="wait",
+            level=level,
+            message=message or f"{phase_label} wait: {self._normalize_event_label(kind)}",
+            payload=wait_payload,
+        )
+
     def __enter__(self) -> SpanContext:
         """Enter the span context."""
         self._token = _current_span.set(self)
@@ -434,26 +530,108 @@ class SpanContext:
         level: str,
         message: str | None = None,
         payload: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> bool:
         """Queue a structured event for this span."""
         if self.trace_id is None:
-            return
+            return False
 
         client = _get_client_if_initialized()
         if client is None:
-            return
+            return False
+
+        with self._event_lock:
+            if self._event_seq >= _MAX_EVENT_SEQUENCE:
+                raise OverflowError(
+                    f"event sequence exceeds int32 maximum of {_MAX_EVENT_SEQUENCE}"
+                )
+            self._event_seq += 1
+            sequence = self._event_seq
+            event_ts = self._format_event_ts(datetime.now(timezone.utc))
 
         event_data: dict[str, Any] = {
             "trace_id": self.trace_id,
             "span_id": self.span_id,
             "event_type": event_type,
             "level": level,
+            "event_ts": event_ts,
+            "sequence": sequence,
         }
         if message is not None:
             event_data["message"] = message
         if payload is not None:
             event_data["payload"] = payload
         client.add_event(event_data)
+        return True
+
+    def _emit_implicit_effect(
+        self,
+        *,
+        flag_name: str,
+        effect_kind: str,
+        has_external_side_effect: bool,
+        message: str,
+    ) -> None:
+        """Emit an implicit effect event once per helper type per span."""
+        with self._event_lock:
+            if getattr(self, flag_name):
+                return
+            setattr(self, flag_name, True)
+
+        try:
+            emitted = self._record_event(
+                event_type="effect",
+                level="info",
+                message=message,
+                payload={
+                    "effect_kind": effect_kind,
+                    "has_external_side_effect": has_external_side_effect,
+                },
+            )
+        except Exception:
+            with self._event_lock:
+                setattr(self, flag_name, False)
+            raise
+
+        if emitted:
+            return
+
+        with self._event_lock:
+            setattr(self, flag_name, False)
+
+    @staticmethod
+    def _format_event_ts(value: datetime) -> str:
+        """Format datetimes as RFC 3339 UTC strings with microsecond precision."""
+        return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
+            "+00:00",
+            "Z",
+        )
+
+    @staticmethod
+    def _normalize_event_label(value: str) -> str:
+        """Normalize event labels for human-readable default messages."""
+        return value.replace("_", " ")
+
+    @staticmethod
+    def _require_non_empty_string(field_name: str, value: str) -> None:
+        """Reject empty semantic identifiers while allowing new vocabularies."""
+        if value == "":
+            raise ValueError(f"{field_name} must be a non-empty string")
+
+    @staticmethod
+    def _merge_reserved_payload(
+        payload: dict[str, Any] | None,
+        *,
+        reserved_fields: dict[str, Any],
+        empty_string_keys: frozenset[str],
+    ) -> dict[str, Any]:
+        """Copy caller payload and overlay helper-owned semantic fields."""
+        merged_payload = dict(payload or {})
+        for key, value in reserved_fields.items():
+            if value is None or (key in empty_string_keys and value == ""):
+                merged_payload.pop(key, None)
+                continue
+            merged_payload[key] = value
+        return merged_payload
 
 
 def span(
