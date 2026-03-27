@@ -14,6 +14,21 @@ export interface DecisionDetails {
   reasoning?: string;
 }
 
+export interface EffectDetails {
+  effectKind: string;
+  hasExternalSideEffect: boolean;
+  effectId?: string;
+  idempotent?: boolean;
+  idempotencyKey?: string;
+}
+
+export interface WaitDetails {
+  waitKind: string;
+  phase: string;
+  resolution?: string;
+  waitId?: string;
+}
+
 export function getStateChangeDetails(
   event: TimelineEvent
 ): StateChangeDetails | null {
@@ -55,6 +70,56 @@ export function getDecisionDetails(event: TimelineEvent): DecisionDetails | null
   };
 }
 
+export function getEffectDetails(event: TimelineEvent): EffectDetails | null {
+  if (event.event_type !== 'effect' || !event.payload) {
+    return null;
+  }
+
+  const effectKind = getNonEmptyString(event.payload, 'effect_kind');
+  const hasExternalSideEffect = getBoolean(event.payload, 'has_external_side_effect');
+  const effectId = getOptionalNonEmptyString(event.payload, 'effect_id');
+  const idempotent = getOptionalBoolean(event.payload, 'idempotent');
+  const idempotencyKey = getOptionalNonEmptyString(event.payload, 'idempotency_key');
+  if (
+    !effectKind ||
+    hasExternalSideEffect === null ||
+    effectId === null ||
+    idempotent === null ||
+    idempotencyKey === null
+  ) {
+    return null;
+  }
+
+  return {
+    effectKind,
+    hasExternalSideEffect,
+    effectId,
+    idempotent,
+    idempotencyKey,
+  };
+}
+
+export function getWaitDetails(event: TimelineEvent): WaitDetails | null {
+  if (event.event_type !== 'wait' || !event.payload) {
+    return null;
+  }
+
+  const waitKind = getNonEmptyString(event.payload, 'wait_kind');
+  const phase = getNonEmptyString(event.payload, 'phase');
+  const resolution = getOptionalNonEmptyString(event.payload, 'resolution');
+  const waitId = getOptionalNonEmptyString(event.payload, 'wait_id');
+  if (!waitKind || !phase || resolution === null || waitId === null) {
+    return null;
+  }
+
+  return {
+    waitKind,
+    phase,
+    resolution,
+    waitId,
+  };
+}
+
 export function formatInlineSemanticValue(value: unknown): string {
   if (value === undefined) {
     return 'unset';
@@ -83,4 +148,35 @@ function getNonEmptyString(
 ): string | null {
   const value = payload[key];
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function getOptionalNonEmptyString(
+  payload: Record<string, unknown>,
+  key: string
+): string | undefined | null {
+  // `undefined` means the optional field is absent; `null` means it was present
+  // but malformed, so callers can reject partially-invalid semantic payloads.
+  if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+    return undefined;
+  }
+
+  return getNonEmptyString(payload, key);
+}
+
+function getBoolean(payload: Record<string, unknown>, key: string): boolean | null {
+  const value = payload[key];
+  return typeof value === 'boolean' ? value : null;
+}
+
+function getOptionalBoolean(
+  payload: Record<string, unknown>,
+  key: string
+): boolean | undefined | null {
+  // `undefined` means the optional field is absent; `null` means it was present
+  // but malformed, so callers can reject partially-invalid semantic payloads.
+  if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+    return undefined;
+  }
+
+  return getBoolean(payload, key);
 }
