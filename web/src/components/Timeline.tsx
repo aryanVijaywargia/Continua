@@ -4,12 +4,19 @@ import { JsonViewer } from './JsonViewer';
 import {
   formatInlineSemanticValue,
   getDecisionDetails,
+  getEffectDetails,
   getStateChangeDetails,
 } from '../utils/eventSemantics';
 import {
   isTimelineErrorEvent,
   summarizeTimelineEvent,
 } from '../utils/timeline';
+import {
+  classifyEffectEvent,
+  getAccessibleSummary,
+  type RetrySafetyAssessment,
+} from '../utils/retrySafety';
+import { RetrySafetyBadge } from './RetrySafetyBadge';
 
 interface TimelineProps {
   events: TimelineEvent[];
@@ -101,6 +108,7 @@ export function Timeline({
               isSelectedSpan={selectedSpanId === event.span_id}
               onSelectSpan={onSelectSpan}
               spanIndex={spanIndex}
+              traceStatus={traceStatus}
             />
           ))}
         </div>
@@ -114,6 +122,7 @@ interface TimelineRowProps {
   isSelectedSpan: boolean;
   onSelectSpan: (spanId: string) => void;
   spanIndex: Map<string, Span>;
+  traceStatus: TimelineTraceStatus | null;
 }
 
 function TimelineRow({
@@ -121,6 +130,7 @@ function TimelineRow({
   isSelectedSpan,
   onSelectSpan,
   spanIndex,
+  traceStatus,
 }: TimelineRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasDetails = Boolean(event.message || event.payload);
@@ -128,6 +138,9 @@ function TimelineRow({
   const isError = isTimelineErrorEvent(event);
   const stateChange = getStateChangeDetails(event);
   const decision = getDecisionDetails(event);
+  const retrySafety =
+    traceStatus === 'FAILED' ? classifyEffectEvent(event) : null;
+  const effectDetails = retrySafety ? getEffectDetails(event) : null;
   const rowAccent = isError
     ? 'border-red-200 bg-red-50/70 dark:border-red-500/40 dark:bg-red-500/10'
     : event.source === 'synthetic'
@@ -170,6 +183,16 @@ function TimelineRow({
                 <StateChangePreview stateChange={stateChange} />
               ) : decision ? (
                 <DecisionPreview decision={decision} />
+              ) : effectDetails ? (
+                <EffectPreview
+                  effect={effectDetails}
+                  retrySafety={retrySafety}
+                />
+              ) : retrySafety ? (
+                <MalformedEffectPreview
+                  event={event}
+                  retrySafety={retrySafety}
+                />
               ) : (
                 <p className="mt-3 text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
                   {summarizeTimelineEvent(event)}
@@ -293,6 +316,59 @@ function DecisionPreview({
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function EffectPreview({
+  effect,
+  retrySafety,
+}: {
+  effect: NonNullable<ReturnType<typeof getEffectDetails>>;
+  retrySafety: RetrySafetyAssessment | null;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
+          {effect.effectKind}
+        </p>
+        {retrySafety ? (
+          <RetrySafetyBadge
+            classification={retrySafety.classification}
+            variant="compact"
+            aria-label={getAccessibleSummary(retrySafety.classification)}
+          />
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <SemanticValuePill tone={effect.hasExternalSideEffect ? 'accent' : 'neutral'}>
+          {effect.hasExternalSideEffect ? 'mutating' : 'read-only'}
+        </SemanticValuePill>
+      </div>
+    </div>
+  );
+}
+
+function MalformedEffectPreview({
+  event,
+  retrySafety,
+}: {
+  event: TimelineEvent;
+  retrySafety: RetrySafetyAssessment;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
+          {summarizeTimelineEvent(event)}
+        </p>
+        <RetrySafetyBadge
+          classification={retrySafety.classification}
+          variant="compact"
+          aria-label={getAccessibleSummary(retrySafety.classification)}
+        />
+      </div>
     </div>
   );
 }

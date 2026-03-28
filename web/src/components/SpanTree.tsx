@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { formatCost, formatDuration, formatTokens } from '../utils/format';
+import {
+  getAccessibleSummary,
+  type RetrySafetyAssessment,
+} from '../utils/retrySafety';
 import type { SpanTreeRow } from '../utils/spanTree';
+import { RetrySafetyBadge } from './RetrySafetyBadge';
 import { StatusBadge } from './StatusBadge';
 
 interface SpanTreeProps {
@@ -16,6 +21,7 @@ interface SpanTreeProps {
   inlineErrorPreviews: ReadonlyMap<string, string>;
   showMetrics?: boolean;
   matchedSpanIds?: ReadonlySet<string> | null;
+  spanAssessments?: ReadonlyMap<string, RetrySafetyAssessment>;
 }
 
 const kindColors: Record<string, string> = {
@@ -25,6 +31,7 @@ const kindColors: Record<string, string> = {
   AGENT: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-200',
   CUSTOM: 'bg-gray-100 text-gray-800 dark:bg-slate-800 dark:text-slate-200',
 };
+const EMPTY_SPAN_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
 
 export function SpanTree({
   rows,
@@ -39,6 +46,7 @@ export function SpanTree({
   inlineErrorPreviews,
   showMetrics = false,
   matchedSpanIds = null,
+  spanAssessments = EMPTY_SPAN_ASSESSMENTS,
 }: SpanTreeProps) {
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
@@ -73,6 +81,7 @@ export function SpanTree({
         const rowStateId = `span-row-state-${span.id}`;
         const isMatch = matchedSpanIds?.has(span.span_id) ?? false;
         const shouldDim = matchedSpanIds !== null && !isMatch;
+        const retrySafety = spanAssessments.get(span.span_id) ?? null;
 
         const rowClasses = isSelected
           ? 'border-blue-200 bg-blue-50 shadow-sm ring-1 ring-blue-200 dark:border-sky-500/50 dark:bg-sky-500/10 dark:ring-sky-500/40'
@@ -158,6 +167,13 @@ export function SpanTree({
                       <span className="rounded-full border border-red-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-red-700 dark:border-red-500/40 dark:bg-slate-950 dark:text-red-200">
                         Failed
                       </span>
+                    ) : null}
+                    {isFailed && retrySafety ? (
+                      <RetrySafetyBadge
+                        classification={retrySafety.classification}
+                        variant="compact"
+                        aria-label={getAccessibleSummary(retrySafety.classification)}
+                      />
                     ) : null}
                   </div>
 

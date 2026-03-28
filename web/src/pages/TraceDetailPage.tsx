@@ -38,7 +38,9 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { useTraceDetailSearchParams } from '../hooks/useTraceDetailSearchParams';
 import { useWorkspaceState } from '../hooks/useWorkspaceState';
+import type { RetrySafetyAssessment } from '../utils/retrySafety';
 import { useTraceTimeline } from './useTraceTimeline';
+import { useRetrySafetyAnalysis } from './useRetrySafetyAnalysis';
 import {
   calculateDuration,
   formatCost,
@@ -64,6 +66,7 @@ import {
 } from '../utils/spanTree';
 
 const EMPTY_SPANS: Span[] = [];
+const EMPTY_RETRY_SAFETY_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
 const EMPTY_STALE_TRACE_SIGNAL: StaleTraceSignal = {
   shouldDisplay: false,
   latestActivityAt: null,
@@ -181,6 +184,11 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
         : EMPTY_STALE_TRACE_SIGNAL,
     [spans, timeline.events, timeline.hasSnapshot, timelineStatus, trace?.started_at]
   );
+  const retrySafetyAnalysis = useRetrySafetyAnalysis(spans, timeline.events);
+  const showRetrySafety = timelineStatus === 'FAILED';
+  const visibleRetrySafetyAssessments = showRetrySafety
+    ? retrySafetyAnalysis.spanAssessments
+    : EMPTY_RETRY_SAFETY_ASSESSMENTS;
 
   const handleSelectSpan = useCallback((spanId: string) => {
     selectSpan(spanId);
@@ -258,6 +266,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       staleTraceSignal={staleTraceSignal}
       timelineStatus={timelineStatus}
       failureAnalysis={failureAnalysis}
+      retrySafetyAnalysis={showRetrySafety ? retrySafetyAnalysis : null}
       onSelectSpan={handleSelectSpanAndShowDetails}
       selectedBreadcrumbPath={selectedBreadcrumbPath}
       selectedSpan={selectedSpan}
@@ -349,6 +358,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
             revealTarget={waterfallRevealTarget}
             selectedSpanId={selectedSpanExternalId}
             setExpandedSpanIds={setExpandedSpanIds}
+            spanAssessments={visibleRetrySafetyAssessments}
             spanIndex={spanIndex}
             spanTree={spanTree}
             spans={spans}
@@ -384,6 +394,7 @@ interface TraceWorkspaceProps {
   revealTarget: string | null;
   selectedSpanId: string | null;
   setExpandedSpanIds: Dispatch<SetStateAction<Set<string>>>;
+  spanAssessments: ReadonlyMap<string, RetrySafetyAssessment>;
   spanIndex: ReadonlyMap<string, Span>;
   spanTree: SpanTreeNode[];
   spans: Span[];
@@ -414,6 +425,7 @@ function TraceWorkspace({
   revealTarget,
   selectedSpanId,
   setExpandedSpanIds,
+  spanAssessments,
   spanIndex,
   spanTree,
   spans,
@@ -451,6 +463,7 @@ function TraceWorkspace({
           spanIndex={spanIndex}
           spanTree={spanTree}
           spans={spans}
+          spanAssessments={spanAssessments}
         />
       }
       waterfall={
@@ -462,6 +475,7 @@ function TraceWorkspace({
           revealTarget={revealTarget}
           revealVersion={revealKey}
           spans={spans}
+          spanAssessments={spanAssessments}
           traceEndedAt={traceEndedAt}
           traceStartedAt={traceStartedAt}
         />
@@ -506,6 +520,7 @@ function TraceDetailsSurface({
   staleTraceSignal,
   timelineStatus,
   failureAnalysis,
+  retrySafetyAnalysis,
   onSelectSpan,
   selectedBreadcrumbPath,
   selectedSpan,
@@ -516,6 +531,7 @@ function TraceDetailsSurface({
   staleTraceSignal: StaleTraceSignal;
   timelineStatus: 'RUNNING' | 'COMPLETED' | 'FAILED' | null;
   failureAnalysis: ReturnType<typeof buildFailureAnalysis>;
+  retrySafetyAnalysis: ReturnType<typeof useRetrySafetyAnalysis> | null;
   onSelectSpan: (spanId: string) => void;
   selectedBreadcrumbPath: ReturnType<typeof buildBreadcrumbPath>;
   selectedSpan: Span | null;
@@ -532,6 +548,7 @@ function TraceDetailsSurface({
           <FailureSummary
             summary={failureAnalysis.summary}
             onJumpToPrimaryFailedSpan={onSelectSpan}
+            traceRetrySafety={retrySafetyAnalysis?.traceAssessment ?? null}
           />
         ) : null}
 
@@ -546,6 +563,11 @@ function TraceDetailsSurface({
             onSelectSpan={onSelectSpan}
             spanIndex={spanIndex}
             events={events}
+            retrySafety={
+              selectedSpan?.status === 'FAILED' && retrySafetyAnalysis
+                ? retrySafetyAnalysis.spanAssessments.get(selectedSpan.span_id) ?? null
+                : null
+            }
           />
         </div>
       </div>

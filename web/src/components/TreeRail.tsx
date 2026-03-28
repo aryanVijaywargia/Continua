@@ -6,6 +6,7 @@ import {
 } from 'react';
 import type { Span } from '../api/client';
 import { useTreeRailState } from '../hooks/useTreeRailState';
+import type { RetrySafetyAssessment } from '../utils/retrySafety';
 import { useVirtualRows } from '../hooks/useVirtualRows';
 import { deriveVisibleRows, type SpanTreeNode } from '../utils/spanTree';
 import { SpanTree } from './SpanTree';
@@ -26,10 +27,12 @@ interface TreeRailProps {
   spanTree: SpanTreeNode[];
   spans: Span[];
   onVisibleRowsChange: (rows: ReturnType<typeof deriveVisibleRows>) => void;
+  spanAssessments?: ReadonlyMap<string, RetrySafetyAssessment>;
 }
 
 const TREE_ROW_HEIGHT = 72;
 const TREE_ROW_HEIGHT_WITH_METRICS = 94;
+const EMPTY_SPAN_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
 
 export function TreeRail({
   expandableSpanIds,
@@ -47,6 +50,7 @@ export function TreeRail({
   spanTree,
   spans,
   onVisibleRowsChange,
+  spanAssessments = EMPTY_SPAN_ASSESSMENTS,
 }: TreeRailProps) {
   const {
     effectiveExpandedSpanIds,
@@ -196,6 +200,7 @@ export function TreeRail({
             inlineErrorPreviews={inlineErrorPreviews}
             showMetrics={showMetrics}
             matchedSpanIds={matchedSpanIds}
+            spanAssessments={spanAssessments}
           />
         </div>
       </div>

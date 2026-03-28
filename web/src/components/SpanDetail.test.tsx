@@ -2,6 +2,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Span, TimelineEvent } from '../api/client';
+import {
+  getAccessibleSummary,
+  getReasonExplanation,
+  type RetrySafetyAssessment,
+} from '../utils/retrySafety';
 import { SpanDetail } from './SpanDetail';
 
 function createSpan(overrides: Partial<Span> = {}): Span {
@@ -33,6 +38,22 @@ function createSpan(overrides: Partial<Span> = {}): Span {
     output_original_size_bytes: overrides.output_original_size_bytes,
     output_truncation_reason: overrides.output_truncation_reason,
     metadata: overrides.metadata,
+  };
+}
+
+function createRetrySafetyAssessment(
+  overrides: Partial<RetrySafetyAssessment> = {}
+): RetrySafetyAssessment {
+  return {
+    classification: overrides.classification ?? 'retryable',
+    reason: overrides.reason ?? 'read_only_effect',
+    decisiveSpanId: overrides.decisiveSpanId ?? 'span-1',
+    decisiveSpanName: overrides.decisiveSpanName ?? 'span-1',
+    decisiveEventId: overrides.decisiveEventId ?? 'effect-1',
+    effectKind: overrides.effectKind,
+    hasExternalSideEffect: overrides.hasExternalSideEffect,
+    idempotent: overrides.idempotent,
+    idempotencyKey: overrides.idempotencyKey,
   };
 }
 
@@ -168,5 +189,75 @@ describe('SpanDetail parent navigation', () => {
     expect(screen.getByText('Which model?')).toBeInTheDocument();
     expect(screen.getByText('gpt-4.1')).toBeInTheDocument();
     expect(screen.queryByText('Should be hidden')).not.toBeInTheDocument();
+  });
+});
+
+describe('SpanDetail retry safety', () => {
+  it.each([
+    ['retryable', 'read_only_effect'],
+    ['unsafe', 'mutating_non_idempotent'],
+    ['unknown', 'no_effect_events'],
+  ] as const)(
+    'renders the %s retry safety section for failed spans',
+    (classification, reason) => {
+      render(
+        <SpanDetail
+          span={createSpan({ span_id: 'failed-span', status: 'FAILED' })}
+          breadcrumbPath={[{ spanId: 'failed-span', name: 'failed-span' }]}
+          onSelectSpan={vi.fn()}
+          spanIndex={new Map()}
+          retrySafety={createRetrySafetyAssessment({
+            classification,
+            reason,
+          })}
+        />
+      );
+
+      expect(screen.getByText('Retry Safety')).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(getAccessibleSummary(classification))
+      ).toBeInTheDocument();
+      expect(screen.getByText(getReasonExplanation(reason))).toBeInTheDocument();
+    }
+  );
+
+  it('shows supporting semantic fields when effect metadata is available', () => {
+    render(
+      <SpanDetail
+        span={createSpan({ span_id: 'failed-span', status: 'FAILED' })}
+        breadcrumbPath={[{ spanId: 'failed-span', name: 'failed-span' }]}
+        onSelectSpan={vi.fn()}
+        spanIndex={new Map()}
+        retrySafety={createRetrySafetyAssessment({
+          effectKind: 'api_call',
+          hasExternalSideEffect: true,
+          idempotent: true,
+          idempotencyKey: 'key-1',
+          reason: 'mutating_idempotent_with_key',
+        })}
+      />
+    );
+
+    expect(screen.getByText('effect_kind:')).toBeInTheDocument();
+    expect(screen.getByText('api_call')).toBeInTheDocument();
+    expect(screen.getByText('has_external_side_effect:')).toBeInTheDocument();
+    expect(screen.getAllByText('true')).toHaveLength(2);
+    expect(screen.getByText('idempotent:')).toBeInTheDocument();
+    expect(screen.getByText('idempotency_key:')).toBeInTheDocument();
+    expect(screen.getByText('key-1')).toBeInTheDocument();
+  });
+
+  it('omits the retry safety section for non-failed spans', () => {
+    render(
+      <SpanDetail
+        span={createSpan({ span_id: 'completed-span', status: 'COMPLETED' })}
+        breadcrumbPath={[{ spanId: 'completed-span', name: 'completed-span' }]}
+        onSelectSpan={vi.fn()}
+        spanIndex={new Map()}
+        retrySafety={createRetrySafetyAssessment()}
+      />
+    );
+
+    expect(screen.queryByText('Retry Safety')).not.toBeInTheDocument();
   });
 });
