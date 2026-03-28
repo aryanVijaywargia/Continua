@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearApiKey, setApiKey, type TraceDetail } from '../api/client';
 import { setMatchMediaMatches } from '../test/matchMedia';
+import { getAccessibleSummary, getReasonExplanation } from '../utils/retrySafety';
 import {
   SESSION_EXTERNAL_ID,
   SESSION_ID,
@@ -15,6 +16,7 @@ import {
   createTimelineEvent,
   jsonResponse,
   mockClipboard,
+  readRequestUrl,
   renderTraceRoutes,
   resetTestEntityCounter,
 } from './testUtils';
@@ -475,6 +477,135 @@ describe('TraceDetailPage', () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByLabelText('Span breadcrumb')).getByText('Failed tool')
+    ).toBeInTheDocument();
+  });
+
+  it('surfaces consistent retry-safety guidance across failure summary, tree, waterfall, span detail, and timeline', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'retry-root',
+      name: 'Retry root',
+      status: 'COMPLETED',
+      ended_at: '2026-03-14T10:00:20.000Z',
+    });
+    const primaryFailedSpan = createSpan({
+      span_id: 'retry-primary',
+      name: 'Primary failed',
+      parent_span_id: 'retry-root',
+      status: 'FAILED',
+      started_at: '2026-03-14T10:00:01.000Z',
+      ended_at: '2026-03-14T10:00:05.000Z',
+      error_message: 'Read-only failure',
+    });
+    const secondaryFailedSpan = createSpan({
+      span_id: 'retry-secondary',
+      name: 'Secondary failed',
+      parent_span_id: 'retry-root',
+      status: 'FAILED',
+      started_at: '2026-03-14T10:00:06.000Z',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      error_message: 'Unsafe failure',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(TRACE_DETAIL),
+        spans: () =>
+          jsonResponse({
+            spans: [rootSpan, primaryFailedSpan, secondaryFailedSpan],
+          }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'primary-effect',
+                span_id: primaryFailedSpan.span_id,
+                span_name: primaryFailedSpan.name,
+                event_type: 'effect',
+                timestamp: '2026-03-14T10:00:04.000Z',
+                payload: {
+                  effect_kind: 'model_call',
+                  has_external_side_effect: false,
+                },
+              }),
+              createTimelineEvent({
+                id: 'secondary-effect',
+                span_id: secondaryFailedSpan.span_id,
+                span_name: secondaryFailedSpan.name,
+                event_type: 'effect',
+                timestamp: '2026-03-14T10:00:09.000Z',
+                payload: {
+                  effect_kind: 'api_call',
+                  has_external_side_effect: true,
+                  idempotent: false,
+                },
+              }),
+            ],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    const failureSummarySection = (
+      await screen.findByRole('heading', { name: 'Failure Summary' })
+    ).closest('section');
+    expect(failureSummarySection).not.toBeNull();
+    expect(
+      within(failureSummarySection!).getByLabelText(getAccessibleSummary('unsafe'))
+    ).toBeInTheDocument();
+    expect(
+      within(failureSummarySection!).getByText(
+        getReasonExplanation('mutating_non_idempotent')
+      )
+    ).toBeInTheDocument();
+
+    const treeSection = screen.getByRole('heading', { name: 'Spans (3)' }).closest('section');
+    expect(treeSection).not.toBeNull();
+    expect(
+      within(treeSection!).getByLabelText(getAccessibleSummary('retryable'))
+    ).toBeInTheDocument();
+    expect(
+      within(treeSection!).getByLabelText(getAccessibleSummary('unsafe'))
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Expand all' }));
+
+    const waterfallSection = screen
+      .getByRole('heading', { name: 'Execution Waterfall' })
+      .closest('section');
+    expect(waterfallSection).not.toBeNull();
+    await screen.findByRole('button', {
+      name: 'Select waterfall span Secondary failed',
+    });
+    expect(
+      within(waterfallSection!).getByLabelText(getAccessibleSummary('unsafe'))
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(failureSummarySection!).getByRole('button', {
+        name: 'Jump to decisive span Secondary failed',
+      })
+    );
+
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Secondary failed')
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Retry Safety')).toBeInTheDocument();
+    expect(screen.getByText('effect_kind:')).toBeInTheDocument();
+    expect(screen.getAllByText('api_call').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+
+    const timelineSection = screen.getByRole('heading', { name: 'Timeline' }).closest('section');
+    expect(timelineSection).not.toBeNull();
+    expect(
+      within(timelineSection!).getByLabelText(getAccessibleSummary('retryable'))
+    ).toBeInTheDocument();
+    expect(
+      within(timelineSection!).getByLabelText(getAccessibleSummary('unsafe'))
     ).toBeInTheDocument();
   });
 
@@ -1014,6 +1145,189 @@ describe('TraceDetailPage', () => {
     ).toBeInTheDocument();
     expect(view.router.state.location.search).toBe('?span=running-child');
   }, 10000);
+
+  it('keeps failed-trace retry-safety surfaces stable when timeline data refreshes with only non-effect updates', async () => {
+    const user = userEvent.setup();
+    const failedTraceDetail: TraceDetail = {
+      ...TRACE_DETAIL,
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:02.000Z',
+      error_count: 1,
+    };
+    const failedSpan = createSpan({
+      span_id: 'poll-failed',
+      name: 'Polling failed span',
+      status: 'FAILED',
+      started_at: '2026-03-14T10:00:00.000Z',
+      ended_at: '2026-03-14T10:00:02.000Z',
+      error_message: 'Initial failure',
+    });
+    let currentTimelineEvents = [
+      createTimelineEvent({
+        id: 'bootstrap-effect',
+        span_id: failedSpan.span_id,
+        span_name: failedSpan.name,
+        event_type: 'effect',
+        timestamp: '2026-03-14T10:00:01.000Z',
+        payload: {
+          effect_kind: 'model_call',
+          has_external_side_effect: false,
+        },
+      }),
+    ];
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(failedTraceDetail),
+        spans: () => jsonResponse({ spans: [failedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: currentTimelineEvents,
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}?span=poll-failed`]);
+
+    expect(await screen.findByText('Retry Safety')).toBeInTheDocument();
+    const treeSection = screen.getByRole('heading', { name: 'Spans (1)' }).closest('section');
+    const waterfallSection = screen
+      .getByRole('heading', { name: 'Execution Waterfall' })
+      .closest('section');
+    expect(treeSection).not.toBeNull();
+    expect(waterfallSection).not.toBeNull();
+    expect(
+      within(treeSection!).getAllByLabelText(getAccessibleSummary('retryable'))
+    ).toHaveLength(1);
+    expect(
+      within(waterfallSection!).getAllByLabelText(getAccessibleSummary('retryable'))
+    ).toHaveLength(1);
+
+    currentTimelineEvents = [
+      ...currentTimelineEvents,
+      createTimelineEvent({
+        id: 'refreshed-log',
+        span_id: failedSpan.span_id,
+        span_name: failedSpan.name,
+        event_type: 'message',
+        timestamp: '2026-03-14T10:00:03.000Z',
+        message: 'non-effect refresh update',
+      }),
+    ];
+
+    await act(async () => {
+      await view.queryClient.invalidateQueries({
+        queryKey: ['timeline', TRACE_ONE.id, 'bootstrap'],
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input]) => {
+          const url = new URL(readRequestUrl(input), 'http://localhost');
+          return url.pathname === `/api/traces/${TRACE_ONE.id}/events`;
+        })
+      ).toBe(true);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    expect(await screen.findByText('non-effect refresh update')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Details' }));
+
+    const refreshedTreeSection = screen
+      .getByRole('heading', { name: 'Spans (1)' })
+      .closest('section');
+    const refreshedWaterfallSection = screen
+      .getByRole('heading', { name: 'Execution Waterfall' })
+      .closest('section');
+    expect(refreshedTreeSection).not.toBeNull();
+    expect(refreshedWaterfallSection).not.toBeNull();
+    expect(screen.getByText('Retry Safety')).toBeInTheDocument();
+    expect(
+      within(refreshedTreeSection!).getAllByLabelText(getAccessibleSummary('retryable'))
+    ).toHaveLength(1);
+    expect(
+      within(refreshedWaterfallSection!).getAllByLabelText(getAccessibleSummary('retryable'))
+    ).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Failure Summary' })).toBeInTheDocument();
+  }, 10000);
+
+  it.each(['RUNNING', 'COMPLETED'] as const)(
+    'does not surface retry-safety UI on %s traces',
+    async (traceStatus) => {
+      const user = userEvent.setup();
+      const traceDetail: TraceDetail =
+        traceStatus === 'RUNNING'
+          ? {
+              ...TRACE_DETAIL,
+              status: 'RUNNING',
+              ended_at: undefined,
+              error_count: 0,
+            }
+          : {
+              ...TRACE_DETAIL,
+              status: 'COMPLETED',
+              ended_at: '2026-03-14T10:00:05.000Z',
+              error_count: 0,
+            };
+      const failedSpan = createSpan({
+        span_id: `${traceStatus.toLowerCase()}-failed`,
+        name: `${traceStatus} failed span`,
+        status: 'FAILED',
+        started_at: '2026-03-14T10:00:00.000Z',
+        ended_at: '2026-03-14T10:00:02.000Z',
+        error_message: 'Out-of-scope failure',
+      });
+
+      fetchMock.mockImplementation(
+        buildFetchHandler({
+          detail: () => jsonResponse(traceDetail),
+          spans: () => jsonResponse({ spans: [failedSpan] }),
+          timeline: () =>
+            jsonResponse({
+              events: [
+                createTimelineEvent({
+                  id: `${traceStatus.toLowerCase()}-effect`,
+                  span_id: failedSpan.span_id,
+                  span_name: failedSpan.name,
+                  event_type: 'effect',
+                  payload: {
+                    effect_kind: 'model_call',
+                    has_external_side_effect: false,
+                  },
+                }),
+              ],
+              trace_status: traceStatus,
+              has_more: false,
+            }),
+        })
+      );
+
+      renderTraceRoutes([`/traces/${TRACE_ONE.id}?span=${failedSpan.span_id}`]);
+
+      expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Failure Summary' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Retry Safety')).not.toBeInTheDocument();
+
+      const treeSection = screen.getByRole('heading', { name: 'Spans (1)' }).closest('section');
+      const waterfallSection = screen
+        .getByRole('heading', { name: 'Execution Waterfall' })
+        .closest('section');
+      expect(treeSection).not.toBeNull();
+      expect(waterfallSection).not.toBeNull();
+      expect(
+        within(treeSection!).queryByLabelText(getAccessibleSummary('retryable'))
+      ).not.toBeInTheDocument();
+      expect(
+        within(waterfallSection!).queryByLabelText(getAccessibleSummary('retryable'))
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Timeline' }));
+      expect(screen.queryByLabelText(getAccessibleSummary('retryable'))).not.toBeInTheDocument();
+    }
+  );
 
   it('resets selection and timeline filter state when navigating between traces', async () => {
     const user = userEvent.setup();

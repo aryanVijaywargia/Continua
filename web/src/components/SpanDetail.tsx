@@ -14,6 +14,12 @@ import {
   formatInlineSemanticValue,
   getDecisionDetails,
 } from '../utils/eventSemantics';
+import {
+  getAccessibleSummary,
+  getReasonExplanation,
+  type RetrySafetyAssessment,
+} from '../utils/retrySafety';
+import { RetrySafetyBadge } from './RetrySafetyBadge';
 import { SpanBreadcrumb } from './SpanBreadcrumb';
 import { TruncationBanner } from './TruncationBanner';
 
@@ -23,6 +29,7 @@ interface SpanDetailProps {
   onSelectSpan: (spanId: string) => void;
   spanIndex: ReadonlyMap<string, Span>;
   events?: TimelineEvent[];
+  retrySafety?: RetrySafetyAssessment | null;
 }
 
 /**
@@ -34,6 +41,7 @@ export function SpanDetail({
   onSelectSpan,
   spanIndex,
   events = [],
+  retrySafety = null,
 }: SpanDetailProps) {
   if (!span) {
     return (
@@ -194,6 +202,61 @@ export function SpanDetail({
           </div>
         </div>
       )}
+
+      {span.status === 'FAILED' && retrySafety ? (
+        <div className="mb-6">
+          <h3 className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            Retry Safety
+          </h3>
+          <div className="rounded border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+            <div className="flex flex-wrap items-center gap-3">
+              <RetrySafetyBadge
+                classification={retrySafety.classification}
+                variant="full"
+                aria-label={getAccessibleSummary(retrySafety.classification)}
+              />
+              <span className="text-sm text-slate-700 dark:text-slate-200">
+                Advisory only. Retry safety is inferred from recorded effect metadata.
+              </span>
+            </div>
+            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+              {getReasonExplanation(retrySafety.reason)}
+            </p>
+            {(retrySafety.effectKind !== undefined ||
+              retrySafety.hasExternalSideEffect !== undefined ||
+              retrySafety.idempotent !== undefined ||
+              retrySafety.idempotencyKey !== undefined) ? (
+              <div className="mt-4 rounded border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+                <DetailRow label="effect_kind" value={retrySafety.effectKind} mono />
+                {retrySafety.hasExternalSideEffect !== undefined ? (
+                  <DetailRow
+                    label="has_external_side_effect"
+                    value={formatInlineSemanticValue(retrySafety.hasExternalSideEffect)}
+                    mono
+                    className="mt-1"
+                  />
+                ) : null}
+                {retrySafety.idempotent !== undefined ? (
+                  <DetailRow
+                    label="idempotent"
+                    value={formatInlineSemanticValue(retrySafety.idempotent)}
+                    mono
+                    className="mt-1"
+                  />
+                ) : null}
+                {retrySafety.idempotencyKey !== undefined ? (
+                  <DetailRow
+                    label="idempotency_key"
+                    value={retrySafety.idempotencyKey}
+                    mono
+                    className="mt-1"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* IDs */}
       <div className="mb-6">

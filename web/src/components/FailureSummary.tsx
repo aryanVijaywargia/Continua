@@ -1,17 +1,30 @@
 import type { FailureSummary as FailureSummaryData } from '../utils/failureAnalysis';
 import { formatTimestamp } from '../utils/format';
+import {
+  getAccessibleSummary,
+  getReasonExplanation,
+  type RetrySafetyAssessment,
+} from '../utils/retrySafety';
+import { RetrySafetyBadge } from './RetrySafetyBadge';
 import { SpanBreadcrumb } from './SpanBreadcrumb';
 
 interface FailureSummaryProps {
   summary: FailureSummaryData;
   onJumpToPrimaryFailedSpan: (spanId: string) => void;
+  traceRetrySafety?: RetrySafetyAssessment | null;
 }
 
 export function FailureSummary({
   summary,
   onJumpToPrimaryFailedSpan,
+  traceRetrySafety = null,
 }: FailureSummaryProps) {
   const primaryFailedSpan = summary.primaryFailedSpan;
+  const decisiveSpanDiffers =
+    Boolean(traceRetrySafety?.decisiveSpanId) &&
+    traceRetrySafety?.decisiveSpanId !== primaryFailedSpan?.span_id;
+  const decisiveSpanLabel =
+    traceRetrySafety?.decisiveSpanName ?? traceRetrySafety?.decisiveSpanId ?? 'decisive span';
 
   return (
     <section className="overflow-hidden rounded-xl border border-red-200 bg-white shadow-sm dark:border-red-500/40 dark:bg-slate-900">
@@ -72,6 +85,15 @@ export function FailureSummary({
               />
             </div>
 
+            {traceRetrySafety ? (
+              <RetrySafetyPanel
+                assessment={traceRetrySafety}
+                decisiveSpanDiffers={decisiveSpanDiffers}
+                decisiveSpanLabel={decisiveSpanLabel}
+                onJumpToSpan={onJumpToPrimaryFailedSpan}
+              />
+            ) : null}
+
             <div>
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                 Failure path
@@ -98,6 +120,14 @@ export function FailureSummary({
                 value={String(summary.errorEventCount)}
               />
             </div>
+            {traceRetrySafety ? (
+              <RetrySafetyPanel
+                assessment={traceRetrySafety}
+                decisiveSpanDiffers={decisiveSpanDiffers}
+                decisiveSpanLabel={decisiveSpanLabel}
+                onJumpToSpan={onJumpToPrimaryFailedSpan}
+              />
+            ) : null}
           </>
         )}
       </div>
@@ -112,6 +142,54 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
         {label}
       </div>
       <div className="mt-2 text-sm font-medium text-slate-900 dark:text-slate-100">{value}</div>
+    </div>
+  );
+}
+
+function RetrySafetyPanel({
+  assessment,
+  decisiveSpanDiffers,
+  decisiveSpanLabel,
+  onJumpToSpan,
+}: {
+  assessment: RetrySafetyAssessment;
+  decisiveSpanDiffers: boolean;
+  decisiveSpanLabel: string;
+  onJumpToSpan: (spanId: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+          Trace retry safety
+        </div>
+        <RetrySafetyBadge
+          classification={assessment.classification}
+          variant="full"
+          aria-label={getAccessibleSummary(assessment.classification)}
+        />
+      </div>
+      <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">
+        Advisory only. Retry safety is inferred from recorded effect metadata.
+      </p>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+        {getReasonExplanation(assessment.reason)}
+      </p>
+      {decisiveSpanDiffers && assessment.decisiveSpanId ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Determined by failed span <span className="font-medium">{decisiveSpanLabel}</span>.
+          </p>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+            aria-label={`Jump to decisive span ${decisiveSpanLabel}`}
+            onClick={() => onJumpToSpan(assessment.decisiveSpanId!)}
+          >
+            Jump to decisive span
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

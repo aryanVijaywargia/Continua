@@ -2,12 +2,17 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { Span, TimelineEvent } from '../api/client';
 import { useVirtualRows } from '../hooks/useVirtualRows';
 import { formatDuration } from '../utils/format';
+import {
+  getAccessibleSummary,
+  type RetrySafetyAssessment,
+} from '../utils/retrySafety';
 import type { SpanTreeRow } from '../utils/spanTree';
 import {
   buildWaterfallTicks,
   deriveWaterfallWindow,
   getWaterfallBarLayout,
 } from '../utils/waterfallTime';
+import { RetrySafetyBadge } from './RetrySafetyBadge';
 
 interface ExecutionWaterfallProps {
   events: TimelineEvent[];
@@ -19,11 +24,13 @@ interface ExecutionWaterfallProps {
   spans: Span[];
   traceEndedAt?: string;
   traceStartedAt?: string;
+  spanAssessments?: ReadonlyMap<string, RetrySafetyAssessment>;
 }
 
 const MIN_BAR_WIDTH_REM = 0.875;
 const WATERFALL_ROW_HEIGHT = 68;
 const TICK_LINE_COLOR = 'var(--continua-waterfall-tick-color)';
+const EMPTY_SPAN_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
 
 export function ExecutionWaterfall({
   events,
@@ -35,6 +42,7 @@ export function ExecutionWaterfall({
   spans,
   traceEndedAt,
   traceStartedAt,
+  spanAssessments = EMPTY_SPAN_ASSESSMENTS,
 }: ExecutionWaterfallProps) {
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const window = useMemo(
@@ -141,6 +149,7 @@ export function ExecutionWaterfall({
           {virtualRows.map(({ row }) => {
             const bar = getWaterfallBarLayout(row.span, window);
             const isSelected = row.span.span_id === selectedSpanId;
+            const retrySafety = spanAssessments.get(row.span.span_id) ?? null;
 
             return (
               <div
@@ -165,10 +174,19 @@ export function ExecutionWaterfall({
                   onClick={() => onSelectSpanAndShowDetails(row.span.span_id)}
                 >
                   <div
-                    className="truncate text-sm font-medium text-slate-900 dark:text-slate-100"
+                    className="flex items-center gap-2"
                     style={{ paddingLeft: `${row.depth * 12}px` }}
                   >
-                    {row.span.name}
+                    <div className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                      {row.span.name}
+                    </div>
+                    {row.span.status === 'FAILED' && retrySafety ? (
+                      <RetrySafetyBadge
+                        classification={retrySafety.classification}
+                        variant="compact"
+                        aria-label={getAccessibleSummary(retrySafety.classification)}
+                      />
+                    ) : null}
                   </div>
                   <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {row.span.status} · {formatDuration(row.span.latency_ms)}
