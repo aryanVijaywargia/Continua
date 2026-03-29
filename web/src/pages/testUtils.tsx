@@ -4,10 +4,13 @@ import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import { ThemeProvider } from '../hooks/ThemeProvider';
 import {
+  EMPTY_SESSION_NARRATIVE,
   OTHER_SESSION_EXTERNAL_ID,
   OTHER_SESSION_ID,
+  RUNNING_SESSION_NARRATIVE,
   SESSION_EXTERNAL_ID,
   SESSION_ID,
+  SESSION_NARRATIVE,
   SESSION_ONE,
   SESSION_TWO,
   TRACE_DETAIL,
@@ -15,6 +18,8 @@ import {
   TRACE_THREE,
   TRACE_TWO,
   TRACE_ZETA,
+  TRUNCATED_SESSION_NARRATIVE,
+  createSessionNarrativeTrace,
   createSpan,
   createTimelineEvent,
   resetTestEntityCounter,
@@ -25,10 +30,13 @@ import { SessionsPage } from './SessionsPage';
 import { SettingsPage } from './SettingsPage';
 import { TracesPage } from './TracesPage';
 export {
+  EMPTY_SESSION_NARRATIVE,
   OTHER_SESSION_EXTERNAL_ID,
   OTHER_SESSION_ID,
+  RUNNING_SESSION_NARRATIVE,
   SESSION_EXTERNAL_ID,
   SESSION_ID,
+  SESSION_NARRATIVE,
   SESSION_ONE,
   SESSION_TWO,
   TRACE_DETAIL,
@@ -36,6 +44,8 @@ export {
   TRACE_THREE,
   TRACE_TWO,
   TRACE_ZETA,
+  TRUNCATED_SESSION_NARRATIVE,
+  createSessionNarrativeTrace,
   createSpan,
   createTimelineEvent,
   resetTestEntityCounter,
@@ -59,6 +69,7 @@ export function buildFetchHandler({
   detail,
   sessionsList,
   sessionDetail,
+  sessionNarrative,
   spans,
   timeline,
 }: {
@@ -66,6 +77,7 @@ export function buildFetchHandler({
   detail?: JsonHandler;
   sessionsList?: JsonHandler;
   sessionDetail?: JsonHandler;
+  sessionNarrative?: JsonHandler;
   spans?: JsonHandler;
   timeline?: JsonHandler;
 } = {}) {
@@ -109,6 +121,21 @@ export function buildFetchHandler({
           total: 2,
         })
       );
+    }
+
+    if (/^\/api\/sessions\/[^/]+\/narrative$/.test(url.pathname)) {
+      if (sessionNarrative) {
+        return sessionNarrative(url);
+      }
+
+      const sessionId = url.pathname.split('/').at(-2);
+      if (sessionId === SESSION_ID) {
+        return jsonResponse(SESSION_NARRATIVE);
+      }
+      if (sessionId === OTHER_SESSION_ID) {
+        return jsonResponse(RUNNING_SESSION_NARRATIVE);
+      }
+      return jsonResponse(EMPTY_SESSION_NARRATIVE);
     }
 
     if (/^\/api\/sessions\/[^/]+$/.test(url.pathname)) {

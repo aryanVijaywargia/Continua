@@ -315,16 +315,105 @@ func deref(s *string) string {
 }
 
 func mapTraceStatus(status string) string {
-	switch status {
-	case "running":
-		return "RUNNING"
-	case "completed", "ok":
+	switch store.NormalizeTraceStatus(status) {
+	case store.TraceStatusBucketCompleted:
 		return "COMPLETED"
-	case "failed", "error", "cancelled":
+	case store.TraceStatusBucketFailed:
 		return "FAILED"
 	default:
 		return "RUNNING"
 	}
+}
+
+func sessionNarrativeToAPI(narrative *store.SessionNarrative) SessionNarrativeResponse {
+	traces := make([]SessionNarrativeTrace, len(narrative.Traces))
+	for i := range narrative.Traces {
+		traces[i] = sessionNarrativeTraceToAPI(&narrative.Traces[i])
+	}
+
+	return SessionNarrativeResponse{
+		Summary: sessionNarrativeSummaryToAPI(&narrative.Summary),
+		Traces:  traces,
+	}
+}
+
+func sessionNarrativeSummaryToAPI(summary *store.SessionNarrativeSummary) SessionNarrativeSummary {
+	apiSummary := SessionNarrativeSummary{
+		CompletedTraceCount: int(summary.CompletedTraceCount),
+		ExplicitLinkCount:   int(summary.ExplicitLinkCount),
+		FailedTraceCount:    int(summary.FailedTraceCount),
+		InferredLinkCount:   int(summary.InferredLinkCount),
+		ReturnedTraceCount:  int(summary.ReturnedTraceCount),
+		RunningTraceCount:   int(summary.RunningTraceCount),
+		StartedAt:           summary.StartedAt,
+		LastActivityAt:      summary.LastActivityAt,
+		TotalTokensIn:       summary.TotalTokensIn,
+		TotalTokensOut:      summary.TotalTokensOut,
+		TotalTraceCount:     int(summary.TotalTraceCount),
+		Truncated:           summary.Truncated,
+		UnlinkedTraceCount:  int(summary.UnlinkedTraceCount),
+	}
+
+	// Keep this mapper aligned with the summary query's status normalization semantics.
+	// Summary last_activity_at is intentionally trace-level approximate; per-trace
+	// latest_activity_at remains the authoritative activity timestamp.
+	if totalCostUsd, err := numericToFloat32(summary.TotalCostUsd); err == nil {
+		apiSummary.TotalCostUsd = totalCostUsd
+	}
+
+	return apiSummary
+}
+
+func sessionNarrativeTraceToAPI(trace *store.SessionNarrativeTrace) SessionNarrativeTrace {
+	apiTrace := SessionNarrativeTrace{
+		Id:               trace.ID,
+		LatestActivityAt: trace.LatestActivityAt,
+		Lineage:          sessionNarrativeLineageToAPI(&trace.Lineage),
+		Name:             deref(trace.Name),
+		SemanticEvents:   sessionNarrativeEventsToAPI(trace.SemanticEvents),
+		StartedAt:        trace.StartedAt,
+		Status:           SessionNarrativeTraceStatus(mapTraceStatus(trace.Status)),
+		TraceId:          trace.TraceID,
+		UserId:           trace.UserID,
+	}
+
+	totalTokensIn := trace.TotalTokensIn
+	apiTrace.TotalTokensIn = &totalTokensIn
+
+	totalTokensOut := trace.TotalTokensOut
+	apiTrace.TotalTokensOut = &totalTokensOut
+
+	errorCount := int(trace.ErrorCount)
+	apiTrace.ErrorCount = &errorCount
+
+	if trace.EndedAt != nil {
+		apiTrace.EndedAt = trace.EndedAt
+	}
+	if trace.DurationMs != nil {
+		apiTrace.DurationMs = trace.DurationMs
+	}
+	if totalCostUsd, err := numericToFloat32(trace.TotalCostUsd); err == nil {
+		apiTrace.TotalCostUsd = &totalCostUsd
+	}
+
+	return apiTrace
+}
+
+func sessionNarrativeLineageToAPI(lineage *store.SessionNarrativeLineage) SessionNarrativeLineage {
+	return SessionNarrativeLineage{
+		LinkKind:      lineage.LinkKind,
+		ParentTraceId: lineage.ParentTraceID,
+		TriggerSpanId: lineage.TriggerSpanID,
+		Type:          SessionNarrativeLineageType(lineage.Type),
+	}
+}
+
+func sessionNarrativeEventsToAPI(events []store.SessionNarrativeSemanticEvent) []TimelineEvent {
+	apiEvents := make([]TimelineEvent, len(events))
+	for i := range events {
+		apiEvents[i] = explicitTimelineEventToAPI(&events[i].SpanEvent, events[i].SpanName)
+	}
+	return apiEvents
 }
 
 func mapTimelineTraceStatus(status string) TimelineResponseTraceStatus {

@@ -136,7 +136,69 @@ class SessionList(BaseModel):
     total: int
 
 
+class SessionNarrativeSummary(BaseModel):
+    total_trace_count: int
+    returned_trace_count: int
+    truncated: bool
+    running_trace_count: int = Field(
+        ..., description="Count of traces whose raw status normalizes to RUNNING."
+    )
+    completed_trace_count: int = Field(
+        ..., description="Count of traces whose raw status normalizes to COMPLETED."
+    )
+    failed_trace_count: int = Field(
+        ..., description="Count of traces whose raw status normalizes to FAILED."
+    )
+    total_cost_usd: float
+    total_tokens_in: int
+    total_tokens_out: int
+    started_at: AwareDatetime = Field(
+        ...,
+        description="Earliest trace start time in the session, or null when the session has no traces.",
+    )
+    last_activity_at: AwareDatetime = Field(
+        ...,
+        description="Approximate session-level last activity timestamp computed from trace-level timestamps only.\nPer-trace latest_activity_at is the authoritative activity timestamp.\n",
+    )
+    explicit_link_count: int = Field(
+        ..., description="Explicit lineage count for the shown narrative only."
+    )
+    inferred_link_count: int = Field(
+        ..., description="Inferred lineage count for the shown narrative only."
+    )
+    unlinked_trace_count: int = Field(
+        ..., description="Unlinked trace count for the shown narrative only."
+    )
+
+
 class Status2(Enum):
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class Type(Enum):
+    explicit = "explicit"
+    inferred = "inferred"
+    unlinked = "unlinked"
+
+
+class SessionNarrativeLineage(BaseModel):
+    type: Type
+    parent_trace_id: str | None = Field(
+        None,
+        description="External parent trace identifier within the shown narrative when linked.",
+    )
+    trigger_span_id: str | None = Field(
+        None,
+        description="Optional external span identifier carried by explicit metadata lineage.",
+    )
+    link_kind: str | None = Field(
+        None, description="Optional metadata-provided lineage classification string."
+    )
+
+
+class Status3(Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
@@ -160,12 +222,12 @@ class IngestTraceInput(BaseModel):
     output: Any | None = Field(
         None, description="Trace output data (any JSON-serializable value)"
     )
-    status: Status2 | None = "running"
+    status: Status3 | None = "running"
     start_time: AwareDatetime | None = None
     end_time: AwareDatetime | None = None
 
 
-class Type(Enum):
+class Type1(Enum):
     default = "default"
     llm = "llm"
     tool = "tool"
@@ -190,8 +252,8 @@ class IngestSpanInput(BaseModel):
         None, description="External parent span identifier"
     )
     name: str
-    type: Type | None = "default"
-    status: Status2 | None = "running"
+    type: Type1 | None = "default"
+    status: Status3 | None = "running"
     status_message: str | None = None
     level: Level | None = "default"
     start_time: AwareDatetime
@@ -326,7 +388,7 @@ class TimelineResponse(BaseModel):
     )
 
 
-class Status4(Enum):
+class Status5(Enum):
     """
     Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
     """
@@ -338,7 +400,7 @@ class Status4(Enum):
 
 
 class IngestResponse(BaseModel):
-    status: Status4 = Field(
+    status: Status5 = Field(
         ...,
         description='Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.',
     )
@@ -355,7 +417,7 @@ class IngestResponse(BaseModel):
     errors: list[str] | None = None
 
 
-class Status5(Enum):
+class Status6(Enum):
     accepted = "accepted"
     processing = "processing"
     completed = "completed"
@@ -365,7 +427,7 @@ class Status5(Enum):
 class BatchStatusResponse(BaseModel):
     batch_id: UUID
     batch_key: str
-    status: Status5
+    status: Status6
     attempt_count: int
     server_received_at: AwareDatetime
     processing_started_at: AwareDatetime | None = None
@@ -379,6 +441,29 @@ class BatchStatusResponse(BaseModel):
     last_error_message: str | None = None
 
 
+class SessionNarrativeTrace(BaseModel):
+    id: UUID
+    trace_id: str = Field(
+        ..., description="External trace identifier for the narrative trace."
+    )
+    name: str
+    status: Status2
+    user_id: str | None = None
+    started_at: AwareDatetime
+    ended_at: AwareDatetime | None = None
+    duration_ms: int | None = None
+    error_count: int | None = None
+    total_cost_usd: float | None = None
+    total_tokens_in: int | None = None
+    total_tokens_out: int | None = None
+    latest_activity_at: AwareDatetime
+    semantic_events: list[TimelineEvent] = Field(
+        ...,
+        description="Explicit decision, effect, and wait events for this trace. SessionNarrativeTrace.trace_id is the\nexternal trace identifier, while each nested semantic_events[].trace_id remains the internal trace UUID\nfrom TimelineEvent.\n",
+    )
+    lineage: SessionNarrativeLineage
+
+
 class IngestRequest(BaseModel):
     batch_key: str = Field(
         ...,
@@ -387,3 +472,8 @@ class IngestRequest(BaseModel):
     traces: list[IngestTraceInput] | None = None
     spans: list[IngestSpanInput] | None = None
     events: list[IngestEventInput] | None = None
+
+
+class SessionNarrativeResponse(BaseModel):
+    summary: SessionNarrativeSummary
+    traces: list[SessionNarrativeTrace]

@@ -220,6 +220,53 @@ export interface SessionList {
   total: number;
 }
 
+export interface SessionNarrativeLineage {
+  type: 'explicit' | 'inferred' | 'unlinked';
+  parent_trace_id?: string;
+  trigger_span_id?: string;
+  link_kind?: string;
+}
+
+export interface SessionNarrativeSummary {
+  total_trace_count: number;
+  returned_trace_count: number;
+  truncated: boolean;
+  running_trace_count: number;
+  completed_trace_count: number;
+  failed_trace_count: number;
+  total_cost_usd: number;
+  total_tokens_in: number;
+  total_tokens_out: number;
+  started_at: string | null;
+  last_activity_at: string | null;
+  explicit_link_count: number;
+  inferred_link_count: number;
+  unlinked_trace_count: number;
+}
+
+export interface SessionNarrativeTrace {
+  id: string;
+  trace_id: string;
+  name: string;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  user_id?: string;
+  started_at: string;
+  ended_at?: string;
+  duration_ms?: number;
+  error_count?: number;
+  total_cost_usd?: number;
+  total_tokens_in?: number;
+  total_tokens_out?: number;
+  latest_activity_at: string;
+  semantic_events: TimelineEvent[];
+  lineage: SessionNarrativeLineage;
+}
+
+export interface SessionNarrative {
+  summary: SessionNarrativeSummary;
+  traces: SessionNarrativeTrace[];
+}
+
 /**
  * Fetch traces with filters and pagination.
  */
@@ -284,4 +331,11 @@ export async function fetchSessions(
  */
 export async function fetchSession(id: string): Promise<Session> {
   return fetchAPI<Session>(`/api/sessions/${id}`);
+}
+
+/**
+ * Fetch a session narrative by session ID.
+ */
+export async function fetchSessionNarrative(id: string): Promise<SessionNarrative> {
+  return fetchAPI<SessionNarrative>(`/api/sessions/${id}/narrative`);
 }

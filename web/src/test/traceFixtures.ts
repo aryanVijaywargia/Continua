@@ -1,4 +1,12 @@
-import type { Session, Span, TimelineEvent, Trace, TraceDetail } from '../api/client';
+import type {
+  Session,
+  SessionNarrative,
+  SessionNarrativeTrace,
+  Span,
+  TimelineEvent,
+  Trace,
+  TraceDetail,
+} from '../api/client';
 
 export const SESSION_ID = '123e4567-e89b-12d3-a456-426614174000';
 export const OTHER_SESSION_ID = '123e4567-e89b-12d3-a456-426614174001';
@@ -89,6 +97,149 @@ let testEntityCounter = 0;
 export function resetTestEntityCounter() {
   testEntityCounter = 0;
 }
+
+export function createSessionNarrativeTrace(
+  overrides: Partial<SessionNarrativeTrace> = {}
+): SessionNarrativeTrace {
+  testEntityCounter += 1;
+  const id = overrides.id ?? `narrative-trace-${testEntityCounter}`;
+
+  return {
+    id,
+    trace_id: overrides.trace_id ?? `external-${id}`,
+    name: overrides.name ?? `Narrative Trace ${testEntityCounter}`,
+    status: overrides.status ?? 'COMPLETED',
+    user_id: overrides.user_id,
+    started_at: overrides.started_at ?? '2026-03-14T09:00:00.000Z',
+    ended_at: overrides.ended_at,
+    duration_ms: overrides.duration_ms ?? 1000,
+    error_count: overrides.error_count ?? 0,
+    total_cost_usd: overrides.total_cost_usd ?? 0.01,
+    total_tokens_in: overrides.total_tokens_in ?? 10,
+    total_tokens_out: overrides.total_tokens_out ?? 5,
+    latest_activity_at: overrides.latest_activity_at ?? overrides.ended_at ?? '2026-03-14T09:00:01.000Z',
+    semantic_events: overrides.semantic_events ?? [],
+    lineage: overrides.lineage ?? { type: 'unlinked' },
+  };
+}
+
+export const SESSION_NARRATIVE: SessionNarrative = {
+  summary: {
+    total_trace_count: 2,
+    returned_trace_count: 2,
+    truncated: false,
+    running_trace_count: 0,
+    completed_trace_count: 1,
+    failed_trace_count: 1,
+    total_cost_usd: 0.13,
+    total_tokens_in: 140,
+    total_tokens_out: 90,
+    started_at: '2026-03-14T09:00:00.000Z',
+    last_activity_at: '2026-03-14T10:00:02.000Z',
+    explicit_link_count: 0,
+    inferred_link_count: 1,
+    unlinked_trace_count: 1,
+  },
+  traces: [
+    createSessionNarrativeTrace({
+      id: TRACE_THREE.id,
+      trace_id: 'external-trace-alpha',
+      name: 'Alpha Narrative',
+      status: TRACE_THREE.status,
+      started_at: TRACE_THREE.started_at,
+      ended_at: TRACE_THREE.ended_at,
+      duration_ms: 3000,
+      error_count: TRACE_THREE.error_count,
+      total_cost_usd: TRACE_THREE.total_cost_usd,
+      total_tokens_in: TRACE_THREE.total_tokens_in,
+      total_tokens_out: TRACE_THREE.total_tokens_out,
+      latest_activity_at: TRACE_THREE.ended_at ?? TRACE_THREE.started_at,
+      semantic_events: [
+        createTimelineEvent({
+          id: 'narrative-event-alpha',
+          trace_id: TRACE_THREE.id,
+          event_type: 'decision',
+          message: 'Pick alpha path',
+          timestamp: '2026-03-14T09:00:02.000Z',
+        }),
+      ],
+      lineage: { type: 'unlinked' },
+    }),
+    createSessionNarrativeTrace({
+      id: TRACE_ONE.id,
+      trace_id: 'external-trace-checkout',
+      name: 'Checkout Narrative',
+      status: TRACE_ONE.status,
+      started_at: TRACE_ONE.started_at,
+      ended_at: TRACE_ONE.ended_at,
+      duration_ms: 2000,
+      error_count: TRACE_ONE.error_count,
+      total_cost_usd: TRACE_ONE.total_cost_usd,
+      total_tokens_in: TRACE_ONE.total_tokens_in,
+      total_tokens_out: TRACE_ONE.total_tokens_out,
+      latest_activity_at: TRACE_ONE.ended_at ?? TRACE_ONE.started_at,
+      semantic_events: [
+        createTimelineEvent({
+          id: 'narrative-event-checkout',
+          trace_id: TRACE_ONE.id,
+          event_type: 'effect',
+          message: 'Called checkout tool',
+          timestamp: '2026-03-14T10:00:01.000Z',
+        }),
+      ],
+      lineage: { type: 'inferred', parent_trace_id: 'external-trace-alpha' },
+    }),
+  ],
+};
+
+export const EMPTY_SESSION_NARRATIVE: SessionNarrative = {
+  summary: {
+    total_trace_count: 0,
+    returned_trace_count: 0,
+    truncated: false,
+    running_trace_count: 0,
+    completed_trace_count: 0,
+    failed_trace_count: 0,
+    total_cost_usd: 0,
+    total_tokens_in: 0,
+    total_tokens_out: 0,
+    started_at: null,
+    last_activity_at: null,
+    explicit_link_count: 0,
+    inferred_link_count: 0,
+    unlinked_trace_count: 0,
+  },
+  traces: [],
+};
+
+export const RUNNING_SESSION_NARRATIVE: SessionNarrative = {
+  summary: {
+    ...SESSION_NARRATIVE.summary,
+    running_trace_count: 1,
+    completed_trace_count: 0,
+    failed_trace_count: 1,
+  },
+  traces: [
+    createSessionNarrativeTrace({
+      ...SESSION_NARRATIVE.traces[0],
+      status: 'RUNNING',
+      ended_at: undefined,
+      duration_ms: undefined,
+      latest_activity_at: '2026-03-14T09:05:00.000Z',
+    }),
+    SESSION_NARRATIVE.traces[1],
+  ],
+};
+
+export const TRUNCATED_SESSION_NARRATIVE: SessionNarrative = {
+  summary: {
+    ...SESSION_NARRATIVE.summary,
+    total_trace_count: 150,
+    returned_trace_count: 100,
+    truncated: true,
+  },
+  traces: SESSION_NARRATIVE.traces,
+};
 
 export function createSpan(overrides: Partial<Span> = {}): Span {
   testEntityCounter += 1;

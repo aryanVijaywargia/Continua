@@ -8,6 +8,8 @@ import (
 	"github.com/continua-ai/continua/internal/store"
 )
 
+const sessionNarrativeTraceLimit int32 = 100
+
 // ListSessions returns a paginated list of sessions.
 func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
@@ -81,4 +83,24 @@ func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_t
 
 	resp := sessionWithCountToAPI(&sessionWithCount.Session, sessionWithCount.TraceCount)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// GetSessionNarrative returns a session narrative by ID.
+func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+
+	narrative, err := s.store.BuildSessionNarrative(r.Context(), projectID, id, sessionNarrativeTraceLimit)
+	if store.IsNotFound(err) {
+		writeError(w, http.StatusNotFound, "not_found", "Session not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session narrative")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sessionNarrativeToAPI(&narrative))
 }

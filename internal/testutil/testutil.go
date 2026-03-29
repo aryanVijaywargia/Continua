@@ -4,6 +4,7 @@ package testutil
 import (
 	"context"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -145,6 +146,6 @@ func PgtypeTimestamptzPtr(t *time.Time) pgtype.Timestamptz {
 // PgtypeNumericFromFloat64 converts a float64 to pgtype.Numeric.
 func PgtypeNumericFromFloat64(f float64) pgtype.Numeric {
 	var n pgtype.Numeric
-	_ = n.Scan(f)
+	_ = n.Scan(strconv.FormatFloat(f, 'f', -1, 64))
 	return n
 }

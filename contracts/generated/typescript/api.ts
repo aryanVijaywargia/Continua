@@ -149,6 +149,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{id}/narrative": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a session narrative by ID */
+        get: operations["getSessionNarrative"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -256,6 +273,84 @@ export interface components {
         SessionList: {
             sessions: components["schemas"]["Session"][];
             total: number;
+        };
+        SessionNarrativeResponse: {
+            summary: components["schemas"]["SessionNarrativeSummary"];
+            traces: components["schemas"]["SessionNarrativeTrace"][];
+        };
+        SessionNarrativeSummary: {
+            total_trace_count: number;
+            returned_trace_count: number;
+            truncated: boolean;
+            /** @description Count of traces whose raw status normalizes to RUNNING. */
+            running_trace_count: number;
+            /** @description Count of traces whose raw status normalizes to COMPLETED. */
+            completed_trace_count: number;
+            /** @description Count of traces whose raw status normalizes to FAILED. */
+            failed_trace_count: number;
+            total_cost_usd: number;
+            /** Format: int64 */
+            total_tokens_in: number;
+            /** Format: int64 */
+            total_tokens_out: number;
+            /**
+             * Format: date-time
+             * @description Earliest trace start time in the session, or null when the session has no traces.
+             */
+            started_at: string | null;
+            /**
+             * Format: date-time
+             * @description Approximate session-level last activity timestamp computed from trace-level timestamps only.
+             *     Per-trace latest_activity_at is the authoritative activity timestamp.
+             *
+             */
+            last_activity_at: string | null;
+            /** @description Explicit lineage count for the shown narrative only. */
+            explicit_link_count: number;
+            /** @description Inferred lineage count for the shown narrative only. */
+            inferred_link_count: number;
+            /** @description Unlinked trace count for the shown narrative only. */
+            unlinked_trace_count: number;
+        };
+        SessionNarrativeTrace: {
+            /** Format: uuid */
+            id: string;
+            /** @description External trace identifier for the narrative trace. */
+            trace_id: string;
+            name: string;
+            /** @enum {string} */
+            status: "RUNNING" | "COMPLETED" | "FAILED";
+            user_id?: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            ended_at?: string;
+            /** Format: int64 */
+            duration_ms?: number;
+            error_count?: number;
+            total_cost_usd?: number;
+            /** Format: int64 */
+            total_tokens_in?: number;
+            /** Format: int64 */
+            total_tokens_out?: number;
+            /** Format: date-time */
+            latest_activity_at: string;
+            /** @description Explicit decision, effect, and wait events for this trace. SessionNarrativeTrace.trace_id is the
+             *     external trace identifier, while each nested semantic_events[].trace_id remains the internal trace UUID
+             *     from TimelineEvent.
+             *      */
+            semantic_events: components["schemas"]["TimelineEvent"][];
+            lineage: components["schemas"]["SessionNarrativeLineage"];
+        };
+        SessionNarrativeLineage: {
+            /** @enum {string} */
+            type: "explicit" | "inferred" | "unlinked";
+            /** @description External parent trace identifier within the shown narrative when linked. */
+            parent_trace_id?: string;
+            /** @description Optional external span identifier carried by explicit metadata lineage. */
+            trigger_span_id?: string;
+            /** @description Optional metadata-provided lineage classification string. */
+            link_kind?: string;
         };
         IngestRequest: {
             /** @description Unique identifier for idempotency. Same batch_key returns success without reprocessing. */
@@ -817,6 +912,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSessionNarrative: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session narrative details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNarrativeResponse"];
                 };
             };
             /** @description Unauthorized - missing or invalid API key */
