@@ -15,10 +15,18 @@ Usage:
 
 import os
 import random
+import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
 import httpx
+
+# Keep the demo runnable from a source checkout even if the SDK package has not
+# been installed into the active environment.
+SDK_SRC = Path(__file__).resolve().parents[1] / "src"
+if str(SDK_SRC) not in sys.path:
+    sys.path.insert(0, str(SDK_SRC))
 
 # Import the SDK
 from continua import Continua, session, span, trace
