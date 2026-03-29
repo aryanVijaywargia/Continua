@@ -97,6 +97,15 @@ export function summarizeTimelineEvent(event: TimelineEvent): string {
   }
 }
 
+export function formatTimelineTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 function formatMetricSummary(event: TimelineEvent): string {
   const metricName =
     typeof event.payload?.metric_name === 'string' ? event.payload.metric_name : null;

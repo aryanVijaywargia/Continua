@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { Span, TimelineEvent } from '../api/client';
 import { CopyButton } from './CopyButton';
+import { DecisionValuePill } from './DecisionValuePill';
 import { StatusBadge } from './StatusBadge';
 import { JsonViewer } from './JsonViewer';
 import {
@@ -340,26 +341,6 @@ function MetricCard({ label, value }: MetricCardProps) {
       <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{value}</div>
       <div className="text-xs text-slate-500 mt-1 dark:text-slate-400">{label}</div>
     </div>
-  );
-}
-
-function DecisionValuePill({
-  children,
-  tone = 'neutral',
-}: {
-  children: string;
-  tone?: 'neutral' | 'accent';
-}) {
-  return (
-    <span
-      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-        tone === 'accent'
-          ? 'border-blue-200 bg-white text-blue-800 dark:border-sky-500/40 dark:bg-slate-950 dark:text-sky-200'
-          : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200'
-      }`}
-    >
-      {children}
-    </span>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   getStateChangeDetails,
 } from '../utils/eventSemantics';
 import {
+  formatTimelineTime,
   isTimelineErrorEvent,
   summarizeTimelineEvent,
 } from '../utils/timeline';
@@ -391,15 +392,6 @@ function SemanticValuePill({
       {children}
     </span>
   );
-}
-
-function formatTimelineTime(timestamp: string): string {
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
 }
 
 function formatEventType(eventType: TimelineEvent['event_type']): string {

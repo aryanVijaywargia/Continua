@@ -5,6 +5,7 @@ export type MobileWorkspaceTabId =
   | 'details'
   | 'waterfall'
   | 'tree'
+  | 'reasoning'
   | 'timeline'
   | 'state';
 
@@ -14,6 +15,7 @@ interface WorkspaceShellProps {
   waterfall: ReactNode;
   inspector: ReactNode;
   mobileDetails: ReactNode;
+  mobileReasoning: ReactNode;
   mobileTimeline: ReactNode;
   mobileState: ReactNode;
   activeMobileTab: MobileWorkspaceTabId;
@@ -25,6 +27,7 @@ const MOBILE_TABS: Array<{ id: MobileWorkspaceTabId; label: string }> = [
   { id: 'waterfall', label: 'Waterfall' },
   { id: 'tree', label: 'Tree' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'reasoning', label: 'Reasoning' },
   { id: 'state', label: 'State' },
 ];
 const USE_STATIC_DESKTOP_LAYOUT =
@@ -36,6 +39,7 @@ export function WorkspaceShell({
   waterfall,
   inspector,
   mobileDetails,
+  mobileReasoning,
   mobileTimeline,
   mobileState,
   activeMobileTab,
@@ -123,6 +127,12 @@ export function WorkspaceShell({
           style={{ display: activeMobileTab === 'timeline' ? 'block' : 'none' }}
         >
           {mobileTimeline}
+        </div>
+        <div
+          className="h-full"
+          style={{ display: activeMobileTab === 'reasoning' ? 'block' : 'none' }}
+        >
+          {mobileReasoning}
         </div>
         <div
           className="h-full"
