@@ -110,6 +110,78 @@ func TestGetSession_ProjectScopingReturns404(t *testing.T) {
 	assert.Equal(t, "not_found", resp.Code)
 }
 
+func TestGetSessionNarrative_MissingSessionReturns404(t *testing.T) {
+	pool := testutil.TestDB(t)
+	s := store.New(pool)
+	server := NewServer(s, nil)
+
+	rec := invokeGetSessionNarrative(t, server, uuid.New(), uuid.New())
+	require.Equal(t, http.StatusNotFound, rec.Code)
+
+	resp := decodeJSONBody[Error](t, rec)
+	assert.Equal(t, "not_found", resp.Code)
+	assert.Equal(t, "Session not found", resp.Message)
+}
+
+func TestGetSessionNarrative_ProjectScopingReturns404(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectAID := testutil.CreateTestProject(t, ctx, q)
+	projectBID := testutil.CreateTestProject(t, ctx, q)
+
+	session := createSessionRecord(
+		t,
+		ctx,
+		s,
+		projectBID,
+		"scoped-narrative",
+		"Scoped Narrative",
+		"user-42",
+		time.Date(2026, 3, 9, 15, 0, 0, 0, time.UTC),
+	)
+
+	rec := invokeGetSessionNarrative(t, server, projectAID, session.ID)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+
+	resp := decodeJSONBody[Error](t, rec)
+	assert.Equal(t, "not_found", resp.Code)
+}
+
+func TestGetSessionNarrative_ZeroTraceSessionReturnsEmptyNarrative(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	session := createSessionRecord(
+		t,
+		ctx,
+		s,
+		projectID,
+		"narrative-zero",
+		"Zero Narrative",
+		"user-42",
+		time.Date(2026, 3, 9, 16, 0, 0, 0, time.UTC),
+	)
+
+	rec := invokeGetSessionNarrative(t, server, projectID, session.ID)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[sessionNarrativeResponse](t, rec)
+	assert.Equal(t, 0, resp.Summary.TotalTraceCount)
+	assert.Equal(t, 0, resp.Summary.ReturnedTraceCount)
+	assert.False(t, resp.Summary.Truncated)
+	assert.Nil(t, resp.Summary.StartedAt)
+	assert.Nil(t, resp.Summary.LastActivityAt)
+	assert.Empty(t, resp.Traces)
+}
+
 func invokeListSessions(t *testing.T, server *Server, projectID uuid.UUID, params ListSessionsParams) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -130,6 +202,18 @@ func invokeGetSession(t *testing.T, server *Server, projectID, sessionID uuid.UU
 	rec := httptest.NewRecorder()
 
 	server.GetSession(rec, req.WithContext(ctx), sessionID)
+
+	return rec
+}
+
+func invokeGetSessionNarrative(t *testing.T, server *Server, projectID, sessionID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+sessionID.String()+"/narrative", nil)
+	ctx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
+	rec := httptest.NewRecorder()
+
+	server.GetSessionNarrative(rec, req.WithContext(ctx), sessionID)
 
 	return rec
 }

@@ -90,6 +90,20 @@ const (
 	IngestTraceInputStatusRunning   IngestTraceInputStatus = "running"
 )
 
+// Defines values for SessionNarrativeLineageType.
+const (
+	SessionNarrativeLineageTypeExplicit SessionNarrativeLineageType = "explicit"
+	SessionNarrativeLineageTypeInferred SessionNarrativeLineageType = "inferred"
+	SessionNarrativeLineageTypeUnlinked SessionNarrativeLineageType = "unlinked"
+)
+
+// Defines values for SessionNarrativeTraceStatus.
+const (
+	SessionNarrativeTraceStatusCOMPLETED SessionNarrativeTraceStatus = "COMPLETED"
+	SessionNarrativeTraceStatusFAILED    SessionNarrativeTraceStatus = "FAILED"
+	SessionNarrativeTraceStatusRUNNING   SessionNarrativeTraceStatus = "RUNNING"
+)
+
 // Defines values for SpanKind.
 const (
 	AGENT  SpanKind = "AGENT"
@@ -117,8 +131,8 @@ const (
 
 // Defines values for TimelineEventSource.
 const (
-	Explicit  TimelineEventSource = "explicit"
-	Synthetic TimelineEventSource = "synthetic"
+	TimelineEventSourceExplicit  TimelineEventSource = "explicit"
+	TimelineEventSourceSynthetic TimelineEventSource = "synthetic"
 )
 
 // Defines values for TimelineEventType.
@@ -154,9 +168,9 @@ const (
 
 // Defines values for TraceDetailStatus.
 const (
-	TraceDetailStatusCOMPLETED TraceDetailStatus = "COMPLETED"
-	TraceDetailStatusFAILED    TraceDetailStatus = "FAILED"
-	TraceDetailStatusRUNNING   TraceDetailStatus = "RUNNING"
+	COMPLETED TraceDetailStatus = "COMPLETED"
+	FAILED    TraceDetailStatus = "FAILED"
+	RUNNING   TraceDetailStatus = "RUNNING"
 )
 
 // Defines values for ListSessionsParamsSortBy.
@@ -370,6 +384,90 @@ type SessionList struct {
 	Sessions []Session `json:"sessions"`
 	Total    int       `json:"total"`
 }
+
+// SessionNarrativeLineage defines model for SessionNarrativeLineage.
+type SessionNarrativeLineage struct {
+	// LinkKind Optional metadata-provided lineage classification string.
+	LinkKind *string `json:"link_kind,omitempty"`
+
+	// ParentTraceId External parent trace identifier within the shown narrative when linked.
+	ParentTraceId *string `json:"parent_trace_id,omitempty"`
+
+	// TriggerSpanId Optional external span identifier carried by explicit metadata lineage.
+	TriggerSpanId *string                     `json:"trigger_span_id,omitempty"`
+	Type          SessionNarrativeLineageType `json:"type"`
+}
+
+// SessionNarrativeLineageType defines model for SessionNarrativeLineage.Type.
+type SessionNarrativeLineageType string
+
+// SessionNarrativeResponse defines model for SessionNarrativeResponse.
+type SessionNarrativeResponse struct {
+	Summary SessionNarrativeSummary `json:"summary"`
+	Traces  []SessionNarrativeTrace `json:"traces"`
+}
+
+// SessionNarrativeSummary defines model for SessionNarrativeSummary.
+type SessionNarrativeSummary struct {
+	// CompletedTraceCount Count of traces whose raw status normalizes to COMPLETED.
+	CompletedTraceCount int `json:"completed_trace_count"`
+
+	// ExplicitLinkCount Explicit lineage count for the shown narrative only.
+	ExplicitLinkCount int `json:"explicit_link_count"`
+
+	// FailedTraceCount Count of traces whose raw status normalizes to FAILED.
+	FailedTraceCount int `json:"failed_trace_count"`
+
+	// InferredLinkCount Inferred lineage count for the shown narrative only.
+	InferredLinkCount int `json:"inferred_link_count"`
+
+	// LastActivityAt Approximate session-level last activity timestamp computed from trace-level timestamps only.
+	// Per-trace latest_activity_at is the authoritative activity timestamp.
+	LastActivityAt     time.Time `json:"last_activity_at"`
+	ReturnedTraceCount int       `json:"returned_trace_count"`
+
+	// RunningTraceCount Count of traces whose raw status normalizes to RUNNING.
+	RunningTraceCount int `json:"running_trace_count"`
+
+	// StartedAt Earliest trace start time in the session, or null when the session has no traces.
+	StartedAt       time.Time `json:"started_at"`
+	TotalCostUsd    float32   `json:"total_cost_usd"`
+	TotalTokensIn   int64     `json:"total_tokens_in"`
+	TotalTokensOut  int64     `json:"total_tokens_out"`
+	TotalTraceCount int       `json:"total_trace_count"`
+	Truncated       bool      `json:"truncated"`
+
+	// UnlinkedTraceCount Unlinked trace count for the shown narrative only.
+	UnlinkedTraceCount int `json:"unlinked_trace_count"`
+}
+
+// SessionNarrativeTrace defines model for SessionNarrativeTrace.
+type SessionNarrativeTrace struct {
+	DurationMs       *int64                  `json:"duration_ms,omitempty"`
+	EndedAt          *time.Time              `json:"ended_at,omitempty"`
+	ErrorCount       *int                    `json:"error_count,omitempty"`
+	Id               openapi_types.UUID      `json:"id"`
+	LatestActivityAt time.Time               `json:"latest_activity_at"`
+	Lineage          SessionNarrativeLineage `json:"lineage"`
+	Name             string                  `json:"name"`
+
+	// SemanticEvents Explicit decision, effect, and wait events for this trace. SessionNarrativeTrace.trace_id is the
+	// external trace identifier, while each nested semantic_events[].trace_id remains the internal trace UUID
+	// from TimelineEvent.
+	SemanticEvents []TimelineEvent             `json:"semantic_events"`
+	StartedAt      time.Time                   `json:"started_at"`
+	Status         SessionNarrativeTraceStatus `json:"status"`
+	TotalCostUsd   *float32                    `json:"total_cost_usd,omitempty"`
+	TotalTokensIn  *int64                      `json:"total_tokens_in,omitempty"`
+	TotalTokensOut *int64                      `json:"total_tokens_out,omitempty"`
+
+	// TraceId External trace identifier for the narrative trace.
+	TraceId string  `json:"trace_id"`
+	UserId  *string `json:"user_id,omitempty"`
+}
+
+// SessionNarrativeTraceStatus defines model for SessionNarrativeTrace.Status.
+type SessionNarrativeTraceStatus string
 
 // SizeError Error response for 413 Payload Too Large
 type SizeError struct {
@@ -630,6 +728,9 @@ type ServerInterface interface {
 	// Get a session by ID
 	// (GET /api/sessions/{id})
 	GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Get a session narrative by ID
+	// (GET /api/sessions/{id}/narrative)
+	GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List traces
 	// (GET /api/traces)
 	ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams)
@@ -663,6 +764,12 @@ func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request, para
 // Get a session by ID
 // (GET /api/sessions/{id})
 func (_ Unimplemented) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a session narrative by ID
+// (GET /api/sessions/{id}/narrative)
+func (_ Unimplemented) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -806,6 +913,37 @@ func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetSession(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSessionNarrative operation middleware
+func (siw *ServerInterfaceWrapper) GetSessionNarrative(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSessionNarrative(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1251,6 +1389,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/sessions/{id}", wrapper.GetSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/sessions/{id}/narrative", wrapper.GetSessionNarrative)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/traces", wrapper.ListTraces)

@@ -398,6 +398,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/sessions/{id}/narrative:
+    get:
+      operationId: getSessionNarrative
+      summary: Get a session narrative by ID
+      tags: [Sessions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session narrative details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionNarrativeResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     apiKey:
@@ -601,6 +633,159 @@ components:
             $ref: '#/components/schemas/Session'
         total:
           type: integer
+
+    SessionNarrativeResponse:
+      type: object
+      required: [summary, traces]
+      properties:
+        summary:
+          $ref: '#/components/schemas/SessionNarrativeSummary'
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionNarrativeTrace'
+
+    SessionNarrativeSummary:
+      type: object
+      required:
+        [
+          total_trace_count,
+          returned_trace_count,
+          truncated,
+          running_trace_count,
+          completed_trace_count,
+          failed_trace_count,
+          total_cost_usd,
+          total_tokens_in,
+          total_tokens_out,
+          started_at,
+          last_activity_at,
+          explicit_link_count,
+          inferred_link_count,
+          unlinked_trace_count,
+        ]
+      properties:
+        total_trace_count:
+          type: integer
+        returned_trace_count:
+          type: integer
+        truncated:
+          type: boolean
+        running_trace_count:
+          type: integer
+          description: Count of traces whose raw status normalizes to RUNNING.
+        completed_trace_count:
+          type: integer
+          description: Count of traces whose raw status normalizes to COMPLETED.
+        failed_trace_count:
+          type: integer
+          description: Count of traces whose raw status normalizes to FAILED.
+        total_cost_usd:
+          type: number
+        total_tokens_in:
+          type: integer
+          format: int64
+        total_tokens_out:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+          x-nullable: true
+          description: Earliest trace start time in the session, or null when the session has no traces.
+        last_activity_at:
+          type: string
+          format: date-time
+          x-nullable: true
+          description: |
+            Approximate session-level last activity timestamp computed from trace-level timestamps only.
+            Per-trace latest_activity_at is the authoritative activity timestamp.
+        explicit_link_count:
+          type: integer
+          description: Explicit lineage count for the shown narrative only.
+        inferred_link_count:
+          type: integer
+          description: Inferred lineage count for the shown narrative only.
+        unlinked_trace_count:
+          type: integer
+          description: Unlinked trace count for the shown narrative only.
+
+    SessionNarrativeTrace:
+      type: object
+      required:
+        [
+          id,
+          trace_id,
+          name,
+          status,
+          started_at,
+          latest_activity_at,
+          semantic_events,
+          lineage,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+          description: External trace identifier for the narrative trace.
+        name:
+          type: string
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED]
+        user_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+        total_cost_usd:
+          type: number
+        total_tokens_in:
+          type: integer
+          format: int64
+        total_tokens_out:
+          type: integer
+          format: int64
+        latest_activity_at:
+          type: string
+          format: date-time
+        semantic_events:
+          type: array
+          description: |
+            Explicit decision, effect, and wait events for this trace. SessionNarrativeTrace.trace_id is the
+            external trace identifier, while each nested semantic_events[].trace_id remains the internal trace UUID
+            from TimelineEvent.
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        lineage:
+          $ref: '#/components/schemas/SessionNarrativeLineage'
+
+    SessionNarrativeLineage:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [explicit, inferred, unlinked]
+        parent_trace_id:
+          type: string
+          description: External parent trace identifier within the shown narrative when linked.
+        trigger_span_id:
+          type: string
+          description: Optional external span identifier carried by explicit metadata lineage.
+        link_kind:
+          type: string
+          description: Optional metadata-provided lineage classification string.
 
     IngestRequest:
       type: object

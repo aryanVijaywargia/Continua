@@ -6,7 +6,16 @@ import { CopyButton } from '../components/CopyButton';
 import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
 import { StatusBadge } from '../components/StatusBadge';
-import { fetchSession, fetchTraces, isAuthError, type Trace } from '../api/client';
+import {
+  fetchSession,
+  fetchSessionNarrative,
+  fetchTraces,
+  isAuthError,
+  type SessionNarrative,
+  type SessionNarrativeLineage,
+  type SessionNarrativeTrace,
+  type Trace,
+} from '../api/client';
 import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import { buildCanonicalQueryString, parseTracesParams, serializeTracesParams } from '../utils/tracesSearchParams';
@@ -17,6 +26,7 @@ import {
   formatRelativeTime,
   formatTokens,
 } from '../utils/format';
+import { summarizeTimelineEvent } from '../utils/timeline';
 
 type HistoryMode = 'push' | 'replace';
 
@@ -131,6 +141,12 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
   const sessionQuery = useQuery({
     queryKey: ['session', sessionId],
     queryFn: () => fetchSession(sessionId),
+  });
+  const narrativeQuery = useQuery({
+    queryKey: ['session-narrative', sessionId],
+    queryFn: () => fetchSessionNarrative(sessionId),
+    refetchInterval: (query) =>
+      (query.state.data?.summary.running_trace_count ?? 0) > 0 ? 30_000 : false,
   });
 
   const traceQueryParams = {
@@ -267,6 +283,14 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
           </div>
         </section>
 
+        <SessionNarrativeSections
+          narrative={narrativeQuery.data}
+          error={narrativeQuery.error}
+          isFetching={narrativeQuery.isFetching}
+          isPending={narrativeQuery.isPending && !narrativeQuery.data}
+          returnTo={currentSessionDetailUrl}
+        />
+
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Traces</h2>
@@ -362,6 +386,303 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
       </div>
     </div>
   );
+}
+
+function SessionNarrativeSections({
+  narrative,
+  error,
+  isFetching,
+  isPending,
+  returnTo,
+}: {
+  narrative?: SessionNarrative;
+  error: unknown;
+  isFetching: boolean;
+  isPending: boolean;
+  returnTo: string;
+}) {
+  if (error) {
+    return (
+      <div className="mb-6">
+        {isAuthError(error) ? (
+          <AuthErrorBanner message={queryErrorMessage(error)} />
+        ) : (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+            Error loading narrative: {queryErrorMessage(error)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (isPending || !narrative) {
+    return (
+      <section
+        aria-label="Session narrative loading"
+        className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      >
+        <div className="animate-pulse">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            Session Narrative
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Loading narrative...</p>
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-20 rounded-lg bg-slate-100 dark:bg-slate-800"
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const lineageCoverageLabel = narrative.summary.truncated
+    ? `Lineage coverage applies to the first ${narrative.summary.returned_trace_count} traces shown.`
+    : 'Lineage coverage applies to the shown narrative only.';
+
+  if (narrative.summary.total_trace_count === 0) {
+    return (
+      <section
+        aria-label="Session narrative placeholder"
+        className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Session Narrative
+            </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              A compact session storyline will appear here as traces are ingested for this session.
+            </p>
+          </div>
+          {isFetching ? (
+            <div className="text-sm text-blue-600 dark:text-sky-400">Updating narrative...</div>
+          ) : null}
+        </div>
+
+        <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300">
+          <p className="font-medium text-slate-900 dark:text-slate-100">No narrative yet</p>
+          <p className="mt-1">
+            This placeholder stays compact until the session has at least one ingested trace.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      <section
+        aria-label="Session narrative summary"
+        className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Session Narrative
+            </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Chronological summary for the returned storyline above the full trace browser.
+            </p>
+          </div>
+          {isFetching && (
+            <div className="text-sm text-blue-600 dark:text-sky-400">Updating narrative...</div>
+          )}
+        </div>
+
+        <dl className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <MetricBlock
+            label="Returned / Total"
+            value={`${narrative.summary.returned_trace_count} shown / ${narrative.summary.total_trace_count} total`}
+          />
+          <MetricBlock
+            label="Status Breakdown"
+            value={`${narrative.summary.running_trace_count} running`}
+            hint={`${narrative.summary.completed_trace_count} completed · ${narrative.summary.failed_trace_count} failed`}
+          />
+          <MetricBlock
+            label="Aggregate Usage"
+            value={formatCost(narrative.summary.total_cost_usd)}
+            hint={`${formatTokens(narrative.summary.total_tokens_in)} in · ${formatTokens(
+              narrative.summary.total_tokens_out
+            )} out`}
+          />
+          <MetricBlock
+            label="Started"
+            value={formatRelativeTime(narrative.summary.started_at)}
+          />
+          <MetricBlock
+            label="Last Activity"
+            value={formatRelativeTime(narrative.summary.last_activity_at)}
+          />
+          <MetricBlock
+            label="Lineage Coverage"
+            value={`${narrative.summary.explicit_link_count} explicit · ${narrative.summary.inferred_link_count} inferred · ${narrative.summary.unlinked_trace_count} unlinked`}
+            hint={lineageCoverageLabel}
+          />
+        </dl>
+      </section>
+
+      <section
+        aria-label="Session narrative storyline"
+        className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Storyline</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Oldest-first trace flow for the narrative that was returned.
+            </p>
+          </div>
+        </div>
+
+        {narrative.summary.truncated && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+            Narrative limited to the first {narrative.summary.returned_trace_count} traces. The
+            table below remains the full browser.
+          </div>
+        )}
+
+        {narrative.traces.length === 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300">
+            <p className="font-medium text-slate-900 dark:text-slate-100">No narrative yet</p>
+            <p className="mt-1">
+              A compact session storyline will appear here as traces are ingested for this session.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {narrative.traces.map((trace) => (
+              <StorylineTraceCard key={trace.id} trace={trace} returnTo={returnTo} />
+            ))}
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function StorylineTraceCard({
+  trace,
+  returnTo,
+}: {
+  trace: SessionNarrativeTrace;
+  returnTo: string;
+}) {
+  const semanticSnippet = getSemanticSnippet(trace);
+
+  return (
+    <article className="rounded-xl border border-slate-200 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-950/60">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to={`/traces/${trace.id}`}
+              state={{ returnTo }}
+              className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-sky-400 dark:hover:text-sky-300"
+            >
+              {trace.name}
+            </Link>
+            <StatusBadge status={trace.status} />
+            <NarrativeLineageBadge lineage={trace.lineage} />
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+            <span className="font-mono">{trace.trace_id}</span>
+            {trace.user_id ? <span>User {trace.user_id}</span> : null}
+          </div>
+
+          {semanticSnippet ? (
+            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{semanticSnippet}</p>
+          ) : null}
+        </div>
+
+        <dl className="grid gap-3 sm:grid-cols-2 xl:w-[28rem] xl:grid-cols-3">
+          <MetricBlock label="Started" value={formatRelativeTime(trace.started_at)} compact />
+          <MetricBlock label="Ended" value={formatRelativeTime(trace.ended_at)} compact />
+          <MetricBlock
+            label="Latest Activity"
+            value={formatRelativeTime(trace.latest_activity_at)}
+            compact
+          />
+          <MetricBlock label="Duration" value={formatDuration(trace.duration_ms)} compact />
+          <MetricBlock
+            label="Tokens"
+            value={`${formatTokens(trace.total_tokens_in)} in / ${formatTokens(
+              trace.total_tokens_out
+            )} out`}
+            compact
+          />
+          <MetricBlock
+            label="Cost / Errors"
+            value={`${formatCost(trace.total_cost_usd)} · ${trace.error_count ?? 0} errors`}
+            compact
+          />
+        </dl>
+      </div>
+    </article>
+  );
+}
+
+function MetricBlock({
+  label,
+  value,
+  hint,
+  compact = false,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? '' : 'rounded-lg border border-slate-200 p-4 dark:border-slate-800'}>
+      <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+        {label}
+      </dt>
+      <dd className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</dd>
+      {hint ? (
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function NarrativeLineageBadge({ lineage }: { lineage: SessionNarrativeLineage }) {
+  const label = formatLineageLabel(lineage.type);
+  const colorClass =
+    lineage.type === 'explicit'
+      ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-100'
+      : lineage.type === 'inferred'
+        ? 'bg-indigo-100 text-indigo-900 dark:bg-indigo-500/15 dark:text-indigo-100'
+        : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200';
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${colorClass}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function formatLineageLabel(type: SessionNarrativeLineage['type']): string {
+  switch (type) {
+    case 'explicit':
+      return 'Explicit';
+    case 'inferred':
+      return 'Inferred';
+    default:
+      return 'Unlinked';
+  }
+}
+
+function getSemanticSnippet(trace: SessionNarrativeTrace): string | null {
+  const latestEvent = trace.semantic_events.at(-1);
+  return latestEvent ? summarizeTimelineEvent(latestEvent) : null;
 }
 
 function SessionTraceRow({
