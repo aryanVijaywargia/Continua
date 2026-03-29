@@ -1,9 +1,9 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
+  useMemo,
   type Dispatch,
   type MutableRefObject,
   type ReactNode,
@@ -39,8 +39,12 @@ import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { useTraceDetailSearchParams } from '../hooks/useTraceDetailSearchParams';
 import { useWorkspaceState } from '../hooks/useWorkspaceState';
 import type { RetrySafetyAssessment } from '../utils/retrySafety';
-import { useTraceTimeline } from './useTraceTimeline';
+import {
+  TIMELINE_POLL_INTERVAL_MS,
+  useTraceTimeline,
+} from './useTraceTimeline';
 import { useRetrySafetyAnalysis } from './useRetrySafetyAnalysis';
+import { useWaitStallAnalysis } from './useWaitStallAnalysis';
 import {
   calculateDuration,
   formatCost,
@@ -53,11 +57,11 @@ import {
   buildBreadcrumbPath,
   buildFailureAnalysis,
   buildSpanIndex,
-  evaluateStaleTraceSignal,
-  type StaleTraceSignal,
 } from '../utils/failureAnalysis';
+import { getWaitDetails } from '../utils/eventSemantics';
 import { extractStateChanges } from '../utils/stateChanges';
 import { serializeSpanParam } from '../utils/traceDetailSearchParams';
+import type { WaitStallAssessment } from '../utils/waitStallAnalysis';
 import {
   buildSpanTree,
   collectExpandableSpanIds,
@@ -67,12 +71,6 @@ import {
 
 const EMPTY_SPANS: Span[] = [];
 const EMPTY_RETRY_SAFETY_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
-const EMPTY_STALE_TRACE_SIGNAL: StaleTraceSignal = {
-  shouldDisplay: false,
-  latestActivityAt: null,
-  runtimeMs: null,
-  inactivityMs: null,
-};
 const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
 
 function queryErrorMessage(error: unknown): string {
@@ -119,11 +117,16 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     queryKey: ['trace', traceId],
     queryFn: () => fetchTrace(traceId),
   });
+  const timeline = useTraceTimeline(traceId);
+  const liveTraceStatus = timeline.traceStatus ?? traceQuery.data?.status ?? null;
   const spansQuery = useQuery({
     queryKey: ['spans', traceId],
     queryFn: () => fetchSpans(traceId),
+    refetchInterval:
+      liveTraceStatus === 'RUNNING' ? TIMELINE_POLL_INTERVAL_MS : false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
-  const timeline = useTraceTimeline(traceId);
   const trace = traceQuery.data ?? null;
   const spans = spansQuery.data?.spans ?? EMPTY_SPANS;
   const timelineAuthError = isAuthError(timeline.rawError);
@@ -172,18 +175,13 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     () => buildBreadcrumbPath(selectedSpan, spanIndex),
     [selectedSpan, spanIndex]
   );
-  const staleTraceSignal = useMemo(
-    () =>
-      timeline.hasSnapshot
-        ? evaluateStaleTraceSignal({
-            traceStatus: timelineStatus,
-            traceStartedAt: trace?.started_at,
-            spans,
-            events: timeline.events,
-          })
-        : EMPTY_STALE_TRACE_SIGNAL,
-    [spans, timeline.events, timeline.hasSnapshot, timelineStatus, trace?.started_at]
-  );
+  const waitStallAssessment = useWaitStallAnalysis({
+    traceStatus: timelineStatus,
+    traceStartedAt: trace?.started_at,
+    spans,
+    events: timeline.events,
+    hasTimelineSnapshot: timeline.hasSnapshot,
+  });
   const retrySafetyAnalysis = useRetrySafetyAnalysis(spans, timeline.events);
   const showRetrySafety = timelineStatus === 'FAILED';
   const visibleRetrySafetyAssessments = showRetrySafety
@@ -263,7 +261,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
 
   const detailsContent = (
     <TraceDetailsSurface
-      staleTraceSignal={staleTraceSignal}
+      runningStateAssessment={waitStallAssessment}
       timelineStatus={timelineStatus}
       failureAnalysis={failureAnalysis}
       retrySafetyAnalysis={showRetrySafety ? retrySafetyAnalysis : null}
@@ -517,7 +515,7 @@ function getReturnToDestination(state: unknown): string {
 }
 
 function TraceDetailsSurface({
-  staleTraceSignal,
+  runningStateAssessment,
   timelineStatus,
   failureAnalysis,
   retrySafetyAnalysis,
@@ -528,7 +526,7 @@ function TraceDetailsSurface({
   events,
   traceContext,
 }: {
-  staleTraceSignal: StaleTraceSignal;
+  runningStateAssessment: WaitStallAssessment | null;
   timelineStatus: 'RUNNING' | 'COMPLETED' | 'FAILED' | null;
   failureAnalysis: ReturnType<typeof buildFailureAnalysis>;
   retrySafetyAnalysis: ReturnType<typeof useRetrySafetyAnalysis> | null;
@@ -552,8 +550,12 @@ function TraceDetailsSurface({
           />
         ) : null}
 
-        {staleTraceSignal.shouldDisplay ? (
-          <StaleTraceSignalPanel staleTraceSignal={staleTraceSignal} />
+        {runningStateAssessment ? (
+          <RunningStatePanel
+            assessment={runningStateAssessment}
+            events={events}
+            onSelectSpan={onSelectSpan}
+          />
         ) : null}
 
         <div className="min-h-[22rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -735,28 +737,172 @@ function TracePayloadPanel({ title, data }: { title: string; data: unknown }) {
   );
 }
 
-function StaleTraceSignalPanel({
-  staleTraceSignal,
+function RunningStatePanel({
+  assessment,
+  events,
+  onSelectSpan,
 }: {
-  staleTraceSignal: StaleTraceSignal;
+  assessment: WaitStallAssessment;
+  events: TimelineEvent[];
+  onSelectSpan: (spanId: string) => void;
 }) {
+  const waitKind = resolveDeclaredWaitKind(assessment, events);
+  const panelTone = getRunningStatePanelTone(assessment.classification);
+  const summary = getRunningStateSummary(assessment);
+
   return (
-    <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-800">
-        Experimental stale trace signal
+    <section className={`rounded-xl border px-4 py-4 shadow-sm ${panelTone}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+            Running state
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">{summary.label}</h2>
+            <span className="rounded-full border border-current/15 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em]">
+              {formatRunningStateBasis(assessment.basis)}
+            </span>
+          </div>
+          <p className="mt-2 max-w-3xl text-sm leading-6">{summary.copy}</p>
+        </div>
+
+        {assessment.decisiveSpanId ? (
+          <button
+            type="button"
+            className="rounded-full border border-current/20 bg-white/70 px-3 py-1.5 text-xs font-medium transition hover:bg-white dark:bg-slate-950/40 dark:hover:bg-slate-950/70"
+            onClick={() => onSelectSpan(assessment.decisiveSpanId!)}
+          >
+            Jump to {assessment.decisiveSpanName ?? assessment.decisiveSpanId}
+          </button>
+        ) : null}
       </div>
-      <p className="mt-2">
-        Still marked running. Recent activity is sparse, so this trace may be stale
-        or incomplete.
-      </p>
-      {staleTraceSignal.latestActivityAt ? (
-        <p className="mt-2 text-xs text-amber-800">
-          Latest activity: {formatTimestamp(staleTraceSignal.latestActivityAt)} (
-          {formatRelativeTime(staleTraceSignal.latestActivityAt)})
-        </p>
-      ) : null}
+
+      <div className="mt-4 flex flex-wrap gap-4 text-xs">
+        {waitKind ? (
+          <div>
+            <div className="font-semibold uppercase tracking-[0.16em] opacity-75">
+              Current wait
+            </div>
+            <div className="mt-1 text-sm font-medium">{waitKind}</div>
+          </div>
+        ) : null}
+        {assessment.latestActivityAt ? (
+          <div>
+            <div className="font-semibold uppercase tracking-[0.16em] opacity-75">
+              Latest activity
+            </div>
+            <div className="mt-1 text-sm font-medium">
+              {formatTimestamp(assessment.latestActivityAt)} (
+              {formatRelativeTime(assessment.latestActivityAt)})
+            </div>
+          </div>
+        ) : null}
+        {assessment.runtimeMs !== null ? (
+          <div>
+            <div className="font-semibold uppercase tracking-[0.16em] opacity-75">
+              Runtime
+            </div>
+            <div className="mt-1 text-sm font-medium">
+              {formatDuration(assessment.runtimeMs)}
+            </div>
+          </div>
+        ) : null}
+        {assessment.inactivityMs !== null ? (
+          <div>
+            <div className="font-semibold uppercase tracking-[0.16em] opacity-75">
+              Inactivity
+            </div>
+            <div className="mt-1 text-sm font-medium">
+              {formatDuration(assessment.inactivityMs)}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </section>
   );
+}
+
+function getRunningStateSummary(assessment: WaitStallAssessment): {
+  label: string;
+  copy: string;
+} {
+  switch (assessment.classification) {
+    case 'declared_wait':
+      return {
+        label: 'Declared wait',
+        copy: 'Execution declared a wait and has not yet recorded a matching resolution.',
+      };
+    case 'waiting_on_model':
+      return {
+        label: 'Waiting on model',
+        copy: 'Execution appears to be waiting on an in-flight model span.',
+      };
+    case 'waiting_on_tool':
+      return {
+        label: 'Waiting on tool',
+        copy: 'Execution appears to be waiting on an in-flight tool span.',
+      };
+    case 'actively_executing':
+      return assessment.reason === 'recent_activity_without_open_span'
+        ? {
+            label: 'Actively executing',
+            copy: 'Recent activity suggests execution is still progressing between spans.',
+          }
+        : {
+            label: 'Actively executing',
+            copy: 'A running span suggests execution is still actively progressing.',
+          };
+    case 'possibly_stalled':
+      return {
+        label: 'Possibly stalled',
+        copy: 'Execution is still marked running, but recent activity is sparse.',
+      };
+    case 'unknown':
+      return {
+        label: 'Unknown',
+        copy: 'The debugger cannot yet explain where it is waiting.',
+      };
+  }
+}
+
+function formatRunningStateBasis(basis: WaitStallAssessment['basis']): string {
+  switch (basis) {
+    case 'declared':
+      return 'Declared';
+    case 'inferred':
+      return 'Inferred';
+    case 'heuristic':
+      return 'Heuristic';
+  }
+}
+
+function getRunningStatePanelTone(
+  classification: WaitStallAssessment['classification']
+): string {
+  switch (classification) {
+    case 'declared_wait':
+    case 'waiting_on_model':
+    case 'waiting_on_tool':
+      return 'border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100';
+    case 'actively_executing':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100';
+    case 'possibly_stalled':
+      return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100';
+    case 'unknown':
+      return 'border-slate-200 bg-slate-100 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100';
+  }
+}
+
+function resolveDeclaredWaitKind(
+  assessment: WaitStallAssessment,
+  events: TimelineEvent[]
+): string | null {
+  if (assessment.classification !== 'declared_wait' || !assessment.decisiveEventId) {
+    return null;
+  }
+
+  const decisiveEvent = events.find((event) => event.id === assessment.decisiveEventId);
+  return decisiveEvent ? getWaitDetails(decisiveEvent)?.waitKind ?? null : null;
 }
 
 function renderContextText(value: string | undefined, monospace = false) {

@@ -3,6 +3,7 @@ import {
   formatInlineSemanticValue,
   getDecisionDetails,
   getStateChangeDetails,
+  getWaitDetails,
 } from './eventSemantics';
 
 /**
@@ -86,6 +87,8 @@ export function summarizeTimelineEvent(event: TimelineEvent): string {
       return `${event.span_name ?? event.span_id ?? 'Span'} failed`;
     case 'metric':
       return formatMetricSummary(event);
+    case 'wait':
+      return formatWaitSummary(event);
     default:
       if (event.message) {
         return event.message;
@@ -107,6 +110,41 @@ function formatMetricSummary(event: TimelineEvent): string {
   }
 
   return 'Metric recorded';
+}
+
+function formatWaitSummary(event: TimelineEvent): string {
+  const waitDetails = getWaitDetails(event);
+  if (waitDetails) {
+    if (waitDetails.phase === 'entered') {
+      return `Entered wait: ${waitDetails.waitKind}`;
+    }
+
+    if (waitDetails.phase === 'resolved') {
+      return waitDetails.resolution
+        ? `Resolved wait: ${waitDetails.waitKind} → ${waitDetails.resolution}`
+        : `Resolved wait: ${waitDetails.waitKind}`;
+    }
+
+    return `${capitalizeWaitPhase(waitDetails.phase)} wait`;
+  }
+
+  const rawPhase =
+    typeof event.payload?.phase === 'string' && event.payload.phase.length > 0
+      ? event.payload.phase
+      : null;
+  if (rawPhase) {
+    return `${capitalizeWaitPhase(rawPhase)} wait`;
+  }
+
+  if (event.message) {
+    return event.message;
+  }
+
+  return event.event_type.replace(/_/g, ' ');
+}
+
+function capitalizeWaitPhase(phase: string): string {
+  return phase.charAt(0).toUpperCase() + phase.slice(1);
 }
 
 function timelineSourceRank(source: TimelineEvent['source']): number {
