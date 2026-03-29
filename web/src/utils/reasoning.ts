@@ -29,30 +29,32 @@ export function buildReasoningEntries(
   spans: Span[]
 ): DecisionTraceEntry[] {
   const spanNamesById = new Map(spans.map((span) => [span.span_id, span.name]));
+  const entries: DecisionTraceEntry[] = [];
 
-  return events
-    .map((event) => {
-      const decision = getDecisionDetails(event);
-      if (!decision) {
-        return null;
-      }
+  for (const event of events) {
+    const decision = getDecisionDetails(event);
+    if (!decision) {
+      continue;
+    }
 
-      return {
-        event,
-        spanId: event.span_id ?? null,
-        spanName:
-          getNonEmptyString(event.span_name) ??
-          (event.span_id ? spanNamesById.get(event.span_id) : null) ??
-          event.span_id ??
-          'Unknown span',
-        question: decision.question,
-        chosen: decision.chosen,
-        alternatives: decision.alternatives,
-        reasoning: decision.reasoning,
-      };
-    })
-    .filter((entry): entry is DecisionTraceEntry => entry !== null)
-    .sort((left, right) => compareTimelineEvents(left.event, right.event));
+    entries.push({
+      event,
+      spanId: event.span_id ?? null,
+      spanName:
+        getNonEmptyString(event.span_name) ??
+        (event.span_id ? spanNamesById.get(event.span_id) : null) ??
+        event.span_id ??
+        'Unknown span',
+      question: decision.question,
+      chosen: decision.chosen,
+      alternatives: decision.alternatives,
+      reasoning: decision.reasoning,
+    });
+  }
+
+  return entries.sort((left, right) =>
+    compareTimelineEvents(left.event, right.event)
+  );
 }
 
 export function buildTraceCostSeries(
