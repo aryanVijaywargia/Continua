@@ -7,6 +7,7 @@ describe('InspectorTabs', () => {
     const { rerender } = render(
       <InspectorTabs
         details={<div>Details</div>}
+        reasoning={<div>Reasoning</div>}
         timeline={<div>Timeline</div>}
         state={<div>State</div>}
         stateCount={0}
@@ -18,6 +19,7 @@ describe('InspectorTabs', () => {
     rerender(
       <InspectorTabs
         details={<div>Details</div>}
+        reasoning={<div>Reasoning</div>}
         timeline={<div>Timeline</div>}
         state={<div>State</div>}
         stateCount={3}

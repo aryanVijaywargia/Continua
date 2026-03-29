@@ -162,6 +162,7 @@ describe('TraceDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Waterfall' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tree' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Timeline' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reasoning' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Trace Context/i })).toHaveAttribute(
       'aria-expanded',
       'false'
@@ -267,6 +268,141 @@ describe('TraceDetailPage', () => {
     expect(screen.getAllByText('running').length).toBeGreaterThan(0);
   });
 
+  it('selects a span from the reasoning tab and switches back to details', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'reasoning-root',
+      name: 'Reasoning root',
+      status: 'COMPLETED',
+    });
+    const childSpan = createSpan({
+      span_id: 'reasoning-child',
+      name: 'Reasoning child',
+      parent_span_id: rootSpan.span_id,
+      status: 'COMPLETED',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', error_count: 0 }),
+        spans: () => jsonResponse({ spans: [rootSpan, childSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'reasoning-decision',
+                span_id: childSpan.span_id,
+                span_name: childSpan.name,
+                event_type: 'decision',
+                timestamp: '2026-03-14T10:00:03.000Z',
+                payload: {
+                  question: 'Choose a tool?',
+                  chosen: 'calculator',
+                  reasoning: 'The arithmetic branch needs deterministic output.',
+                },
+              }),
+            ],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(
+      await screen.findByRole('button', { name: 'Select span Reasoning root' })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Reasoning' }));
+    await user.click(
+      screen.getByRole('button', { name: /Reasoning child.*Choose a tool\?/i })
+    );
+
+    expect(view.router.state.location.search).toBe('?span=reasoning-child');
+    expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText('Reasoning child')
+    ).toBeInTheDocument();
+  });
+
+  it('selects a span from the reasoning tab and switches back to details on mobile', async () => {
+    setMatchMediaMatches(false);
+    const user = userEvent.setup();
+    const rootSpan = createSpan({
+      span_id: 'mobile-reasoning-root',
+      name: 'Mobile reasoning root',
+      status: 'COMPLETED',
+    });
+    const childSpan = createSpan({
+      span_id: 'mobile-reasoning-child',
+      name: 'Mobile reasoning child',
+      parent_span_id: rootSpan.span_id,
+      status: 'COMPLETED',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', error_count: 0 }),
+        spans: () => jsonResponse({ spans: [rootSpan, childSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'mobile-reasoning-decision',
+                span_id: childSpan.span_id,
+                span_name: childSpan.name,
+                event_type: 'decision',
+                timestamp: '2026-03-14T10:00:03.000Z',
+                payload: {
+                  question: 'Choose a mobile tool?',
+                  chosen: 'calculator',
+                },
+              }),
+            ],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(
+      await screen.findByRole('button', { name: 'Reasoning' })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Reasoning' }));
+    expect(screen.getByRole('button', { name: 'Reasoning' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: /Mobile reasoning child.*Choose a mobile tool\?/i,
+      })
+    );
+
+    expect(view.router.state.location.search).toBe('?span=mobile-reasoning-child');
+    expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: 'Reasoning' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+    expect(
+      within(screen.getByLabelText('Span breadcrumb')).getByText(
+        'Mobile reasoning child'
+      )
+    ).toBeInTheDocument();
+  });
+
   it('shows and hides inline tree metrics from the tree-rail toggle', async () => {
     const user = userEvent.setup();
     const rootSpan = createSpan({ span_id: 'metrics-root', name: 'Metrics root' });
@@ -295,18 +431,20 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
     await screen.findByRole('button', { name: 'Select span Metrics child' });
 
-    expect(screen.queryByText('42 tokens')).not.toBeInTheDocument();
-    expect(screen.queryByText('$0.05')).not.toBeInTheDocument();
+    const treeSection = screen.getByRole('heading', { name: 'Spans (2)' }).closest('section');
+    expect(treeSection).not.toBeNull();
+    expect(within(treeSection!).queryByText('42 tokens')).not.toBeInTheDocument();
+    expect(within(treeSection!).queryByText('$0.05')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Show metrics' }));
 
-    expect(screen.getByText('42 tokens')).toBeInTheDocument();
-    expect(screen.getByText('$0.05')).toBeInTheDocument();
+    expect(within(treeSection!).getByText('42 tokens')).toBeInTheDocument();
+    expect(within(treeSection!).getByText('$0.05')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Show metrics' }));
 
-    expect(screen.queryByText('42 tokens')).not.toBeInTheDocument();
-    expect(screen.queryByText('$0.05')).not.toBeInTheDocument();
+    expect(within(treeSection!).queryByText('42 tokens')).not.toBeInTheDocument();
+    expect(within(treeSection!).queryByText('$0.05')).not.toBeInTheDocument();
   });
 
   it('confirms before expand all when the projected reveal cost exceeds the threshold', async () => {
@@ -1164,6 +1302,88 @@ describe('TraceDetailPage', () => {
       within(screen.getByLabelText('Span breadcrumb')).getByText('Running child')
     ).toBeInTheDocument();
     expect(view.router.state.location.search).toBe('?span=running-child');
+  }, 10000);
+
+  it('re-derives the running-trace cost strip from the existing polling refresh without adding a new polling path', async () => {
+    const runningTraceDetail = createRunningTraceDetail({
+      total_cost_usd: 0.05,
+    });
+    const completedCostSpan = createSpan({
+      span_id: 'cost-completed',
+      name: 'Completed cost span',
+      status: 'COMPLETED',
+      started_at: '2026-03-14T10:00:00.000Z',
+      ended_at: '2026-03-14T10:00:02.000Z',
+      latency_ms: 2000,
+      cost_usd: 0.05,
+    });
+    const runningSpanInitial = createSpan({
+      span_id: 'cost-running',
+      name: 'Running cost span',
+      parent_span_id: completedCostSpan.span_id,
+      status: 'STARTED',
+      started_at: '2026-03-14T10:00:02.000Z',
+      latency_ms: 1000,
+    });
+    const runningSpanCompleted = {
+      ...runningSpanInitial,
+      status: 'COMPLETED' as const,
+      ended_at: '2026-03-14T10:00:04.000Z',
+      latency_ms: 2000,
+      cost_usd: 0.12,
+    };
+    let currentSpans = [completedCostSpan, runningSpanInitial];
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(runningTraceDetail),
+        spans: () => jsonResponse({ spans: currentSpans }),
+        timeline: (url) =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+            poll_cursor: url.searchParams.get('after') ?? 'cursor-running',
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    const waterfallSection = (
+      await screen.findByRole('heading', { name: 'Execution Waterfall' })
+    ).closest('section');
+    expect(waterfallSection).not.toBeNull();
+    expect(within(waterfallSection!).getByText('Cumulative cost')).toBeInTheDocument();
+    expect(within(waterfallSection!).getByLabelText('Cumulative cost chart')).toBeInTheDocument();
+    expect(within(waterfallSection!).getAllByText('$0.05').length).toBeGreaterThan(0);
+    expect(within(waterfallSection!).getByText('Partial')).toBeInTheDocument();
+
+    fetchMock.mockClear();
+    currentSpans = [completedCostSpan, runningSpanCompleted];
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 3100));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('$0.17')).toBeInTheDocument();
+    });
+    expect(within(waterfallSection!).getByText('Partial')).toBeInTheDocument();
+
+    const polledPaths = new Set(
+      fetchMock.mock.calls.map(([input]) => {
+        const url = new URL(readRequestUrl(input), 'http://localhost');
+        return url.pathname;
+      })
+    );
+
+    expect(polledPaths).toEqual(
+      new Set([
+        `/api/traces/${TRACE_ONE.id}/events`,
+        `/api/traces/${TRACE_ONE.id}/spans`,
+      ])
+    );
   }, 10000);
 
   it('keeps failed-trace retry-safety surfaces stable when timeline data refreshes with only non-effect updates', async () => {

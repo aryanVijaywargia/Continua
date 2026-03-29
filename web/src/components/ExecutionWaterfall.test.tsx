@@ -6,7 +6,7 @@ import {
   createSpan,
   resetTestEntityCounter,
 } from '../test/traceFixtures';
-import { ExecutionWaterfall } from './ExecutionWaterfall';
+import { ExecutionWaterfall, WATERFALL_ROW_HEIGHT } from './ExecutionWaterfall';
 
 beforeEach(() => {
   resetTestEntityCounter();
@@ -107,5 +107,71 @@ describe('ExecutionWaterfall retry safety', () => {
     expect(
       within(section!).getAllByLabelText(getAccessibleSummary('unsafe'))
     ).toHaveLength(1);
+  });
+
+  it('shows inline token and cost annotations only for cost-bearing rows while keeping row height uniform', () => {
+    const rootSpan = createSpan({
+      span_id: 'annotation-root',
+      name: 'Annotation root',
+      status: 'COMPLETED',
+      started_at: '2026-03-14T10:00:00.000Z',
+      ended_at: '2026-03-14T10:00:05.000Z',
+      latency_ms: 5000,
+    });
+    const annotatedSpan = createSpan({
+      span_id: 'annotation-costed',
+      name: 'Annotated span',
+      parent_span_id: rootSpan.span_id,
+      status: 'COMPLETED',
+      started_at: '2026-03-14T10:00:01.000Z',
+      ended_at: '2026-03-14T10:00:02.000Z',
+      latency_ms: 1000,
+      tokens_in: 12,
+      tokens_out: 33,
+      cost_usd: 0.05,
+    });
+    const plainSpan = createSpan({
+      span_id: 'annotation-plain',
+      name: 'Plain span',
+      parent_span_id: rootSpan.span_id,
+      status: 'COMPLETED',
+      started_at: '2026-03-14T10:00:02.000Z',
+      ended_at: '2026-03-14T10:00:03.000Z',
+      latency_ms: 1000,
+    });
+
+    const rows = deriveVisibleRows(
+      buildSpanTree([rootSpan, annotatedSpan, plainSpan]),
+      new Set([rootSpan.span_id])
+    );
+
+    render(
+      <ExecutionWaterfall
+        events={[]}
+        rows={rows}
+        selectedSpanId={null}
+        onSelectSpanAndShowDetails={vi.fn()}
+        revealTarget={null}
+        revealVersion={0}
+        spans={[rootSpan, annotatedSpan, plainSpan]}
+        traceStartedAt={rootSpan.started_at}
+        traceEndedAt={rootSpan.ended_at}
+      />
+    );
+
+    const annotatedLabel = screen.getByText('Annotated span').closest('button');
+    const plainLabel = screen.getByText('Plain span').closest('button');
+
+    expect(annotatedLabel).not.toBeNull();
+    expect(plainLabel).not.toBeNull();
+    expect(screen.getByText('45 tokens')).toBeInTheDocument();
+    expect(screen.getByText('$0.05')).toBeInTheDocument();
+    expect(screen.queryByText('0 tokens')).not.toBeInTheDocument();
+    expect(annotatedLabel!.parentElement).toHaveStyle(
+      `height: ${WATERFALL_ROW_HEIGHT}px`
+    );
+    expect(plainLabel!.parentElement).toHaveStyle(
+      `height: ${WATERFALL_ROW_HEIGHT}px`
+    );
   });
 });

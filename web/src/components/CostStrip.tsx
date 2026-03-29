@@ -1,0 +1,111 @@
+import { formatCost } from '../utils/format';
+import type { TraceCostSeries } from '../utils/reasoning';
+import type { WaterfallWindow } from '../utils/waterfallTime';
+
+interface CostStripProps {
+  series: TraceCostSeries | null;
+  window: WaterfallWindow;
+}
+
+const CHART_BOTTOM_Y = 24;
+const CHART_HEIGHT = 28;
+const CHART_TOP_Y = 4;
+const CHART_WIDTH = 100;
+
+export function CostStrip({ series, window }: CostStripProps) {
+  if (!series) {
+    return null;
+  }
+
+  const plottedPoints = series.points.map((point) => {
+    const leftPercent = clamp(
+      ((point.anchorMs - window.startMs) / window.durationMs) * 100,
+      0,
+      100
+    );
+    const x = (leftPercent / 100) * CHART_WIDTH;
+    const y =
+      CHART_BOTTOM_Y -
+      (point.cumulativeCostUsd / Math.max(series.totalCostUsd, Number.EPSILON)) *
+        (CHART_BOTTOM_Y - CHART_TOP_Y);
+
+    return {
+      ...point,
+      leftPercent,
+      x,
+      y,
+    };
+  });
+  const path = buildStepPath(plottedPoints);
+  const lastPoint = plottedPoints[plottedPoints.length - 1];
+  const labelLeftPercent = clamp(lastPoint.leftPercent + 1, 8, 82);
+
+  return (
+    <div className="grid grid-cols-[minmax(0,13rem)_minmax(0,1fr)] border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div className="border-r border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:border-slate-800 dark:text-slate-400">
+        Cumulative cost
+      </div>
+      <div className="relative px-4 py-3">
+        <svg
+          aria-label="Cumulative cost chart"
+          className="h-12 w-full overflow-visible"
+          viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+          preserveAspectRatio="none"
+        >
+          <path
+            d={`M 0 ${CHART_BOTTOM_Y} L ${CHART_WIDTH} ${CHART_BOTTOM_Y}`}
+            fill="none"
+            stroke="var(--continua-waterfall-tick-color)"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={path}
+            fill="none"
+            stroke="var(--continua-waterfall-success-selected-border)"
+            strokeWidth="1.8"
+            vectorEffect="non-scaling-stroke"
+          />
+          <circle
+            cx={lastPoint.x}
+            cy={lastPoint.y}
+            r="2.6"
+            fill="var(--continua-waterfall-success-selected-border)"
+          />
+        </svg>
+
+        <div
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2"
+          style={{ left: `${labelLeftPercent}%` }}
+        >
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-200">
+            <span>{formatCost(series.totalCostUsd)}</span>
+            {series.partial ? (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
+                Partial
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildStepPath(
+  points: Array<{ x: number; y: number }>
+): string {
+  let currentY = CHART_BOTTOM_Y;
+  let path = `M 0 ${CHART_BOTTOM_Y}`;
+
+  for (const point of points) {
+    path += ` L ${point.x} ${currentY} L ${point.x} ${point.y}`;
+    currentY = point.y;
+  }
+
+  return `${path} L ${CHART_WIDTH} ${currentY}`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}

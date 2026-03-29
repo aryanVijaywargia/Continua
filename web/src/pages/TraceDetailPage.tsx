@@ -25,6 +25,7 @@ import { ExecutionWaterfall } from '../components/ExecutionWaterfall';
 import { FailureSummary } from '../components/FailureSummary';
 import { InspectorTabs } from '../components/InspectorTabs';
 import { JsonViewer } from '../components/JsonViewer';
+import { ReasoningTab } from '../components/ReasoningTab';
 import { SpanDetail } from '../components/SpanDetail';
 import { StateDiffViewer } from '../components/StateDiffViewer';
 import { StatusBadge } from '../components/StatusBadge';
@@ -60,6 +61,11 @@ import {
 } from '../utils/failureAnalysis';
 import { getWaitDetails } from '../utils/eventSemantics';
 import { extractStateChanges } from '../utils/stateChanges';
+import {
+  buildReasoningEntries,
+  buildTraceCostSeries,
+  type TraceCostSeries,
+} from '../utils/reasoning';
 import { serializeSpanParam } from '../utils/traceDetailSearchParams';
 import type { WaitStallAssessment } from '../utils/waitStallAnalysis';
 import {
@@ -139,6 +145,10 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     () => extractStateChanges(timeline.events),
     [timeline.events]
   );
+  const reasoningEntries = useMemo(
+    () => buildReasoningEntries(timeline.events, spans),
+    [spans, timeline.events]
+  );
   const returnTo = getReturnToDestination(location.state);
   const spanIndex = useMemo(() => buildSpanIndex(spans), [spans]);
   const failureAnalysis = useMemo(
@@ -187,6 +197,10 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const visibleRetrySafetyAssessments = showRetrySafety
     ? retrySafetyAnalysis.spanAssessments
     : EMPTY_RETRY_SAFETY_ASSESSMENTS;
+  const traceCostSeries = useMemo(
+    () => buildTraceCostSeries(spans, timelineStatus),
+    [spans, timelineStatus]
+  );
 
   const handleSelectSpan = useCallback((spanId: string) => {
     selectSpan(spanId);
@@ -293,6 +307,12 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       spanIndex={spanIndex}
     />
   );
+  const reasoningContent = (
+    <ReasoningTab
+      entries={reasoningEntries}
+      onSelectSpan={handleSelectSpanAndShowDetails}
+    />
+  );
   const stateContent = <StateDiffViewer changes={stateChanges} />;
 
   return (
@@ -354,6 +374,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
             revealKey={revealVersion}
             revealPath={revealPath}
             revealTarget={waterfallRevealTarget}
+            reasoningContent={reasoningContent}
             selectedSpanId={selectedSpanExternalId}
             setExpandedSpanIds={setExpandedSpanIds}
             spanAssessments={visibleRetrySafetyAssessments}
@@ -362,6 +383,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
             spans={spans}
             stateChangeCount={stateChanges.length}
             stateContent={stateContent}
+            traceCostSeries={traceCostSeries}
             timelineContent={timelineContent}
             traceEndedAt={trace.ended_at}
             traceStartedAt={trace.started_at}
@@ -390,6 +412,7 @@ interface TraceWorkspaceProps {
   revealKey: number;
   revealPath: ReadonlySet<string>;
   revealTarget: string | null;
+  reasoningContent: ReactNode;
   selectedSpanId: string | null;
   setExpandedSpanIds: Dispatch<SetStateAction<Set<string>>>;
   spanAssessments: ReadonlyMap<string, RetrySafetyAssessment>;
@@ -398,6 +421,7 @@ interface TraceWorkspaceProps {
   spans: Span[];
   stateChangeCount: number;
   stateContent: ReactNode;
+  traceCostSeries: TraceCostSeries | null;
   timelineContent: ReactNode;
   traceEndedAt?: string;
   traceStartedAt?: string;
@@ -421,6 +445,7 @@ function TraceWorkspace({
   revealKey,
   revealPath,
   revealTarget,
+  reasoningContent,
   selectedSpanId,
   setExpandedSpanIds,
   spanAssessments,
@@ -429,6 +454,7 @@ function TraceWorkspace({
   spans,
   stateChangeCount,
   stateContent,
+  traceCostSeries,
   timelineContent,
   traceEndedAt,
   traceStartedAt,
@@ -473,6 +499,7 @@ function TraceWorkspace({
           revealTarget={revealTarget}
           revealVersion={revealKey}
           spans={spans}
+          costSeries={traceCostSeries}
           spanAssessments={spanAssessments}
           traceEndedAt={traceEndedAt}
           traceStartedAt={traceStartedAt}
@@ -481,6 +508,7 @@ function TraceWorkspace({
       inspector={
         <InspectorTabs
           details={detailsContent}
+          reasoning={reasoningContent}
           timeline={timelineContent}
           state={stateContent}
           stateCount={stateChangeCount}
@@ -488,6 +516,7 @@ function TraceWorkspace({
         />
       }
       mobileDetails={detailsContent}
+      mobileReasoning={reasoningContent}
       mobileTimeline={timelineContent}
       mobileState={stateContent}
       activeMobileTab={activeMobileTab}

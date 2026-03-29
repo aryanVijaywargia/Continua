@@ -5,10 +5,11 @@ import {
   type ReactNode,
 } from 'react';
 
-export type InspectorTabId = 'details' | 'timeline' | 'state';
+export type InspectorTabId = 'details' | 'timeline' | 'reasoning' | 'state';
 
 interface InspectorTabsProps {
   details: ReactNode;
+  reasoning: ReactNode;
   timeline: ReactNode;
   state: ReactNode;
   stateCount: number;
@@ -17,6 +18,7 @@ interface InspectorTabsProps {
 
 export function InspectorTabs({
   details,
+  reasoning,
   timeline,
   state,
   stateCount,
@@ -54,6 +56,11 @@ export function InspectorTabs({
             onClick={() => setActiveTab('timeline')}
           />
           <InspectorTabButton
+            active={activeTab === 'reasoning'}
+            label="Reasoning"
+            onClick={() => setActiveTab('reasoning')}
+          />
+          <InspectorTabButton
             active={activeTab === 'state'}
             label="State"
             badgeCount={stateCount}
@@ -74,6 +81,12 @@ export function InspectorTabs({
           style={{ display: activeTab === 'timeline' ? 'block' : 'none' }}
         >
           {timeline}
+        </div>
+        <div
+          className="h-full"
+          style={{ display: activeTab === 'reasoning' ? 'block' : 'none' }}
+        >
+          {reasoning}
         </div>
         <div
           className="h-full"

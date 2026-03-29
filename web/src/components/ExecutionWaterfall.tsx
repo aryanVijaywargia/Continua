@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { Span, TimelineEvent } from '../api/client';
 import { useVirtualRows } from '../hooks/useVirtualRows';
-import { formatDuration } from '../utils/format';
+import { formatCost, formatDuration, formatTokens } from '../utils/format';
+import type { TraceCostSeries } from '../utils/reasoning';
 import {
   getAccessibleSummary,
   type RetrySafetyAssessment,
@@ -12,6 +13,7 @@ import {
   deriveWaterfallWindow,
   getWaterfallBarLayout,
 } from '../utils/waterfallTime';
+import { CostStrip } from './CostStrip';
 import { RetrySafetyBadge } from './RetrySafetyBadge';
 
 interface ExecutionWaterfallProps {
@@ -22,13 +24,14 @@ interface ExecutionWaterfallProps {
   revealTarget: string | null;
   revealVersion: number;
   spans: Span[];
+  costSeries?: TraceCostSeries | null;
   traceEndedAt?: string;
   traceStartedAt?: string;
   spanAssessments?: ReadonlyMap<string, RetrySafetyAssessment>;
 }
 
 const MIN_BAR_WIDTH_REM = 0.875;
-const WATERFALL_ROW_HEIGHT = 68;
+export const WATERFALL_ROW_HEIGHT = 68;
 const TICK_LINE_COLOR = 'var(--continua-waterfall-tick-color)';
 const EMPTY_SPAN_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
 
@@ -40,6 +43,7 @@ export function ExecutionWaterfall({
   revealTarget,
   revealVersion,
   spans,
+  costSeries = null,
   traceEndedAt,
   traceStartedAt,
   spanAssessments = EMPTY_SPAN_ASSESSMENTS,
@@ -134,6 +138,8 @@ export function ExecutionWaterfall({
         </div>
       </div>
 
+      <CostStrip series={costSeries} window={window} />
+
       <div
         ref={containerRef}
         className="min-h-0 flex-1 overflow-y-auto"
@@ -150,6 +156,9 @@ export function ExecutionWaterfall({
             const bar = getWaterfallBarLayout(row.span, window);
             const isSelected = row.span.span_id === selectedSpanId;
             const retrySafety = spanAssessments.get(row.span.span_id) ?? null;
+            const totalTokens = (row.span.tokens_in ?? 0) + (row.span.tokens_out ?? 0);
+            const hasTokenData = totalTokens !== 0;
+            const hasCostData = (row.span.cost_usd ?? 0) !== 0;
 
             return (
               <div
@@ -163,10 +172,11 @@ export function ExecutionWaterfall({
                   rowRefs.current.delete(row.span.span_id);
                 }}
                 className="grid grid-cols-[minmax(0,13rem)_minmax(0,1fr)]"
+                style={{ height: `${WATERFALL_ROW_HEIGHT}px` }}
               >
                 <button
                   type="button"
-                  className={`min-w-0 border-r border-slate-200 px-4 py-3 text-left transition dark:border-slate-800 ${
+                  className={`flex h-full min-w-0 items-center border-r border-slate-200 px-4 py-3 text-left transition dark:border-slate-800 ${
                     isSelected
                       ? 'bg-blue-50 dark:bg-sky-500/10'
                       : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60'
@@ -174,28 +184,45 @@ export function ExecutionWaterfall({
                   onClick={() => onSelectSpanAndShowDetails(row.span.span_id)}
                 >
                   <div
-                    className="flex items-center gap-2"
+                    className="min-w-0"
                     style={{ paddingLeft: `${row.depth * 12}px` }}
                   >
-                    <div className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
-                      {row.span.name}
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {row.span.name}
+                      </div>
+                      {row.span.status === 'FAILED' && retrySafety ? (
+                        <RetrySafetyBadge
+                          classification={retrySafety.classification}
+                          variant="compact"
+                          aria-label={getAccessibleSummary(retrySafety.classification)}
+                        />
+                      ) : null}
                     </div>
-                    {row.span.status === 'FAILED' && retrySafety ? (
-                      <RetrySafetyBadge
-                        classification={retrySafety.classification}
-                        variant="compact"
-                        aria-label={getAccessibleSummary(retrySafety.classification)}
-                      />
-                    ) : null}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {row.span.status} · {formatDuration(row.span.latency_ms)}
+
+                    <div className="mt-1 flex items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+                      <span className="shrink-0">{row.span.status}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="shrink-0">{formatDuration(row.span.latency_ms)}</span>
+                      {hasTokenData ? (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="truncate">{formatTokens(totalTokens)} tokens</span>
+                        </>
+                      ) : null}
+                      {hasCostData ? (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="truncate">{formatCost(row.span.cost_usd)}</span>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </button>
 
-                <div className="px-4 py-3">
+                <div className="flex h-full items-center px-4 py-3">
                   <div
-                    className="relative h-11"
+                    className="relative h-11 w-full"
                     style={
                       timingGridBackground
                         ? {
