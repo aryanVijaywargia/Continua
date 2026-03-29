@@ -297,14 +297,14 @@ export interface components {
              * Format: date-time
              * @description Earliest trace start time in the session, or null when the session has no traces.
              */
-            started_at: string | null;
+            started_at: string;
             /**
              * Format: date-time
              * @description Approximate session-level last activity timestamp computed from trace-level timestamps only.
              *     Per-trace latest_activity_at is the authoritative activity timestamp.
              *
              */
-            last_activity_at: string | null;
+            last_activity_at: string;
             /** @description Explicit lineage count for the shown narrative only. */
             explicit_link_count: number;
             /** @description Inferred lineage count for the shown narrative only. */

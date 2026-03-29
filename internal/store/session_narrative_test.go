@@ -27,7 +27,7 @@ func TestBuildSessionNarrative_SummaryAggregatesAcrossMultipleTraces(t *testing.
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
-	session := createNarrativeSession(t, ctx, q, projectID, "session-aggregate")
+	session := createNarrativeSession(ctx, t, q, projectID, "session-aggregate")
 	base := time.Date(2026, 3, 20, 9, 0, 0, 0, time.UTC)
 
 	createNarrativeTrace(t, ctx, pool, q, projectID, session.ID, "trace-1", "Trace 1", "ok", base, timePtr(base.Add(2*time.Minute)), nil, 100, 50, 0.10, 0)
@@ -60,7 +60,7 @@ func TestBuildSessionNarrative_UnknownStatusCountsAsRunning(t *testing.T) {
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
-	session := createNarrativeSession(t, ctx, q, projectID, "session-unknown-status")
+	session := createNarrativeSession(ctx, t, q, projectID, "session-unknown-status")
 	startedAt := time.Date(2026, 3, 20, 11, 0, 0, 0, time.UTC)
 
 	createNarrativeTrace(t, ctx, pool, q, projectID, session.ID, "trace-unknown", "Unknown", "paused", startedAt, nil, nil, 0, 0, 0, 0)
@@ -80,7 +80,7 @@ func TestBuildSessionNarrative_LatestActivityIncludesTraceSpanAndEvents(t *testi
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
-	session := createNarrativeSession(t, ctx, q, projectID, "session-activity")
+	session := createNarrativeSession(ctx, t, q, projectID, "session-activity")
 	startedAt := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
 	traceEndedAt := startedAt.Add(2 * time.Minute)
 	spanEndedAt := startedAt.Add(5 * time.Minute)
@@ -106,7 +106,7 @@ func TestBuildSessionNarrative_CapsAtOldestHundredAndSetsTruncated(t *testing.T)
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
-	session := createNarrativeSession(t, ctx, q, projectID, "session-cap")
+	session := createNarrativeSession(ctx, t, q, projectID, "session-cap")
 	base := time.Date(2026, 3, 20, 13, 0, 0, 0, time.UTC)
 
 	type expectedTrace struct {
@@ -169,7 +169,7 @@ func TestBuildSessionNarrative_SemanticEventsFilteredAndOrdered(t *testing.T) {
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
-	session := createNarrativeSession(t, ctx, q, projectID, "session-events")
+	session := createNarrativeSession(ctx, t, q, projectID, "session-events")
 	startedAt := time.Date(2026, 3, 20, 14, 0, 0, 0, time.UTC)
 	trace := createNarrativeTrace(t, ctx, pool, q, projectID, session.ID, "trace-events", "Events", "completed", startedAt, timePtr(startedAt.Add(10*time.Minute)), nil, 0, 0, 0, 0)
 	createNarrativeSpan(t, ctx, q, projectID, trace.ID, "span-events", "Event Span", startedAt, timePtr(startedAt.Add(10*time.Minute)))
@@ -197,7 +197,7 @@ func TestBuildSessionNarrative_InfersSequentialLineage(t *testing.T) {
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
-	session := createNarrativeSession(t, ctx, q, projectID, "session-inferred")
+	session := createNarrativeSession(ctx, t, q, projectID, "session-inferred")
 	base := time.Date(2026, 3, 20, 15, 0, 0, 0, time.UTC)
 
 	parent := createNarrativeTrace(t, ctx, pool, q, projectID, session.ID, "trace-parent", "Parent", "completed", base, timePtr(base.Add(2*time.Minute)), nil, 0, 0, 0, 0)
@@ -222,7 +222,7 @@ func TestBuildSessionNarrative_DoesNotInferLineageForOverlappingActivity(t *test
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
-	session := createNarrativeSession(t, ctx, q, projectID, "session-overlap")
+	session := createNarrativeSession(ctx, t, q, projectID, "session-overlap")
 	base := time.Date(2026, 3, 20, 16, 0, 0, 0, time.UTC)
 
 	createNarrativeTrace(t, ctx, pool, q, projectID, session.ID, "trace-a", "Trace A", "completed", base, timePtr(base.Add(10*time.Minute)), nil, 0, 0, 0, 0)
@@ -244,7 +244,7 @@ func TestBuildSessionNarrative_ExplicitLineageMetadata(t *testing.T) {
 	q := s.Queries()
 
 	projectID := testutil.CreateTestProject(t, ctx, q)
-	otherSession := createNarrativeSession(t, ctx, q, projectID, "session-out-of-set")
+	otherSession := createNarrativeSession(ctx, t, q, projectID, "session-out-of-set")
 	otherTrace := createNarrativeTrace(t, ctx, pool, q, projectID, otherSession.ID, "trace-out-of-set", "Other", "completed", time.Date(2026, 3, 20, 17, 0, 0, 0, time.UTC), timePtr(time.Date(2026, 3, 20, 17, 1, 0, 0, time.UTC)), nil, 0, 0, 0, 0)
 
 	testCases := []struct {
@@ -291,7 +291,7 @@ func TestBuildSessionNarrative_ExplicitLineageMetadata(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			session := createNarrativeSession(t, ctx, q, projectID, "session-explicit-"+uuid.NewString()[:8])
+			session := createNarrativeSession(ctx, t, q, projectID, "session-explicit-"+uuid.NewString()[:8])
 			base := time.Date(2026, 3, 20, 18, 0, 0, 0, time.UTC)
 
 			createNarrativeTrace(t, ctx, pool, q, projectID, session.ID, "trace-parent-explicit", "Parent", "completed", base, timePtr(base.Add(10*time.Minute)), nil, 0, 0, 0, 0)
@@ -326,8 +326,8 @@ func TestBuildSessionNarrative_ExplicitLineageMetadata(t *testing.T) {
 }
 
 func createNarrativeSession(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	q *platform.Queries,
 	projectID uuid.UUID,
 	externalID string,

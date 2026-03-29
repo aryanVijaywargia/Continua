@@ -325,20 +325,42 @@ func mapTraceStatus(status string) string {
 	}
 }
 
-func sessionNarrativeToAPI(narrative *store.SessionNarrative) SessionNarrativeResponse {
+type sessionNarrativeResponse struct {
+	Summary sessionNarrativeSummary `json:"summary"`
+	Traces  []SessionNarrativeTrace `json:"traces"`
+}
+
+type sessionNarrativeSummary struct {
+	CompletedTraceCount int        `json:"completed_trace_count"`
+	ExplicitLinkCount   int        `json:"explicit_link_count"`
+	FailedTraceCount    int        `json:"failed_trace_count"`
+	InferredLinkCount   int        `json:"inferred_link_count"`
+	LastActivityAt      *time.Time `json:"last_activity_at"`
+	ReturnedTraceCount  int        `json:"returned_trace_count"`
+	RunningTraceCount   int        `json:"running_trace_count"`
+	StartedAt           *time.Time `json:"started_at"`
+	TotalCostUsd        float32    `json:"total_cost_usd"`
+	TotalTokensIn       int64      `json:"total_tokens_in"`
+	TotalTokensOut      int64      `json:"total_tokens_out"`
+	TotalTraceCount     int        `json:"total_trace_count"`
+	Truncated           bool       `json:"truncated"`
+	UnlinkedTraceCount  int        `json:"unlinked_trace_count"`
+}
+
+func sessionNarrativeToAPI(narrative *store.SessionNarrative) sessionNarrativeResponse {
 	traces := make([]SessionNarrativeTrace, len(narrative.Traces))
 	for i := range narrative.Traces {
 		traces[i] = sessionNarrativeTraceToAPI(&narrative.Traces[i])
 	}
 
-	return SessionNarrativeResponse{
+	return sessionNarrativeResponse{
 		Summary: sessionNarrativeSummaryToAPI(&narrative.Summary),
 		Traces:  traces,
 	}
 }
 
-func sessionNarrativeSummaryToAPI(summary *store.SessionNarrativeSummary) SessionNarrativeSummary {
-	apiSummary := SessionNarrativeSummary{
+func sessionNarrativeSummaryToAPI(summary *store.SessionNarrativeSummary) sessionNarrativeSummary {
+	apiSummary := sessionNarrativeSummary{
 		CompletedTraceCount: int(summary.CompletedTraceCount),
 		ExplicitLinkCount:   int(summary.ExplicitLinkCount),
 		FailedTraceCount:    int(summary.FailedTraceCount),

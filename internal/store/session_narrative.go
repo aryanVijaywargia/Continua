@@ -103,7 +103,7 @@ func (s *Store) BuildSessionNarrative(ctx context.Context, projectID, sessionID 
 		return SessionNarrative{}, fmt.Errorf("get session narrative summary: %w", err)
 	}
 
-	summary, err := sessionNarrativeSummaryFromRow(summaryRow)
+	summary, err := sessionNarrativeSummaryFromRow(&summaryRow)
 	if err != nil {
 		return SessionNarrative{}, err
 	}
@@ -128,7 +128,7 @@ func (s *Store) BuildSessionNarrative(ctx context.Context, projectID, sessionID 
 	tracesByID := make(map[uuid.UUID]*SessionNarrativeTrace, len(traceRows))
 
 	for i := range traceRows {
-		narrativeTrace := sessionNarrativeTraceFromRow(traceRows[i])
+		narrativeTrace := sessionNarrativeTraceFromRow(&traceRows[i])
 		narrative.Traces[i] = narrativeTrace
 		traceIDs = append(traceIDs, narrativeTrace.ID)
 		tracesByID[narrativeTrace.ID] = &narrative.Traces[i]
@@ -156,7 +156,7 @@ func (s *Store) BuildSessionNarrative(ctx context.Context, projectID, sessionID 
 	return narrative, nil
 }
 
-func sessionNarrativeSummaryFromRow(row platform.GetSessionNarrativeSummaryRow) (SessionNarrativeSummary, error) {
+func sessionNarrativeSummaryFromRow(row *platform.GetSessionNarrativeSummaryRow) (SessionNarrativeSummary, error) {
 	totalTokensIn, err := int64FromAny(row.TotalTokensIn)
 	if err != nil {
 		return SessionNarrativeSummary{}, fmt.Errorf("decode narrative total_tokens_in: %w", err)
@@ -180,7 +180,7 @@ func sessionNarrativeSummaryFromRow(row platform.GetSessionNarrativeSummaryRow) 
 	}, nil
 }
 
-func sessionNarrativeTraceFromRow(row platform.ListSessionNarrativeTracesRow) SessionNarrativeTrace {
+func sessionNarrativeTraceFromRow(row *platform.ListSessionNarrativeTracesRow) SessionNarrativeTrace {
 	trace := SessionNarrativeTrace{
 		ID:               row.ID,
 		TraceID:          row.TraceID,

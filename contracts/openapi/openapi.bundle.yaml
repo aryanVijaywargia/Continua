@@ -718,12 +718,12 @@ components:
         started_at:
           type: string
           format: date-time
-          nullable: true
+          x-nullable: true
           description: Earliest trace start time in the session, or null when the session has no traces.
         last_activity_at:
           type: string
           format: date-time
-          nullable: true
+          x-nullable: true
           description: |
             Approximate session-level last activity timestamp computed from trace-level timestamps only.
             Per-trace latest_activity_at is the authoritative activity timestamp.

@@ -423,19 +423,19 @@ type SessionNarrativeSummary struct {
 
 	// LastActivityAt Approximate session-level last activity timestamp computed from trace-level timestamps only.
 	// Per-trace latest_activity_at is the authoritative activity timestamp.
-	LastActivityAt     *time.Time `json:"last_activity_at"`
-	ReturnedTraceCount int        `json:"returned_trace_count"`
+	LastActivityAt     time.Time `json:"last_activity_at"`
+	ReturnedTraceCount int       `json:"returned_trace_count"`
 
 	// RunningTraceCount Count of traces whose raw status normalizes to RUNNING.
 	RunningTraceCount int `json:"running_trace_count"`
 
 	// StartedAt Earliest trace start time in the session, or null when the session has no traces.
-	StartedAt       *time.Time `json:"started_at"`
-	TotalCostUsd    float32    `json:"total_cost_usd"`
-	TotalTokensIn   int64      `json:"total_tokens_in"`
-	TotalTokensOut  int64      `json:"total_tokens_out"`
-	TotalTraceCount int        `json:"total_trace_count"`
-	Truncated       bool       `json:"truncated"`
+	StartedAt       time.Time `json:"started_at"`
+	TotalCostUsd    float32   `json:"total_cost_usd"`
+	TotalTokensIn   int64     `json:"total_tokens_in"`
+	TotalTokensOut  int64     `json:"total_tokens_out"`
+	TotalTraceCount int       `json:"total_trace_count"`
+	Truncated       bool      `json:"truncated"`
 
 	// UnlinkedTraceCount Unlinked trace count for the shown narrative only.
 	UnlinkedTraceCount int `json:"unlinked_trace_count"`

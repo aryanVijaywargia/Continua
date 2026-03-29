@@ -173,7 +173,7 @@ func TestGetSessionNarrative_ZeroTraceSessionReturnsEmptyNarrative(t *testing.T)
 	rec := invokeGetSessionNarrative(t, server, projectID, session.ID)
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	resp := decodeJSONBody[SessionNarrativeResponse](t, rec)
+	resp := decodeJSONBody[sessionNarrativeResponse](t, rec)
 	assert.Equal(t, 0, resp.Summary.TotalTraceCount)
 	assert.Equal(t, 0, resp.Summary.ReturnedTraceCount)
 	assert.False(t, resp.Summary.Truncated)
