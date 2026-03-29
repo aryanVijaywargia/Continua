@@ -22,6 +22,13 @@ export interface EffectDetails {
   idempotencyKey?: string;
 }
 
+export interface WaitDetails {
+  waitKind: string;
+  phase: string;
+  waitId?: string;
+  resolution?: string;
+}
+
 export function getStateChangeDetails(
   event: TimelineEvent
 ): StateChangeDetails | null {
@@ -96,6 +103,28 @@ export function getEffectDetails(event: TimelineEvent): EffectDetails | null {
     effectId,
     idempotent,
     idempotencyKey,
+  };
+}
+
+export function getWaitDetails(event: TimelineEvent): WaitDetails | null {
+  if (event.event_type !== 'wait' || !event.payload) {
+    return null;
+  }
+
+  const waitKind = getNonEmptyString(event.payload, 'wait_kind');
+  const phase = getNonEmptyString(event.payload, 'phase');
+  const waitId = getOptionalNonEmptyString(event.payload, 'wait_id');
+  const resolution = getOptionalNonEmptyString(event.payload, 'resolution');
+
+  if (!waitKind || !phase || waitId === null || resolution === null) {
+    return null;
+  }
+
+  return {
+    waitKind,
+    phase,
+    waitId,
+    resolution,
   };
 }
 

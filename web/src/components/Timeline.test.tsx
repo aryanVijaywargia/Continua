@@ -76,6 +76,62 @@ describe('Timeline semantic event rendering', () => {
     expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
     expect(screen.getByText('claude-3-haiku')).toBeInTheDocument();
   });
+
+  it('renders well-formed wait rows with semantic summaries', () => {
+    renderTimeline({
+      events: [
+        createTimelineEvent({
+          event_type: 'wait',
+          payload: {
+            wait_kind: 'tool_call',
+            phase: 'entered',
+          },
+        }),
+        createTimelineEvent({
+          event_type: 'wait',
+          payload: {
+            wait_kind: 'model_response',
+            phase: 'resolved',
+            resolution: 'success',
+          },
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Entered wait: tool_call')).toBeInTheDocument();
+    expect(
+      screen.getByText('Resolved wait: model_response → success')
+    ).toBeInTheDocument();
+  });
+
+  it('renders phase-only wait fallbacks when strict parsing fails', () => {
+    renderTimeline({
+      events: [
+        createTimelineEvent({
+          event_type: 'wait',
+          payload: {
+            phase: 'paused',
+          },
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Paused wait')).toBeInTheDocument();
+  });
+
+  it('falls back to generic wait text when the wait payload is fully malformed', () => {
+    renderTimeline({
+      events: [
+        createTimelineEvent({
+          event_type: 'wait',
+          message: 'Generic wait fallback',
+          payload: {},
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Generic wait fallback')).toBeInTheDocument();
+  });
 });
 
 describe('Timeline retry safety badges', () => {

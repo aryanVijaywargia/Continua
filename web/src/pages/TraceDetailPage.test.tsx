@@ -1,4 +1,5 @@
 import { act } from 'react';
+import { focusManager, onlineManager } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +23,25 @@ import {
 } from './testUtils';
 
 let fetchMock: ReturnType<typeof vi.fn>;
+
+function createRunningTraceDetail(
+  overrides: Partial<TraceDetail> = {}
+): TraceDetail {
+  return {
+    ...TRACE_DETAIL,
+    status: 'RUNNING',
+    ended_at: undefined,
+    error_count: 0,
+    ...overrides,
+  };
+}
+
+function countRequests(pathname: string): number {
+  return fetchMock.mock.calls.filter(([input]) => {
+    const url = new URL(readRequestUrl(input), 'http://localhost');
+    return url.pathname === pathname;
+  }).length;
+}
 
 beforeEach(() => {
   resetTestEntityCounter();
@@ -1619,7 +1639,7 @@ describe('TraceDetailPage', () => {
     expect(view.router.state.location.search).toBe('');
   });
 
-  it('waits for the initial timeline snapshot before evaluating the stale trace signal', async () => {
+  it('waits for the initial timeline snapshot before showing the running-state panel', async () => {
     const now = Date.now();
     const staleStartedAt = new Date(now - 20 * 60 * 1000).toISOString();
     const recentActivityAt = new Date(now - 60 * 1000).toISOString();
@@ -1627,14 +1647,7 @@ describe('TraceDetailPage', () => {
 
     fetchMock.mockImplementation(
       buildFetchHandler({
-        detail: () =>
-          jsonResponse({
-            ...TRACE_DETAIL,
-            status: 'RUNNING',
-            started_at: staleStartedAt,
-            ended_at: undefined,
-            error_count: 0,
-          }),
+        detail: () => jsonResponse(createRunningTraceDetail({ started_at: staleStartedAt })),
         spans: () =>
           jsonResponse({
             spans: [
@@ -1652,9 +1665,7 @@ describe('TraceDetailPage', () => {
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
     expect(await screen.findByText('Trace Context')).toBeInTheDocument();
-    expect(
-      screen.queryByText(/still marked running\. recent activity is sparse/i)
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Running state')).not.toBeInTheDocument();
 
     await act(async () => {
       timelineResponse.resolve(
@@ -1676,12 +1687,399 @@ describe('TraceDetailPage', () => {
       await Promise.resolve();
     });
 
+    expect(await screen.findByText('Running state')).toBeInTheDocument();
+    expect(screen.getByText('Actively executing')).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Timeline' }));
     expect(await screen.findByText('Recent activity')).toBeInTheDocument();
-    expect(
-      screen.queryByText(/still marked running\. recent activity is sparse/i)
-    ).not.toBeInTheDocument();
   });
+
+  it.each(['COMPLETED', 'FAILED'] as const)(
+    'does not render the running-state panel for %s traces',
+    async (traceStatus) => {
+      fetchMock.mockImplementation(
+        buildFetchHandler({
+          detail: () =>
+            jsonResponse({
+              ...TRACE_DETAIL,
+              status: traceStatus,
+              ended_at: '2026-03-14T10:03:00.000Z',
+            }),
+          spans: () => jsonResponse({ spans: [] }),
+          timeline: () =>
+            jsonResponse({
+              events: [],
+              trace_status: traceStatus,
+              has_more: false,
+            }),
+        })
+      );
+
+      renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+      expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+      expect(screen.queryByText('Running state')).not.toBeInTheDocument();
+    }
+  );
+
+  it('renders declared waits with wait-specific text from the decisive event', async () => {
+    const waitingSpan = createSpan({
+      span_id: 'wait-span',
+      name: 'Waiting span',
+      status: 'STARTED',
+      started_at: '2026-03-14T10:00:30.000Z',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail()),
+        spans: () => jsonResponse({ spans: [waitingSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'wait-event',
+                span_id: waitingSpan.span_id,
+                span_name: waitingSpan.name,
+                event_type: 'wait',
+                timestamp: '2026-03-14T10:01:30.000Z',
+                payload: {
+                  wait_kind: 'model_response',
+                  phase: 'entered',
+                  wait_id: 'wait-1',
+                },
+              }),
+            ],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(await screen.findByText('Declared wait')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Execution declared a wait and has not yet recorded a matching resolution.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText('Current wait')).toBeInTheDocument();
+    expect(screen.getByText('model_response')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Jump to Waiting span' })
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      kind: 'LLM' as const,
+      label: 'Waiting on model',
+      spanId: 'model-span',
+      spanName: 'Model call',
+    },
+    {
+      kind: 'TOOL' as const,
+      label: 'Waiting on tool',
+      spanId: 'tool-span',
+      spanName: 'Tool call',
+    },
+  ])(
+    'uses the decisive span jump action for $label states',
+    async ({ kind, label, spanId, spanName }) => {
+      const user = userEvent.setup();
+      const decisiveSpan = createSpan({
+        span_id: spanId,
+        name: spanName,
+        kind,
+        status: 'STARTED',
+        started_at: '2026-03-14T10:01:00.000Z',
+      });
+
+      fetchMock.mockImplementation(
+        buildFetchHandler({
+          detail: () => jsonResponse(createRunningTraceDetail()),
+          spans: () => jsonResponse({ spans: [decisiveSpan] }),
+          timeline: () =>
+            jsonResponse({
+              events: [],
+              trace_status: 'RUNNING',
+              has_more: false,
+            }),
+        })
+      );
+
+      renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+      expect(await screen.findByText(label)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: `Jump to ${spanName}` }));
+      expect(
+        within(screen.getByLabelText('Span breadcrumb')).getByText(spanName)
+      ).toBeInTheDocument();
+    }
+  );
+
+  it('renders actively executing for recent work between spans', async () => {
+    const now = Date.now();
+    const traceStartedAt = new Date(now - 2 * 60 * 1000).toISOString();
+
+    const completedSpan = createSpan({
+      span_id: 'completed-work',
+      name: 'Completed work',
+      status: 'COMPLETED',
+      started_at: new Date(now - 90 * 1000).toISOString(),
+      ended_at: new Date(now - 30 * 1000).toISOString(),
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(createRunningTraceDetail({ started_at: traceStartedAt })),
+        spans: () => jsonResponse({ spans: [completedSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Actively executing')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Recent activity suggests execution is still progressing between spans.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Unknown')).not.toBeInTheDocument();
+  });
+
+  it('renders possibly stalled when a running trace has no stronger signal', async () => {
+    const traceStartedAt = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail({ started_at: traceStartedAt })),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Possibly stalled')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Execution is still marked running, but recent activity is sparse.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('renders unknown with conservative copy when the debugger lacks running evidence', async () => {
+    const traceStartedAt = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail({ started_at: traceStartedAt })),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Unknown')).toBeInTheDocument();
+    expect(
+      screen.getByText('The debugger cannot yet explain where it is waiting.')
+    ).toBeInTheDocument();
+  });
+
+  it('refreshes spans during live execution so new spans become visible within one poll cycle', async () => {
+    const now = Date.now();
+    const traceStartedAt = new Date(now - 2 * 60 * 1000).toISOString();
+
+    let currentSpans = [
+      createSpan({
+        span_id: 'root-running',
+        name: 'Root running span',
+        kind: 'CHAIN',
+        status: 'STARTED',
+        started_at: new Date(now - 90 * 1000).toISOString(),
+      }),
+    ];
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(createRunningTraceDetail({ started_at: traceStartedAt })),
+        spans: () => jsonResponse({ spans: currentSpans }),
+        timeline: (url) => {
+          if (url.searchParams.get('after') === 'cursor-live') {
+            return jsonResponse({
+              events: [],
+              trace_status: 'RUNNING',
+              has_more: false,
+              poll_cursor: 'cursor-live',
+            });
+          }
+
+          return jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+            poll_cursor: 'cursor-live',
+          });
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Actively executing')).toBeInTheDocument();
+
+    currentSpans = [
+      ...currentSpans,
+      createSpan({
+        span_id: 'llm-live',
+        name: 'Live model span',
+        kind: 'LLM',
+        status: 'STARTED',
+        started_at: new Date(now - 30 * 1000).toISOString(),
+      }),
+    ];
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 3100));
+    });
+
+    expect(await screen.findByText('Waiting on model')).toBeInTheDocument();
+    expect(countRequests(`/api/traces/${TRACE_ONE.id}/spans`)).toBeGreaterThanOrEqual(2);
+  }, 10000);
+
+  it('updates the running-state classification when an open span completes during live execution', async () => {
+    const now = Date.now();
+    const traceStartedAt = new Date(now - 2 * 60 * 1000).toISOString();
+
+    let currentSpans = [
+      createSpan({
+        span_id: 'tool-live',
+        name: 'Live tool span',
+        kind: 'TOOL',
+        status: 'STARTED',
+        started_at: new Date(now - 45 * 1000).toISOString(),
+      }),
+    ];
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(createRunningTraceDetail({ started_at: traceStartedAt })),
+        spans: () => jsonResponse({ spans: currentSpans }),
+        timeline: (url) => {
+          if (url.searchParams.get('after') === 'cursor-live-complete') {
+            return jsonResponse({
+              events: [],
+              trace_status: 'RUNNING',
+              has_more: false,
+              poll_cursor: 'cursor-live-complete',
+            });
+          }
+
+          return jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+            poll_cursor: 'cursor-live-complete',
+          });
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Waiting on tool')).toBeInTheDocument();
+
+    currentSpans = [
+      {
+        ...currentSpans[0],
+        status: 'COMPLETED',
+        ended_at: new Date(now - 5 * 1000).toISOString(),
+      },
+    ];
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 3100));
+    });
+
+    expect(await screen.findByText('Actively executing')).toBeInTheDocument();
+    expect(screen.queryByText('Waiting on tool')).not.toBeInTheDocument();
+  }, 10000);
+
+  it.each(['COMPLETED', 'FAILED'] as const)(
+    'does not refresh spans for %s traces after terminal status',
+    async (traceStatus) => {
+      fetchMock.mockImplementation(
+        buildFetchHandler({
+          detail: () =>
+            jsonResponse({
+              ...TRACE_DETAIL,
+              status: traceStatus,
+              ended_at: '2026-03-14T10:04:00.000Z',
+            }),
+          spans: () =>
+            jsonResponse({
+              spans: [
+                createSpan({
+                  span_id: `${traceStatus.toLowerCase()}-root`,
+                  name: `${traceStatus} root span`,
+                  status: traceStatus === 'FAILED' ? 'FAILED' : 'COMPLETED',
+                }),
+              ],
+            }),
+          timeline: () =>
+            jsonResponse({
+              events: [],
+              trace_status: traceStatus,
+              has_more: false,
+            }),
+        })
+      );
+
+      renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+      expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+
+      const initialSpansRequestCount = countRequests(
+        `/api/traces/${TRACE_ONE.id}/spans`
+      );
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3100));
+      });
+
+      expect(countRequests(`/api/traces/${TRACE_ONE.id}/spans`)).toBe(
+        initialSpansRequestCount
+      );
+
+      await act(async () => {
+        focusManager.setFocused(false);
+        focusManager.setFocused(true);
+        onlineManager.setOnline(false);
+        onlineManager.setOnline(true);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(countRequests(`/api/traces/${TRACE_ONE.id}/spans`)).toBe(
+        initialSpansRequestCount
+      );
+
+      focusManager.setFocused(undefined);
+    }
+  );
 
   it('auto-expands matching ancestors during search and restores prior expansion when cleared', async () => {
     const user = userEvent.setup();
