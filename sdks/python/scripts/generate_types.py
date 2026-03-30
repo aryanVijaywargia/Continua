@@ -8,14 +8,15 @@ from pathlib import Path
 import yaml
 
 
-def apply_nullable_allof_fixes(openapi_path: Path, output_path: Path) -> None:
-    """Patch datamodel-code-generator output for nullable allOf refs.
+def apply_nullable_ref_fixes(openapi_path: Path, output_path: Path) -> None:
+    """Patch datamodel-code-generator output for required nullable ref fields.
 
-    The generator currently drops `nullable: true` when a property is modeled as
-    `allOf: [$ref: ...]`, which is how the shared OpenAPI pipeline expresses
-    required nullable object refs. We preserve those semantics here by reading
-    the OpenAPI schema and rewriting the generated field annotations to `T | None`
-    while keeping the fields required.
+    The generator currently drops nullable ref semantics for required object
+    refs, whether they are expressed via legacy `nullable` / `x-nullable` on
+    `allOf: [$ref: ...]` or via OpenAPI 3.1 `anyOf: [$ref, {type: "null"}]`.
+    We preserve those semantics here by reading the OpenAPI schema and
+    rewriting the generated field annotations to `T | None` while keeping the
+    fields required.
     """
 
     spec = yaml.safe_load(openapi_path.read_text())
@@ -25,15 +26,24 @@ def apply_nullable_allof_fixes(openapi_path: Path, output_path: Path) -> None:
     for schema_name, schema in schemas.items():
         properties = schema.get("properties", {})
         for field_name, field_schema in properties.items():
-            if not field_schema.get("nullable"):
-                continue
+            ref: str | None = None
 
-            refs = field_schema.get("allOf")
-            if not isinstance(refs, list) or len(refs) != 1:
-                continue
+            if field_schema.get("nullable") or field_schema.get("x-nullable"):
+                refs = field_schema.get("allOf")
+                if isinstance(refs, list) and len(refs) == 1:
+                    candidate_ref = refs[0].get("$ref")
+                    if isinstance(candidate_ref, str):
+                        ref = candidate_ref
 
-            ref = refs[0].get("$ref")
-            if not isinstance(ref, str) or not ref.startswith("#/components/schemas/"):
+            if ref is None:
+                refs = field_schema.get("anyOf")
+                if isinstance(refs, list) and len(refs) == 2:
+                    has_null_variant = any(item.get("type") == "null" for item in refs if isinstance(item, dict))
+                    ref_variants = [item.get("$ref") for item in refs if isinstance(item, dict) and isinstance(item.get("$ref"), str)]
+                    if has_null_variant and len(ref_variants) == 1:
+                        ref = ref_variants[0]
+
+            if ref is None or not ref.startswith("#/components/schemas/"):
                 continue
 
             target_type = ref.rsplit("/", 1)[-1]
@@ -94,7 +104,7 @@ def main():
         print(f"❌ Generation failed:\n{result.stderr}")
         sys.exit(1)
 
-    apply_nullable_allof_fixes(openapi_path, output_path)
+    apply_nullable_ref_fixes(openapi_path, output_path)
 
     print(f"✅ Generated {output_path}")
 

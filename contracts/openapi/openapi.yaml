@@ -1027,11 +1027,11 @@ components:
         baseline_span:
           allOf:
             - $ref: '#/components/schemas/CompareSpanSummary'
-          nullable: true
+          x-nullable: true
         candidate_span:
           allOf:
             - $ref: '#/components/schemas/CompareSpanSummary'
-          nullable: true
+          x-nullable: true
         semantic_groups:
           type: array
           items:
@@ -1065,11 +1065,11 @@ components:
         baseline_event:
           allOf:
             - $ref: '#/components/schemas/CompareSemanticSummary'
-          nullable: true
+          x-nullable: true
         candidate_event:
           allOf:
             - $ref: '#/components/schemas/CompareSemanticSummary'
-          nullable: true
+          x-nullable: true
 
     CompareSpanSummary:
       type: object

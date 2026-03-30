@@ -512,8 +512,8 @@ type IngestTraceInputStatus string
 
 // SemanticDiffGroup defines model for SemanticDiffGroup.
 type SemanticDiffGroup struct {
-	BaselineEvent  *CompareSemanticSummary  `json:"baseline_event"`
-	CandidateEvent *CompareSemanticSummary  `json:"candidate_event"`
+	BaselineEvent  *CompareSemanticSummary   `json:"baseline_event"`
+	CandidateEvent *CompareSemanticSummary   `json:"candidate_event"`
 	ChangedFields  []string                 `json:"changed_fields"`
 	DiffStatus     CompareDiffStatus        `json:"diff_status"`
 	EventType      CompareSemanticEventType `json:"event_type"`
@@ -688,8 +688,8 @@ type SpanStatus string
 
 // SpanDiffRow defines model for SpanDiffRow.
 type SpanDiffRow struct {
-	BaselineSpan   *CompareSpanSummary `json:"baseline_span"`
-	CandidateSpan  *CompareSpanSummary `json:"candidate_span"`
+	BaselineSpan   *CompareSpanSummary  `json:"baseline_span"`
+	CandidateSpan  *CompareSpanSummary  `json:"candidate_span"`
 	ChangedFields  []string            `json:"changed_fields"`
 	Depth          int                 `json:"depth"`
 	DiffStatus     CompareDiffStatus   `json:"diff_status"`
