@@ -4,6 +4,8 @@ import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { StatusBadge } from '../components/StatusBadge';
 import {
+  ApiError,
+  type ComparisonTooLargeErrorDetail,
   fetchSessionComparison,
   isAuthError,
   isComparisonTooLargeError,
@@ -533,16 +535,7 @@ function CompareSemanticSide({
 function ComparisonTooLargePanel({
   error,
 }: {
-  error: ReturnType<typeof useQuery>['error'] & {
-    detail: {
-      baseline_span_count: number;
-      candidate_span_count: number;
-      baseline_semantic_count: number;
-      candidate_semantic_count: number;
-      max_spans: number;
-      max_semantic_events: number;
-    };
-  };
+  error: ApiError & { detail: ComparisonTooLargeErrorDetail };
 }) {
   return (
     <section className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">

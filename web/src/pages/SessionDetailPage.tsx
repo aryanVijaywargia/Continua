@@ -476,12 +476,12 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
   const isBaselineLookupPending = Boolean(compare.baseline_trace_id && !selectedBaselineLoaded) && baselineLookupQuery.isPending;
   const isCandidateLookupPending = Boolean(compare.candidate_trace_id && !selectedCandidateLoaded) && candidateLookupQuery.isPending;
   const compareSelectionVisible = Boolean(compare.baseline_trace_id || compare.candidate_trace_id);
-  const canOpenComparison =
-    Boolean(selectedBaseline && selectedCandidate) &&
-    !isBaselineLookupPending &&
-    !isCandidateLookupPending &&
-    isTerminalTraceStatus(selectedBaseline.status) &&
-    isTerminalTraceStatus(selectedCandidate.status);
+  let canOpenComparison = false;
+  if (selectedBaseline && selectedCandidate && !isBaselineLookupPending && !isCandidateLookupPending) {
+    canOpenComparison =
+      isTerminalTraceStatus(selectedBaseline.status) &&
+      isTerminalTraceStatus(selectedCandidate.status);
+  }
 
   useEffect(() => {
     if (traces.length !== 0 || total === 0 || filters.offset === 0) {
