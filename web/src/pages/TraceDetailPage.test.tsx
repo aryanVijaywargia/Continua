@@ -1216,6 +1216,74 @@ describe('TraceDetailPage', () => {
     expect(screen.queryByText('Informational update')).not.toBeInTheDocument();
   });
 
+  it('persists the segmented timeline filter across inspector tab switches', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({ span_id: 'semantic-root', name: 'Semantic root' });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', error_count: 0 }),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                id: 'narrative-event',
+                span_id: 'semantic-root',
+                span_name: 'Semantic root',
+                event_type: 'message',
+                message: 'Narrative event',
+              }),
+              createTimelineEvent({
+                id: 'semantic-effect',
+                span_id: 'semantic-root',
+                span_name: 'Semantic root',
+                event_type: 'effect',
+                payload: {
+                  effect_kind: 'tool_call',
+                  has_external_side_effect: true,
+                },
+              }),
+            ],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    expect(screen.getByText('Narrative event')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Semantic' }));
+    expect(screen.getByRole('radio', { name: 'Semantic' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+    expect(screen.queryByText('Narrative event')).not.toBeInTheDocument();
+    expect(screen.getByText('tool_call')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    expect(screen.getByRole('button', { name: 'Timeline' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByRole('radio', { name: 'Semantic' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+    expect(screen.queryByText('Narrative event')).not.toBeInTheDocument();
+    expect(screen.getByText('tool_call')).toBeInTheDocument();
+  });
+
   it('preserves a manual selection across running-trace polling updates', async () => {
     const user = userEvent.setup();
     const runningTraceDetail: TraceDetail = {
@@ -1670,6 +1738,11 @@ describe('TraceDetailPage', () => {
     expect(view.router.state.location.search).toBe('?span=trace-a-root');
 
     await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    await user.click(screen.getByRole('radio', { name: 'Semantic' }));
+    expect(screen.getByRole('radio', { name: 'Semantic' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
     await user.click(screen.getByRole('button', { name: 'Show error events only' }));
     expect(screen.getByRole('button', { name: 'Show error events only' })).toHaveAttribute(
       'aria-pressed',
@@ -1685,6 +1758,14 @@ describe('TraceDetailPage', () => {
     expect(screen.getByText('Select a span to view details')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Timeline' }));
     expect(screen.getByText('Beta info event')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'All' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+    expect(screen.getByRole('radio', { name: 'Semantic' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
     expect(screen.getByRole('button', { name: 'Show error events only' })).toHaveAttribute(
       'aria-pressed',
       'false'
@@ -1983,7 +2064,7 @@ describe('TraceDetailPage', () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByText('Current wait')).toBeInTheDocument();
-    expect(screen.getByText('model_response')).toBeInTheDocument();
+    expect(screen.getAllByText('model_response').length).toBeGreaterThan(0);
     expect(
       screen.getByRole('button', { name: 'Jump to Waiting span' })
     ).toBeInTheDocument();
