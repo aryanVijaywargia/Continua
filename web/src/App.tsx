@@ -4,6 +4,7 @@ import { TracesPage } from './pages/TracesPage';
 import { TraceDetailPage } from './pages/TraceDetailPage';
 import { SessionsPage } from './pages/SessionsPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
+import { SessionComparePage } from './pages/SessionComparePage';
 import { Navigation } from './components/Navigation';
 import { SettingsPage } from './pages/SettingsPage';
 import { ThemeProvider } from './hooks/ThemeProvider';
@@ -21,6 +22,7 @@ export function App() {
             <Route path="/traces/:id" element={<PageWithNav><TraceDetailPage /></PageWithNav>} />
             <Route path="/sessions" element={<PageWithNav><SessionsPage /></PageWithNav>} />
             <Route path="/sessions/:id" element={<PageWithNav><SessionDetailPage /></PageWithNav>} />
+            <Route path="/sessions/:id/compare" element={<PageWithNav><SessionComparePage /></PageWithNav>} />
             <Route path="/settings" element={<PageWithNav><SettingsPage /></PageWithNav>} />
           </Routes>
         </BrowserRouter>

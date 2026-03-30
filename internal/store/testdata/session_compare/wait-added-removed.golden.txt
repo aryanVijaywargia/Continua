@@ -1,0 +1,5 @@
+summary spans=1/1 matched=1 unmatched=0/0 heuristic=0 semantic=2/2 delta(duration=0 tokens_in=4 tokens_out=2 cost=0.0200)
+row 0 depth=0 diff=changed match=stable_id:exact_span_id fields=- baseline=shared-root(parent=- name="Waits" kind=TOOL status=COMPLETED latency=20000 tokens=0/0 cost=0.0000 error=-) candidate=shared-root(parent=- name="Waits" kind=TOOL status=COMPLETED latency=20000 tokens=0/0 cost=0.0000 error=-)
+  semantic 0 type=wait diff=changed match=stable_id:exact_wait_id fields=resolution,payload baseline=wait(span="shared-root" msg="Waiting for webhook" wait_id="wait-1" wait_kind="webhook" phase="pending" resolution="timeout") candidate=wait(span="shared-root" msg="Waiting for webhook" wait_id="wait-1" wait_kind="webhook" phase="pending" resolution="completed")
+  semantic 1 type=wait diff=baseline_only match=- fields=- baseline=wait(span="shared-root" msg="Legacy wait" wait_id=- wait_kind=- phase="blocked" resolution="timeout") candidate=-
+  semantic 2 type=wait diff=candidate_only match=- fields=- baseline=- candidate=wait(span="shared-root" msg="Retry wait" wait_id="wait-2" wait_kind="poll" phase="retry" resolution="completed")

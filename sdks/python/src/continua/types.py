@@ -198,7 +198,104 @@ class SessionNarrativeLineage(BaseModel):
     )
 
 
-class Status3(Enum):
+class ComparisonTooLargeErrorDetail(BaseModel):
+    baseline_span_count: int
+    candidate_span_count: int
+    baseline_semantic_count: int
+    candidate_semantic_count: int
+    max_spans: int
+    max_semantic_events: int
+
+
+class CompareSessionHeader(BaseModel):
+    id: UUID
+    external_id: str
+    name: str | None = None
+
+
+class CompareTraceHeader(BaseModel):
+    id: UUID
+    trace_id: str
+    name: str
+    status: Status2
+    user_id: str | None = None
+    started_at: AwareDatetime
+    ended_at: AwareDatetime | None = None
+    duration_ms: int | None = None
+    error_count: int | None = None
+    total_cost_usd: float | None = None
+    total_tokens_in: int | None = None
+    total_tokens_out: int | None = None
+
+
+class CompareSummary(BaseModel):
+    total_spans_baseline: int
+    total_spans_candidate: int
+    matched_spans: int
+    unmatched_baseline_spans: int
+    unmatched_candidate_spans: int
+    heuristic_matches: int
+    duration_delta_ms: int
+    tokens_in_delta: int
+    tokens_out_delta: int
+    cost_delta_usd: float
+    total_semantic_baseline: int
+    total_semantic_candidate: int
+
+
+class CompareDiffStatus(Enum):
+    unchanged = "unchanged"
+    changed = "changed"
+    baseline_only = "baseline_only"
+    candidate_only = "candidate_only"
+
+
+class CompareMatchSource(Enum):
+    stable_id = "stable_id"
+    heuristic = "heuristic"
+
+
+class CompareSemanticEventType(Enum):
+    decision = "decision"
+    effect = "effect"
+    wait = "wait"
+
+
+class Status4(Enum):
+    SCHEDULED = "SCHEDULED"
+    STARTED = "STARTED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class CompareSpanSummary(BaseModel):
+    id: UUID
+    span_id: str
+    parent_span_id: str | None = None
+    name: str
+    kind: Kind
+    status: Status4
+    started_at: AwareDatetime
+    ended_at: AwareDatetime | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    cost_usd: float | None = None
+    latency_ms: int | None = None
+    error_message: str | None = None
+    model: str | None = None
+
+
+class CompareSemanticSummary(BaseModel):
+    id: str
+    span_id: str | None = None
+    span_name: str | None = None
+    event_type: CompareSemanticEventType
+    timestamp: AwareDatetime
+    message: str | None = None
+    payload: dict[str, Any] | None = None
+
+
+class Status5(Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
@@ -222,7 +319,7 @@ class IngestTraceInput(BaseModel):
     output: Any | None = Field(
         None, description="Trace output data (any JSON-serializable value)"
     )
-    status: Status3 | None = "running"
+    status: Status5 | None = "running"
     start_time: AwareDatetime | None = None
     end_time: AwareDatetime | None = None
 
@@ -253,7 +350,7 @@ class IngestSpanInput(BaseModel):
     )
     name: str
     type: Type1 | None = "default"
-    status: Status3 | None = "running"
+    status: Status5 | None = "running"
     status_message: str | None = None
     level: Level | None = "default"
     start_time: AwareDatetime
@@ -388,7 +485,7 @@ class TimelineResponse(BaseModel):
     )
 
 
-class Status5(Enum):
+class Status7(Enum):
     """
     Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
     """
@@ -400,7 +497,7 @@ class Status5(Enum):
 
 
 class IngestResponse(BaseModel):
-    status: Status5 = Field(
+    status: Status7 = Field(
         ...,
         description='Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.',
     )
@@ -417,7 +514,7 @@ class IngestResponse(BaseModel):
     errors: list[str] | None = None
 
 
-class Status6(Enum):
+class Status8(Enum):
     accepted = "accepted"
     processing = "processing"
     completed = "completed"
@@ -427,7 +524,7 @@ class Status6(Enum):
 class BatchStatusResponse(BaseModel):
     batch_id: UUID
     batch_key: str
-    status: Status6
+    status: Status8
     attempt_count: int
     server_received_at: AwareDatetime
     processing_started_at: AwareDatetime | None = None
@@ -464,6 +561,22 @@ class SessionNarrativeTrace(BaseModel):
     lineage: SessionNarrativeLineage
 
 
+class ComparisonTooLargeError(BaseModel):
+    code: str
+    message: str
+    detail: ComparisonTooLargeErrorDetail
+
+
+class SemanticDiffGroup(BaseModel):
+    event_type: CompareSemanticEventType
+    diff_status: CompareDiffStatus
+    match_source: CompareMatchSource | None = None
+    match_reason: str | None = None
+    changed_fields: list[str]
+    baseline_event: CompareSemanticSummary | None
+    candidate_event: CompareSemanticSummary | None
+
+
 class IngestRequest(BaseModel):
     batch_key: str = Field(
         ...,
@@ -477,3 +590,22 @@ class IngestRequest(BaseModel):
 class SessionNarrativeResponse(BaseModel):
     summary: SessionNarrativeSummary
     traces: list[SessionNarrativeTrace]
+
+
+class SpanDiffRow(BaseModel):
+    diff_status: CompareDiffStatus
+    match_source: CompareMatchSource | None = None
+    match_reason: str | None = None
+    changed_fields: list[str]
+    baseline_span: CompareSpanSummary | None
+    candidate_span: CompareSpanSummary | None
+    semantic_groups: list[SemanticDiffGroup]
+    depth: int
+
+
+class SessionCompareResponse(BaseModel):
+    session: CompareSessionHeader
+    baseline: CompareTraceHeader
+    candidate: CompareTraceHeader
+    summary: CompareSummary
+    span_diffs: list[SpanDiffRow]

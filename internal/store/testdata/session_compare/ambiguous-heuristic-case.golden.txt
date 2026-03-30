@@ -1,0 +1,4 @@
+summary spans=2/3 matched=2 unmatched=0/1 heuristic=1 semantic=0/0 delta(duration=0 tokens_in=4 tokens_out=2 cost=0.0200)
+row 0 depth=0 diff=unchanged match=stable_id:exact_span_id fields=- baseline=shared-root(parent=- name="Root" kind=AGENT status=COMPLETED latency=20000 tokens=0/0 cost=0.0000 error=-) candidate=shared-root(parent=- name="Root" kind=AGENT status=COMPLETED latency=20000 tokens=0/0 cost=0.0000 error=-)
+row 1 depth=1 diff=unchanged match=heuristic:name_kind_ordinal fields=- baseline=baseline-child(parent="shared-root" name="Lookup" kind=TOOL status=COMPLETED latency=9000 tokens=0/0 cost=0.0000 error=-) candidate=candidate-child-a(parent="shared-root" name="Lookup" kind=TOOL status=COMPLETED latency=9000 tokens=0/0 cost=0.0000 error=-)
+row 2 depth=1 diff=candidate_only match=- fields=- baseline=- candidate=candidate-child-b(parent="shared-root" name="Lookup" kind=TOOL status=COMPLETED latency=9000 tokens=0/0 cost=0.0000 error=-)

@@ -1,0 +1,3 @@
+summary spans=1/1 matched=1 unmatched=0/0 heuristic=0 semantic=1/1 delta(duration=0 tokens_in=4 tokens_out=2 cost=0.0200)
+row 0 depth=0 diff=unchanged match=stable_id:exact_span_id fields=- baseline=shared-root(parent=- name="Root" kind=AGENT status=COMPLETED latency=15000 tokens=10/4 cost=0.0100 error=-) candidate=shared-root(parent=- name="Root" kind=AGENT status=COMPLETED latency=15000 tokens=10/4 cost=0.0100 error=-)
+  semantic 0 type=decision diff=unchanged match=heuristic:unique_normalized_question fields=- baseline=decision(span="shared-root" msg="Choose alpha path" question="Pick a path?" chosen="alpha" alternatives=- reasoning=-) candidate=decision(span="shared-root" msg="Choose alpha path" question=" pick   a path? " chosen="alpha" alternatives=- reasoning=-)

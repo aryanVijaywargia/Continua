@@ -1,0 +1,5 @@
+summary spans=3/3 matched=2 unmatched=1/1 heuristic=0 semantic=0/0 delta(duration=0 tokens_in=4 tokens_out=2 cost=0.0200)
+row 0 depth=0 diff=unchanged match=stable_id:exact_span_id fields=- baseline=shared-root(parent=- name="Root" kind=AGENT status=COMPLETED latency=30000 tokens=0/0 cost=0.0000 error=-) candidate=shared-root(parent=- name="Root" kind=AGENT status=COMPLETED latency=30000 tokens=0/0 cost=0.0000 error=-)
+row 1 depth=1 diff=unchanged match=stable_id:exact_span_id fields=- baseline=inspect(parent="shared-root" name="Inspect" kind=TOOL status=COMPLETED latency=9000 tokens=3/1 cost=0.0010 error=-) candidate=inspect(parent="shared-root" name="Inspect" kind=TOOL status=COMPLETED latency=9000 tokens=3/1 cost=0.0010 error=-)
+row 2 depth=1 diff=baseline_only match=- fields=- baseline=baseline-only(parent="shared-root" name="Fetch Inventory" kind=TOOL status=COMPLETED latency=9000 tokens=5/2 cost=0.0020 error=-) candidate=-
+row 3 depth=1 diff=candidate_only match=- fields=- baseline=- candidate=candidate-only(parent="shared-root" name="Retry Inventory" kind=TOOL status=COMPLETED latency=11000 tokens=6/2 cost=0.0030 error=-)

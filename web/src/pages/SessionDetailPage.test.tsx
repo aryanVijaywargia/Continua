@@ -1,15 +1,17 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearApiKey, setApiKey } from '../api/client';
 import {
   EMPTY_SESSION_NARRATIVE,
+  OTHER_SESSION_ID,
   RUNNING_SESSION_NARRATIVE,
   SESSION_EXTERNAL_ID,
   SESSION_ID,
   SESSION_NARRATIVE,
   SESSION_ONE,
   TRUNCATED_SESSION_NARRATIVE,
+  TRACE_DETAIL,
   TRACE_ONE,
   TRACE_TWO,
   buildFetchHandler,
@@ -28,6 +30,14 @@ function getTraceListRequests(): URL[] {
 
 function getSessionNarrativeRequests(): URL[] {
   return getRequests(fetchMock, `/api/sessions/${SESSION_ID}/narrative`);
+}
+
+function getTraceRow(name: string): HTMLElement {
+  const row = within(screen.getByRole('table')).getByRole('link', { name }).closest('tr');
+  if (!row) {
+    throw new Error(`Expected a table row for ${name}`);
+  }
+  return row;
 }
 
 async function waitForSessionTraceFetch(search: string) {
@@ -360,5 +370,633 @@ describe('SessionDetailPage', () => {
       'href',
       `/sessions/${SESSION_ID}?offset=20&sort_by=started_at&sort_dir=asc`
     );
+  });
+
+  it('tracks baseline and candidate selection in the URL while preserving table state', async () => {
+    const user = userEvent.setup();
+    const baselineTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174000',
+      session_id: SESSION_ID,
+      name: 'Checkout Compare Trace',
+      status: 'FAILED' as const,
+    };
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174001',
+      session_id: SESSION_ID,
+      name: 'Alpha Compare Trace',
+      status: 'COMPLETED' as const,
+    };
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [baselineTrace, candidateTrace], total: 2 }),
+      })
+    );
+
+    const { router } = renderTraceRoutes([
+      `/sessions/${SESSION_ID}?sort_by=started_at&sort_dir=asc&offset=20`,
+    ]);
+
+    expect(await screen.findByText('Checkout Compare Trace')).toBeInTheDocument();
+
+    await user.click(
+      within(getTraceRow('Checkout Compare Trace')).getByRole('button', { name: 'Set as baseline' })
+    );
+    await user.click(
+      within(getTraceRow('Alpha Compare Trace')).getByRole('button', { name: 'Set as candidate' })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toContain(`baseline_trace_id=${baselineTrace.id}`);
+      expect(router.state.location.search).toContain(`candidate_trace_id=${candidateTrace.id}`);
+      expect(router.state.location.search).toContain('sort_by=started_at');
+      expect(router.state.location.search).toContain('sort_dir=asc');
+      expect(router.state.location.search).toContain('offset=20');
+    });
+
+    expect(screen.getByRole('link', { name: 'Open comparison' })).toHaveAttribute(
+      'href',
+      `/sessions/${SESSION_ID}/compare?baseline_trace_id=${baselineTrace.id}&candidate_trace_id=${candidateTrace.id}`
+    );
+  });
+
+  it('renders the compare bar above the narrative and trace browser surfaces', async () => {
+    const user = userEvent.setup();
+    const baselineTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174060',
+      session_id: SESSION_ID,
+      name: 'Layout Baseline Trace',
+      status: 'FAILED' as const,
+    };
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174061',
+      session_id: SESSION_ID,
+      name: 'Layout Candidate Trace',
+      status: 'COMPLETED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [baselineTrace, candidateTrace], total: 2 }),
+      })
+    );
+
+    renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findByText('Layout Baseline Trace')).toBeInTheDocument();
+
+    await user.click(
+      within(getTraceRow('Layout Baseline Trace')).getByRole('button', { name: 'Set as baseline' })
+    );
+    await user.click(
+      within(getTraceRow('Layout Candidate Trace')).getByRole('button', { name: 'Set as candidate' })
+    );
+
+    const compareSection = (await screen.findByRole('link', { name: 'Open comparison' })).closest(
+      'section'
+    );
+    const narrativeSection = screen.getByLabelText('Session narrative summary');
+    const tracesHeading = screen.getByRole('heading', { name: 'Traces' });
+
+    if (!compareSection) {
+      throw new Error('Expected compare bar section');
+    }
+
+    expect(
+      Boolean(compareSection.compareDocumentPosition(narrativeSection) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ).toBe(true);
+    expect(
+      Boolean(compareSection.compareDocumentPosition(tracesHeading) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ).toBe(true);
+  });
+
+  it('clears the displaced role when the same trace is reassigned to candidate', async () => {
+    const user = userEvent.setup();
+    const trace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174002',
+      session_id: SESSION_ID,
+      name: 'Single Compare Trace',
+      status: 'FAILED' as const,
+    };
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [trace], total: 1 }),
+      })
+    );
+
+    const { router } = renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findByText('Single Compare Trace')).toBeInTheDocument();
+
+    const row = getTraceRow('Single Compare Trace');
+    await user.click(within(row).getByRole('button', { name: 'Set as baseline' }));
+    await user.click(within(row).getByRole('button', { name: 'Set as candidate' }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).not.toContain('baseline_trace_id=');
+      expect(router.state.location.search).toContain(`candidate_trace_id=${trace.id}`);
+    });
+  });
+
+  it('clears the displaced role when the same storyline trace is reassigned to candidate', async () => {
+    const user = userEvent.setup();
+    const traceId = '323e4567-e89b-12d3-a456-426614174003';
+    const traceName = 'Storyline Compare Trace';
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () =>
+          jsonResponse({
+            traces: [{ ...TRACE_ONE, id: traceId, session_id: SESSION_ID, name: traceName }],
+            total: 1,
+          }),
+        sessionNarrative: () =>
+          jsonResponse({
+            ...SESSION_NARRATIVE,
+            traces: [
+              createSessionNarrativeTrace({
+                id: traceId,
+                trace_id: 'external-storyline-compare',
+                name: traceName,
+                status: 'FAILED',
+                lineage: { type: 'unlinked' },
+              }),
+            ],
+          }),
+      })
+    );
+
+    const { router } = renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    const storyline = await screen.findByLabelText('Session narrative storyline');
+    const storylineCard = (await within(storyline).findByRole('link', {
+      name: traceName,
+    })).closest('article');
+
+    if (!storylineCard) {
+      throw new Error(`Expected a storyline card for ${traceName}`);
+    }
+
+    await user.click(within(storylineCard).getByRole('button', { name: 'Set as baseline' }));
+    await user.click(within(storylineCard).getByRole('button', { name: 'Set as candidate' }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).not.toContain('baseline_trace_id=');
+      expect(router.state.location.search).toContain(`candidate_trace_id=${traceId}`);
+    });
+  });
+
+  it('disables compare selection on running traces', async () => {
+    const runningTrace = {
+      ...TRACE_ONE,
+      id: 'running-trace',
+      name: 'Running Trace',
+      status: 'RUNNING' as const,
+      session_id: SESSION_ID,
+      ended_at: undefined,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [runningTrace], total: 1 }),
+        sessionNarrative: () =>
+          jsonResponse({
+            ...RUNNING_SESSION_NARRATIVE,
+            traces: [
+              createSessionNarrativeTrace({
+                id: runningTrace.id,
+                trace_id: 'external-running-trace',
+                name: runningTrace.name,
+                status: 'RUNNING',
+              }),
+            ],
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    await screen.findAllByRole('link', { name: 'Running Trace' });
+
+    const tableRow = getTraceRow('Running Trace');
+    const storylineCard = within(screen.getByLabelText('Session narrative storyline'))
+      .getByRole('link', { name: 'Running Trace' })
+      .closest('article');
+
+    if (!storylineCard) {
+      throw new Error('Expected a storyline card for Running Trace');
+    }
+
+    expect(
+      within(tableRow).getByRole('button', { name: 'Set as baseline' })
+    ).toBeDisabled();
+    expect(
+      within(tableRow).getByRole('button', { name: 'Set as candidate' })
+    ).toBeDisabled();
+    expect(
+      within(tableRow).getByRole('button', { name: 'Set as baseline' })
+    ).toHaveAttribute('title', 'Trace must complete before it can be compared');
+
+    expect(
+      within(storylineCard).getByRole('button', { name: 'Set as baseline' })
+    ).toBeDisabled();
+    expect(
+      within(storylineCard).getByRole('button', { name: 'Set as candidate' })
+    ).toBeDisabled();
+    expect(
+      within(storylineCard).getByRole('button', { name: 'Set as candidate' })
+    ).toHaveAttribute('title', 'Trace must complete before it can be compared');
+  });
+
+  it('keeps comparison disabled while a selected-trace lookup is pending', async () => {
+    const deferredDetail = createDeferredResponse();
+    const baselineTrace = {
+      ...TRACE_DETAIL,
+      id: '323e4567-e89b-12d3-a456-426614174050',
+      session_id: SESSION_ID,
+      trace_id: 'external-pending-baseline',
+      name: 'Pending Baseline Trace',
+      status: 'COMPLETED' as const,
+    };
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174051',
+      session_id: SESSION_ID,
+      name: 'Pending Candidate Trace',
+      status: 'FAILED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [candidateTrace], total: 1 }),
+        detail: (url) =>
+          url.pathname === `/api/traces/${baselineTrace.id}`
+            ? deferredDetail.promise
+            : jsonResponse(TRACE_DETAIL),
+      })
+    );
+
+    renderTraceRoutes([
+      `/sessions/${SESSION_ID}?baseline_trace_id=${baselineTrace.id}&candidate_trace_id=${candidateTrace.id}`,
+    ]);
+
+    expect(await screen.findAllByText('Pending Candidate Trace')).toHaveLength(2);
+    expect(screen.getByText('Loading trace…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open comparison' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Open comparison' })).toHaveAttribute(
+      'title',
+      'Both selections must resolve before comparison can open'
+    );
+    expect(screen.getByText('Resolving selected trace details...')).toBeInTheDocument();
+
+    deferredDetail.resolve(jsonResponse(baselineTrace));
+
+    expect(await screen.findByText('Pending Baseline Trace')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Open comparison' })).toHaveAttribute(
+      'href',
+      `/sessions/${SESSION_ID}/compare?baseline_trace_id=${baselineTrace.id}&candidate_trace_id=${candidateTrace.id}`
+    );
+  });
+
+  it('keeps comparison disabled when a selected trace is still running', async () => {
+    const runningBaseline = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174052',
+      session_id: SESSION_ID,
+      name: 'Running Baseline Trace',
+      status: 'RUNNING' as const,
+      ended_at: undefined,
+    };
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174053',
+      session_id: SESSION_ID,
+      name: 'Completed Candidate Trace',
+      status: 'COMPLETED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [runningBaseline, candidateTrace], total: 2 }),
+      })
+    );
+
+    renderTraceRoutes([
+      `/sessions/${SESSION_ID}?baseline_trace_id=${runningBaseline.id}&candidate_trace_id=${candidateTrace.id}`,
+    ]);
+
+    expect(await screen.findAllByText('Running Baseline Trace')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Open comparison' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Open comparison' })).toHaveAttribute(
+      'title',
+      'Both selected traces must be terminal before comparison can open'
+    );
+    expect(
+      screen.getByText(
+        'Running traces stay visible here, but comparison remains disabled until they finish.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('offers compare to parent on storyline cards and assigns the pair', async () => {
+    const user = userEvent.setup();
+    const parentTraceId = '323e4567-e89b-12d3-a456-426614174010';
+    const childTraceId = '323e4567-e89b-12d3-a456-426614174011';
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () =>
+          jsonResponse({
+            traces: [
+              { ...TRACE_ONE, id: childTraceId, session_id: SESSION_ID, name: 'Child Compare Trace' },
+              { ...TRACE_ONE, id: parentTraceId, session_id: SESSION_ID, name: 'Parent Compare Trace', status: 'COMPLETED' as const },
+            ],
+            total: 2,
+          }),
+        sessionNarrative: () =>
+          jsonResponse({
+            ...SESSION_NARRATIVE,
+            traces: [
+              createSessionNarrativeTrace({
+                id: parentTraceId,
+                trace_id: 'external-parent-compare',
+                name: 'Parent Compare Trace',
+                status: 'COMPLETED',
+                lineage: { type: 'unlinked' },
+              }),
+              createSessionNarrativeTrace({
+                id: childTraceId,
+                trace_id: 'external-child-compare',
+                name: 'Child Compare Trace',
+                status: 'FAILED',
+                lineage: { type: 'inferred', parent_trace_id: 'external-parent-compare' },
+              }),
+            ],
+          }),
+      })
+    );
+
+    const { router } = renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findByRole('button', { name: 'Compare to parent' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Compare to parent' }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toContain(`baseline_trace_id=${parentTraceId}`);
+      expect(router.state.location.search).toContain(`candidate_trace_id=${childTraceId}`);
+    });
+  });
+
+  it('hides compare to parent when either trace is not terminal', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () =>
+          jsonResponse({
+            traces: [
+              { ...TRACE_ONE, id: '323e4567-e89b-12d3-a456-426614174054', session_id: SESSION_ID, name: 'Running Parent Trace', status: 'RUNNING' as const, ended_at: undefined },
+              { ...TRACE_ONE, id: '323e4567-e89b-12d3-a456-426614174055', session_id: SESSION_ID, name: 'Terminal Child Trace', status: 'FAILED' as const },
+            ],
+            total: 2,
+          }),
+        sessionNarrative: () =>
+          jsonResponse({
+            ...SESSION_NARRATIVE,
+            traces: [
+              createSessionNarrativeTrace({
+                id: '323e4567-e89b-12d3-a456-426614174054',
+                trace_id: 'external-running-parent',
+                name: 'Running Parent Trace',
+                status: 'RUNNING',
+                ended_at: undefined,
+                latest_activity_at: '2026-03-14T10:00:00.000Z',
+                lineage: { type: 'unlinked' },
+              }),
+              createSessionNarrativeTrace({
+                id: '323e4567-e89b-12d3-a456-426614174055',
+                trace_id: 'external-terminal-child',
+                name: 'Terminal Child Trace',
+                status: 'FAILED',
+                lineage: { type: 'inferred', parent_trace_id: 'external-running-parent' },
+              }),
+            ],
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findAllByRole('link', { name: 'Terminal Child Trace' })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'Compare to parent' })).not.toBeInTheDocument();
+  });
+
+  it('swaps the selected baseline and candidate traces', async () => {
+    const user = userEvent.setup();
+    const baselineTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174030',
+      session_id: SESSION_ID,
+      name: 'Swap Baseline Trace',
+      status: 'FAILED' as const,
+    };
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174031',
+      session_id: SESSION_ID,
+      name: 'Swap Candidate Trace',
+      status: 'COMPLETED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [baselineTrace, candidateTrace], total: 2 }),
+      })
+    );
+
+    const { router } = renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findByText('Swap Baseline Trace')).toBeInTheDocument();
+
+    await user.click(
+      within(getTraceRow('Swap Baseline Trace')).getByRole('button', { name: 'Set as baseline' })
+    );
+    await user.click(
+      within(getTraceRow('Swap Candidate Trace')).getByRole('button', { name: 'Set as candidate' })
+    );
+    await user.click(await screen.findByRole('button', { name: 'Swap' }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toContain(`baseline_trace_id=${candidateTrace.id}`);
+      expect(router.state.location.search).toContain(`candidate_trace_id=${baselineTrace.id}`);
+    });
+  });
+
+  it('hydrates selected traces outside the loaded slice with bounded trace lookups', async () => {
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174020',
+      session_id: SESSION_ID,
+      trace_id: 'external-candidate-trace',
+      name: 'Candidate Compare Trace',
+      status: 'FAILED' as const,
+    };
+    const lookupTrace = {
+      ...TRACE_DETAIL,
+      id: '223e4567-e89b-12d3-a456-426614174000',
+      session_id: SESSION_ID,
+      trace_id: 'external-lookup-trace',
+      name: 'Lookup Trace',
+      status: 'COMPLETED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [candidateTrace], total: 1 }),
+        detail: (url) =>
+          url.pathname === `/api/traces/${lookupTrace.id}`
+            ? jsonResponse(lookupTrace)
+            : jsonResponse(TRACE_DETAIL),
+      })
+    );
+
+    renderTraceRoutes([
+      `/sessions/${SESSION_ID}?baseline_trace_id=${lookupTrace.id}&candidate_trace_id=${candidateTrace.id}`,
+    ]);
+
+    expect(await screen.findByText('Lookup Trace')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open comparison' })).toHaveAttribute(
+      'href',
+      `/sessions/${SESSION_ID}/compare?baseline_trace_id=${lookupTrace.id}&candidate_trace_id=${candidateTrace.id}`
+    );
+  });
+
+  it('strips malformed compare params from the URL on load', async () => {
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174040',
+      session_id: SESSION_ID,
+      name: 'Canonical Candidate Trace',
+      status: 'FAILED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [candidateTrace], total: 1 }),
+      })
+    );
+
+    const { router } = renderTraceRoutes([
+      `/sessions/${SESSION_ID}?baseline_trace_id=not-a-uuid&candidate_trace_id=${candidateTrace.id}`,
+    ]);
+
+    expect(
+      await screen.findByRole('link', { name: 'Canonical Candidate Trace' })
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(`?candidate_trace_id=${candidateTrace.id}`);
+    });
+  });
+
+  it('canonicalizes same-trace compare params on load by clearing candidate', async () => {
+    const trace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174056',
+      session_id: SESSION_ID,
+      name: 'Canonical Baseline Trace',
+      status: 'FAILED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [trace], total: 1 }),
+      })
+    );
+
+    const { router } = renderTraceRoutes([
+      `/sessions/${SESSION_ID}?baseline_trace_id=${trace.id}&candidate_trace_id=${trace.id}`,
+    ]);
+
+    expect(await screen.findByRole('link', { name: 'Canonical Baseline Trace' })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(`?baseline_trace_id=${trace.id}`);
+    });
+  });
+
+  it('strips stale compare params when a bounded selected-trace lookup returns 404', async () => {
+    const staleBaselineId = '323e4567-e89b-12d3-a456-426614174041';
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174042',
+      session_id: SESSION_ID,
+      name: 'Stale Candidate Trace',
+      status: 'FAILED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [candidateTrace], total: 1 }),
+        detail: (url) =>
+          url.pathname === `/api/traces/${staleBaselineId}`
+            ? jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404)
+            : jsonResponse(TRACE_DETAIL),
+      })
+    );
+
+    const { router } = renderTraceRoutes([
+      `/sessions/${SESSION_ID}?baseline_trace_id=${staleBaselineId}&candidate_trace_id=${candidateTrace.id}`,
+    ]);
+
+    expect(
+      await screen.findByRole('link', { name: 'Stale Candidate Trace' })
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(`?candidate_trace_id=${candidateTrace.id}`);
+    });
+  });
+
+  it('strips stale compare params when a bounded selected-trace lookup resolves to another session', async () => {
+    const staleBaselineId = '323e4567-e89b-12d3-a456-426614174057';
+    const candidateTrace = {
+      ...TRACE_ONE,
+      id: '323e4567-e89b-12d3-a456-426614174058',
+      session_id: SESSION_ID,
+      name: 'Wrong Session Candidate Trace',
+      status: 'FAILED' as const,
+    };
+    const otherSessionTrace = {
+      ...TRACE_DETAIL,
+      id: staleBaselineId,
+      session_id: OTHER_SESSION_ID,
+      trace_id: 'external-other-session-trace',
+      name: 'Other Session Trace',
+      status: 'COMPLETED' as const,
+    };
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () => jsonResponse({ traces: [candidateTrace], total: 1 }),
+        detail: (url) =>
+          url.pathname === `/api/traces/${staleBaselineId}`
+            ? jsonResponse(otherSessionTrace)
+            : jsonResponse(TRACE_DETAIL),
+      })
+    );
+
+    const { router } = renderTraceRoutes([
+      `/sessions/${SESSION_ID}?baseline_trace_id=${staleBaselineId}&candidate_trace_id=${candidateTrace.id}`,
+    ]);
+
+    expect(
+      await screen.findByRole('link', { name: 'Wrong Session Candidate Trace' })
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(`?candidate_trace_id=${candidateTrace.id}`);
+    });
   });
 });
