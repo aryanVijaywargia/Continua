@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { Span, TimelineEvent, TimelineTraceStatus } from '../api/client';
 import { JsonViewer } from './JsonViewer';
 import {
@@ -6,6 +6,7 @@ import {
   getDecisionDetails,
   getEffectDetails,
   getStateChangeDetails,
+  getWaitDetails,
 } from '../utils/eventSemantics';
 import {
   formatTimelineTime,
@@ -30,6 +31,28 @@ interface TimelineProps {
   spanIndex: Map<string, Span>;
 }
 
+type TimelineFilterMode = 'all' | 'semantic' | 'effects-waits';
+
+const TIMELINE_FILTER_OPTIONS: Array<{
+  label: string;
+  mode: TimelineFilterMode;
+}> = [
+  { label: 'All', mode: 'all' },
+  { label: 'Semantic', mode: 'semantic' },
+  { label: 'Effects & waits', mode: 'effects-waits' },
+];
+
+const SEMANTIC_EVENT_TYPES = new Set<TimelineEvent['event_type']>([
+  'state_change',
+  'decision',
+  'effect',
+  'wait',
+]);
+const EFFECT_WAIT_EVENT_TYPES = new Set<TimelineEvent['event_type']>([
+  'effect',
+  'wait',
+]);
+
 /**
  * Chronological timeline view for trace events and synthetic lifecycle markers.
  */
@@ -44,9 +67,12 @@ export function Timeline({
   spanIndex,
 }: TimelineProps) {
   const [showErrorsOnly, setShowErrorsOnly] = useState(false);
-  const visibleEvents = showErrorsOnly
-    ? events.filter((event) => isTimelineErrorEvent(event))
-    : events;
+  const [filterMode, setFilterMode] = useState<TimelineFilterMode>('all');
+  const visibleEvents = events.filter(
+    (event) =>
+      matchesTimelineFilterMode(event, filterMode) &&
+      (!showErrorsOnly || isTimelineErrorEvent(event))
+  );
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -60,6 +86,7 @@ export function Timeline({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <SegmentedFilter filterMode={filterMode} onChange={setFilterMode} />
           <button
             type="button"
             className={`rounded-full border px-3 py-1 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
@@ -96,9 +123,7 @@ export function Timeline({
         <div className="px-4 py-12 text-center text-sm text-red-600">{error}</div>
       ) : visibleEvents.length === 0 ? (
         <div className="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
-          {showErrorsOnly
-            ? 'No error events for this trace.'
-            : 'No timeline events recorded for this trace yet.'}
+          {getTimelineEmptyStateMessage(filterMode, showErrorsOnly)}
         </div>
       ) : (
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -139,9 +164,10 @@ function TimelineRow({
   const isError = isTimelineErrorEvent(event);
   const stateChange = getStateChangeDetails(event);
   const decision = getDecisionDetails(event);
+  const effectDetails = getEffectDetails(event);
   const retrySafety =
     traceStatus === 'FAILED' ? classifyEffectEvent(event) : null;
-  const effectDetails = retrySafety ? getEffectDetails(event) : null;
+  const waitDetails = getWaitDetails(event);
   const rowAccent = isError
     ? 'border-red-200 bg-red-50/70 dark:border-red-500/40 dark:bg-red-500/10'
     : event.source === 'synthetic'
@@ -194,6 +220,8 @@ function TimelineRow({
                   event={event}
                   retrySafety={retrySafety}
                 />
+              ) : waitDetails ? (
+                <WaitPreview wait={waitDetails} />
               ) : (
                 <p className="mt-3 text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
                   {summarizeTimelineEvent(event)}
@@ -261,6 +289,64 @@ function TimelineRow({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function SegmentedFilter({
+  filterMode,
+  onChange,
+}: {
+  filterMode: TimelineFilterMode;
+  onChange: (mode: TimelineFilterMode) => void;
+}) {
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const handleKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number
+  ) => {
+    const nextIndex = getSegmentedFilterTargetIndex(event.key, index);
+    if (nextIndex === null) {
+      return;
+    }
+
+    event.preventDefault();
+    onChange(TIMELINE_FILTER_OPTIONS[nextIndex].mode);
+    optionRefs.current[nextIndex]?.focus();
+  };
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Timeline event filter"
+      className="flex items-center gap-1 rounded-full border border-slate-200 bg-white p-1 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+    >
+      {TIMELINE_FILTER_OPTIONS.map((option, index) => {
+        const active = option.mode === filterMode;
+
+        return (
+          <button
+            key={option.mode}
+            ref={(element) => {
+              optionRefs.current[index] = element;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            tabIndex={active ? 0 : -1}
+            className={`rounded-full px-3 py-1 transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+              active
+                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+            }`}
+            onClick={() => onChange(option.mode)}
+            onKeyDown={(event) => handleKeyDown(event, index)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -351,6 +437,26 @@ function EffectPreview({
   );
 }
 
+function WaitPreview({
+  wait,
+}: {
+  wait: NonNullable<ReturnType<typeof getWaitDetails>>;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
+        {wait.waitKind}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <SemanticValuePill>{wait.phase}</SemanticValuePill>
+        {wait.resolution ? (
+          <SemanticValuePill tone="accent">{wait.resolution}</SemanticValuePill>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function MalformedEffectPreview({
   event,
   retrySafety,
@@ -396,6 +502,71 @@ function SemanticValuePill({
 
 function formatEventType(eventType: TimelineEvent['event_type']): string {
   return eventType.replace(/_/g, ' ');
+}
+
+function matchesTimelineFilterMode(
+  event: TimelineEvent,
+  filterMode: TimelineFilterMode
+): boolean {
+  if (filterMode === 'all') {
+    return true;
+  }
+
+  if (event.source !== 'explicit') {
+    return false;
+  }
+
+  if (filterMode === 'semantic') {
+    return SEMANTIC_EVENT_TYPES.has(event.event_type);
+  }
+
+  return EFFECT_WAIT_EVENT_TYPES.has(event.event_type);
+}
+
+function getTimelineEmptyStateMessage(
+  filterMode: TimelineFilterMode,
+  showErrorsOnly: boolean
+): string {
+  if (showErrorsOnly) {
+    if (filterMode === 'semantic') {
+      return 'No error-level semantic events for this trace.';
+    }
+    if (filterMode === 'effects-waits') {
+      return 'No error-level effect or wait events for this trace.';
+    }
+    return 'No error events for this trace.';
+  }
+
+  if (filterMode === 'semantic') {
+    return 'No semantic events for this trace.';
+  }
+  if (filterMode === 'effects-waits') {
+    return 'No effect or wait events for this trace.';
+  }
+  return 'No timeline events recorded for this trace yet.';
+}
+
+function getSegmentedFilterTargetIndex(
+  key: string,
+  currentIndex: number
+): number | null {
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return (currentIndex + 1) % TIMELINE_FILTER_OPTIONS.length;
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return (
+        (currentIndex - 1 + TIMELINE_FILTER_OPTIONS.length) %
+        TIMELINE_FILTER_OPTIONS.length
+      );
+    case 'Home':
+      return 0;
+    case 'End':
+      return TIMELINE_FILTER_OPTIONS.length - 1;
+    default:
+      return null;
+  }
 }
 
 function timelineStatusLabel(

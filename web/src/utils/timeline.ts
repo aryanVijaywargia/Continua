@@ -2,6 +2,7 @@ import { TimelineEvent } from '../api/client';
 import {
   formatInlineSemanticValue,
   getDecisionDetails,
+  getEffectDetails,
   getStateChangeDetails,
   getWaitDetails,
 } from './eventSemantics';
@@ -78,6 +79,15 @@ export function summarizeTimelineEvent(event: TimelineEvent): string {
         return `${details.question} → ${formatInlineSemanticValue(details.chosen)}`;
       }
       return event.message ?? 'decision';
+    }
+    case 'effect': {
+      const details = getEffectDetails(event);
+      if (details) {
+        return `${details.effectKind} (${
+          details.hasExternalSideEffect ? 'mutating' : 'read-only'
+        })`;
+      }
+      return event.message ?? 'effect';
     }
     case 'span_started':
       return `${event.span_name ?? event.span_id ?? 'Span'} started`;
