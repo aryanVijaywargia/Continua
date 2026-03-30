@@ -8,6 +8,7 @@ import {
   OTHER_SESSION_EXTERNAL_ID,
   OTHER_SESSION_ID,
   RUNNING_SESSION_NARRATIVE,
+  SESSION_COMPARE,
   SESSION_EXTERNAL_ID,
   SESSION_ID,
   SESSION_NARRATIVE,
@@ -25,6 +26,7 @@ import {
   resetTestEntityCounter,
 } from '../test/traceFixtures';
 import { TraceDetailPage } from './TraceDetailPage';
+import { SessionComparePage } from './SessionComparePage';
 import { SessionDetailPage } from './SessionDetailPage';
 import { SessionsPage } from './SessionsPage';
 import { SettingsPage } from './SettingsPage';
@@ -34,6 +36,7 @@ export {
   OTHER_SESSION_EXTERNAL_ID,
   OTHER_SESSION_ID,
   RUNNING_SESSION_NARRATIVE,
+  SESSION_COMPARE,
   SESSION_EXTERNAL_ID,
   SESSION_ID,
   SESSION_NARRATIVE,
@@ -69,6 +72,7 @@ export function buildFetchHandler({
   detail,
   sessionsList,
   sessionDetail,
+  sessionCompare,
   sessionNarrative,
   spans,
   timeline,
@@ -77,6 +81,7 @@ export function buildFetchHandler({
   detail?: JsonHandler;
   sessionsList?: JsonHandler;
   sessionDetail?: JsonHandler;
+  sessionCompare?: JsonHandler;
   sessionNarrative?: JsonHandler;
   spans?: JsonHandler;
   timeline?: JsonHandler;
@@ -138,6 +143,14 @@ export function buildFetchHandler({
       return jsonResponse(EMPTY_SESSION_NARRATIVE);
     }
 
+    if (/^\/api\/sessions\/[^/]+\/compare$/.test(url.pathname)) {
+      if (sessionCompare) {
+        return sessionCompare(url);
+      }
+
+      return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
+    }
+
     if (/^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       if (sessionDetail) {
         return sessionDetail(url);
@@ -189,7 +202,7 @@ function createQueryClient() {
 }
 
 export function renderTraceRoutes(
-  initialEntries: Array<string | { pathname: string; state?: unknown }>,
+  initialEntries: Array<string | { pathname: string; search?: string; state?: unknown }>,
   options: { initialIndex?: number } = {}
 ) {
   const queryClient = createQueryClient();
@@ -199,6 +212,7 @@ export function renderTraceRoutes(
       { path: '/traces/:id', element: <TraceDetailPage /> },
       { path: '/sessions', element: <SessionsPage /> },
       { path: '/sessions/:id', element: <SessionDetailPage /> },
+      { path: '/sessions/:id/compare', element: <SessionComparePage /> },
       { path: '/settings', element: <SettingsPage /> },
     ],
     {

@@ -7,18 +7,25 @@ import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import {
+  ApiError,
   fetchSession,
+  fetchTrace,
   fetchSessionNarrative,
   fetchTraces,
   isAuthError,
   type SessionNarrative,
   type SessionNarrativeLineage,
   type SessionNarrativeTrace,
+  type TraceDetail,
   type Trace,
 } from '../api/client';
 import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
-import { buildCanonicalQueryString, parseTracesParams, serializeTracesParams } from '../utils/tracesSearchParams';
+import {
+  buildCanonicalQueryString,
+  parseTracesParams,
+  serializeTracesParams,
+} from '../utils/tracesSearchParams';
 import {
   calculateDuration,
   formatCost,
@@ -27,8 +34,33 @@ import {
   formatTokens,
 } from '../utils/format';
 import { summarizeTimelineEvent } from '../utils/timeline';
+import {
+  buildCompareSearchParams,
+  normalizeCompareTraceIdParam,
+} from './sessionCompareUtils';
 
 type HistoryMode = 'push' | 'replace';
+type CompareRole = 'baseline' | 'candidate';
+
+interface SessionDetailCompareState {
+  baseline_trace_id?: string;
+  candidate_trace_id?: string;
+}
+
+interface CompareSelectedTrace {
+  id: string;
+  name: string;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  trace_id?: string;
+  user_id?: string;
+  started_at: string;
+  ended_at?: string;
+  duration_ms?: number;
+  total_cost_usd?: number;
+  total_tokens_in?: number;
+  total_tokens_out?: number;
+  session_id?: string;
+}
 
 function shouldResetOffset(
   currentState: ReturnType<typeof getSessionTraceTableState>,
@@ -52,10 +84,44 @@ function getSessionTraceTableState(searchParams: URLSearchParams) {
   };
 }
 
-function useSessionTraceTableSearchParams() {
+function canonicalizeCompareState(state: SessionDetailCompareState): SessionDetailCompareState {
+  const baselineTraceId = normalizeCompareTraceIdParam(state.baseline_trace_id);
+  const candidateTraceId = normalizeCompareTraceIdParam(state.candidate_trace_id);
+
+  return {
+    baseline_trace_id: baselineTraceId,
+    candidate_trace_id:
+      candidateTraceId && candidateTraceId !== baselineTraceId
+        ? candidateTraceId
+        : undefined,
+  };
+}
+
+function getSessionCompareState(searchParams: URLSearchParams): SessionDetailCompareState {
+  return canonicalizeCompareState({
+    baseline_trace_id: searchParams.get('baseline_trace_id') ?? undefined,
+    candidate_trace_id: searchParams.get('candidate_trace_id') ?? undefined,
+  });
+}
+
+function serializeSessionDetailSearchParams(
+  filters: ReturnType<typeof getSessionTraceTableState>,
+  compare: SessionDetailCompareState
+): URLSearchParams {
+  const params = serializeTracesParams(filters);
+  buildCompareSearchParams(compare.baseline_trace_id, compare.candidate_trace_id).forEach(
+    (value, key) => {
+      params.set(key, value);
+    }
+  );
+  return params;
+}
+
+function useSessionDetailSearchParams() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = getSessionTraceTableState(searchParams);
-  const canonicalSearch = serializeTracesParams(filters).toString();
+  const compare = getSessionCompareState(searchParams);
+  const canonicalSearch = serializeSessionDetailSearchParams(filters, compare).toString();
 
   useEffect(() => {
     if (searchParams.toString() === canonicalSearch) {
@@ -79,16 +145,105 @@ function useSessionTraceTableSearchParams() {
         ? { ...next, offset: 0 }
         : next;
 
-      setSearchParams(serializeTracesParams(normalizedNext), {
+      setSearchParams(serializeSessionDetailSearchParams(normalizedNext, compare), {
         replace: mode === 'replace',
       });
+    },
+    [compare, filters, setSearchParams]
+  );
+
+  const replaceCompare = useCallback(
+    (nextCompare: SessionDetailCompareState, mode: HistoryMode = 'push') => {
+      setSearchParams(
+        serializeSessionDetailSearchParams(filters, canonicalizeCompareState(nextCompare)),
+        {
+          replace: mode === 'replace',
+        }
+      );
     },
     [filters, setSearchParams]
   );
 
+  const assignCompareRole = useCallback(
+    (role: CompareRole, traceId: string, mode: HistoryMode = 'push') => {
+      const nextCompare = { ...compare };
+
+      if (role === 'baseline') {
+        nextCompare.baseline_trace_id = traceId;
+        if (nextCompare.candidate_trace_id === traceId) {
+          nextCompare.candidate_trace_id = undefined;
+        }
+      } else {
+        nextCompare.candidate_trace_id = traceId;
+        if (nextCompare.baseline_trace_id === traceId) {
+          nextCompare.baseline_trace_id = undefined;
+        }
+      }
+
+      replaceCompare(nextCompare, mode);
+    },
+    [compare, replaceCompare]
+  );
+
+  const clearCompareRole = useCallback(
+    (role: CompareRole, mode: HistoryMode = 'push') => {
+      replaceCompare(
+        {
+          ...compare,
+          [role === 'baseline' ? 'baseline_trace_id' : 'candidate_trace_id']: undefined,
+        },
+        mode
+      );
+    },
+    [compare, replaceCompare]
+  );
+
+  const clearCompare = useCallback(
+    (mode: HistoryMode = 'push') => {
+      replaceCompare({}, mode);
+    },
+    [replaceCompare]
+  );
+
+  const swapCompare = useCallback(
+    (mode: HistoryMode = 'push') => {
+      replaceCompare(
+        {
+          baseline_trace_id: compare.candidate_trace_id,
+          candidate_trace_id: compare.baseline_trace_id,
+        },
+        mode
+      );
+    },
+    [compare, replaceCompare]
+  );
+
+  const setComparePair = useCallback(
+    (
+      baselineTraceId: string,
+      candidateTraceId: string,
+      mode: HistoryMode = 'push'
+    ) => {
+      replaceCompare(
+        {
+          baseline_trace_id: baselineTraceId,
+          candidate_trace_id: candidateTraceId,
+        },
+        mode
+      );
+    },
+    [replaceCompare]
+  );
+
   return {
     filters,
+    compare,
     setFilters,
+    assignCompareRole,
+    setComparePair,
+    clearCompareRole,
+    clearCompare,
+    swapCompare,
   };
 }
 
@@ -112,6 +267,56 @@ function queryErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
+function isTerminalTraceStatus(status: CompareSelectedTrace['status']): boolean {
+  return status === 'COMPLETED' || status === 'FAILED';
+}
+
+function narrativeTraceToCompareSelectedTrace(trace: SessionNarrativeTrace): CompareSelectedTrace {
+  return {
+    id: trace.id,
+    name: trace.name,
+    status: trace.status,
+    trace_id: trace.trace_id,
+    user_id: trace.user_id,
+    started_at: trace.started_at,
+    ended_at: trace.ended_at,
+    duration_ms: trace.duration_ms,
+    total_cost_usd: trace.total_cost_usd,
+    total_tokens_in: trace.total_tokens_in,
+    total_tokens_out: trace.total_tokens_out,
+  };
+}
+
+function listTraceToCompareSelectedTrace(trace: Trace): CompareSelectedTrace {
+  return {
+    id: trace.id,
+    name: trace.name,
+    status: trace.status,
+    started_at: trace.started_at,
+    ended_at: trace.ended_at,
+    total_cost_usd: trace.total_cost_usd,
+    total_tokens_in: trace.total_tokens_in,
+    total_tokens_out: trace.total_tokens_out,
+    session_id: trace.session_id,
+  };
+}
+
+function detailTraceToCompareSelectedTrace(trace: TraceDetail): CompareSelectedTrace {
+  return {
+    id: trace.id,
+    name: trace.name,
+    status: trace.status,
+    trace_id: trace.trace_id,
+    user_id: trace.user_id,
+    started_at: trace.started_at,
+    ended_at: trace.ended_at,
+    total_cost_usd: trace.total_cost_usd,
+    total_tokens_in: trace.total_tokens_in,
+    total_tokens_out: trace.total_tokens_out,
+    session_id: trace.session_id,
+  };
+}
+
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { hasApiKey, prompt } = useRequireApiKey();
@@ -133,9 +338,19 @@ export function SessionDetailPage() {
 
 function SessionDetailContent({ sessionId }: { sessionId: string }) {
   const location = useLocation();
-  const { filters, setFilters } = useSessionTraceTableSearchParams();
+  const {
+    filters,
+    compare,
+    setFilters,
+    assignCompareRole,
+    setComparePair,
+    clearCompareRole,
+    clearCompare,
+    swapCompare,
+  } = useSessionDetailSearchParams();
   const returnTo = getSessionsReturnToDestination(location.state);
-  const currentSessionDetailUrl = `${location.pathname}${location.search}`;
+  const currentSessionDetailSearch = serializeSessionDetailSearchParams(filters, compare).toString();
+  const currentSessionDetailUrl = `${location.pathname}${currentSessionDetailSearch ? `?${currentSessionDetailSearch}` : ''}`;
   const isAscending = filters.sort_dir === 'asc';
 
   const sessionQuery = useQuery({
@@ -163,6 +378,110 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
   });
   const traces = tracesQuery.data?.traces ?? [];
   const total = tracesQuery.data?.total ?? 0;
+
+  const selectedBaselineFromNarrative = narrativeQuery.data?.traces.find(
+    (trace) => trace.id === compare.baseline_trace_id
+  );
+  const selectedCandidateFromNarrative = narrativeQuery.data?.traces.find(
+    (trace) => trace.id === compare.candidate_trace_id
+  );
+  const selectedBaselineFromTable = traces.find((trace) => trace.id === compare.baseline_trace_id);
+  const selectedCandidateFromTable = traces.find((trace) => trace.id === compare.candidate_trace_id);
+
+  const selectedBaselineLoaded =
+    selectedBaselineFromNarrative
+      ? narrativeTraceToCompareSelectedTrace(selectedBaselineFromNarrative)
+      : selectedBaselineFromTable
+        ? listTraceToCompareSelectedTrace(selectedBaselineFromTable)
+        : undefined;
+  const selectedCandidateLoaded =
+    selectedCandidateFromNarrative
+      ? narrativeTraceToCompareSelectedTrace(selectedCandidateFromNarrative)
+      : selectedCandidateFromTable
+        ? listTraceToCompareSelectedTrace(selectedCandidateFromTable)
+        : undefined;
+
+  const baselineLookupQuery = useQuery({
+    queryKey: ['trace', compare.baseline_trace_id],
+    queryFn: () => fetchTrace(compare.baseline_trace_id!),
+    enabled: Boolean(compare.baseline_trace_id && !selectedBaselineLoaded),
+  });
+  const candidateLookupQuery = useQuery({
+    queryKey: ['trace', compare.candidate_trace_id],
+    queryFn: () => fetchTrace(compare.candidate_trace_id!),
+    enabled: Boolean(compare.candidate_trace_id && !selectedCandidateLoaded),
+  });
+
+  useEffect(() => {
+    if (!compare.baseline_trace_id || selectedBaselineLoaded) {
+      return;
+    }
+
+    if (baselineLookupQuery.data && baselineLookupQuery.data.session_id !== sessionId) {
+      clearCompareRole('baseline', 'replace');
+      return;
+    }
+
+    if (
+      baselineLookupQuery.error instanceof ApiError &&
+      baselineLookupQuery.error.status === 404
+    ) {
+      clearCompareRole('baseline', 'replace');
+    }
+  }, [
+    baselineLookupQuery.data,
+    baselineLookupQuery.error,
+    clearCompareRole,
+    compare.baseline_trace_id,
+    selectedBaselineLoaded,
+    sessionId,
+  ]);
+
+  useEffect(() => {
+    if (!compare.candidate_trace_id || selectedCandidateLoaded) {
+      return;
+    }
+
+    if (candidateLookupQuery.data && candidateLookupQuery.data.session_id !== sessionId) {
+      clearCompareRole('candidate', 'replace');
+      return;
+    }
+
+    if (
+      candidateLookupQuery.error instanceof ApiError &&
+      candidateLookupQuery.error.status === 404
+    ) {
+      clearCompareRole('candidate', 'replace');
+    }
+  }, [
+    candidateLookupQuery.data,
+    candidateLookupQuery.error,
+    clearCompareRole,
+    compare.candidate_trace_id,
+    selectedCandidateLoaded,
+    sessionId,
+  ]);
+
+  const selectedBaseline =
+    selectedBaselineLoaded ??
+    (baselineLookupQuery.data && baselineLookupQuery.data.session_id === sessionId
+      ? detailTraceToCompareSelectedTrace(baselineLookupQuery.data)
+      : undefined);
+  const selectedCandidate =
+    selectedCandidateLoaded ??
+    (candidateLookupQuery.data && candidateLookupQuery.data.session_id === sessionId
+      ? detailTraceToCompareSelectedTrace(candidateLookupQuery.data)
+      : undefined);
+
+  const isBaselineLookupPending = Boolean(compare.baseline_trace_id && !selectedBaselineLoaded) && baselineLookupQuery.isPending;
+  const isCandidateLookupPending = Boolean(compare.candidate_trace_id && !selectedCandidateLoaded) && candidateLookupQuery.isPending;
+  const compareSelectionVisible = Boolean(compare.baseline_trace_id || compare.candidate_trace_id);
+  let canOpenComparison = false;
+  if (selectedBaseline && selectedCandidate && !isBaselineLookupPending && !isCandidateLookupPending) {
+    canOpenComparison =
+      isTerminalTraceStatus(selectedBaseline.status) &&
+      isTerminalTraceStatus(selectedCandidate.status);
+  }
 
   useEffect(() => {
     if (traces.length !== 0 || total === 0 || filters.offset === 0) {
@@ -283,11 +602,28 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
           </div>
         </section>
 
+        {compareSelectionVisible ? (
+          <CompareBar
+            baseline={selectedBaseline}
+            candidate={selectedCandidate}
+            canOpenComparison={canOpenComparison}
+            clearCompare={clearCompare}
+            currentSessionDetailUrl={currentSessionDetailUrl}
+            isBaselineLookupPending={isBaselineLookupPending}
+            isCandidateLookupPending={isCandidateLookupPending}
+            sessionId={sessionId}
+            swapCompare={swapCompare}
+          />
+        ) : null}
+
         <SessionNarrativeSections
           narrative={narrativeQuery.data}
           error={narrativeQuery.error}
           isFetching={narrativeQuery.isFetching}
           isPending={narrativeQuery.isPending && !narrativeQuery.data}
+          compare={compare}
+          assignCompareRole={assignCompareRole}
+          setComparePair={setComparePair}
           returnTo={currentSessionDetailUrl}
         />
 
@@ -363,6 +699,8 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                 <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
                   {traces.map((trace) => (
                     <SessionTraceRow
+                      assignCompareRole={assignCompareRole}
+                      compare={compare}
                       key={trace.id}
                       returnTo={currentSessionDetailUrl}
                       trace={trace}
@@ -393,12 +731,18 @@ function SessionNarrativeSections({
   error,
   isFetching,
   isPending,
+  compare,
+  assignCompareRole,
+  setComparePair,
   returnTo,
 }: {
   narrative?: SessionNarrative;
   error: unknown;
   isFetching: boolean;
   isPending: boolean;
+  compare: SessionDetailCompareState;
+  assignCompareRole: (role: CompareRole, traceId: string, mode?: HistoryMode) => void;
+  setComparePair: (baselineTraceId: string, candidateTraceId: string, mode?: HistoryMode) => void;
   returnTo: string;
 }) {
   if (error) {
@@ -442,6 +786,9 @@ function SessionNarrativeSections({
   const lineageCoverageLabel = narrative.summary.truncated
     ? `Lineage coverage applies to the first ${narrative.summary.returned_trace_count} traces shown.`
     : 'Lineage coverage applies to the shown narrative only.';
+  const narrativeTraceByExternalId = new Map(
+    narrative.traces.map((trace) => [trace.trace_id, trace] as const)
+  );
 
   if (narrative.summary.total_trace_count === 0) {
     return (
@@ -556,7 +903,19 @@ function SessionNarrativeSections({
         ) : (
           <div className="mt-4 space-y-4">
             {narrative.traces.map((trace) => (
-              <StorylineTraceCard key={trace.id} trace={trace} returnTo={returnTo} />
+              <StorylineTraceCard
+                assignCompareRole={assignCompareRole}
+                compare={compare}
+                key={trace.id}
+                parentTrace={
+                  trace.lineage.parent_trace_id
+                    ? narrativeTraceByExternalId.get(trace.lineage.parent_trace_id)
+                    : undefined
+                }
+                setComparePair={setComparePair}
+                trace={trace}
+                returnTo={returnTo}
+              />
             ))}
           </div>
         )}
@@ -566,13 +925,26 @@ function SessionNarrativeSections({
 }
 
 function StorylineTraceCard({
+  compare,
+  assignCompareRole,
+  parentTrace,
+  setComparePair,
   trace,
   returnTo,
 }: {
+  compare: SessionDetailCompareState;
+  assignCompareRole: (role: CompareRole, traceId: string, mode?: HistoryMode) => void;
+  parentTrace?: SessionNarrativeTrace;
+  setComparePair: (baselineTraceId: string, candidateTraceId: string, mode?: HistoryMode) => void;
   trace: SessionNarrativeTrace;
   returnTo: string;
 }) {
   const semanticSnippet = getSemanticSnippet(trace);
+  const isSelectable = isTerminalTraceStatus(trace.status);
+  const canCompareToParent =
+    parentTrace &&
+    isSelectable &&
+    isTerminalTraceStatus(parentTrace.status);
 
   return (
     <article className="rounded-xl border border-slate-200 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-950/60">
@@ -598,6 +970,31 @@ function StorylineTraceCard({
           {semanticSnippet ? (
             <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{semanticSnippet}</p>
           ) : null}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <CompareRoleButton
+              disabled={!isSelectable}
+              isSelected={compare.baseline_trace_id === trace.id}
+              label="Set as baseline"
+              onClick={() => assignCompareRole('baseline', trace.id)}
+              title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
+            />
+            <CompareRoleButton
+              disabled={!isSelectable}
+              isSelected={compare.candidate_trace_id === trace.id}
+              label="Set as candidate"
+              onClick={() => assignCompareRole('candidate', trace.id)}
+              title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
+            />
+            {canCompareToParent ? (
+              <CompareRoleButton
+                disabled={false}
+                isSelected={false}
+                label="Compare to parent"
+                onClick={() => setComparePair(parentTrace.id, trace.id)}
+              />
+            ) : null}
+          </div>
         </div>
 
         <dl className="grid gap-3 sm:grid-cols-2 xl:w-[28rem] xl:grid-cols-3">
@@ -624,6 +1021,167 @@ function StorylineTraceCard({
         </dl>
       </div>
     </article>
+  );
+}
+
+function CompareBar({
+  baseline,
+  candidate,
+  canOpenComparison,
+  clearCompare,
+  currentSessionDetailUrl,
+  isBaselineLookupPending,
+  isCandidateLookupPending,
+  sessionId,
+  swapCompare,
+}: {
+  baseline?: CompareSelectedTrace;
+  candidate?: CompareSelectedTrace;
+  canOpenComparison: boolean;
+  clearCompare: (mode?: HistoryMode) => void;
+  currentSessionDetailUrl: string;
+  isBaselineLookupPending: boolean;
+  isCandidateLookupPending: boolean;
+  sessionId: string;
+  swapCompare: (mode?: HistoryMode) => void;
+}) {
+  const compareSearch = buildCompareSearchParams(baseline?.id, candidate?.id).toString();
+  const compareHref = compareSearch
+    ? `/sessions/${sessionId}/compare?${compareSearch}`
+    : `/sessions/${sessionId}/compare`;
+  const hasRunningSelection =
+    (baseline && !isTerminalTraceStatus(baseline.status)) ||
+    (candidate && !isTerminalTraceStatus(candidate.status));
+
+  return (
+    <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="grid gap-3 sm:grid-cols-2 xl:w-[40rem]">
+          <CompareSelectionCard
+            isPending={isBaselineLookupPending}
+            label="Baseline"
+            trace={baseline}
+          />
+          <CompareSelectionCard
+            isPending={isCandidateLookupPending}
+            label="Candidate"
+            trace={candidate}
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => swapCompare()}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100"
+          >
+            Swap
+          </button>
+          <button
+            type="button"
+            onClick={() => clearCompare()}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100"
+          >
+            Clear
+          </button>
+          {canOpenComparison ? (
+            <Link
+              to={compareHref}
+              state={{ returnTo: currentSessionDetailUrl }}
+              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-sky-500 dark:hover:bg-sky-400"
+            >
+              Open comparison
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="cursor-not-allowed rounded-md bg-slate-200 px-3 py-2 text-sm font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+              title={
+                hasRunningSelection
+                  ? 'Both selected traces must be terminal before comparison can open'
+                  : 'Both selections must resolve before comparison can open'
+              }
+            >
+              Open comparison
+            </button>
+          )}
+        </div>
+      </div>
+
+      {(isBaselineLookupPending || isCandidateLookupPending || hasRunningSelection) ? (
+        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+          {isBaselineLookupPending || isCandidateLookupPending
+            ? 'Resolving selected trace details...'
+            : 'Running traces stay visible here, but comparison remains disabled until they finish.'}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function CompareSelectionCard({
+  label,
+  trace,
+  isPending,
+}: {
+  label: string;
+  trace?: CompareSelectedTrace;
+  isPending: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+        {label}
+      </p>
+      {isPending ? (
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading trace…</p>
+      ) : trace ? (
+        <div className="mt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{trace.name}</p>
+            <StatusBadge status={trace.status} />
+          </div>
+          {trace.trace_id ? (
+            <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{trace.trace_id}</p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">No trace selected</p>
+      )}
+    </div>
+  );
+}
+
+function CompareRoleButton({
+  label,
+  disabled,
+  isSelected,
+  onClick,
+  title,
+}: {
+  label: string;
+  disabled: boolean;
+  isSelected: boolean;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={title}
+      className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+        disabled
+          ? 'cursor-not-allowed border-slate-200 text-slate-400 dark:border-slate-800 dark:text-slate-500'
+          : isSelected
+            ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-100'
+            : 'border-slate-300 text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -686,14 +1244,19 @@ function getSemanticSnippet(trace: SessionNarrativeTrace): string | null {
 }
 
 function SessionTraceRow({
+  compare,
+  assignCompareRole,
   trace,
   returnTo,
 }: {
+  compare: SessionDetailCompareState;
+  assignCompareRole: (role: CompareRole, traceId: string, mode?: HistoryMode) => void;
   trace: Trace;
   returnTo: string;
 }) {
   const duration = calculateDuration(trace.started_at, trace.ended_at);
   const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
+  const isSelectable = isTerminalTraceStatus(trace.status);
 
   return (
     <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
@@ -705,6 +1268,22 @@ function SessionTraceRow({
         >
           {trace.name}
         </Link>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <CompareRoleButton
+            disabled={!isSelectable}
+            isSelected={compare.baseline_trace_id === trace.id}
+            label="Set as baseline"
+            onClick={() => assignCompareRole('baseline', trace.id)}
+            title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
+          />
+          <CompareRoleButton
+            disabled={!isSelectable}
+            isSelected={compare.candidate_trace_id === trace.id}
+            label="Set as candidate"
+            onClick={() => assignCompareRole('candidate', trace.id)}
+            title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
+          />
+        </div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap align-top">
         <StatusBadge status={trace.status} />

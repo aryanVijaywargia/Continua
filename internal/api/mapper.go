@@ -330,6 +330,35 @@ type sessionNarrativeResponse struct {
 	Traces  []SessionNarrativeTrace `json:"traces"`
 }
 
+type sessionCompareResponse struct {
+	Session   CompareSessionHeader     `json:"session"`
+	Baseline  CompareTraceHeader       `json:"baseline"`
+	Candidate CompareTraceHeader       `json:"candidate"`
+	Summary   CompareSummary           `json:"summary"`
+	SpanDiffs []sessionCompareSpanDiff `json:"span_diffs"`
+}
+
+type sessionCompareSpanDiff struct {
+	DiffStatus     CompareDiffStatus            `json:"diff_status"`
+	MatchSource    *CompareMatchSource          `json:"match_source"`
+	MatchReason    *string                      `json:"match_reason"`
+	ChangedFields  []string                     `json:"changed_fields"`
+	BaselineSpan   *CompareSpanSummary          `json:"baseline_span"`
+	CandidateSpan  *CompareSpanSummary          `json:"candidate_span"`
+	SemanticGroups []sessionCompareSemanticDiff `json:"semantic_groups"`
+	Depth          int                          `json:"depth"`
+}
+
+type sessionCompareSemanticDiff struct {
+	EventType      CompareSemanticEventType `json:"event_type"`
+	DiffStatus     CompareDiffStatus        `json:"diff_status"`
+	MatchSource    *CompareMatchSource      `json:"match_source"`
+	MatchReason    *string                  `json:"match_reason"`
+	ChangedFields  []string                 `json:"changed_fields"`
+	BaselineEvent  *CompareSemanticSummary  `json:"baseline_event"`
+	CandidateEvent *CompareSemanticSummary  `json:"candidate_event"`
+}
+
 type sessionNarrativeSummary struct {
 	CompletedTraceCount int        `json:"completed_trace_count"`
 	ExplicitLinkCount   int        `json:"explicit_link_count"`
@@ -357,6 +386,165 @@ func sessionNarrativeToAPI(narrative *store.SessionNarrative) sessionNarrativeRe
 		Summary: sessionNarrativeSummaryToAPI(&narrative.Summary),
 		Traces:  traces,
 	}
+}
+
+func sessionCompareToAPI(comparison *store.SessionComparison) sessionCompareResponse {
+	spanDiffs := make([]sessionCompareSpanDiff, len(comparison.SpanDiffs))
+	for i := range comparison.SpanDiffs {
+		spanDiffs[i] = sessionCompareSpanDiffToAPI(&comparison.SpanDiffs[i])
+	}
+
+	return sessionCompareResponse{
+		Session:   compareSessionHeaderToAPI(&comparison.Session),
+		Baseline:  compareTraceHeaderToAPI(&comparison.Baseline),
+		Candidate: compareTraceHeaderToAPI(&comparison.Candidate),
+		Summary:   compareSummaryToAPI(&comparison.Summary),
+		SpanDiffs: spanDiffs,
+	}
+}
+
+func compareSessionHeaderToAPI(header *store.SessionCompareSessionHeader) CompareSessionHeader {
+	return CompareSessionHeader{
+		Id:         header.ID,
+		ExternalId: header.ExternalID,
+		Name:       header.Name,
+	}
+}
+
+func compareTraceHeaderToAPI(header *store.SessionCompareTraceHeader) CompareTraceHeader {
+	return CompareTraceHeader{
+		Id:             header.ID,
+		TraceId:        header.TraceID,
+		Name:           header.Name,
+		Status:         CompareTraceHeaderStatus(header.Status),
+		UserId:         header.UserID,
+		StartedAt:      header.StartedAt,
+		EndedAt:        header.EndedAt,
+		DurationMs:     header.DurationMs,
+		ErrorCount:     header.ErrorCount,
+		TotalCostUsd:   header.TotalCostUsd,
+		TotalTokensIn:  header.TotalTokensIn,
+		TotalTokensOut: header.TotalTokensOut,
+	}
+}
+
+func compareSummaryToAPI(summary *store.SessionCompareSummary) CompareSummary {
+	return CompareSummary{
+		TotalSpansBaseline:      summary.TotalSpansBaseline,
+		TotalSpansCandidate:     summary.TotalSpansCandidate,
+		MatchedSpans:            summary.MatchedSpans,
+		UnmatchedBaselineSpans:  summary.UnmatchedBaselineSpans,
+		UnmatchedCandidateSpans: summary.UnmatchedCandidateSpans,
+		HeuristicMatches:        summary.HeuristicMatches,
+		DurationDeltaMs:         summary.DurationDeltaMs,
+		TokensInDelta:           summary.TokensInDelta,
+		TokensOutDelta:          summary.TokensOutDelta,
+		CostDeltaUsd:            summary.CostDeltaUsd,
+		TotalSemanticBaseline:   summary.TotalSemanticBaseline,
+		TotalSemanticCandidate:  summary.TotalSemanticCandidate,
+	}
+}
+
+func sessionCompareSpanDiffToAPI(row *store.SessionCompareSpanDiffRow) sessionCompareSpanDiff {
+	semanticGroups := make([]sessionCompareSemanticDiff, len(row.SemanticGroups))
+	for i := range row.SemanticGroups {
+		semanticGroups[i] = sessionCompareSemanticDiffToAPI(&row.SemanticGroups[i])
+	}
+
+	return sessionCompareSpanDiff{
+		DiffStatus:     CompareDiffStatus(row.DiffStatus),
+		MatchSource:    compareMatchSourceToAPI(row.MatchSource),
+		MatchReason:    row.MatchReason,
+		ChangedFields:  append([]string(nil), row.ChangedFields...),
+		BaselineSpan:   compareSpanSummaryToAPI(row.BaselineSpan),
+		CandidateSpan:  compareSpanSummaryToAPI(row.CandidateSpan),
+		SemanticGroups: semanticGroups,
+		Depth:          row.Depth,
+	}
+}
+
+func sessionCompareSemanticDiffToAPI(group *store.SessionCompareSemanticDiffGroup) sessionCompareSemanticDiff {
+	return sessionCompareSemanticDiff{
+		EventType:      CompareSemanticEventType(group.EventType),
+		DiffStatus:     CompareDiffStatus(group.DiffStatus),
+		MatchSource:    compareMatchSourceToAPI(group.MatchSource),
+		MatchReason:    group.MatchReason,
+		ChangedFields:  append([]string(nil), group.ChangedFields...),
+		BaselineEvent:  compareSemanticSummaryToAPI(group.BaselineEvent),
+		CandidateEvent: compareSemanticSummaryToAPI(group.CandidateEvent),
+	}
+}
+
+func compareSpanSummaryToAPI(summary *store.SessionCompareSpanSummary) *CompareSpanSummary {
+	if summary == nil {
+		return nil
+	}
+
+	apiSummary := CompareSpanSummary{
+		Id:           summary.ID,
+		SpanId:       summary.SpanID,
+		ParentSpanId: summary.ParentSpanID,
+		Name:         summary.Name,
+		Kind:         CompareSpanSummaryKind(summary.Kind),
+		Status:       CompareSpanSummaryStatus(summary.Status),
+		StartedAt:    summary.StartedAt,
+		EndedAt:      summary.EndedAt,
+		ErrorMessage: summary.ErrorMessage,
+		Model:        summary.Model,
+	}
+
+	if summary.LatencyMs != nil {
+		latencyMs := int(*summary.LatencyMs)
+		apiSummary.LatencyMs = &latencyMs
+	}
+	if summary.TokensIn != nil {
+		tokensIn := int(*summary.TokensIn)
+		apiSummary.TokensIn = &tokensIn
+	}
+	if summary.TokensOut != nil {
+		tokensOut := int(*summary.TokensOut)
+		apiSummary.TokensOut = &tokensOut
+	}
+	if summary.CostUsd != nil {
+		costUsd := *summary.CostUsd
+		apiSummary.CostUsd = &costUsd
+	}
+
+	return &apiSummary
+}
+
+func compareSemanticSummaryToAPI(summary *store.SessionCompareSemanticSummary) *CompareSemanticSummary {
+	if summary == nil {
+		return nil
+	}
+
+	apiSummary := CompareSemanticSummary{
+		Id:        summary.ID,
+		SpanId:    summary.SpanID,
+		SpanName:  summary.SpanName,
+		EventType: CompareSemanticEventType(summary.EventType),
+		Timestamp: summary.Timestamp,
+		Message:   summary.Message,
+	}
+
+	if len(summary.Payload) > 0 {
+		payload := make(map[string]interface{}, len(summary.Payload))
+		for key, value := range summary.Payload {
+			payload[key] = value
+		}
+		apiSummary.Payload = &payload
+	}
+
+	return &apiSummary
+}
+
+func compareMatchSourceToAPI(matchSource *store.SessionCompareMatchSource) *CompareMatchSource {
+	if matchSource == nil {
+		return nil
+	}
+
+	value := CompareMatchSource(*matchSource)
+	return &value
 }
 
 func sessionNarrativeSummaryToAPI(summary *store.SessionNarrativeSummary) sessionNarrativeSummary {

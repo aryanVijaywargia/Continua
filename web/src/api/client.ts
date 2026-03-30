@@ -49,7 +49,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     public code: string,
-    message: string
+    message: string,
+    public detail?: unknown
   ) {
     super(message);
     this.name = 'ApiError';
@@ -58,6 +59,27 @@ export class ApiError extends Error {
 
 export function isAuthError(error: unknown): error is ApiError {
   return error instanceof ApiError && error.status === 401;
+}
+
+export interface ComparisonTooLargeErrorDetail {
+  baseline_span_count: number;
+  candidate_span_count: number;
+  baseline_semantic_count: number;
+  candidate_semantic_count: number;
+  max_spans: number;
+  max_semantic_events: number;
+}
+
+export function isComparisonTooLargeError(
+  error: unknown
+): error is ApiError & { detail: ComparisonTooLargeErrorDetail } {
+  return (
+    error instanceof ApiError &&
+    error.status === 422 &&
+    error.code === 'comparison_too_large' &&
+    typeof error.detail === 'object' &&
+    error.detail !== null
+  );
 }
 
 /**
@@ -89,7 +111,12 @@ export async function fetchAPI<T>(
       throw new ApiError(404, 'not_found', 'Resource not found');
     }
     const error = await response.json().catch(() => ({ message: 'Unknown error' }));
-    throw new ApiError(response.status, error.code || 'error', error.message || 'Request failed');
+    throw new ApiError(
+      response.status,
+      error.code || 'error',
+      error.message || 'Request failed',
+      error.detail
+    );
   }
 
   return response.json();
@@ -267,6 +294,98 @@ export interface SessionNarrative {
   traces: SessionNarrativeTrace[];
 }
 
+export interface CompareTraceHeader {
+  id: string;
+  trace_id: string;
+  name: string;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  user_id?: string;
+  started_at: string;
+  ended_at?: string;
+  duration_ms?: number;
+  error_count?: number;
+  total_cost_usd?: number;
+  total_tokens_in?: number;
+  total_tokens_out?: number;
+}
+
+export interface CompareSessionHeader {
+  id: string;
+  external_id: string;
+  name?: string;
+}
+
+export interface CompareSummary {
+  total_spans_baseline: number;
+  total_spans_candidate: number;
+  matched_spans: number;
+  unmatched_baseline_spans: number;
+  unmatched_candidate_spans: number;
+  heuristic_matches: number;
+  duration_delta_ms: number;
+  tokens_in_delta: number;
+  tokens_out_delta: number;
+  cost_delta_usd: number;
+  total_semantic_baseline: number;
+  total_semantic_candidate: number;
+}
+
+export interface CompareSpanSummary {
+  id: string;
+  span_id: string;
+  parent_span_id?: string;
+  name: string;
+  kind: 'LLM' | 'TOOL' | 'CHAIN' | 'AGENT' | 'CUSTOM';
+  status: 'SCHEDULED' | 'STARTED' | 'COMPLETED' | 'FAILED';
+  started_at: string;
+  ended_at?: string;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_usd?: number;
+  latency_ms?: number;
+  error_message?: string;
+  model?: string;
+}
+
+export interface CompareSemanticSummary {
+  id: string;
+  span_id?: string;
+  span_name?: string;
+  event_type: 'decision' | 'effect' | 'wait';
+  timestamp: string;
+  message?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface SemanticDiffGroup {
+  event_type: 'decision' | 'effect' | 'wait';
+  diff_status: 'unchanged' | 'changed' | 'baseline_only' | 'candidate_only';
+  match_source?: 'stable_id' | 'heuristic';
+  match_reason?: string;
+  changed_fields: string[];
+  baseline_event: CompareSemanticSummary | null;
+  candidate_event: CompareSemanticSummary | null;
+}
+
+export interface SpanDiffRow {
+  diff_status: 'unchanged' | 'changed' | 'baseline_only' | 'candidate_only';
+  match_source?: 'stable_id' | 'heuristic';
+  match_reason?: string;
+  changed_fields: string[];
+  baseline_span: CompareSpanSummary | null;
+  candidate_span: CompareSpanSummary | null;
+  semantic_groups: SemanticDiffGroup[];
+  depth: number;
+}
+
+export interface SessionCompareResponse {
+  session: CompareSessionHeader;
+  baseline: CompareTraceHeader;
+  candidate: CompareTraceHeader;
+  summary: CompareSummary;
+  span_diffs: SpanDiffRow[];
+}
+
 /**
  * Fetch traces with filters and pagination.
  */
@@ -338,4 +457,17 @@ export async function fetchSession(id: string): Promise<Session> {
  */
 export async function fetchSessionNarrative(id: string): Promise<SessionNarrative> {
   return fetchAPI<SessionNarrative>(`/api/sessions/${id}/narrative`);
+}
+
+export async function fetchSessionComparison(
+  sessionId: string,
+  baselineTraceId: string,
+  candidateTraceId: string
+): Promise<SessionCompareResponse> {
+  const params = new URLSearchParams({
+    baseline_trace_id: baselineTraceId,
+    candidate_trace_id: candidateTraceId,
+  });
+
+  return fetchAPI<SessionCompareResponse>(`/api/sessions/${sessionId}/compare?${params.toString()}`);
 }

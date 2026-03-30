@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -103,4 +104,54 @@ func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id 
 	}
 
 	writeJSON(w, http.StatusOK, sessionNarrativeToAPI(&narrative))
+}
+
+// GetSessionCompare returns a deterministic comparison for two traces in a session.
+func (s *Server) GetSessionCompare(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionCompareParams) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+
+	comparison, err := s.store.BuildSessionComparison(
+		r.Context(),
+		projectID,
+		id,
+		params.BaselineTraceId,
+		params.CandidateTraceId,
+	)
+	if store.IsNotFound(err) {
+		writeError(w, http.StatusNotFound, "not_found", "Session or trace not found")
+		return
+	}
+
+	var validationErr *store.SessionCompareValidationError
+	if errors.As(err, &validationErr) {
+		writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)
+		return
+	}
+
+	var tooLargeErr *store.SessionCompareTooLargeError
+	if errors.As(err, &tooLargeErr) {
+		writeJSON(w, http.StatusUnprocessableEntity, ComparisonTooLargeError{
+			Code:    "comparison_too_large",
+			Message: tooLargeErr.Message,
+			Detail: ComparisonTooLargeErrorDetail{
+				BaselineSpanCount:      tooLargeErr.Detail.BaselineSpanCount,
+				CandidateSpanCount:     tooLargeErr.Detail.CandidateSpanCount,
+				BaselineSemanticCount:  tooLargeErr.Detail.BaselineSemanticCount,
+				CandidateSemanticCount: tooLargeErr.Detail.CandidateSemanticCount,
+				MaxSpans:               tooLargeErr.Detail.MaxSpans,
+				MaxSemanticEvents:      tooLargeErr.Detail.MaxSemanticEvents,
+			},
+		})
+		return
+	}
+
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session comparison")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sessionCompareToAPI(&comparison))
 }

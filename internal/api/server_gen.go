@@ -26,6 +26,51 @@ const (
 	BatchStatusResponseStatusProcessing BatchStatusResponseStatus = "processing"
 )
 
+// Defines values for CompareDiffStatus.
+const (
+	BaselineOnly  CompareDiffStatus = "baseline_only"
+	CandidateOnly CompareDiffStatus = "candidate_only"
+	Changed       CompareDiffStatus = "changed"
+	Unchanged     CompareDiffStatus = "unchanged"
+)
+
+// Defines values for CompareMatchSource.
+const (
+	Heuristic CompareMatchSource = "heuristic"
+	StableId  CompareMatchSource = "stable_id"
+)
+
+// Defines values for CompareSemanticEventType.
+const (
+	CompareSemanticEventTypeDecision CompareSemanticEventType = "decision"
+	CompareSemanticEventTypeEffect   CompareSemanticEventType = "effect"
+	CompareSemanticEventTypeWait     CompareSemanticEventType = "wait"
+)
+
+// Defines values for CompareSpanSummaryKind.
+const (
+	CompareSpanSummaryKindAGENT  CompareSpanSummaryKind = "AGENT"
+	CompareSpanSummaryKindCHAIN  CompareSpanSummaryKind = "CHAIN"
+	CompareSpanSummaryKindCUSTOM CompareSpanSummaryKind = "CUSTOM"
+	CompareSpanSummaryKindLLM    CompareSpanSummaryKind = "LLM"
+	CompareSpanSummaryKindTOOL   CompareSpanSummaryKind = "TOOL"
+)
+
+// Defines values for CompareSpanSummaryStatus.
+const (
+	CompareSpanSummaryStatusCOMPLETED CompareSpanSummaryStatus = "COMPLETED"
+	CompareSpanSummaryStatusFAILED    CompareSpanSummaryStatus = "FAILED"
+	CompareSpanSummaryStatusSCHEDULED CompareSpanSummaryStatus = "SCHEDULED"
+	CompareSpanSummaryStatusSTARTED   CompareSpanSummaryStatus = "STARTED"
+)
+
+// Defines values for CompareTraceHeaderStatus.
+const (
+	CompareTraceHeaderStatusCOMPLETED CompareTraceHeaderStatus = "COMPLETED"
+	CompareTraceHeaderStatusFAILED    CompareTraceHeaderStatus = "FAILED"
+	CompareTraceHeaderStatusRUNNING   CompareTraceHeaderStatus = "RUNNING"
+)
+
 // Defines values for IngestEventLevel.
 const (
 	IngestEventLevelDebug   IngestEventLevel = "debug"
@@ -73,14 +118,14 @@ const (
 
 // Defines values for IngestSpanInputType.
 const (
-	IngestSpanInputTypeAgent      IngestSpanInputType = "agent"
-	IngestSpanInputTypeChain      IngestSpanInputType = "chain"
-	IngestSpanInputTypeDefault    IngestSpanInputType = "default"
-	IngestSpanInputTypeEmbedding  IngestSpanInputType = "embedding"
-	IngestSpanInputTypeGeneration IngestSpanInputType = "generation"
-	IngestSpanInputTypeLlm        IngestSpanInputType = "llm"
-	IngestSpanInputTypeRetrieval  IngestSpanInputType = "retrieval"
-	IngestSpanInputTypeTool       IngestSpanInputType = "tool"
+	Agent      IngestSpanInputType = "agent"
+	Chain      IngestSpanInputType = "chain"
+	Default    IngestSpanInputType = "default"
+	Embedding  IngestSpanInputType = "embedding"
+	Generation IngestSpanInputType = "generation"
+	Llm        IngestSpanInputType = "llm"
+	Retrieval  IngestSpanInputType = "retrieval"
+	Tool       IngestSpanInputType = "tool"
 )
 
 // Defines values for IngestTraceInputStatus.
@@ -106,11 +151,11 @@ const (
 
 // Defines values for SpanKind.
 const (
-	AGENT  SpanKind = "AGENT"
-	CHAIN  SpanKind = "CHAIN"
-	CUSTOM SpanKind = "CUSTOM"
-	LLM    SpanKind = "LLM"
-	TOOL   SpanKind = "TOOL"
+	SpanKindAGENT  SpanKind = "AGENT"
+	SpanKindCHAIN  SpanKind = "CHAIN"
+	SpanKindCUSTOM SpanKind = "CUSTOM"
+	SpanKindLLM    SpanKind = "LLM"
+	SpanKindTOOL   SpanKind = "TOOL"
 )
 
 // Defines values for SpanStatus.
@@ -223,6 +268,109 @@ type BatchStatusResponse struct {
 
 // BatchStatusResponseStatus defines model for BatchStatusResponse.Status.
 type BatchStatusResponseStatus string
+
+// CompareDiffStatus defines model for CompareDiffStatus.
+type CompareDiffStatus string
+
+// CompareMatchSource defines model for CompareMatchSource.
+type CompareMatchSource string
+
+// CompareSemanticEventType defines model for CompareSemanticEventType.
+type CompareSemanticEventType string
+
+// CompareSemanticSummary defines model for CompareSemanticSummary.
+type CompareSemanticSummary struct {
+	EventType CompareSemanticEventType `json:"event_type"`
+	Id        string                   `json:"id"`
+	Message   *string                  `json:"message,omitempty"`
+	Payload   *map[string]interface{}  `json:"payload,omitempty"`
+	SpanId    *string                  `json:"span_id,omitempty"`
+	SpanName  *string                  `json:"span_name,omitempty"`
+	Timestamp time.Time                `json:"timestamp"`
+}
+
+// CompareSessionHeader defines model for CompareSessionHeader.
+type CompareSessionHeader struct {
+	ExternalId string             `json:"external_id"`
+	Id         openapi_types.UUID `json:"id"`
+	Name       *string            `json:"name,omitempty"`
+}
+
+// CompareSpanSummary defines model for CompareSpanSummary.
+type CompareSpanSummary struct {
+	CostUsd      *float32                 `json:"cost_usd,omitempty"`
+	EndedAt      *time.Time               `json:"ended_at,omitempty"`
+	ErrorMessage *string                  `json:"error_message,omitempty"`
+	Id           openapi_types.UUID       `json:"id"`
+	Kind         CompareSpanSummaryKind   `json:"kind"`
+	LatencyMs    *int                     `json:"latency_ms,omitempty"`
+	Model        *string                  `json:"model,omitempty"`
+	Name         string                   `json:"name"`
+	ParentSpanId *string                  `json:"parent_span_id,omitempty"`
+	SpanId       string                   `json:"span_id"`
+	StartedAt    time.Time                `json:"started_at"`
+	Status       CompareSpanSummaryStatus `json:"status"`
+	TokensIn     *int                     `json:"tokens_in,omitempty"`
+	TokensOut    *int                     `json:"tokens_out,omitempty"`
+}
+
+// CompareSpanSummaryKind defines model for CompareSpanSummary.Kind.
+type CompareSpanSummaryKind string
+
+// CompareSpanSummaryStatus defines model for CompareSpanSummary.Status.
+type CompareSpanSummaryStatus string
+
+// CompareSummary defines model for CompareSummary.
+type CompareSummary struct {
+	CostDeltaUsd            float32 `json:"cost_delta_usd"`
+	DurationDeltaMs         int64   `json:"duration_delta_ms"`
+	HeuristicMatches        int     `json:"heuristic_matches"`
+	MatchedSpans            int     `json:"matched_spans"`
+	TokensInDelta           int64   `json:"tokens_in_delta"`
+	TokensOutDelta          int64   `json:"tokens_out_delta"`
+	TotalSemanticBaseline   int     `json:"total_semantic_baseline"`
+	TotalSemanticCandidate  int     `json:"total_semantic_candidate"`
+	TotalSpansBaseline      int     `json:"total_spans_baseline"`
+	TotalSpansCandidate     int     `json:"total_spans_candidate"`
+	UnmatchedBaselineSpans  int     `json:"unmatched_baseline_spans"`
+	UnmatchedCandidateSpans int     `json:"unmatched_candidate_spans"`
+}
+
+// CompareTraceHeader defines model for CompareTraceHeader.
+type CompareTraceHeader struct {
+	DurationMs     *int64                   `json:"duration_ms,omitempty"`
+	EndedAt        *time.Time               `json:"ended_at,omitempty"`
+	ErrorCount     *int                     `json:"error_count,omitempty"`
+	Id             openapi_types.UUID       `json:"id"`
+	Name           string                   `json:"name"`
+	StartedAt      time.Time                `json:"started_at"`
+	Status         CompareTraceHeaderStatus `json:"status"`
+	TotalCostUsd   *float32                 `json:"total_cost_usd,omitempty"`
+	TotalTokensIn  *int64                   `json:"total_tokens_in,omitempty"`
+	TotalTokensOut *int64                   `json:"total_tokens_out,omitempty"`
+	TraceId        string                   `json:"trace_id"`
+	UserId         *string                  `json:"user_id,omitempty"`
+}
+
+// CompareTraceHeaderStatus defines model for CompareTraceHeader.Status.
+type CompareTraceHeaderStatus string
+
+// ComparisonTooLargeError defines model for ComparisonTooLargeError.
+type ComparisonTooLargeError struct {
+	Code    string                        `json:"code"`
+	Detail  ComparisonTooLargeErrorDetail `json:"detail"`
+	Message string                        `json:"message"`
+}
+
+// ComparisonTooLargeErrorDetail defines model for ComparisonTooLargeErrorDetail.
+type ComparisonTooLargeErrorDetail struct {
+	BaselineSemanticCount  int `json:"baseline_semantic_count"`
+	BaselineSpanCount      int `json:"baseline_span_count"`
+	CandidateSemanticCount int `json:"candidate_semantic_count"`
+	CandidateSpanCount     int `json:"candidate_span_count"`
+	MaxSemanticEvents      int `json:"max_semantic_events"`
+	MaxSpans               int `json:"max_spans"`
+}
 
 // Error defines model for Error.
 type Error struct {
@@ -362,6 +510,17 @@ type IngestTraceInput struct {
 // IngestTraceInputStatus defines model for IngestTraceInput.Status.
 type IngestTraceInputStatus string
 
+// SemanticDiffGroup defines model for SemanticDiffGroup.
+type SemanticDiffGroup struct {
+	BaselineEvent  *CompareSemanticSummary   `json:"baseline_event"`
+	CandidateEvent *CompareSemanticSummary   `json:"candidate_event"`
+	ChangedFields  []string                 `json:"changed_fields"`
+	DiffStatus     CompareDiffStatus        `json:"diff_status"`
+	EventType      CompareSemanticEventType `json:"event_type"`
+	MatchReason    *string                  `json:"match_reason,omitempty"`
+	MatchSource    *CompareMatchSource      `json:"match_source,omitempty"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -377,6 +536,15 @@ type Session struct {
 
 	// UserId User identifier for this session
 	UserId *string `json:"user_id,omitempty"`
+}
+
+// SessionCompareResponse defines model for SessionCompareResponse.
+type SessionCompareResponse struct {
+	Baseline  CompareTraceHeader   `json:"baseline"`
+	Candidate CompareTraceHeader   `json:"candidate"`
+	Session   CompareSessionHeader `json:"session"`
+	SpanDiffs []SpanDiffRow        `json:"span_diffs"`
+	Summary   CompareSummary       `json:"summary"`
 }
 
 // SessionList defines model for SessionList.
@@ -518,6 +686,18 @@ type SpanKind string
 // SpanStatus defines model for Span.Status.
 type SpanStatus string
 
+// SpanDiffRow defines model for SpanDiffRow.
+type SpanDiffRow struct {
+	BaselineSpan   *CompareSpanSummary  `json:"baseline_span"`
+	CandidateSpan  *CompareSpanSummary  `json:"candidate_span"`
+	ChangedFields  []string            `json:"changed_fields"`
+	Depth          int                 `json:"depth"`
+	DiffStatus     CompareDiffStatus   `json:"diff_status"`
+	MatchReason    *string             `json:"match_reason,omitempty"`
+	MatchSource    *CompareMatchSource `json:"match_source,omitempty"`
+	SemanticGroups []SemanticDiffGroup `json:"semantic_groups"`
+}
+
 // SpanList defines model for SpanList.
 type SpanList struct {
 	Spans []Span `json:"spans"`
@@ -654,6 +834,12 @@ type ListSessionsParamsSortBy string
 // ListSessionsParamsSortDir defines parameters for ListSessions.
 type ListSessionsParamsSortDir string
 
+// GetSessionCompareParams defines parameters for GetSessionCompare.
+type GetSessionCompareParams struct {
+	BaselineTraceId  openapi_types.UUID `form:"baseline_trace_id" json:"baseline_trace_id"`
+	CandidateTraceId openapi_types.UUID `form:"candidate_trace_id" json:"candidate_trace_id"`
+}
+
 // ListTracesParams defines parameters for ListTraces.
 type ListTracesParams struct {
 	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
@@ -728,6 +914,9 @@ type ServerInterface interface {
 	// Get a session by ID
 	// (GET /api/sessions/{id})
 	GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Compare two traces within a session
+	// (GET /api/sessions/{id}/compare)
+	GetSessionCompare(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionCompareParams)
 	// Get a session narrative by ID
 	// (GET /api/sessions/{id}/narrative)
 	GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -764,6 +953,12 @@ func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request, para
 // Get a session by ID
 // (GET /api/sessions/{id})
 func (_ Unimplemented) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Compare two traces within a session
+// (GET /api/sessions/{id}/compare)
+func (_ Unimplemented) GetSessionCompare(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionCompareParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -913,6 +1108,70 @@ func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetSession(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSessionCompare operation middleware
+func (siw *ServerInterfaceWrapper) GetSessionCompare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSessionCompareParams
+
+	// ------------- Required query parameter "baseline_trace_id" -------------
+
+	if paramValue := r.URL.Query().Get("baseline_trace_id"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "baseline_trace_id"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "baseline_trace_id", r.URL.Query(), &params.BaselineTraceId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "baseline_trace_id", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "candidate_trace_id" -------------
+
+	if paramValue := r.URL.Query().Get("candidate_trace_id"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "candidate_trace_id"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "candidate_trace_id", r.URL.Query(), &params.CandidateTraceId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "candidate_trace_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSessionCompare(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1389,6 +1648,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/sessions/{id}", wrapper.GetSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/sessions/{id}/compare", wrapper.GetSessionCompare)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/sessions/{id}/narrative", wrapper.GetSessionNarrative)

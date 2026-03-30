@@ -430,6 +430,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/sessions/{id}/compare:
+    get:
+      operationId: getSessionCompare
+      summary: Compare two traces within a session
+      tags: [Sessions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: baseline_trace_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: candidate_trace_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session trace comparison details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionCompareResponse'
+        '400':
+          description: Invalid comparison request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Session or trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Comparison exceeds the supported span or semantic event ceiling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonTooLargeError'
+
 components:
   securitySchemes:
     apiKey:
@@ -786,6 +842,292 @@ components:
         link_kind:
           type: string
           description: Optional metadata-provided lineage classification string.
+
+    ComparisonTooLargeError:
+      type: object
+      required: [code, message, detail]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        detail:
+          $ref: '#/components/schemas/ComparisonTooLargeErrorDetail'
+
+    ComparisonTooLargeErrorDetail:
+      type: object
+      required:
+        [
+          baseline_span_count,
+          candidate_span_count,
+          baseline_semantic_count,
+          candidate_semantic_count,
+          max_spans,
+          max_semantic_events,
+        ]
+      properties:
+        baseline_span_count:
+          type: integer
+        candidate_span_count:
+          type: integer
+        baseline_semantic_count:
+          type: integer
+        candidate_semantic_count:
+          type: integer
+        max_spans:
+          type: integer
+        max_semantic_events:
+          type: integer
+
+    SessionCompareResponse:
+      type: object
+      required: [session, baseline, candidate, summary, span_diffs]
+      properties:
+        session:
+          $ref: '#/components/schemas/CompareSessionHeader'
+        baseline:
+          $ref: '#/components/schemas/CompareTraceHeader'
+        candidate:
+          $ref: '#/components/schemas/CompareTraceHeader'
+        summary:
+          $ref: '#/components/schemas/CompareSummary'
+        span_diffs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpanDiffRow'
+
+    CompareSessionHeader:
+      type: object
+      required: [id, external_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        name:
+          type: string
+
+    CompareTraceHeader:
+      type: object
+      required: [id, trace_id, name, status, started_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED]
+        user_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+        total_cost_usd:
+          type: number
+        total_tokens_in:
+          type: integer
+          format: int64
+        total_tokens_out:
+          type: integer
+          format: int64
+
+    CompareSummary:
+      type: object
+      required:
+        [
+          total_spans_baseline,
+          total_spans_candidate,
+          matched_spans,
+          unmatched_baseline_spans,
+          unmatched_candidate_spans,
+          heuristic_matches,
+          duration_delta_ms,
+          tokens_in_delta,
+          tokens_out_delta,
+          cost_delta_usd,
+          total_semantic_baseline,
+          total_semantic_candidate,
+        ]
+      properties:
+        total_spans_baseline:
+          type: integer
+        total_spans_candidate:
+          type: integer
+        matched_spans:
+          type: integer
+        unmatched_baseline_spans:
+          type: integer
+        unmatched_candidate_spans:
+          type: integer
+        heuristic_matches:
+          type: integer
+        duration_delta_ms:
+          type: integer
+          format: int64
+        tokens_in_delta:
+          type: integer
+          format: int64
+        tokens_out_delta:
+          type: integer
+          format: int64
+        cost_delta_usd:
+          type: number
+        total_semantic_baseline:
+          type: integer
+        total_semantic_candidate:
+          type: integer
+
+    CompareDiffStatus:
+      type: string
+      enum: [unchanged, changed, baseline_only, candidate_only]
+
+    CompareMatchSource:
+      type: string
+      enum: [stable_id, heuristic]
+
+    CompareSemanticEventType:
+      type: string
+      enum: [decision, effect, wait]
+
+    SpanDiffRow:
+      type: object
+      required:
+        [
+          diff_status,
+          changed_fields,
+          baseline_span,
+          candidate_span,
+          semantic_groups,
+          depth,
+        ]
+      properties:
+        diff_status:
+          $ref: '#/components/schemas/CompareDiffStatus'
+        match_source:
+          $ref: '#/components/schemas/CompareMatchSource'
+        match_reason:
+          type: string
+        changed_fields:
+          type: array
+          items:
+            type: string
+        baseline_span:
+          allOf:
+            - $ref: '#/components/schemas/CompareSpanSummary'
+          x-nullable: true
+        candidate_span:
+          allOf:
+            - $ref: '#/components/schemas/CompareSpanSummary'
+          x-nullable: true
+        semantic_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SemanticDiffGroup'
+        depth:
+          type: integer
+
+    SemanticDiffGroup:
+      type: object
+      required:
+        [
+          event_type,
+          diff_status,
+          changed_fields,
+          baseline_event,
+          candidate_event,
+        ]
+      properties:
+        event_type:
+          $ref: '#/components/schemas/CompareSemanticEventType'
+        diff_status:
+          $ref: '#/components/schemas/CompareDiffStatus'
+        match_source:
+          $ref: '#/components/schemas/CompareMatchSource'
+        match_reason:
+          type: string
+        changed_fields:
+          type: array
+          items:
+            type: string
+        baseline_event:
+          allOf:
+            - $ref: '#/components/schemas/CompareSemanticSummary'
+          x-nullable: true
+        candidate_event:
+          allOf:
+            - $ref: '#/components/schemas/CompareSemanticSummary'
+          x-nullable: true
+
+    CompareSpanSummary:
+      type: object
+      required: [id, span_id, name, kind, status, started_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        span_id:
+          type: string
+        parent_span_id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [LLM, TOOL, CHAIN, AGENT, CUSTOM]
+        status:
+          type: string
+          enum: [SCHEDULED, STARTED, COMPLETED, FAILED]
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        tokens_in:
+          type: integer
+        tokens_out:
+          type: integer
+        cost_usd:
+          type: number
+        latency_ms:
+          type: integer
+        error_message:
+          type: string
+        model:
+          type: string
+
+    CompareSemanticSummary:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+        span_id:
+          type: string
+        span_name:
+          type: string
+        event_type:
+          $ref: '#/components/schemas/CompareSemanticEventType'
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+        payload:
+          type: object
 
     IngestRequest:
       type: object

@@ -166,6 +166,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compare two traces within a session */
+        get: operations["getSessionCompare"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -351,6 +368,126 @@ export interface components {
             trigger_span_id?: string;
             /** @description Optional metadata-provided lineage classification string. */
             link_kind?: string;
+        };
+        ComparisonTooLargeError: {
+            code: string;
+            message: string;
+            detail: components["schemas"]["ComparisonTooLargeErrorDetail"];
+        };
+        ComparisonTooLargeErrorDetail: {
+            baseline_span_count: number;
+            candidate_span_count: number;
+            baseline_semantic_count: number;
+            candidate_semantic_count: number;
+            max_spans: number;
+            max_semantic_events: number;
+        };
+        SessionCompareResponse: {
+            session: components["schemas"]["CompareSessionHeader"];
+            baseline: components["schemas"]["CompareTraceHeader"];
+            candidate: components["schemas"]["CompareTraceHeader"];
+            summary: components["schemas"]["CompareSummary"];
+            span_diffs: components["schemas"]["SpanDiffRow"][];
+        };
+        CompareSessionHeader: {
+            /** Format: uuid */
+            id: string;
+            external_id: string;
+            name?: string;
+        };
+        CompareTraceHeader: {
+            /** Format: uuid */
+            id: string;
+            trace_id: string;
+            name: string;
+            /** @enum {string} */
+            status: "RUNNING" | "COMPLETED" | "FAILED";
+            user_id?: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            ended_at?: string;
+            /** Format: int64 */
+            duration_ms?: number;
+            error_count?: number;
+            total_cost_usd?: number;
+            /** Format: int64 */
+            total_tokens_in?: number;
+            /** Format: int64 */
+            total_tokens_out?: number;
+        };
+        CompareSummary: {
+            total_spans_baseline: number;
+            total_spans_candidate: number;
+            matched_spans: number;
+            unmatched_baseline_spans: number;
+            unmatched_candidate_spans: number;
+            heuristic_matches: number;
+            /** Format: int64 */
+            duration_delta_ms: number;
+            /** Format: int64 */
+            tokens_in_delta: number;
+            /** Format: int64 */
+            tokens_out_delta: number;
+            cost_delta_usd: number;
+            total_semantic_baseline: number;
+            total_semantic_candidate: number;
+        };
+        /** @enum {string} */
+        CompareDiffStatus: "unchanged" | "changed" | "baseline_only" | "candidate_only";
+        /** @enum {string} */
+        CompareMatchSource: "stable_id" | "heuristic";
+        /** @enum {string} */
+        CompareSemanticEventType: "decision" | "effect" | "wait";
+        SpanDiffRow: {
+            diff_status: components["schemas"]["CompareDiffStatus"];
+            match_source?: components["schemas"]["CompareMatchSource"];
+            match_reason?: string;
+            changed_fields: string[];
+            baseline_span: components["schemas"]["CompareSpanSummary"] | null;
+            candidate_span: components["schemas"]["CompareSpanSummary"] | null;
+            semantic_groups: components["schemas"]["SemanticDiffGroup"][];
+            depth: number;
+        };
+        SemanticDiffGroup: {
+            event_type: components["schemas"]["CompareSemanticEventType"];
+            diff_status: components["schemas"]["CompareDiffStatus"];
+            match_source?: components["schemas"]["CompareMatchSource"];
+            match_reason?: string;
+            changed_fields: string[];
+            baseline_event: components["schemas"]["CompareSemanticSummary"] | null;
+            candidate_event: components["schemas"]["CompareSemanticSummary"] | null;
+        };
+        CompareSpanSummary: {
+            /** Format: uuid */
+            id: string;
+            span_id: string;
+            parent_span_id?: string;
+            name: string;
+            /** @enum {string} */
+            kind: "LLM" | "TOOL" | "CHAIN" | "AGENT" | "CUSTOM";
+            /** @enum {string} */
+            status: "SCHEDULED" | "STARTED" | "COMPLETED" | "FAILED";
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            ended_at?: string;
+            tokens_in?: number;
+            tokens_out?: number;
+            cost_usd?: number;
+            latency_ms?: number;
+            error_message?: string;
+            model?: string;
+        };
+        CompareSemanticSummary: {
+            id: string;
+            span_id?: string;
+            span_name?: string;
+            event_type: components["schemas"]["CompareSemanticEventType"];
+            /** Format: date-time */
+            timestamp: string;
+            message?: string;
+            payload?: Record<string, never>;
         };
         IngestRequest: {
             /** @description Unique identifier for idempotency. Same batch_key returns success without reprocessing. */
@@ -970,6 +1107,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSessionCompare: {
+        parameters: {
+            query: {
+                baseline_trace_id: string;
+                candidate_trace_id: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session trace comparison details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCompareResponse"];
+                };
+            };
+            /** @description Invalid comparison request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session or trace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Comparison exceeds the supported span or semantic event ceiling */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonTooLargeError"];
                 };
             };
         };
