@@ -594,10 +594,10 @@ func createCompareEvent(
 	sequence *int32,
 	message string,
 	payload map[string]any,
-) uuid.UUID {
+) {
 	t.Helper()
 
-	return createCompareEventForSpan(ctx, t, pool, q, projectID, traceID, "shared", eventType, eventAt, sequence, message, payload)
+	createCompareEventForSpan(ctx, t, pool, q, projectID, traceID, "shared", eventType, eventAt, sequence, message, payload)
 }
 
 func createCompareEventForSpan(
@@ -613,7 +613,7 @@ func createCompareEventForSpan(
 	sequence *int32,
 	message string,
 	payload map[string]any,
-) uuid.UUID {
+) {
 	t.Helper()
 
 	eventID, err := q.InsertSpanEvent(ctx, platform.InsertSpanEventParams{
@@ -631,8 +631,6 @@ func createCompareEventForSpan(
 
 	_, err = pool.Exec(ctx, "UPDATE span_events SET server_ingested_at = $2 WHERE id = $1", eventID, eventAt)
 	require.NoError(t, err)
-
-	return eventID
 }
 
 func assertCompareGoldenSnapshot(t *testing.T, name string, comparison store.SessionComparison) {
