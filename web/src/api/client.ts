@@ -213,6 +213,7 @@ export interface TimelineEvent {
     | 'decision'
     | 'effect'
     | 'wait'
+    | 'snapshot_marker'
     | 'span_started'
     | 'span_completed'
     | 'span_failed';

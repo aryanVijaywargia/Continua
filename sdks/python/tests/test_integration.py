@@ -541,3 +541,54 @@ class TestIntegration:
         assert effect_event["payload"]["effect_kind"] == "api_call"
         assert effect_event["payload"]["effect_id"] == explicit_effect_id
         assert effect_event["payload"]["target"] == "billing"
+
+    def test_sync_snapshot_marker_round_trip(self):
+        """Snapshot marker helpers should round-trip through the timeline API."""
+        client = Continua.init(
+            api_key=CONTINUA_API_KEY,
+            endpoint=CONTINUA_ENDPOINT,
+            batch_size=100,
+            flush_interval=60.0,
+            ingest_mode="sync",
+        )
+        trace_name = f"sdk-snapshot-marker-{uuid.uuid4()}"
+
+        with TraceContext(name=trace_name):
+            with span("snapshot_marker_span", kind="default") as marker_span:
+                marker_span.snapshot_marker(
+                    "Validation passed",
+                    marker_kind="checkpoint",
+                    payload={
+                        "extra": "data",
+                        "marker_kind": "wrong",
+                        "label": "wrong",
+                    },
+                )
+                span_id = marker_span.span_id
+
+        client.flush()
+        trace_record = wait_for_trace_record(trace_name)
+        timeline = fetch_timeline(trace_record["id"])
+        span_events = [
+            event for event in timeline["events"] if event.get("span_id") == span_id
+        ]
+
+        assert [event["event_type"] for event in span_events] == [
+            "span_started",
+            "snapshot_marker",
+            "span_completed",
+        ]
+
+        marker_events = explicit_events_for_span(
+            timeline["events"], span_id, "snapshot_marker"
+        )
+        assert len(marker_events) == 1
+
+        marker_event = marker_events[0]
+        assert_timeline_sequence(marker_event, expected_sequence=1)
+        assert marker_event["message"] == "Validation passed"
+        assert marker_event["payload"] == {
+            "extra": "data",
+            "marker_kind": "checkpoint",
+            "label": "Validation passed",
+        }

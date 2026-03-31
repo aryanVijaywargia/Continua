@@ -574,7 +574,7 @@ export interface components {
             depth?: number;
         };
         /** @enum {string} */
-        IngestEventType: "log" | "error" | "exception" | "message" | "metric" | "custom" | "state_change" | "decision" | "effect" | "wait";
+        IngestEventType: "log" | "error" | "exception" | "message" | "metric" | "custom" | "state_change" | "decision" | "effect" | "wait" | "snapshot_marker";
         /** @enum {string} */
         IngestEventLevel: "debug" | "info" | "warning" | "error";
         IngestEventInput: {
@@ -591,14 +591,14 @@ export interface components {
             /** Format: int32 */
             sequence?: number;
             message?: string;
-            /** @description Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
+            /** @description Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`; `snapshot_marker` is a debugger milestone event, not a checkpoint or resumability primitive, and conventionally uses `marker_kind` (a non-empty string; default vocabulary `milestone`) and `label` (a human-facing marker label).
              *      */
             payload?: Record<string, never>;
             /** @description Optional key for event-level deduplication */
             idempotency_key?: string;
         };
         /** @enum {string} */
-        TimelineEventType: "log" | "error" | "exception" | "message" | "metric" | "custom" | "state_change" | "decision" | "effect" | "wait" | "span_started" | "span_completed" | "span_failed";
+        TimelineEventType: "log" | "error" | "exception" | "message" | "metric" | "custom" | "state_change" | "decision" | "effect" | "wait" | "snapshot_marker" | "span_started" | "span_completed" | "span_failed";
         /** @enum {string} */
         TimelineEventSource: "explicit" | "synthetic";
         /** @enum {string} */

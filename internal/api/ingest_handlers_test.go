@@ -199,6 +199,58 @@ func TestIngest_SyncTrueAcceptsUnknownExplicitEventType(t *testing.T) {
 	assert.Equal(t, "workflow_step", events[0].EventType)
 }
 
+func TestIngest_SyncSnapshotMarkerRoundTripsThroughTimeline(t *testing.T) {
+	server, _, q, projectID := newAsyncIngestServer(t)
+	traceID := "trace-" + uuid.NewString()[:8]
+	startTime := time.Now().UTC().Format(time.RFC3339Nano)
+	sync := true
+
+	rec := invokeIngest(
+		t,
+		server,
+		projectID,
+		`{
+			"batch_key":"batch-snapshot-marker",
+			"traces":[{"trace_id":"`+traceID+`","name":"snapshot marker trace"}],
+			"spans":[{"trace_id":"`+traceID+`","span_id":"span-1","name":"snapshot marker span","start_time":"`+startTime+`"}],
+			"events":[{"trace_id":"`+traceID+`","span_id":"span-1","event_type":"snapshot_marker","payload":{}}]
+		}`,
+		IngestParams{Sync: &sync},
+		nil,
+	)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	resp := decodeJSONBody[IngestResponse](t, rec)
+	assert.Equal(t, IngestResponseStatusOk, resp.Status)
+	require.NotNil(t, resp.EventCount)
+	assert.Equal(t, int32(1), *resp.EventCount)
+
+	trace, err := q.GetTraceByExternalID(context.Background(), platform.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   traceID,
+	})
+	require.NoError(t, err)
+
+	timelineRec := invokeGetTraceEvents(t, server, projectID, trace.ID, GetTraceEventsParams{
+		Limit: testutil.IntPtr(100),
+	})
+	require.Equal(t, http.StatusOK, timelineRec.Code)
+
+	timelineResp := decodeJSONBody[TimelineResponse](t, timelineRec)
+	snapshotEvents := make([]TimelineEvent, 0, len(timelineResp.Events))
+	for _, event := range timelineResp.Events {
+		if event.EventType == TimelineEventTypeSnapshotMarker {
+			snapshotEvents = append(snapshotEvents, event)
+		}
+	}
+
+	require.Len(t, snapshotEvents, 1)
+	assert.Equal(t, Explicit, snapshotEvents[0].Source)
+	assert.Equal(t, "span-1", *snapshotEvents[0].SpanId)
+	assert.NotNil(t, snapshotEvents[0].Payload)
+	assert.Empty(t, *snapshotEvents[0].Payload)
+}
+
 func TestIngest_InvalidAsyncVersionReturnsBadRequest(t *testing.T) {
 	server, _, _, projectID := newAsyncIngestServer(t)
 

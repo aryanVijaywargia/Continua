@@ -680,6 +680,8 @@ func mapExplicitTimelineEventType(eventType string) (TimelineEventType, bool) {
 		return TimelineEventTypeEffect, true
 	case "wait":
 		return TimelineEventTypeWait, true
+	case "snapshot_marker":
+		return TimelineEventTypeSnapshotMarker, true
 	default:
 		return TimelineEventTypeCustom, false
 	}

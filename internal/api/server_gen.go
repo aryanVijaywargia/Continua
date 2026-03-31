@@ -81,16 +81,17 @@ const (
 
 // Defines values for IngestEventType.
 const (
-	IngestEventTypeCustom      IngestEventType = "custom"
-	IngestEventTypeDecision    IngestEventType = "decision"
-	IngestEventTypeEffect      IngestEventType = "effect"
-	IngestEventTypeError       IngestEventType = "error"
-	IngestEventTypeException   IngestEventType = "exception"
-	IngestEventTypeLog         IngestEventType = "log"
-	IngestEventTypeMessage     IngestEventType = "message"
-	IngestEventTypeMetric      IngestEventType = "metric"
-	IngestEventTypeStateChange IngestEventType = "state_change"
-	IngestEventTypeWait        IngestEventType = "wait"
+	IngestEventTypeCustom         IngestEventType = "custom"
+	IngestEventTypeDecision       IngestEventType = "decision"
+	IngestEventTypeEffect         IngestEventType = "effect"
+	IngestEventTypeError          IngestEventType = "error"
+	IngestEventTypeException      IngestEventType = "exception"
+	IngestEventTypeLog            IngestEventType = "log"
+	IngestEventTypeMessage        IngestEventType = "message"
+	IngestEventTypeMetric         IngestEventType = "metric"
+	IngestEventTypeSnapshotMarker IngestEventType = "snapshot_marker"
+	IngestEventTypeStateChange    IngestEventType = "state_change"
+	IngestEventTypeWait           IngestEventType = "wait"
 )
 
 // Defines values for IngestResponseStatus.
@@ -182,19 +183,20 @@ const (
 
 // Defines values for TimelineEventType.
 const (
-	TimelineEventTypeCustom        TimelineEventType = "custom"
-	TimelineEventTypeDecision      TimelineEventType = "decision"
-	TimelineEventTypeEffect        TimelineEventType = "effect"
-	TimelineEventTypeError         TimelineEventType = "error"
-	TimelineEventTypeException     TimelineEventType = "exception"
-	TimelineEventTypeLog           TimelineEventType = "log"
-	TimelineEventTypeMessage       TimelineEventType = "message"
-	TimelineEventTypeMetric        TimelineEventType = "metric"
-	TimelineEventTypeSpanCompleted TimelineEventType = "span_completed"
-	TimelineEventTypeSpanFailed    TimelineEventType = "span_failed"
-	TimelineEventTypeSpanStarted   TimelineEventType = "span_started"
-	TimelineEventTypeStateChange   TimelineEventType = "state_change"
-	TimelineEventTypeWait          TimelineEventType = "wait"
+	TimelineEventTypeCustom         TimelineEventType = "custom"
+	TimelineEventTypeDecision       TimelineEventType = "decision"
+	TimelineEventTypeEffect         TimelineEventType = "effect"
+	TimelineEventTypeError          TimelineEventType = "error"
+	TimelineEventTypeException      TimelineEventType = "exception"
+	TimelineEventTypeLog            TimelineEventType = "log"
+	TimelineEventTypeMessage        TimelineEventType = "message"
+	TimelineEventTypeMetric         TimelineEventType = "metric"
+	TimelineEventTypeSnapshotMarker TimelineEventType = "snapshot_marker"
+	TimelineEventTypeSpanCompleted  TimelineEventType = "span_completed"
+	TimelineEventTypeSpanFailed     TimelineEventType = "span_failed"
+	TimelineEventTypeSpanStarted    TimelineEventType = "span_started"
+	TimelineEventTypeStateChange    TimelineEventType = "state_change"
+	TimelineEventTypeWait           TimelineEventType = "wait"
 )
 
 // Defines values for TimelineResponseTraceStatus.
@@ -388,7 +390,7 @@ type IngestEventInput struct {
 	Level          *IngestEventLevel `json:"level,omitempty"`
 	Message        *string           `json:"message,omitempty"`
 
-	// Payload Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
+	// Payload Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`; `snapshot_marker` is a debugger milestone event, not a checkpoint or resumability primitive, and conventionally uses `marker_kind` (a non-empty string; default vocabulary `milestone`) and `label` (a human-facing marker label).
 	Payload  *map[string]interface{} `json:"payload,omitempty"`
 	Sequence *int32                  `json:"sequence,omitempty"`
 

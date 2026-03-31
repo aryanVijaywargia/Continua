@@ -29,6 +29,11 @@ export interface WaitDetails {
   resolution?: string;
 }
 
+export interface SnapshotMarkerDetails {
+  markerKind: string;
+  label: string;
+}
+
 export function getStateChangeDetails(
   event: TimelineEvent
 ): StateChangeDetails | null {
@@ -125,6 +130,26 @@ export function getWaitDetails(event: TimelineEvent): WaitDetails | null {
     phase,
     waitId,
     resolution,
+  };
+}
+
+export function getSnapshotMarkerDetails(
+  event: TimelineEvent
+): SnapshotMarkerDetails | null {
+  if (event.event_type !== 'snapshot_marker' || !event.payload) {
+    return null;
+  }
+
+  const markerKind = getNonEmptyString(event.payload, 'marker_kind');
+  const label = getNonEmptyString(event.payload, 'label');
+
+  if (!markerKind || !label) {
+    return null;
+  }
+
+  return {
+    markerKind,
+    label,
   };
 }
 
