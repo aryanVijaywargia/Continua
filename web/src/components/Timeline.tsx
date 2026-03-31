@@ -5,6 +5,7 @@ import {
   formatInlineSemanticValue,
   getDecisionDetails,
   getEffectDetails,
+  getSnapshotMarkerDetails,
   getStateChangeDetails,
   getWaitDetails,
 } from '../utils/eventSemantics';
@@ -47,6 +48,7 @@ const SEMANTIC_EVENT_TYPES = new Set<TimelineEvent['event_type']>([
   'decision',
   'effect',
   'wait',
+  'snapshot_marker',
 ]);
 const EFFECT_WAIT_EVENT_TYPES = new Set<TimelineEvent['event_type']>([
   'effect',
@@ -168,6 +170,7 @@ function TimelineRow({
   const retrySafety =
     traceStatus === 'FAILED' ? classifyEffectEvent(event) : null;
   const waitDetails = getWaitDetails(event);
+  const snapshotMarker = getSnapshotMarkerDetails(event);
   const rowAccent = isError
     ? 'border-red-200 bg-red-50/70 dark:border-red-500/40 dark:bg-red-500/10'
     : event.source === 'synthetic'
@@ -222,6 +225,8 @@ function TimelineRow({
                 />
               ) : waitDetails ? (
                 <WaitPreview wait={waitDetails} />
+              ) : snapshotMarker ? (
+                <SnapshotMarkerPreview snapshotMarker={snapshotMarker} />
               ) : (
                 <p className="mt-3 text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
                   {summarizeTimelineEvent(event)}
@@ -452,6 +457,23 @@ function WaitPreview({
         {wait.resolution ? (
           <SemanticValuePill tone="accent">{wait.resolution}</SemanticValuePill>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SnapshotMarkerPreview({
+  snapshotMarker,
+}: {
+  snapshotMarker: NonNullable<ReturnType<typeof getSnapshotMarkerDetails>>;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-sm font-medium leading-6 text-slate-900 dark:text-slate-100">
+        {snapshotMarker.label}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <SemanticValuePill tone="accent">{snapshotMarker.markerKind}</SemanticValuePill>
       </div>
     </div>
   );

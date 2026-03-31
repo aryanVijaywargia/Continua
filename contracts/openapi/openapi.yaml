@@ -1256,7 +1256,7 @@ components:
 
     IngestEventType:
       type: string
-      enum: [log, error, exception, message, metric, custom, state_change, decision, effect, wait]
+      enum: [log, error, exception, message, metric, custom, state_change, decision, effect, wait, snapshot_marker]
 
     IngestEventLevel:
       type: string
@@ -1295,7 +1295,10 @@ components:
             `effect` may include reserved `effect_id`;
             `wait` may include reserved `wait_id`;
             `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`;
-            `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.
+            `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`;
+            `snapshot_marker` is a debugger milestone event, not a checkpoint or resumability primitive,
+            and conventionally uses `marker_kind` (a non-empty string; default vocabulary `milestone`)
+            and `label` (a human-facing marker label).
         idempotency_key:
           type: string
           description: Optional key for event-level deduplication
@@ -1314,6 +1317,7 @@ components:
           decision,
           effect,
           wait,
+          snapshot_marker,
           span_started,
           span_completed,
           span_failed,

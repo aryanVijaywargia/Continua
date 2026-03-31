@@ -100,6 +100,31 @@ describe('summarizeTimelineEvent', () => {
     expect(summarizeTimelineEvent(event)).toBe('effect');
   });
 
+  it('summarizes well-formed snapshot markers from semantic payload fields', () => {
+    const event = createTimelineEvent({
+      event_type: 'snapshot_marker',
+      message: 'fallback marker message',
+      payload: {
+        marker_kind: 'milestone',
+        label: 'Data ingestion complete',
+      },
+    });
+
+    expect(summarizeTimelineEvent(event)).toBe('Data ingestion complete');
+  });
+
+  it('falls back to the message for malformed snapshot markers', () => {
+    const event = createTimelineEvent({
+      event_type: 'snapshot_marker',
+      message: 'fallback marker message',
+      payload: {
+        marker_kind: 'milestone',
+      },
+    });
+
+    expect(summarizeTimelineEvent(event)).toBe('fallback marker message');
+  });
+
   it('summarizes well-formed wait events', () => {
     const enteredEvent = createTimelineEvent({
       event_type: 'wait',

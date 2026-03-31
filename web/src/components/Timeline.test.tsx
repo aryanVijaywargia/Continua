@@ -132,6 +132,23 @@ describe('Timeline semantic event rendering', () => {
     expect(screen.getByText('approved')).toBeInTheDocument();
   });
 
+  it('renders snapshot marker previews with the label and marker kind pill', () => {
+    renderTimeline({
+      events: [
+        createTimelineEvent({
+          event_type: 'snapshot_marker',
+          payload: {
+            marker_kind: 'milestone',
+            label: 'Data loaded',
+          },
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Data loaded')).toBeInTheDocument();
+    expect(screen.getByText('milestone')).toBeInTheDocument();
+  });
+
   it('degrades malformed effect and wait payloads to generic rendering', () => {
     renderTimeline({
       events: [
@@ -158,6 +175,23 @@ describe('Timeline semantic event rendering', () => {
     expect(screen.getByText('Fallback wait summary')).toBeInTheDocument();
     expect(screen.queryByText('mutating')).not.toBeInTheDocument();
     expect(screen.queryByText('read-only')).not.toBeInTheDocument();
+  });
+
+  it('falls back to generic rendering for malformed snapshot markers', () => {
+    renderTimeline({
+      events: [
+        createTimelineEvent({
+          event_type: 'snapshot_marker',
+          message: 'Malformed marker fallback',
+          payload: {
+            marker_kind: 'milestone',
+          },
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Malformed marker fallback')).toBeInTheDocument();
+    expect(screen.queryByText('milestone')).not.toBeInTheDocument();
   });
 
   it('preserves effect payload inspection and wait span navigation', async () => {
@@ -234,6 +268,33 @@ describe('Timeline segmented filter', () => {
     );
     expect(screen.getByText('Narrative event')).toBeInTheDocument();
     expect(screen.getByText('api_call')).toBeInTheDocument();
+  });
+
+  it('includes snapshot markers in the Semantic filter mode', async () => {
+    const user = userEvent.setup();
+
+    renderTimeline({
+      events: [
+        createTimelineEvent({
+          id: 'message-event',
+          event_type: 'message',
+          message: 'Narrative event',
+        }),
+        createTimelineEvent({
+          id: 'marker-event',
+          event_type: 'snapshot_marker',
+          payload: {
+            marker_kind: 'milestone',
+            label: 'Data loaded',
+          },
+        }),
+      ],
+    });
+
+    await user.click(screen.getByRole('radio', { name: 'Semantic' }));
+
+    expect(screen.getByText('Data loaded')).toBeInTheDocument();
+    expect(screen.queryByText('Narrative event')).not.toBeInTheDocument();
   });
 
   it('filters to semantic explicit events when Semantic is selected', async () => {

@@ -3,7 +3,12 @@ import { focusManager, onlineManager } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearApiKey, setApiKey, type TraceDetail } from '../api/client';
+import {
+  clearApiKey,
+  setApiKey,
+  type TimelineEvent,
+  type TraceDetail,
+} from '../api/client';
 import { setMatchMediaMatches } from '../test/matchMedia';
 import { getAccessibleSummary, getReasonExplanation } from '../utils/retrySafety';
 import {
@@ -41,6 +46,50 @@ function countRequests(pathname: string): number {
     const url = new URL(readRequestUrl(input), 'http://localhost');
     return url.pathname === pathname;
   }).length;
+}
+
+function createWaitEvent({
+  waitKind = 'external',
+  phase = 'entered',
+  waitId,
+  resolution,
+  ...eventOverrides
+}: {
+  waitKind?: string;
+  phase?: string;
+  waitId?: string;
+  resolution?: string;
+} & Partial<TimelineEvent> = {}): TimelineEvent {
+  return createTimelineEvent({
+    ...eventOverrides,
+    event_type: 'wait',
+    payload: {
+      wait_kind: waitKind,
+      phase,
+      ...(waitId ? { wait_id: waitId } : {}),
+      ...(resolution ? { resolution } : {}),
+    },
+  });
+}
+
+function createRunningTimelineResponse(
+  events: TimelineEvent[],
+  pollCursor = 'cursor-running'
+) {
+  return jsonResponse({
+    events,
+    trace_status: 'RUNNING',
+    has_more: false,
+    poll_cursor: pollCursor,
+  });
+}
+
+function getRunningStatePanel(): HTMLElement {
+  const panel = screen.getByText('Running state').closest('section');
+  if (!panel) {
+    throw new Error('Running state panel not found');
+  }
+  return panel;
 }
 
 beforeEach(() => {
@@ -2058,16 +2107,294 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect(await screen.findByText('Declared wait')).toBeInTheDocument();
+    const runningStatePanel = within(getRunningStatePanel());
     expect(
       screen.getByText(
         'Execution declared a wait and has not yet recorded a matching resolution.'
       )
     ).toBeInTheDocument();
-    expect(screen.getByText('Current wait')).toBeInTheDocument();
-    expect(screen.getAllByText('model_response').length).toBeGreaterThan(0);
+    expect(runningStatePanel.getByText('Current wait')).toBeInTheDocument();
+    expect(runningStatePanel.getAllByText('model_response')).toHaveLength(2);
     expect(
-      screen.getByRole('button', { name: 'Jump to Waiting span' })
-    ).toBeInTheDocument();
+      runningStatePanel.getAllByRole('button', { name: 'Jump to Waiting span' })
+    ).toHaveLength(2);
+  });
+
+  it('renders a single unresolved wait row with metadata and jump action', async () => {
+    const waitingSpan = createSpan({
+      span_id: 'wait-row-span',
+      name: 'Wait row span',
+      status: 'STARTED',
+      started_at: '2026-03-14T10:00:30.000Z',
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail()),
+        spans: () => jsonResponse({ spans: [waitingSpan] }),
+        timeline: () =>
+          createRunningTimelineResponse([
+            createWaitEvent({
+              id: 'wait-row-event',
+              span_id: waitingSpan.span_id,
+              span_name: waitingSpan.name,
+              timestamp: '2026-03-14T10:01:30.000Z',
+              waitKind: 'external_api',
+              waitId: 'wait-123',
+              message: 'Awaiting webhook callback',
+            }),
+          ]),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await screen.findByText('Running state');
+    const runningStatePanel = within(getRunningStatePanel());
+    expect(runningStatePanel.getByText('Open waits')).toBeInTheDocument();
+    expect(runningStatePanel.getByText('Wait gate')).toBeInTheDocument();
+    expect(runningStatePanel.getAllByText('external_api')).toHaveLength(2);
+    expect(runningStatePanel.getByText('wait-123')).toBeInTheDocument();
+    expect(runningStatePanel.getByText('2026-03-14T10:01:30.000Z')).toBeInTheDocument();
+    expect(runningStatePanel.getByText('Open duration')).toBeInTheDocument();
+    expect(runningStatePanel.getByText('Awaiting webhook callback')).toBeInTheDocument();
+    expect(
+      runningStatePanel.getAllByRole('button', { name: 'Jump to Wait row span' })
+    ).toHaveLength(2);
+  });
+
+  it('renders unresolved waits newest-first', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail()),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          createRunningTimelineResponse([
+            createWaitEvent({
+              id: 'oldest-wait',
+              timestamp: '2026-03-14T10:01:00.000Z',
+              waitKind: 'oldest_wait',
+              message: 'Oldest pending wait',
+            }),
+            createWaitEvent({
+              id: 'middle-wait',
+              timestamp: '2026-03-14T10:03:00.000Z',
+              waitKind: 'middle_wait',
+              message: 'Middle pending wait',
+            }),
+            createWaitEvent({
+              id: 'newest-wait',
+              timestamp: '2026-03-14T10:05:00.000Z',
+              waitKind: 'newest_wait',
+              message: 'Newest pending wait',
+            }),
+          ]),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await screen.findByText('Open waits');
+    const runningStatePanel = within(getRunningStatePanel());
+    expect(
+      runningStatePanel
+        .getAllByText(/pending wait$/)
+        .map((element) => element.textContent)
+    ).toEqual([
+      'Newest pending wait',
+      'Middle pending wait',
+      'Oldest pending wait',
+    ]);
+  });
+
+  it('uses the Approval gate title for human approval waits', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail()),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          createRunningTimelineResponse([
+            createWaitEvent({
+              id: 'approval-wait',
+              timestamp: '2026-03-14T10:01:30.000Z',
+              waitKind: 'human_approval',
+              message: 'Awaiting manager sign-off',
+            }),
+          ]),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await screen.findByText('Approval gate');
+    const runningStatePanel = within(getRunningStatePanel());
+    expect(runningStatePanel.getByText('Approval gate')).toBeInTheDocument();
+    expect(runningStatePanel.getByText('Awaiting manager sign-off')).toBeInTheDocument();
+  });
+
+  it('does not render an open-wait jump button when the span is not resolvable', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail()),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          createRunningTimelineResponse([
+            createWaitEvent({
+              id: 'orphaned-wait',
+              span_id: 'missing-span',
+              span_name: 'Missing span',
+              timestamp: '2026-03-14T10:01:30.000Z',
+              waitKind: 'external_api',
+              message: 'Awaiting orphaned callback',
+            }),
+          ]),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await screen.findByText('Running state');
+    const runningStatePanel = within(getRunningStatePanel());
+    expect(runningStatePanel.getByText('Awaiting orphaned callback')).toBeInTheDocument();
+    expect(
+      runningStatePanel.queryByRole('button', { name: 'Jump to Missing span' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('removes a resolved wait row on the next poll cycle', async () => {
+    const openWait = createWaitEvent({
+      id: 'open-wait',
+      timestamp: '2026-03-14T10:01:30.000Z',
+      waitKind: 'external_api',
+      waitId: 'wait-1',
+      message: 'Waiting on external API',
+    });
+    let currentPollEvents: TimelineEvent[] = [];
+    let currentPollCursor = 'cursor-poll-1';
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail()),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: (url) => {
+          if (url.searchParams.get('after') === 'cursor-open-wait') {
+            return createRunningTimelineResponse(currentPollEvents, currentPollCursor);
+          }
+
+          return createRunningTimelineResponse([openWait], 'cursor-open-wait');
+        },
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    await screen.findByText('Running state');
+    const runningStatePanel = within(getRunningStatePanel());
+    expect(runningStatePanel.getByText('wait-1')).toBeInTheDocument();
+
+    currentPollEvents = [
+      createWaitEvent({
+        id: 'resolved-wait',
+        timestamp: '2026-03-14T10:02:00.000Z',
+        waitKind: 'external_api',
+        phase: 'resolved',
+        waitId: 'wait-1',
+        resolution: 'completed',
+      }),
+    ];
+    currentPollCursor = 'cursor-poll-2';
+
+    await act(async () => {
+      await view.queryClient.refetchQueries({
+        queryKey: ['timeline', TRACE_ONE.id, 'poll'],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('wait-1')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('Open waits')).not.toBeInTheDocument();
+  });
+
+  it('keeps anonymous waits visible as standalone rows', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail()),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          createRunningTimelineResponse([
+            createWaitEvent({
+              id: 'anonymous-entered',
+              timestamp: '2026-03-14T10:01:30.000Z',
+              waitKind: 'custom',
+              message: 'Anonymous gate entered',
+            }),
+            createWaitEvent({
+              id: 'anonymous-resolved',
+              timestamp: '2026-03-14T10:02:00.000Z',
+              waitKind: 'custom',
+              phase: 'resolved',
+              resolution: 'ignored',
+              message: 'Anonymous gate resolved',
+            }),
+          ]),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await screen.findByText('Running state');
+    const runningStatePanel = within(getRunningStatePanel());
+    expect(runningStatePanel.getByText('Anonymous gate entered')).toBeInTheDocument();
+    expect(runningStatePanel.getAllByText('custom')).toHaveLength(2);
+    expect(screen.queryByText('wait-1')).not.toBeInTheDocument();
+  });
+
+  it('refreshes open wait durations only when the timeline poll re-renders the panel', async () => {
+    const baseNow = new Date('2026-03-14T10:02:00.000Z').getTime();
+    const traceStartedAt = new Date(baseNow - 2 * 60 * 1000).toISOString();
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(baseNow);
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(createRunningTraceDetail({ started_at: traceStartedAt })),
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: (url) => {
+          if (url.searchParams.get('after') === 'cursor-duration') {
+            return createRunningTimelineResponse([], 'cursor-duration');
+          }
+
+          return createRunningTimelineResponse(
+            [
+              createWaitEvent({
+                id: 'duration-wait',
+                timestamp: new Date(baseNow - 60 * 1000).toISOString(),
+                waitKind: 'timer',
+                message: 'Waiting on timer',
+              }),
+            ],
+            'cursor-duration'
+          );
+        },
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    expect(await screen.findByText('Waiting on timer')).toBeInTheDocument();
+    expect(screen.getByText('Open duration').parentElement).toHaveTextContent('1.0m');
+
+    dateNowSpy.mockReturnValue(baseNow + 30 * 1000);
+    expect(screen.getByText('Open duration').parentElement).toHaveTextContent('1.0m');
+
+    await act(async () => {
+      await view.queryClient.refetchQueries({
+        queryKey: ['timeline', TRACE_ONE.id, 'poll'],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Open duration').parentElement).toHaveTextContent('1.5m');
+    });
   });
 
   it.each([

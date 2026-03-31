@@ -387,6 +387,7 @@ class IngestEventType(Enum):
     decision = "decision"
     effect = "effect"
     wait = "wait"
+    snapshot_marker = "snapshot_marker"
 
 
 class IngestEventLevel(Enum):
@@ -406,7 +407,7 @@ class IngestEventInput(BaseModel):
     message: str | None = None
     payload: dict[str, Any] | None = Field(
         None,
-        description="Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`.\n",
+        description="Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`; `snapshot_marker` is a debugger milestone event, not a checkpoint or resumability primitive, and conventionally uses `marker_kind` (a non-empty string; default vocabulary `milestone`) and `label` (a human-facing marker label).\n",
     )
     idempotency_key: str | None = Field(
         None, description="Optional key for event-level deduplication"
@@ -424,6 +425,7 @@ class TimelineEventType(Enum):
     decision = "decision"
     effect = "effect"
     wait = "wait"
+    snapshot_marker = "snapshot_marker"
     span_started = "span_started"
     span_completed = "span_completed"
     span_failed = "span_failed"

@@ -444,6 +444,51 @@ class SpanContext:
             payload=wait_payload,
         )
 
+    def snapshot_marker(
+        self,
+        label: str,
+        *,
+        marker_kind: str = "milestone",
+        payload: dict[str, Any] | None = None,
+        message: str | None = None,
+    ) -> None:
+        """Emit a debugger milestone marker for this span.
+
+        Args:
+            label: Human-facing label shown in milestone timeline previews.
+            marker_kind: Marker category used for compact semantic grouping.
+            payload: Optional additional structured data merged with marker fields.
+            message: Optional generic timeline fallback summary. Defaults to ``label``.
+
+        Returns:
+            None.
+
+        Example:
+            with span("checkout_flow") as s:
+                s.snapshot_marker(
+                    "Inventory reserved",
+                    marker_kind="phase",
+                    payload={"reservation_id": "res-42"},
+                )
+        """
+        self._require_non_empty_string("label", label)
+        self._require_non_empty_string("marker_kind", marker_kind)
+        marker_payload = self._merge_reserved_payload(
+            payload,
+            reserved_fields={
+                "marker_kind": marker_kind,
+                "label": label,
+            },
+            empty_string_keys=frozenset(),
+        )
+
+        self._record_event(
+            event_type="snapshot_marker",
+            level="info",
+            message=label if message is None else message,
+            payload=marker_payload,
+        )
+
     def __enter__(self) -> SpanContext:
         """Enter the span context."""
         self._token = _current_span.set(self)

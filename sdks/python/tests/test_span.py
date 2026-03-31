@@ -484,6 +484,60 @@ def test_wait_helper_rejects_empty_kind_or_phase():
         span_context.wait("human_approval", phase="")
 
 
+def test_snapshot_marker_helper_records_reserved_merge_semantics():
+    """Snapshot marker helper should merge payloads with helper-owned precedence."""
+    stub_client = StubClient()
+    caller_payload = {
+        "extra": "data",
+        "marker_kind": "wrong",
+        "label": "wrong",
+    }
+    original_payload = dict(caller_payload)
+
+    with traced_span(stub_client, span_name="marker_span") as s:
+        s.snapshot_marker("Validation passed", marker_kind="checkpoint", payload=caller_payload)
+
+    assert caller_payload == original_payload
+    event = stub_client.events[0]
+    assert_event_metadata(event, sequence=1)
+    assert event["event_type"] == "snapshot_marker"
+    assert event["level"] == "info"
+    assert event["message"] == "Validation passed"
+    assert event["payload"] == {
+        "extra": "data",
+        "marker_kind": "checkpoint",
+        "label": "Validation passed",
+    }
+
+
+def test_snapshot_marker_helper_defaults_message_and_allows_override():
+    """Snapshot marker helper should default message to label unless overridden."""
+    stub_client = StubClient()
+
+    with traced_span(stub_client, span_name="marker_span") as s:
+        s.snapshot_marker("Phase 1 complete")
+        s.snapshot_marker(
+            "Validation passed",
+            message="All input schemas validated successfully",
+        )
+
+    default_message_event, explicit_message_event = stub_client.events
+    assert_event_metadata(default_message_event, sequence=1)
+    assert_event_metadata(explicit_message_event, sequence=2)
+    assert default_message_event["message"] == "Phase 1 complete"
+    assert explicit_message_event["message"] == "All input schemas validated successfully"
+
+
+def test_snapshot_marker_helper_rejects_empty_label_or_marker_kind():
+    """Snapshot marker helper rejects empty semantic identifiers."""
+    span_context = SpanContext("marker_span")
+
+    with pytest.raises(ValueError, match="label must be a non-empty string"):
+        span_context.snapshot_marker("")
+    with pytest.raises(ValueError, match="marker_kind must be a non-empty string"):
+        span_context.snapshot_marker("Phase 1 complete", marker_kind="")
+
+
 def test_set_llm_response_emits_one_implicit_effect():
     """First set_llm_response call emits an implicit effect exactly once."""
     stub_client = StubClient()

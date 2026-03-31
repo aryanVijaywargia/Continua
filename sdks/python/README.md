@@ -36,7 +36,7 @@ result = client.wait_for_batch(batch_id, timeout=30, poll_interval=0.5)
 
 ```bash
 # Install with dev dependencies
-uv sync --all-extras
+uv sync
 
 # Run tests
 uv run pytest

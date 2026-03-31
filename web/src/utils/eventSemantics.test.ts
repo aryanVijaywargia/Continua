@@ -1,6 +1,50 @@
 import { describe, expect, it } from 'vitest';
 import { createTimelineEvent } from '../test/traceFixtures';
-import { getEffectDetails, getWaitDetails } from './eventSemantics';
+import {
+  getEffectDetails,
+  getSnapshotMarkerDetails,
+  getWaitDetails,
+} from './eventSemantics';
+
+describe('getSnapshotMarkerDetails', () => {
+  it('extracts a well-formed snapshot marker payload', () => {
+    const event = createTimelineEvent({
+      event_type: 'snapshot_marker',
+      payload: {
+        marker_kind: 'milestone',
+        label: 'Pipeline ready',
+      },
+    });
+
+    expect(getSnapshotMarkerDetails(event)).toEqual({
+      markerKind: 'milestone',
+      label: 'Pipeline ready',
+    });
+  });
+
+  it('returns null for malformed snapshot markers', () => {
+    const event = createTimelineEvent({
+      event_type: 'snapshot_marker',
+      payload: {
+        marker_kind: 'milestone',
+      },
+    });
+
+    expect(getSnapshotMarkerDetails(event)).toBeNull();
+  });
+
+  it('returns null for non-snapshot-marker events', () => {
+    const event = createTimelineEvent({
+      event_type: 'custom',
+      payload: {
+        marker_kind: 'milestone',
+        label: 'Pipeline ready',
+      },
+    });
+
+    expect(getSnapshotMarkerDetails(event)).toBeNull();
+  });
+});
 
 describe('getEffectDetails', () => {
   it('extracts a well-formed effect payload with all fields', () => {

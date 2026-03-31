@@ -67,7 +67,11 @@ import {
   type TraceCostSeries,
 } from '../utils/reasoning';
 import { serializeSpanParam } from '../utils/traceDetailSearchParams';
-import type { WaitStallAssessment } from '../utils/waitStallAnalysis';
+import {
+  computeOpenWaits,
+  type OpenWait,
+  type WaitStallAssessment,
+} from '../utils/waitStallAnalysis';
 import {
   buildSpanTree,
   collectExpandableSpanIds,
@@ -192,6 +196,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     events: timeline.events,
     hasTimelineSnapshot: timeline.hasSnapshot,
   });
+  const openWaits = useMemo(() => computeOpenWaits(timeline.events), [timeline.events]);
   const retrySafetyAnalysis = useRetrySafetyAnalysis(spans, timeline.events);
   const showRetrySafety = timelineStatus === 'FAILED';
   const visibleRetrySafetyAssessments = showRetrySafety
@@ -280,6 +285,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       failureAnalysis={failureAnalysis}
       retrySafetyAnalysis={showRetrySafety ? retrySafetyAnalysis : null}
       onSelectSpan={handleSelectSpanAndShowDetails}
+      openWaits={openWaits}
       selectedBreadcrumbPath={selectedBreadcrumbPath}
       selectedSpan={selectedSpan}
       spanIndex={spanIndex}
@@ -549,6 +555,7 @@ function TraceDetailsSurface({
   failureAnalysis,
   retrySafetyAnalysis,
   onSelectSpan,
+  openWaits,
   selectedBreadcrumbPath,
   selectedSpan,
   spanIndex,
@@ -560,6 +567,7 @@ function TraceDetailsSurface({
   failureAnalysis: ReturnType<typeof buildFailureAnalysis>;
   retrySafetyAnalysis: ReturnType<typeof useRetrySafetyAnalysis> | null;
   onSelectSpan: (spanId: string) => void;
+  openWaits: OpenWait[];
   selectedBreadcrumbPath: ReturnType<typeof buildBreadcrumbPath>;
   selectedSpan: Span | null;
   spanIndex: ReadonlyMap<string, Span>;
@@ -583,6 +591,8 @@ function TraceDetailsSurface({
           <RunningStatePanel
             assessment={runningStateAssessment}
             events={events}
+            openWaits={openWaits}
+            spanIndex={spanIndex}
             onSelectSpan={onSelectSpan}
           />
         ) : null}
@@ -769,15 +779,20 @@ function TracePayloadPanel({ title, data }: { title: string; data: unknown }) {
 function RunningStatePanel({
   assessment,
   events,
+  openWaits,
+  spanIndex,
   onSelectSpan,
 }: {
   assessment: WaitStallAssessment;
   events: TimelineEvent[];
+  openWaits: OpenWait[];
+  spanIndex: ReadonlyMap<string, Span>;
   onSelectSpan: (spanId: string) => void;
 }) {
   const waitKind = resolveDeclaredWaitKind(assessment, events);
   const panelTone = getRunningStatePanelTone(assessment.classification);
   const summary = getRunningStateSummary(assessment);
+  const orderedOpenWaits = [...openWaits].reverse();
 
   return (
     <section className={`rounded-xl border px-4 py-4 shadow-sm ${panelTone}`}>
@@ -847,7 +862,95 @@ function RunningStatePanel({
           </div>
         ) : null}
       </div>
+
+      {orderedOpenWaits.length > 0 ? (
+        <div className="mt-4 border-t border-current/15 pt-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">
+            Open waits
+          </div>
+          <div className="mt-3 space-y-3">
+            {orderedOpenWaits.map((openWait) => (
+              <OpenWaitRow
+                key={openWait.event.id}
+                openWait={openWait}
+                spanIndex={spanIndex}
+                onSelectSpan={onSelectSpan}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function OpenWaitRow({
+  openWait,
+  spanIndex,
+  onSelectSpan,
+}: {
+  openWait: OpenWait;
+  spanIndex: ReadonlyMap<string, Span>;
+  onSelectSpan: (spanId: string) => void;
+}) {
+  const waitTitle =
+    openWait.details.waitKind === 'human_approval' ? 'Approval gate' : 'Wait gate';
+  const openDurationMs = calculateDuration(openWait.event.timestamp, undefined);
+  const hasNavigableSpan = Boolean(
+    openWait.event.span_id && spanIndex.has(openWait.event.span_id)
+  );
+
+  return (
+    <div className="rounded-lg border border-current/15 bg-white/60 p-3 dark:bg-slate-950/30">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">{waitTitle}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full border border-current/15 px-2.5 py-1 font-medium">
+              {openWait.details.waitKind}
+            </span>
+            {openWait.details.waitId ? (
+              <span className="rounded-full border border-current/15 px-2.5 py-1 font-mono">
+                {openWait.details.waitId}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        {hasNavigableSpan ? (
+          <button
+            type="button"
+            className="rounded-full border border-current/20 bg-white/70 px-3 py-1.5 text-xs font-medium transition hover:bg-white dark:bg-slate-950/40 dark:hover:bg-slate-950/70"
+            onClick={() => onSelectSpan(openWait.event.span_id!)}
+          >
+            Jump to {openWait.event.span_name ?? openWait.event.span_id}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-4 text-xs">
+        <div>
+          <div className="font-semibold uppercase tracking-[0.16em] opacity-75">
+            Entered
+          </div>
+          <div className="mt-1 text-sm font-medium">
+            {formatTimestamp(openWait.event.timestamp)}
+          </div>
+        </div>
+        <div>
+          <div className="font-semibold uppercase tracking-[0.16em] opacity-75">
+            Open duration
+          </div>
+          <div className="mt-1 text-sm font-medium">
+            {formatDuration(openDurationMs)}
+          </div>
+        </div>
+      </div>
+
+      {openWait.event.message ? (
+        <p className="mt-3 text-sm leading-6 opacity-90">{openWait.event.message}</p>
+      ) : null}
+    </div>
   );
 }
 

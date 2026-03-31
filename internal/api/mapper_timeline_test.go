@@ -40,6 +40,11 @@ func TestExplicitTimelineEventToAPI_PreservesSemanticEventTypes(t *testing.T) {
 			eventType: "wait",
 			expected:  TimelineEventTypeWait,
 		},
+		{
+			name:      "snapshot_marker",
+			eventType: "snapshot_marker",
+			expected:  TimelineEventTypeSnapshotMarker,
+		},
 	}
 
 	for _, tc := range testCases {

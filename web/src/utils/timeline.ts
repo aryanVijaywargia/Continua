@@ -3,6 +3,7 @@ import {
   formatInlineSemanticValue,
   getDecisionDetails,
   getEffectDetails,
+  getSnapshotMarkerDetails,
   getStateChangeDetails,
   getWaitDetails,
 } from './eventSemantics';
@@ -88,6 +89,13 @@ export function summarizeTimelineEvent(event: TimelineEvent): string {
         })`;
       }
       return event.message ?? 'effect';
+    }
+    case 'snapshot_marker': {
+      const details = getSnapshotMarkerDetails(event);
+      if (details) {
+        return details.label;
+      }
+      return event.message ?? 'snapshot marker';
     }
     case 'span_started':
       return `${event.span_name ?? event.span_id ?? 'Span'} started`;

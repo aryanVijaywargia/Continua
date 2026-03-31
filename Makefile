@@ -21,7 +21,7 @@ setup: ## Install all dependencies
 	@echo "==> Installing Node.js dependencies..."
 	pnpm install
 	@echo "==> Installing Python SDK dependencies..."
-	cd sdks/python && uv sync --all-extras
+	cd sdks/python && uv sync
 	@echo "✅ Setup complete"
 
 # ============================================================================
