@@ -11,6 +11,11 @@
 
 The Go server is the current platform runtime. `engine/` is a separate module but is not part of the active product path.
 
+Current frontend consumers of these backend reads include:
+- the shared shell and overview route at `/`
+- trace triage and detail
+- session detail and session compare
+
 ## Request and job flow
 
 ### Protected REST request
@@ -26,6 +31,12 @@ The Go server is the current platform runtime. `engine/` is a separate module bu
 2. project-scoped accept logic in `internal/ingest/service.go`
 3. shared validation/write path in `internal/ingest/processor.go`
 4. async batches and rollups through River workers in `internal/jobs`
+
+### Session compare flow
+1. `GET /api/sessions/{id}/compare` in `internal/api/sessions_handlers.go`
+2. project scoping + request validation
+3. compare store/query path over session traces, spans, and semantic events
+4. mapper conversion into compare response types
 
 ## Active vs scaffolded packages
 

@@ -1,3 +1,6 @@
+> **Status: Historical**
+> This document is preserved for historical context and does not define the current repo state. Use [docs/README.md](../README.md) and [DEBUGGER_PLATFORM_BASELINE.md](../DEBUGGER_PLATFORM_BASELINE.md) for current guidance.
+
 # Ingestion Line-By-Line Guide
 
 This guide walks the ingestion pipeline in the exact order the code executes, with line-level references for every step. It focuses on the synchronous ingest path implemented in Go.

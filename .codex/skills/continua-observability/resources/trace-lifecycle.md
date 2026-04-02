@@ -56,6 +56,11 @@ There is no active payload table for span request/response bodies. Trace and spa
 - synthetic lifecycle events are derived from span start/end/status data
 - `/api/traces/{id}/events` merges both and returns cursor-based pages
 - the frontend polls this endpoint every 3 seconds for running traces
+- semantic event types such as `state_change`, `decision`, `effect`, `wait`, and `snapshot_marker` are debugger-facing observability events, not replay primitives
+
+## Additional read surfaces
+- `/api/sessions/{id}` groups traces into a workflow/session view
+- `/api/sessions/{id}/compare` compares two terminal traces within a session using span and semantic-event diffs
 
 ## Rollups
 - trace totals are computed from spans

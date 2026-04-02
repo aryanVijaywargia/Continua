@@ -20,6 +20,7 @@ description: Domain-specific guide for Continua's current observability core. Us
 - Continua's active observability core is REST + Postgres + River + debugger UI.
 - The important persisted entities are `projects`, `ingest_batches`, `ingest_batch_payloads`, `sessions`, `traces`, `spans`, and `span_events`.
 - The debugger timeline is polling-based and merges explicit events with synthetic span lifecycle events.
+- The current debugger also exposes overview, session narrative/detail, and session compare surfaces on top of the same read model.
 - Replay and WebSocket runtime are not implemented product features today.
 
 ## Key domain rules
@@ -29,6 +30,7 @@ description: Domain-specific guide for Continua's current observability core. Us
 - rollups compute trace totals from spans asynchronously
 - explicit events are separate from synthetic timeline events derived from spans
 - payload truncation metadata is part of the active trace/span model
+- `state_change` drives the State view, while `decision`, `effect`, and `wait` power semantic debugger surfaces and compare summaries
 
 ## Useful references
 - [trace-lifecycle.md](resources/trace-lifecycle.md)

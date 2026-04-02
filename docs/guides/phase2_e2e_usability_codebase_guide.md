@@ -1,3 +1,6 @@
+> **Status: Historical**
+> This document is preserved for historical context and does not define the current repo state. Use [docs/README.md](../README.md) and [DEBUGGER_PLATFORM_BASELINE.md](../DEBUGGER_PLATFORM_BASELINE.md) for current guidance.
+
 # Phase 2: End-to-End Usability Codebase Guide
 
 This guide documents what was implemented for Continua Phase 2, how the platform is now runnable end-to-end, and how requests flow through the codebase.

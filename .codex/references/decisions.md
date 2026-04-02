@@ -49,9 +49,11 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
   - `internal/web`
 - Active frontend/UI runtime: `web/src`
 - Current user-facing frontend focus:
+  - shared `AppShell` and `/` overview
   - traces list + sessions list URL state
-  - failure-first trace detail workspace
-  - payload inspection + state diff
+  - session detail + session compare workspaces
+  - failure-first trace detail workspace with desktop drawer and mobile four-tab composition
+  - payload inspection + state diff + semantic reasoning surfaces
   - settings, auth recovery, command palette, theming
 - Real SDK: `sdks/python`
 - Stubbed or placeholder-heavy areas:
@@ -79,7 +81,14 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
 - `config.example.yaml` is not the implementation contract and currently contains future-state drift.
 
 ## Useful reference docs
+- `docs/README.md`
 - `docs/DEBUGGER_PLATFORM_BASELINE.md`
 - `docs/PHASE5_CURRENT_STATE_REPORT.md`
 - `docs/architecture/RULES.md`
 - `docs/architecture/data-model.md`
+
+## Current validation surfaces
+- `pnpm --filter web test`
+- `pnpm --filter web test:e2e`
+- `web/playwright.config.ts`
+- `web/e2e/ui-smoke.spec.ts`

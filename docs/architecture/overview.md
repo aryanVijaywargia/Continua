@@ -1,8 +1,11 @@
 # Architecture Overview
 
+> **Status: Current**
+> This document summarizes the current runtime shape. For the shortest handoff, use [../DEBUGGER_PLATFORM_BASELINE.md](../DEBUGGER_PLATFORM_BASELINE.md).
+
 ## Current Runtime
 
-Continua's implemented platform is a single Go server plus an embedded React debugger UI.
+Continua's implemented platform is a single Go server plus an embedded React debugger operator console.
 
 The active request path today is:
 
@@ -12,34 +15,35 @@ Python SDK / custom client
   -> Postgres persistence
   -> River background jobs
   -> REST read APIs
-  -> React debugger UI
+  -> React debugger operator console
 ```
 
 ## Runtime Components
 
 ### Platform Server
 
-The Go server in `cmd/continua` is the real product runtime today. It provides:
+The Go server in `cmd/continua` is the real product runtime today. It is wired with Fx in `cmd/continua/main.go` and provides:
 - authenticated REST APIs from `contracts/openapi/openapi.yaml`
 - ingest handling in `internal/api` + `internal/ingest`
 - River worker startup in `internal/jobs`
 - Postgres-backed store/query access in `internal/store`
 - the embedded web UI from `internal/web`
 
+The HTTP router is Chi-based in `internal/api/router.go`.
+
 ### Web UI
 
 The frontend in `web/` is a Vite React SPA built into `internal/web/static/` and embedded into the Go binary.
 
 Implemented UI areas include:
-- traces list with URL-driven filtering
-- trace detail with failure-first triage
-- trace detail workspace with tree rail, execution waterfall, and inspector tabs
-- span tree and span detail surfaces
-- payload inspection and truncation banners
-- state diff and semantic state/decision events
-- merged timeline view backed by polling
-- sessions list and session detail views
-- settings, auth recovery, command palette, and theming
+- shared `AppShell` with primary navigation and route-aware utility chrome
+- `/` overview built from existing trace and session list endpoints only
+- traces list with URL-driven filtering and return navigation
+- trace detail with failure-first triage, a desktop trace-context drawer, and mobile `Summary` / `Execution` / `Timeline` / `State` tabs
+- local tree-rail quick filters that operate only on already loaded span data
+- payload inspection, truncation banners, reasoning/state surfaces, and merged polling-based timeline
+- sessions list, session detail, and session compare workspaces
+- settings, auth recovery, command palette, theming, and operator-console visual styling
 
 ### Background Jobs
 
@@ -86,7 +90,7 @@ POST /v1/ingest
   -> trace rollup jobs
 ```
 
-### Trace Debugging
+### Debugger Reads
 
 ```text
 GET /api/traces
@@ -95,6 +99,7 @@ GET /api/traces/{id}/spans
 GET /api/traces/{id}/events
 GET /api/sessions
 GET /api/sessions/{id}
+GET /api/sessions/{id}/compare
 ```
 
 The trace detail UI does not use a live WebSocket runtime today. It polls the timeline API for running traces and merges explicit stored events with synthetic lifecycle events derived from spans.
@@ -111,10 +116,12 @@ The important persisted entities today are:
 - `span_events`
 
 Important semantics:
-- sessions expose internal UUIDs plus `external_id`
+- sessions expose internal UUIDs plus user-facing `external_id`
 - traces expose internal UUIDs plus external `trace_id`
 - spans expose internal UUIDs plus external `span_id`
 - span tree parent links use external `parent_span_id`
+- trace and span payloads live on `traces` / `spans`; there is no active standalone runtime payload table
+- timeline responses merge explicit events with synthetic lifecycle entries
 
 ## Contracts And Generation
 
@@ -145,5 +152,12 @@ These exist as plans, contracts, or scaffolding, but not as full runtime capabil
 - proxy capture runtime in `internal/proxy`
 - replay execution runtime in `internal/replay`
 - feature-complete TypeScript SDK
+
+## Current Validation Surfaces
+
+- `pnpm --filter web test`
+- `pnpm --filter web test:e2e`
+- `web/playwright.config.ts`
+- `web/e2e/ui-smoke.spec.ts`
 
 For the shortest current repo-verified handoff, see `docs/DEBUGGER_PLATFORM_BASELINE.md`.

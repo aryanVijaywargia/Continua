@@ -27,9 +27,15 @@ sdks/python/
   - `error`
   - `exception`
   - `metric`
+  - `state_change`
+  - `decision`
+  - `effect`
+  - `wait`
+  - `snapshot_marker`
 - async ingest support exists through:
   - `ingest_mode`
   - `wait_for_batch()`
+- `set_llm_response(...)` and `set_tool_call(...)` emit one implicit `effect` event per helper type per span unless disabled
 
 ## Important behavior
 - the client sends batches to `/v1/ingest`
@@ -37,6 +43,7 @@ sdks/python/
 - traces/spans/events accumulate in the batch queue and flush automatically
 - if the global client is not initialized, trace/span helpers quietly skip emission instead of failing user code
 - `session_id` is an external session key, not a server-side UUID the client has to create
+- the generated `types.py` includes current compare/read models from OpenAPI, but there is not a higher-level Python compare client surface yet
 
 ## Current ingest modes
 - `sync`

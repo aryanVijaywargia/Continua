@@ -3,7 +3,8 @@
 ## Scope
 - Prefer the smallest relevant suite first, but cover the real behavior you changed.
 - Use DB-backed tests for store, auth, ingest, and API behavior when the logic depends on Postgres semantics.
-- Use web Vitest coverage for URL state, payload inspector behavior, failure analysis, and component rendering logic.
+- Use web Vitest coverage for shell/route composition, overview metrics, URL state, payload inspector behavior, failure analysis, and component rendering logic.
+- Use Playwright smoke coverage when the change affects the shared shell, route wiring, major page layouts, or responsive page composition.
 - Use SDK tests when changing contract handling, batching, retry behavior, or helper APIs.
 
 ## Placement

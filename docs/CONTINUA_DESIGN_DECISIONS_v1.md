@@ -1,3 +1,6 @@
+> **Status: Historical**
+> This document is preserved for historical context and does not define the current repo state. Use [docs/README.md](./README.md) and [DEBUGGER_PLATFORM_BASELINE.md](./DEBUGGER_PLATFORM_BASELINE.md) for current guidance.
+
 # Continua v1 Schema & Design Decisions
 
 > **Summary of changes from initial architecture to final v1 design**

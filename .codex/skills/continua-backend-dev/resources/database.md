@@ -30,6 +30,7 @@ Use sqlc for fixed queries first. The notable exception is `internal/store/searc
 - `spans.sql`: span upsert, list-by-trace, token/status updates
 - `events.sql`: explicit event insert and timeline reads
 - `sessions.sql`: session counts and `GetOrCreateSessionByExternalID`
+- `session_compare.sql`: compare validation, span diffs, semantic event diff inputs
 - `rollups.sql`: trace aggregate computation
 
 ## Migration rules

@@ -17,6 +17,7 @@ description: Backend development guide for Continua's current Go platform server
 ## Current backend shape
 - `cmd/continua/main.go` wires the Fx app.
 - `internal/api` is feature-split and owns auth, handler wiring, mapping, and timeline pagination.
+- `internal/api/sessions_handlers.go` owns session list, detail, and compare endpoints.
 - `internal/ingest/service.go` owns sync vs async accept/orchestrate behavior.
 - `internal/ingest/processor.go` owns validation and the shared trace/span/event write path.
 - `internal/jobs` owns River workers for async ingest, rollups, and cleanup.
@@ -31,6 +32,11 @@ description: Backend development guide for Continua's current Go platform server
 - Add or update store/query code if required
 - Map DB rows to API types in `internal/api/mapper.go`
 - Add tests in the touched backend package
+
+Current read APIs already include:
+- traces list/detail/spans/events
+- sessions list/detail
+- session compare at `GET /api/sessions/{id}/compare`
 
 ### Store/query change
 - Edit `db/platform/queries/*.sql`
