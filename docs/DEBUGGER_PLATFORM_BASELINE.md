@@ -1,8 +1,11 @@
 # Continua Debugger Platform Baseline
 
-Status date: 2026-03-22
+> **Status: Current**
+> This is the shortest repo-verified handoff for the current checkout. Use [README.md](../README.md) for setup, [docs/README.md](./README.md) for doc status, and [PHASE5_CURRENT_STATE_REPORT.md](./PHASE5_CURRENT_STATE_REPORT.md) only as deeper historical context.
 
-Purpose: give future agents a short, repo-verified baseline for the current product state after the observability buildout and before new debugger-platform work begins.
+Status date: 2026-04-02
+
+Purpose: give future agents a short, repo-verified baseline for the current product state after the debugger shell/overview/session-compare redesign landed in the working tree.
 
 ## Summary
 
@@ -14,7 +17,7 @@ Python SDK / custom client
   -> Postgres persistence
   -> River background jobs
   -> REST read APIs
-  -> embedded React debugger UI
+  -> embedded React debugger operator console
 ```
 
 The observability core is already real:
@@ -23,16 +26,21 @@ The observability core is already real:
 - true async ingest infrastructure
 - trace rollups
 - trace, session, and timeline read APIs
+- session compare API
 - Python SDK helpers for traces, spans, sessions, and async batch polling
 
 The debugger surface is also real:
+- shared `AppShell` with route-aware shell navigation
+- overview route at `/` built from existing trace and session endpoints only
 - traces list with URL-driven filter, sort, and pagination state
 - sessions list and session detail with URL-driven state
+- session compare workspace at `/sessions/:id/compare`
 - failure-first trace detail flow
-- trace workspace with tree rail, execution waterfall, and inspector tabs
+- trace workspace with tree rail, execution waterfall, inspector tabs, and desktop trace-context drawer
 - payload inspection, truncation banners, breadcrumb navigation, and span deep links
 - state-change and decision event semantics
-- settings page, auth recovery, command palette, and theming
+- settings page, auth recovery, command palette, theming, and operator-console styling
+- Playwright smoke-test scaffolding for the major routes
 
 ## Implemented Vs Future
 
@@ -62,17 +70,24 @@ Do not describe replay, live WebSocket runtime, proxy capture, score APIs, or Ty
 ## Debugger Frontend Shape
 
 Current routes:
+- `/`
 - `/traces`
 - `/traces/:id`
 - `/sessions`
 - `/sessions/:id`
+- `/sessions/:id/compare`
 - `/settings`
 
 Important frontend patterns:
+- the app is wrapped in a shared `AppShell` that owns primary navigation, shell chrome, API-key state, theme toggle, and command palette access
+- overview remains frontend-only and uses existing list endpoints rather than new analytics APIs
 - list-page state lives in URL params, not local-only component state
+- session compare state lives in `baseline_trace_id` / `candidate_trace_id` query params
 - trace detail span selection is URL-backed via `?span=`
 - running traces poll `/api/traces/{id}/events`; there is no live WebSocket runtime
-- `TraceDetailPage` coordinates `TreeRail`, `ExecutionWaterfall`, `InspectorTabs`, `SpanDetail`, `Timeline`, and `StateDiffViewer`
+- desktop trace detail keeps the main workspace in `WorkspaceShell` and moves trace context into a toggleable drawer
+- mobile trace detail uses `Summary`, `Execution`, `Timeline`, and `State` top-level tabs, with a tree/waterfall sub-toggle inside `Execution`
+- `TreeRail` now supports local quick filters that work only on already loaded span data
 - complex UI logic is factored into pure helpers and small hooks such as `useWorkspaceState`, `useTraceDetailSearchParams`, `spanTree.ts`, and `waterfallTime.ts`
 
 ## Backend And Data Model Reality
@@ -96,7 +111,16 @@ Important semantics:
 - `sessions.external_id` is the user-facing session identifier
 - `traces.trace_id` is the external trace identifier
 - `spans.span_id` and `spans.parent_span_id` are external span identifiers
+- session compare reads terminal traces within a session through `GET /api/sessions/{id}/compare`
 - timeline responses merge explicit events with synthetic lifecycle markers
+
+## Validation Surfaces
+
+Current web validation surfaces include:
+- `pnpm --filter web test`
+- `pnpm --filter web test:e2e`
+- `web/playwright.config.ts`
+- `web/e2e/ui-smoke.spec.ts`
 
 ## OpenSpec State
 
@@ -105,22 +129,13 @@ Repo convention:
 - completed change history belongs in `openspec/implemented/`
 - `openspec/specs/` is still empty, so OpenSpec is not the complete current-state source of truth
 
-Debugger-oriented implemented history now lives in:
-- `openspec/implemented/add-trace-discovery-triage`
-- `openspec/implemented/add-failure-first-trace-detail`
-- `openspec/implemented/add-payload-inspection-deep-navigation`
-- `openspec/implemented/add-visual-execution-workspace`
-- `openspec/implemented/add-session-scale-ux`
-- `openspec/implemented/add-debugger-semantics-polish`
-
-Still active:
-- `openspec/changes/add-true-async-ingest`
-  - feature implementation is largely present, but metrics and some validation items are still open in its task list
+Active change material may describe the debugger redesign as in flight, but the current checkout already contains the relevant shell/overview/session-compare UI code. For current-state truth, prefer live code plus this baseline.
 
 ## Planning Guidance
 
 Use this baseline when starting new debugger work:
-- extend the debugger UI from the existing trace workspace rather than rebuilding trace detail from scratch
+- extend the debugger UI from the existing shell, overview, session, compare, and trace workspaces rather than rebuilding them from scratch
 - preserve the current URL-driven state patterns on traces, sessions, and trace detail
+- preserve current session compare URL semantics and trace-detail return navigation
 - treat the React debugger as the active product surface and the Python SDK as the active ingestion surface
 - treat `docs/PHASE5_CURRENT_STATE_REPORT.md` as deep historical context, not the shortest current-state handoff

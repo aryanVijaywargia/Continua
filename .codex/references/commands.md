@@ -7,6 +7,7 @@ Claude's `/project:*` commands do not exist in Codex, but the underlying workflo
 - `check-todos`: review and pick from outstanding tasks
 - `whats-next`: create a handoff note before context resets
 - `dev-docs-update`: refresh docs or implementation notes before stopping
+- `docs-status-audit`: verify living docs vs historical docs and fix drift before stopping
 
 ## Development workflows
 - `dev`: start or stop the local database, server, or web app
@@ -25,9 +26,12 @@ Claude's `/project:*` commands do not exist in Codex, but the underlying workflo
 - `review`: perform a code review focused on bugs, regressions, and missing tests
 - `review-pr`: inspect a pull request or diff with review findings first
 - `test`: plan and implement the smallest relevant test coverage for the change
+- `test:e2e`: run or update the Playwright UI smoke coverage in `web/`
 
 ## Suggested Codex phrasing
 - "Review this diff for regressions and missing tests."
 - "Run the pre-PR checks relevant to these files."
 - "Create a migration for X and wire the generated code."
 - "Update the OpenAPI contract, regenerate, and implement the handler."
+- "Refresh the living docs and mark older docs as historical."
+- "Run the frontend Vitest suites and the Playwright smoke checks."

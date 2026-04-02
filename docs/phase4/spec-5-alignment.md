@@ -1,3 +1,6 @@
+> **Status: Historical**
+> This document is preserved for historical context and does not define the current repo state. Use [docs/README.md](../README.md) and [DEBUGGER_PLATFORM_BASELINE.md](../DEBUGGER_PLATFORM_BASELINE.md) for current guidance.
+
 # Phase 4 Spec 5: Contract Alignment
 
 ## Generated Artifacts

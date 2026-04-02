@@ -1,6 +1,6 @@
 ---
 name: continua-testing
-description: Testing strategy for Continua (Go, engine, web, SDKs). Use when adding features, fixing bugs, or changing API/DB behavior; triggers on go test, make test, integration tests, pnpm test, or SDK test updates.
+description: Testing strategy for Continua (Go, engine, web, SDKs). Use when adding features, fixing bugs, or changing API/DB behavior; covers go test, make test, Vitest, Playwright smoke coverage, integration tests, and SDK test updates.
 ---
 
 # Continua Testing
@@ -22,9 +22,11 @@ description: Testing strategy for Continua (Go, engine, web, SDKs). Use when add
   - `ingest_handlers_test.go`
   - `traces_handlers_test.go`
   - `sessions_handlers_test.go`
+  - `session_compare_integration_test.go`
   - `server_helpers_test.go`
   - `timeline_unit_test.go`
 - Web UI uses Vitest and Testing Library under `web/src`.
+- Web UI also has Playwright smoke coverage under `web/e2e/` with config in `web/playwright.config.ts`.
 - Python SDK uses pytest under `sdks/python/tests`.
 - The TypeScript SDK currently has only minimal stub coverage.
 
@@ -33,5 +35,6 @@ description: Testing strategy for Continua (Go, engine, web, SDKs). Use when add
 - ingest or job change -> `go test ./internal/ingest/... ./internal/jobs/...`
 - SQL/store change -> `go test ./internal/store/...`
 - web UI change -> `pnpm --filter web test`
+- route/shell/layout smoke change -> `pnpm --filter web test:e2e`
 - Python SDK change -> `cd sdks/python && uv run pytest`
 - cross-layer change -> `make test`

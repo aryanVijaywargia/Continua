@@ -21,9 +21,14 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## Current Repo Baseline
 - Treat the checked-in code as the primary truth. Historical phase docs and some older architecture docs drift from the current implementation.
-- The live product path today is: authenticated REST ingest -> Postgres persistence -> River background jobs -> trace/session/timeline debugger UI.
+- The live product path today is: authenticated REST ingest -> Postgres persistence -> River background jobs -> REST read APIs -> embedded React debugger operator console.
 - The current repo handoff doc is `docs/DEBUGGER_PLATFORM_BASELINE.md`. Use `docs/PHASE5_CURRENT_STATE_REPORT.md` as deeper historical context, not the shortest current-state baseline.
 - `openspec/specs/` is currently empty. That means OpenSpec is useful for active proposals and archived work, but not as a complete source of current-state specs.
+
+## Documentation Status Convention
+- `Current`: authoritative, repo-verified guidance for the current checkout.
+- `Historical`: preserved context or archaeology; do not treat it as the current architecture contract.
+- `Active change`: material under `openspec/changes/`; useful for intent/history, but not current-state truth by itself.
 
 ## Implemented Vs Scaffolded
 - Active backend packages: `internal/api`, `internal/ingest`, `internal/jobs`, `internal/store`, `internal/config`, `internal/web`.
@@ -97,9 +102,14 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## Frontend Reality
 - The web UI is a Vite SPA embedded into the Go binary through `internal/web/static`.
+- Current routes are `/`, `/traces`, `/traces/:id`, `/sessions`, `/sessions/:id`, `/sessions/:id/compare`, and `/settings`.
+- The app uses a shared `AppShell` with primary navigation, route-aware shell chrome, API-key status, theme controls, and command palette access.
+- The overview route is frontend-only and derives its snapshot from existing trace and session list endpoints.
 - The traces page is URL-driven and exposes current backend filters.
 - Trace detail is failure-first and uses polling of `/api/traces/{id}/events`, not a live WebSocket subscription.
-- Payload inspection, truncation banners, breadcrumb navigation, and session drill-down are implemented in `web/src`.
+- Desktop trace detail uses a drawer for trace context; mobile trace detail uses `Summary`, `Execution`, `Timeline`, and `State` top-level tabs.
+- Session detail and session compare preserve URL-driven state and return navigation.
+- Payload inspection, truncation banners, breadcrumb navigation, local tree-rail quick filters, and session drill-down are implemented in `web/src`.
 
 ## Testing Expectations
 - Add tests for new behavior.
@@ -110,6 +120,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
   - `go test ./internal/store/...`
   - `go test ./internal/jobs/...`
   - `pnpm --filter web test`
+  - `pnpm --filter web test:e2e`
   - `cd sdks/python && uv run pytest`
 - Full validation:
   - `make generate`
@@ -131,10 +142,10 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ### Repo-local skills
 - `continua-backend-dev`: current Go platform server, REST/API, sqlc/store, migrations, and River-backed backend workflows.
-- `continua-debugger-ui`: current React debugger UI, trace workspace, URL-state patterns, payload inspection, settings, command palette, and theming.
+- `continua-debugger-ui`: current React debugger UI, app shell, overview, trace workspace, session compare, URL-state patterns, payload inspection, settings, command palette, and theming.
 - `continua-observability`: trace/span/session/event model, async ingest lifecycle, rollups, timeline semantics, and debugger data surfaces.
 - `continua-integrations`: Python SDK, contract-driven SDK generation, TypeScript SDK stub status, and integration-boundary planning.
-- `continua-testing`: suite selection, real-DB test patterns, web Vitest coverage, and SDK verification.
+- `continua-testing`: suite selection, real-DB test patterns, web Vitest coverage, Playwright smoke coverage, and SDK verification.
 
 ### How to use repo-local skills
 - Open the matching `.codex/skills/<skill>/SKILL.md` when the task fits the skill.

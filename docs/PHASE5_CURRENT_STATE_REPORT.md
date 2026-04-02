@@ -1,6 +1,7 @@
 # Continua Current State Report
 
-Superseded note (2026-03-22): use [DEBUGGER_PLATFORM_BASELINE.md](./DEBUGGER_PLATFORM_BASELINE.md) for the current repo-state handoff. This report remains useful as a deeper Phase 5 archaeology snapshot.
+> **Status: Historical**
+> This report is preserved as a Phase 5 archaeology snapshot. It does not define the full current checkout, which now includes later debugger shell, overview, and session-compare work. Use [docs/README.md](./README.md) and [DEBUGGER_PLATFORM_BASELINE.md](./DEBUGGER_PLATFORM_BASELINE.md) for current guidance.
 
 Status date: 2026-03-12
 

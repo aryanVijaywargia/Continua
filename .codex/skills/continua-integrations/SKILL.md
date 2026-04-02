@@ -16,6 +16,7 @@ description: Guide for Continua's integration surfaces as they exist today. Use 
 
 ## Current integration reality
 - The Python SDK is real and actively usable.
+- Generated SDK types now include current debugger/read-model surfaces such as session compare response shapes.
 - The TypeScript SDK is only a stub package.
 - `internal/proxy/` is a placeholder directory, not a live proxy implementation.
 - Framework adapters are not implemented in this repo today.

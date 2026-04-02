@@ -1,5 +1,8 @@
 # Event Conventions
 
+> **Status: Current**
+> These are the current debugger-facing event semantics used by the timeline, state diff surfaces, reasoning summaries, and semantic compare flows.
+
 Continua events are debugger-facing observability signals.
 
 These are debugger semantics, not replay primitives.

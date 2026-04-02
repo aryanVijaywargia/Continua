@@ -10,6 +10,8 @@
 
 ## SDKs
 - Web UI: `pnpm --filter web test`
+- Web UI smoke: `pnpm --filter web test:e2e`
+- Web UI type-check: `pnpm --filter web type-check`
 - TypeScript SDK: `pnpm --filter @continua/sdk test`
 - Python: `cd sdks/python && uv run pytest`
 

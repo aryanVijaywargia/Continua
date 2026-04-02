@@ -28,6 +28,7 @@
 - project-scoped `404` behavior
 - mapper-visible fields from OpenAPI changes
 - pagination and cursor behavior for timeline endpoints
+- session compare validation, scoping, and too-large responses
 
 ### Ingest
 - batch validation
@@ -52,3 +53,7 @@
 - if you touched ingest logic, run `go test ./internal/ingest/... ./internal/jobs/...`
 - if you touched SQL or store wrappers, run `go test ./internal/store/...`
 - if the change crosses multiple layers, run `make test`
+
+Notable current backend coverage includes:
+- `internal/api/session_compare_integration_test.go`
+- timeline unit coverage in `internal/api/timeline_unit_test.go`
