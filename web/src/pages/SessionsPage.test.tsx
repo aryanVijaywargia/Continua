@@ -9,6 +9,7 @@ import {
   buildFetchHandler,
   getRequests,
   jsonResponse,
+  readRequestUrl,
   renderTraceRoutes,
 } from './testUtils';
 
@@ -16,6 +17,13 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 function getSessionListRequests(): URL[] {
   return getRequests(fetchMock, '/api/sessions');
+}
+
+function countNarrativeRequests(): number {
+  return fetchMock.mock.calls.filter(([input]) => {
+    const url = new URL(readRequestUrl(input), 'http://localhost');
+    return /^\/api\/sessions\/[^/]+\/narrative$/.test(url.pathname);
+  }).length;
 }
 
 async function waitForSessionListFetch(search: string) {
@@ -34,6 +42,7 @@ beforeEach(() => {
 afterEach(() => {
   clearApiKey();
   localStorage.clear();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -131,6 +140,17 @@ describe('SessionsPage', () => {
     expect(router.state.location.search).toBe('?offset=20');
     expect(screen.getByText('conv-latency-456')).toBeInTheDocument();
     expect(screen.getByText(OTHER_SESSION_ID)).toBeInTheDocument();
+  });
+
+  it('does not fan out narrative requests while rendering the session index', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes(['/sessions']);
+
+    expect(await screen.findByText('conv-checkout-123')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(countNarrativeRequests()).toBe(0);
+    });
   });
 
   it('resets offset when sort and page size change', async () => {

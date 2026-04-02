@@ -96,11 +96,7 @@ export function TraceDetailPage() {
   }
 
   if (!id) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="text-red-600">Trace ID is required</div>
-      </div>
-    );
+    return <TraceDetailEmptyState>Trace ID is required.</TraceDetailEmptyState>;
   }
 
   return (
@@ -120,7 +116,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const location = useLocation();
   const { spanParam, setSpanParam } = useTraceDetailSearchParams();
   const [activeMobileTab, setActiveMobileTab] =
-    useState<MobileWorkspaceTabId>('details');
+    useState<MobileWorkspaceTabId>('summary');
   const [isTraceContextOpen, setIsTraceContextOpen] = useState(false);
   const switchToInspectorDetailsRef = useRef<(() => void) | null>(null);
   const traceQuery = useQuery({
@@ -214,7 +210,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const handleSelectSpanAndShowDetails = useCallback((spanId: string) => {
     selectSpan(spanId);
     switchToInspectorDetailsRef.current?.();
-    setActiveMobileTab('details');
+    setActiveMobileTab('summary');
   }, [selectSpan]);
 
   const buildCopyTraceUrl = useCallback(() => {
@@ -231,51 +227,35 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   }, [location.pathname, location.search, selectedSpanExternalId]);
 
   if (traceQuery.isLoading || spansQuery.isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="text-slate-500 dark:text-slate-400">Loading trace...</div>
-      </div>
-    );
+    return <TraceDetailEmptyState>Loading trace...</TraceDetailEmptyState>;
   }
 
   if (traceQuery.error) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-          {isAuthError(traceQuery.error) ? (
-            <AuthErrorBanner message={queryErrorMessage(traceQuery.error)} />
-          ) : (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
-              Error loading trace: {queryErrorMessage(traceQuery.error)}
-            </div>
-          )}
-        </div>
+    return isAuthError(traceQuery.error) ? (
+      <div className="app-page">
+        <AuthErrorBanner message={queryErrorMessage(traceQuery.error)} />
       </div>
+    ) : (
+      <TraceDetailErrorState>
+        Error loading trace: {queryErrorMessage(traceQuery.error)}
+      </TraceDetailErrorState>
     );
   }
 
   if (spansQuery.error) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-          {isAuthError(spansQuery.error) ? (
-            <AuthErrorBanner message={queryErrorMessage(spansQuery.error)} />
-          ) : (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
-              Error loading spans: {queryErrorMessage(spansQuery.error)}
-            </div>
-          )}
-        </div>
+    return isAuthError(spansQuery.error) ? (
+      <div className="app-page">
+        <AuthErrorBanner message={queryErrorMessage(spansQuery.error)} />
       </div>
+    ) : (
+      <TraceDetailErrorState>
+        Error loading spans: {queryErrorMessage(spansQuery.error)}
+      </TraceDetailErrorState>
     );
   }
 
   if (!trace) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="text-red-600">Trace not found</div>
-      </div>
-    );
+    return <TraceDetailEmptyState>Trace not found.</TraceDetailEmptyState>;
   }
 
   const detailsContent = (
@@ -290,14 +270,6 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       selectedSpan={selectedSpan}
       spanIndex={spanIndex}
       events={timeline.events}
-      traceContext={isDesktop ? null : (
-        <TraceContextSection
-          buildCopyTraceUrl={buildCopyTraceUrl}
-          onToggle={() => setIsTraceContextOpen((open) => !open)}
-          open={isTraceContextOpen}
-          trace={trace}
-        />
-      )}
     />
   );
 
@@ -320,82 +292,131 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     />
   );
   const stateContent = <StateDiffViewer changes={stateChanges} />;
+  const mobileSummaryContent = (
+    <div className="grid h-full gap-4 overflow-y-auto p-4">
+      {detailsContent}
+      {reasoningContent}
+    </div>
+  );
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
-      <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center gap-4">
-          <Link to={returnTo} className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
-            {returnTo.startsWith('/sessions/') ? '← Session' : '← Traces'}
-          </Link>
+    <div className="relative flex min-h-full flex-col gap-4">
+      <header className="app-surface p-5 sm:p-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="truncate text-xl font-semibold text-slate-900 dark:text-slate-100">
+            <Link
+              to={returnTo}
+              className="inline-flex items-center text-sm font-medium text-[var(--continua-accent)] transition hover:opacity-80"
+            >
+              {returnTo.startsWith('/sessions/') ? '← Session' : '← Traces'}
+            </Link>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <h1 className="truncate text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">
                 {trace.name}
               </h1>
               <StatusBadge status={timelineStatus ?? trace.status} />
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
-              <span>{formatDuration(duration)}</span>
-              <span>{formatTokens(totalTokens)} tokens</span>
-              <span>{formatCost(trace.total_cost_usd)}</span>
-              {trace.error_count && trace.error_count > 0 ? (
-                <span className="text-red-600 dark:text-red-300">{trace.error_count} errors</span>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--continua-text-muted)]">
+              <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2.5 py-1 font-mono">
+                {trace.trace_id ?? trace.id}
+              </span>
+              {trace.session_external_id ? (
+                <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2.5 py-1">
+                  {trace.session_external_id}
+                </span>
               ) : null}
             </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <TraceHeaderMetric label="Duration" value={formatDuration(duration)} />
+              <TraceHeaderMetric label="Tokens" value={formatTokens(totalTokens)} />
+              <TraceHeaderMetric label="Cost" value={formatCost(trace.total_cost_usd)} />
+              <TraceHeaderMetric
+                label="Errors"
+                value={trace.error_count && trace.error_count > 0 ? String(trace.error_count) : '0'}
+                danger={Boolean(trace.error_count && trace.error_count > 0)}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 xl:justify-end">
+            <CopyButton
+              aria-label="Copy Trace URL"
+              getValue={buildCopyTraceUrl}
+              idleLabel="Copy trace URL"
+              successLabel="Copied URL"
+              className="border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] hover:border-[var(--continua-border-strong)] hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-primary)]"
+            />
+            <button
+              type="button"
+              aria-expanded={isTraceContextOpen}
+              aria-label="Trace Context"
+              onClick={() => setIsTraceContextOpen((open) => !open)}
+              className="app-button-secondary"
+            >
+              {isTraceContextOpen ? 'Hide context' : 'Trace context'}
+            </button>
           </div>
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-4">
-        <div className="mx-auto flex h-full max-w-[96rem] flex-col gap-4">
-          {timelineAuthError ? (
-            <AuthErrorBanner message={queryErrorMessage(timeline.rawError)} />
-          ) : null}
+      {timelineAuthError ? (
+        <AuthErrorBanner message={queryErrorMessage(timeline.rawError)} />
+      ) : null}
 
-          {isDesktop ? (
-            <TraceContextSection
-              buildCopyTraceUrl={buildCopyTraceUrl}
-              onToggle={() => setIsTraceContextOpen((open) => !open)}
-              open={isTraceContextOpen}
-              trace={trace}
-            />
-          ) : null}
-
-          <TraceWorkspace
-            activeMobileTab={activeMobileTab}
-            detailsContent={detailsContent}
-            events={timeline.events}
-            expandableSpanIds={expandableSpanIds}
-            expandedSpanIds={expandedSpanIds}
-            failedSpanIds={failureAnalysis.failedSpanIds}
-            inlineErrorPreviews={failureAnalysis.inlineErrorPreviews}
-            inspectorSwitchToDetailsRef={switchToInspectorDetailsRef}
-            isDesktop={isDesktop}
-            onMobileTabChange={setActiveMobileTab}
-            onSelectSpan={handleSelectSpan}
-            onSelectSpanAndShowDetails={handleSelectSpanAndShowDetails}
-            onToggleExpand={toggleExpandedSpan}
-            primaryAncestorPath={failureAnalysis.primaryAncestorPath}
-            revealKey={revealVersion}
-            revealPath={revealPath}
-            revealTarget={waterfallRevealTarget}
-            reasoningContent={reasoningContent}
-            selectedSpanId={selectedSpanExternalId}
-            setExpandedSpanIds={setExpandedSpanIds}
-            spanAssessments={visibleRetrySafetyAssessments}
-            spanIndex={spanIndex}
-            spanTree={spanTree}
-            spans={spans}
-            stateChangeCount={stateChanges.length}
-            stateContent={stateContent}
-            traceCostSeries={traceCostSeries}
-            timelineContent={timelineContent}
-            traceEndedAt={trace.ended_at}
-            traceStartedAt={trace.started_at}
-          />
-        </div>
+      <div className="min-h-[42rem] flex-1">
+        <TraceWorkspace
+          activeMobileTab={activeMobileTab}
+          detailsContent={detailsContent}
+          events={timeline.events}
+          expandableSpanIds={expandableSpanIds}
+          expandedSpanIds={expandedSpanIds}
+          failedSpanIds={failureAnalysis.failedSpanIds}
+          inlineErrorPreviews={failureAnalysis.inlineErrorPreviews}
+          inspectorSwitchToDetailsRef={switchToInspectorDetailsRef}
+          isDesktop={isDesktop}
+          mobileSummaryContent={mobileSummaryContent}
+          onMobileTabChange={setActiveMobileTab}
+          onSelectSpan={handleSelectSpan}
+          onSelectSpanAndShowDetails={handleSelectSpanAndShowDetails}
+          onToggleExpand={toggleExpandedSpan}
+          primaryAncestorPath={failureAnalysis.primaryAncestorPath}
+          revealKey={revealVersion}
+          revealPath={revealPath}
+          revealTarget={waterfallRevealTarget}
+          reasoningContent={reasoningContent}
+          selectedSpanId={selectedSpanExternalId}
+          setExpandedSpanIds={setExpandedSpanIds}
+          spanAssessments={visibleRetrySafetyAssessments}
+          spanIndex={spanIndex}
+          spanTree={spanTree}
+          spans={spans}
+          stateChangeCount={stateChanges.length}
+          stateContent={stateContent}
+          traceCostSeries={traceCostSeries}
+          timelineContent={timelineContent}
+          traceEndedAt={trace.ended_at}
+          traceStartedAt={trace.started_at}
+        />
       </div>
+
+      {isDesktop && isTraceContextOpen ? (
+        <TraceContextDrawer
+          buildCopyTraceUrl={buildCopyTraceUrl}
+          onClose={() => setIsTraceContextOpen(false)}
+          trace={trace}
+        />
+      ) : null}
+
+      {!isDesktop && isTraceContextOpen ? (
+        <TraceContextSheet
+          buildCopyTraceUrl={buildCopyTraceUrl}
+          onClose={() => setIsTraceContextOpen(false)}
+          trace={trace}
+        />
+      ) : null}
     </div>
   );
 }
@@ -410,6 +431,7 @@ interface TraceWorkspaceProps {
   inlineErrorPreviews: ReadonlyMap<string, string>;
   inspectorSwitchToDetailsRef: MutableRefObject<(() => void) | null>;
   isDesktop: boolean;
+  mobileSummaryContent: ReactNode;
   onMobileTabChange: (tab: MobileWorkspaceTabId) => void;
   onSelectSpan: (spanId: string) => void;
   onSelectSpanAndShowDetails: (spanId: string) => void;
@@ -443,6 +465,7 @@ function TraceWorkspace({
   inlineErrorPreviews,
   inspectorSwitchToDetailsRef,
   isDesktop,
+  mobileSummaryContent,
   onMobileTabChange,
   onSelectSpan,
   onSelectSpanAndShowDetails,
@@ -521,8 +544,7 @@ function TraceWorkspace({
           switchToDetailsRef={inspectorSwitchToDetailsRef}
         />
       }
-      mobileDetails={detailsContent}
-      mobileReasoning={reasoningContent}
+      mobileSummary={mobileSummaryContent}
       mobileTimeline={timelineContent}
       mobileState={stateContent}
       activeMobileTab={activeMobileTab}
@@ -560,7 +582,6 @@ function TraceDetailsSurface({
   selectedSpan,
   spanIndex,
   events,
-  traceContext,
 }: {
   runningStateAssessment: WaitStallAssessment | null;
   timelineStatus: 'RUNNING' | 'COMPLETED' | 'FAILED' | null;
@@ -572,13 +593,10 @@ function TraceDetailsSurface({
   selectedSpan: Span | null;
   spanIndex: ReadonlyMap<string, Span>;
   events: TimelineEvent[];
-  traceContext: ReactNode;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-slate-50 p-4 dark:bg-slate-950">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-transparent p-4">
       <div className="space-y-4">
-        {traceContext}
-
         {timelineStatus === 'FAILED' ? (
           <FailureSummary
             summary={failureAnalysis.summary}
@@ -597,7 +615,7 @@ function TraceDetailsSurface({
           />
         ) : null}
 
-        <div className="min-h-[22rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="min-h-[22rem] overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
           <SpanDetail
             span={selectedSpan}
             breadcrumbPath={selectedBreadcrumbPath}
@@ -616,6 +634,99 @@ function TraceDetailsSurface({
   );
 }
 
+function TraceHeaderMetric({
+  label,
+  value,
+  danger = false,
+}: {
+  label: string;
+  value: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="app-surface-muted px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
+        {label}
+      </div>
+      <div
+        className={`mt-2 text-xl font-semibold tracking-[-0.03em] ${
+          danger ? 'text-red-600 dark:text-red-300' : 'text-[var(--continua-text-primary)]'
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function TraceContextDrawer({
+  buildCopyTraceUrl,
+  onClose,
+  trace,
+}: {
+  buildCopyTraceUrl: () => string;
+  onClose: () => void;
+  trace: TraceDetail;
+}) {
+  return (
+    <div className="app-overlay-enter fixed inset-0 z-50 hidden bg-slate-950/35 backdrop-blur-sm lg:block">
+      <button
+        type="button"
+        aria-label="Close trace context drawer"
+        className="absolute inset-0"
+        onClick={onClose}
+      />
+      <aside
+        className="app-drawer-enter absolute inset-y-4 right-4 w-[32rem] max-w-[calc(100vw-2rem)] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Trace context"
+      >
+        <TraceContextSection
+          buildCopyTraceUrl={buildCopyTraceUrl}
+          onToggle={onClose}
+          open
+          trace={trace}
+        />
+      </aside>
+    </div>
+  );
+}
+
+function TraceContextSheet({
+  buildCopyTraceUrl,
+  onClose,
+  trace,
+}: {
+  buildCopyTraceUrl: () => string;
+  onClose: () => void;
+  trace: TraceDetail;
+}) {
+  return (
+    <div className="app-overlay-enter fixed inset-0 z-50 flex items-end bg-slate-950/45 backdrop-blur-sm lg:hidden">
+      <button
+        type="button"
+        aria-label="Close trace context sheet"
+        className="absolute inset-0"
+        onClick={onClose}
+      />
+      <aside
+        className="app-sheet-enter relative z-10 max-h-[82vh] w-full overflow-y-auto px-3 pb-3"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Trace context"
+      >
+        <TraceContextSection
+          buildCopyTraceUrl={buildCopyTraceUrl}
+          onToggle={onClose}
+          open
+          trace={trace}
+        />
+      </aside>
+    </div>
+  );
+}
+
 function TraceContextSection({
   buildCopyTraceUrl,
   onToggle,
@@ -628,18 +739,18 @@ function TraceContextSection({
   trace: TraceDetail;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70">
+    <section className="overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3">
         <button
           type="button"
           className="flex items-center gap-3 text-left"
           aria-expanded={open}
           onClick={onToggle}
         >
-          <span className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
+          <span className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--continua-text-secondary)]">
             Trace Context
           </span>
-          <span className="rounded-full bg-white px-2 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
+          <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-2 py-1 text-xs font-medium text-[var(--continua-text-muted)]">
             {open ? 'Hide' : 'Show'}
           </span>
         </button>
@@ -672,12 +783,12 @@ function TraceContextSection({
               value={trace.session_id ? (
                 <Link
                   to={`/sessions/${trace.session_id}`}
-                  className="inline-flex flex-col text-left text-blue-600 hover:text-blue-800 dark:text-sky-400 dark:hover:text-sky-300"
+                  className="inline-flex flex-col text-left text-[var(--continua-accent)] hover:opacity-80"
                 >
-                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  <span className="text-sm font-medium text-[var(--continua-text-primary)]">
                     {trace.session_external_id ?? trace.session_id}
                   </span>
-                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                  <span className="font-mono text-xs text-[var(--continua-text-muted)]">
                     {trace.session_id}
                   </span>
                 </Link>
@@ -707,7 +818,7 @@ function TraceContextSection({
                   {trace.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1 font-mono text-xs text-[var(--continua-text-secondary)]"
                     >
                       {tag}
                     </span>
@@ -749,12 +860,12 @@ function TraceContextField({
   copyButtonLabel?: string;
 }) {
   return (
-    <div className={`rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/70 ${className}`.trim()}>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+    <div className={`rounded-xl border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4 ${className}`.trim()}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
         {label}
       </div>
       <div className="mt-2 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1 text-sm text-slate-900 dark:text-slate-100">{value}</div>
+        <div className="min-w-0 flex-1 text-sm text-[var(--continua-text-primary)]">{value}</div>
         {copyValue && copyButtonLabel ? (
           <CopyButton
             aria-label={copyButtonLabel}
@@ -769,9 +880,27 @@ function TraceContextField({
 
 function TracePayloadPanel({ title, data }: { title: string; data: unknown }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/70">
-      <h3 className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">{title}</h3>
-      <JsonViewer data={data} className="max-h-80 overflow-y-auto bg-white dark:bg-slate-900" />
+    <div className="rounded-xl border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
+      <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">{title}</h3>
+      <JsonViewer data={data} className="max-h-80 overflow-y-auto bg-[var(--continua-surface-elevated)]" />
+    </div>
+  );
+}
+
+function TraceDetailEmptyState({ children }: { children: ReactNode }) {
+  return (
+    <div className="app-page">
+      <div className="app-empty-state mt-0 flex min-h-[24rem] items-center justify-center px-6">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function TraceDetailErrorState({ children }: { children: ReactNode }) {
+  return (
+    <div className="app-page">
+      <div className="app-alert-error">{children}</div>
     </div>
   );
 }

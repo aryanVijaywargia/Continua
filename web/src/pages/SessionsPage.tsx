@@ -1,7 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { fetchSessions, isAuthError, type Session } from '../api/client';
+import {
+  fetchSessions,
+  isAuthError,
+  type Session,
+} from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
@@ -12,6 +16,7 @@ import { buildSessionsQueryString } from '../utils/sessionsSearchParams';
 import { formatRelativeTime } from '../utils/format';
 
 const DEBOUNCE_MS = 300;
+const EMPTY_SESSIONS: Session[] = [];
 
 function normalizeDraft(value: string): string {
   return value.trim();
@@ -123,7 +128,7 @@ function SessionsContent() {
     placeholderData: keepPreviousData,
   });
 
-  const sessions = sessionsQuery.data?.sessions ?? [];
+  const sessions = sessionsQuery.data?.sessions ?? EMPTY_SESSIONS;
   const total = sessionsQuery.data?.total ?? 0;
   const hasFilters = Boolean(filters.q || filters.user_id);
 
@@ -139,29 +144,60 @@ function SessionsContent() {
   }, [filters.limit, filters.offset, sessions.length, setFilters, total]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Sessions</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+    <div className="app-page">
+      <section className="app-surface p-6 sm:p-7">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="app-overline">Session workflows</div>
+            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)] sm:text-4xl">
+              Follow a user journey across multiple traces without losing narrative context.
+            </h1>
+            <p className="mt-3 text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
               Search sessions by external ID, filter by user, and sort for scale.
             </p>
           </div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">
-            <span>{total} total</span>
-            {sessionsQuery.isFetching && !sessionsQuery.isPending && (
-              <span className="ml-2 text-blue-600 dark:text-sky-400">Updating...</span>
-            )}
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <SessionStat label="Sessions" value={String(total)} />
+            <SessionStat
+              label="Loaded"
+              value={String(sessions.length)}
+            />
+            <SessionStat
+              label="Scoped user"
+              value={filters.user_id ? '1' : 'All'}
+            />
           </div>
         </div>
+      </section>
 
-        <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section className="app-surface sticky top-[4.9rem] z-20 p-4 sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <QuickFilterButton
+              active={!filters.user_id}
+              label="All users"
+              onClick={() => setFilters({ user_id: undefined }, 'push')}
+            />
+            <QuickFilterButton
+              active={Boolean(filters.q)}
+              label="Search active"
+              onClick={() => {
+                if (filters.q) {
+                  setFilters({ q: undefined }, 'push');
+                }
+              }}
+            />
+            <div className="ml-auto text-sm text-[var(--continua-text-muted)]">
+              <span>{total} total</span>
+              {sessionsQuery.isFetching && !sessionsQuery.isPending ? <span className="ml-2">Refreshing…</span> : null}
+            </div>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label
                 htmlFor="session-search"
-                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
+                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
               >
                 Search
               </label>
@@ -171,14 +207,14 @@ function SessionsContent() {
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
                 placeholder="Search external ID or name"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+                className="app-input"
               />
             </div>
 
             <div>
               <label
                 htmlFor="session-user-id"
-                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
+                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
               >
                 User ID
               </label>
@@ -188,7 +224,7 @@ function SessionsContent() {
                 value={userIdDraft}
                 onChange={(event) => setUserIdDraft(event.target.value)}
                 placeholder="Filter by exact user"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+                className="app-input"
               />
             </div>
           </div>
@@ -198,109 +234,95 @@ function SessionsContent() {
               <button
                 type="button"
                 onClick={clearAll}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 dark:hover:text-slate-100"
+                className="app-button-secondary"
               >
                 Clear filters
               </button>
             </div>
           )}
-        </section>
+      </section>
 
-        {sessionsQuery.error && (
-          isAuthError(sessionsQuery.error) ? (
-            <div className="mb-4">
-              <AuthErrorBanner
-                message={
-                  sessionsQuery.error instanceof Error
-                    ? sessionsQuery.error.message
-                    : 'Invalid or missing API key'
-                }
-              />
-            </div>
-          ) : (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
-              Error loading sessions:{' '}
-              {sessionsQuery.error instanceof Error
+      {sessionsQuery.error && (
+        isAuthError(sessionsQuery.error) ? (
+          <AuthErrorBanner
+            message={
+              sessionsQuery.error instanceof Error
                 ? sessionsQuery.error.message
-                : 'Unknown error'}
-            </div>
-          )
-        )}
-
-        {sessionsQuery.isPending && !sessionsQuery.data ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-            Loading sessions...
-          </div>
-        ) : sessions.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              {hasFilters ? 'No matching sessions' : 'No sessions yet'}
-            </h2>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              {hasFilters
-                ? 'Try broadening the filters or clearing them.'
-                : 'Sessions are created when traces include a session identifier.'}
-            </p>
-          </div>
+                : 'Invalid or missing API key'
+            }
+          />
         ) : (
-          <>
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
-                <thead className="bg-slate-50 dark:bg-slate-950/70">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Session
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      User ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      <SortableHeader
-                        label="Traces"
-                        isActive={filters.sort_by === 'trace_count'}
-                        isAscending={filters.sort_dir === 'asc'}
-                        isDisabled={isSearchActive}
-                        onClick={handleTraceCountSortToggle}
-                      />
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      <SortableHeader
-                        label="Created"
-                        isActive={filters.sort_by === 'created_at'}
-                        isAscending={filters.sort_dir === 'asc'}
-                        isDisabled={isSearchActive}
-                        onClick={handleCreatedSortToggle}
-                      />
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
-                  {sessions.map((session) => (
-                    <SessionRow
-                      key={session.id}
-                      returnTo={currentListUrl}
-                      session={session}
-                    />
-                  ))}
-                </tbody>
-              </table>
+          <div className="app-alert-error">
+            Error loading sessions:{' '}
+            {sessionsQuery.error instanceof Error
+              ? sessionsQuery.error.message
+              : 'Unknown error'}
+          </div>
+        )
+      )}
+
+      {sessionsQuery.isPending && !sessionsQuery.data ? (
+        <div className="app-empty-state">Loading sessions...</div>
+      ) : sessions.length === 0 ? (
+        <div className="app-empty-state">
+          <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">
+            {hasFilters ? 'No matching sessions' : 'No sessions yet'}
+          </h2>
+          <p className="mt-2">
+            {hasFilters
+              ? 'Try broadening the filters or clearing them.'
+              : 'Sessions are created when traces include a session identifier.'}
+          </p>
+        </div>
+      ) : (
+        <>
+          <section className="app-surface overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[var(--continua-border-soft)] px-4 py-3 sm:px-5">
+              <div className="flex items-center gap-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+                <span>Session</span>
+                <span>User</span>
+                <span>Name</span>
+              </div>
+              <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+                <SortableHeader
+                  label="Traces"
+                  isActive={filters.sort_by === 'trace_count'}
+                  isAscending={filters.sort_dir === 'asc'}
+                  isDisabled={isSearchActive}
+                  onClick={handleTraceCountSortToggle}
+                />
+                <SortableHeader
+                  label="Created"
+                  isActive={filters.sort_by === 'created_at'}
+                  isAscending={filters.sort_dir === 'asc'}
+                  isDisabled={isSearchActive}
+                  onClick={handleCreatedSortToggle}
+                />
+              </div>
             </div>
 
-            <PaginationControls
-              offset={filters.offset}
-              pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
-              total={total}
-              currentItemCount={sessions.length}
-              onOffsetChange={(offset) => setFilters({ offset }, 'push')}
-              onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
-              onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
-            />
-          </>
-        )}
-      </div>
+            <div className="space-y-3 p-4 sm:p-5">
+              {sessions.map((session) => (
+                <SessionRow
+                  key={session.id}
+                  returnTo={currentListUrl}
+                  session={session}
+                />
+              ))}
+            </div>
+          </section>
+
+          <PaginationControls
+            offset={filters.offset}
+            pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
+            total={total}
+            currentItemCount={sessions.length}
+            onOffsetChange={(offset) => setFilters({ offset }, 'push')}
+            onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
+            onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -313,31 +335,82 @@ function SessionRow({
   returnTo: string;
 }) {
   return (
-    <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
-      <td className="px-6 py-4 align-top">
-        <div className="min-w-[14rem]">
+    <article className="app-list-row">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             to={`/sessions/${session.id}`}
             state={{ returnTo }}
-            className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-sky-400 dark:hover:text-sky-300"
+            className="truncate text-sm font-semibold text-[var(--continua-text-primary)] transition hover:text-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
           >
             {session.external_id}
           </Link>
-          <div className="mt-1 font-mono text-xs text-slate-400 dark:text-slate-500">{session.id}</div>
+          <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--continua-text-secondary)]">
+            {session.trace_count ?? 0} traces
+          </span>
         </div>
-      </td>
-      <td className="px-6 py-4 text-sm text-slate-900 align-top dark:text-slate-100">
-        {session.name || '-'}
-      </td>
-      <td className="px-6 py-4 text-sm text-slate-500 align-top dark:text-slate-400">
-        {session.user_id || '-'}
-      </td>
-      <td className="px-6 py-4 text-sm text-slate-900 align-top dark:text-slate-100">
-        {session.trace_count ?? 0}
-      </td>
-      <td className="px-6 py-4 text-sm text-slate-500 align-top dark:text-slate-400">
-        {formatRelativeTime(session.created_at)}
-      </td>
-    </tr>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--continua-text-muted)]">
+          <span>{session.user_id || 'No user ID'}</span>
+          <span>{session.name || 'Unnamed session'}</span>
+          <span>Created {formatRelativeTime(session.created_at)}</span>
+          <span className="font-mono">{session.id}</span>
+        </div>
+      </div>
+
+      <div className="grid shrink-0 gap-3 text-right text-xs sm:grid-cols-2 sm:text-sm">
+        <MetricColumn label="Traces" value={String(session.trace_count ?? 0)} />
+        <MetricColumn label="Created" value={formatRelativeTime(session.created_at)} />
+      </div>
+    </article>
+  );
+}
+
+function MetricColumn({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-[5.25rem]">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--continua-text-muted)]">
+        {label}
+      </div>
+      <div className="mt-1 text-xs font-medium text-[var(--continua-text-primary)] sm:text-sm">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SessionStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="app-surface-muted px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function QuickFilterButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? 'inline-flex items-center rounded-full border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] px-3 py-1.5 text-sm font-medium text-[var(--continua-accent)]'
+          : 'app-button-ghost'
+      }
+    >
+      {label}
+    </button>
   );
 }

@@ -1,11 +1,9 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 
 export type MobileWorkspaceTabId =
-  | 'details'
-  | 'waterfall'
-  | 'tree'
-  | 'reasoning'
+  | 'summary'
+  | 'execution'
   | 'timeline'
   | 'state';
 
@@ -14,8 +12,7 @@ interface WorkspaceShellProps {
   treeRail: ReactNode;
   waterfall: ReactNode;
   inspector: ReactNode;
-  mobileDetails: ReactNode;
-  mobileReasoning: ReactNode;
+  mobileSummary: ReactNode;
   mobileTimeline: ReactNode;
   mobileState: ReactNode;
   activeMobileTab: MobileWorkspaceTabId;
@@ -23,11 +20,9 @@ interface WorkspaceShellProps {
 }
 
 const MOBILE_TABS: Array<{ id: MobileWorkspaceTabId; label: string }> = [
-  { id: 'details', label: 'Details' },
-  { id: 'waterfall', label: 'Waterfall' },
-  { id: 'tree', label: 'Tree' },
+  { id: 'summary', label: 'Summary' },
+  { id: 'execution', label: 'Execution' },
   { id: 'timeline', label: 'Timeline' },
-  { id: 'reasoning', label: 'Reasoning' },
   { id: 'state', label: 'State' },
 ];
 const USE_STATIC_DESKTOP_LAYOUT =
@@ -38,8 +33,7 @@ export function WorkspaceShell({
   treeRail,
   waterfall,
   inspector,
-  mobileDetails,
-  mobileReasoning,
+  mobileSummary,
   mobileTimeline,
   mobileState,
   activeMobileTab,
@@ -82,17 +76,17 @@ export function WorkspaceShell({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="border-b border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-950/70">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+      <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-3">
         <div className="flex flex-wrap items-center gap-2">
           {MOBILE_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
                 activeMobileTab === tab.id
-                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
-                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800'
+                  ? 'border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
+                  : 'border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-text-primary)]'
               }`}
               aria-pressed={activeMobileTab === tab.id}
               onClick={() => onMobileTabChange(tab.id)}
@@ -106,33 +100,20 @@ export function WorkspaceShell({
       <div className="min-h-0 flex-1">
         <div
           className="h-full"
-          style={{ display: activeMobileTab === 'details' ? 'block' : 'none' }}
+          style={{ display: activeMobileTab === 'summary' ? 'block' : 'none' }}
         >
-          {mobileDetails}
+          {mobileSummary}
         </div>
-        <div
-          className="h-full"
-          style={{ display: activeMobileTab === 'waterfall' ? 'block' : 'none' }}
-        >
-          {waterfall}
-        </div>
-        <div
-          className="h-full"
-          style={{ display: activeMobileTab === 'tree' ? 'block' : 'none' }}
-        >
-          {treeRail}
-        </div>
+        <MobileExecutionPane
+          active={activeMobileTab === 'execution'}
+          treeRail={treeRail}
+          waterfall={waterfall}
+        />
         <div
           className="h-full"
           style={{ display: activeMobileTab === 'timeline' ? 'block' : 'none' }}
         >
           {mobileTimeline}
-        </div>
-        <div
-          className="h-full"
-          style={{ display: activeMobileTab === 'reasoning' ? 'block' : 'none' }}
-        >
-          {mobileReasoning}
         </div>
         <div
           className="h-full"
@@ -142,6 +123,51 @@ export function WorkspaceShell({
         </div>
       </div>
     </section>
+  );
+}
+
+function MobileExecutionPane({
+  active,
+  treeRail,
+  waterfall,
+}: {
+  active: boolean;
+  treeRail: ReactNode;
+  waterfall: ReactNode;
+}) {
+  const [mode, setMode] = useState<'waterfall' | 'tree'>('waterfall');
+
+  return (
+    <div className="h-full" style={{ display: active ? 'block' : 'none' }}>
+      <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {(['waterfall', 'tree'] as const).map((nextMode) => (
+            <button
+              key={nextMode}
+              type="button"
+              aria-pressed={mode === nextMode}
+              onClick={() => setMode(nextMode)}
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
+                mode === nextMode
+                  ? 'border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
+                  : 'border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)]'
+              }`}
+            >
+              {nextMode === 'waterfall' ? 'Waterfall' : 'Tree'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="h-[calc(100%-3.5rem)]">
+        <div className="h-full" style={{ display: mode === 'waterfall' ? 'block' : 'none' }}>
+          {waterfall}
+        </div>
+        <div className="h-full" style={{ display: mode === 'tree' ? 'block' : 'none' }}>
+          {treeRail}
+        </div>
+      </div>
+    </div>
   );
 }
 

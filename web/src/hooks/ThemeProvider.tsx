@@ -24,7 +24,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setSystemPrefersDark(event.matches);
     };
 
-    setSystemPrefersDark(mediaQuery.matches);
     mediaQuery.addEventListener('change', handleChange);
 
     return () => {

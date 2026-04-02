@@ -13,6 +13,7 @@ import {
 } from '../utils/sessionsSearchParams';
 
 const API_KEY_STORAGE_KEY = 'continua_api_key';
+const API_KEY_EVENT_NAME = 'continua:api-key-change';
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -33,6 +34,7 @@ export function getApiKey(): string | null {
  */
 export function setApiKey(key: string): void {
   localStorage.setItem(API_KEY_STORAGE_KEY, key);
+  dispatchApiKeyChange();
 }
 
 /**
@@ -40,6 +42,7 @@ export function setApiKey(key: string): void {
  */
 export function clearApiKey(): void {
   localStorage.removeItem(API_KEY_STORAGE_KEY);
+  dispatchApiKeyChange();
 }
 
 /**
@@ -80,6 +83,14 @@ export function isComparisonTooLargeError(
     typeof error.detail === 'object' &&
     error.detail !== null
   );
+}
+
+function dispatchApiKeyChange() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(new Event(API_KEY_EVENT_NAME));
 }
 
 /**

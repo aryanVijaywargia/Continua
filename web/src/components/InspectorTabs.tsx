@@ -42,8 +42,8 @@ export function InspectorTabs({
   }, [switchToDetailsRef]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+      <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3">
         <div className="flex items-center gap-2">
           <InspectorTabButton
             active={activeTab === 'details'}
@@ -114,10 +114,10 @@ function InspectorTabButton({
     <button
       type="button"
       aria-label={label}
-      className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+      className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
         active
-          ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
-          : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800'
+          ? 'border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
+          : 'border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-text-primary)]'
       }`}
       aria-pressed={active}
       onClick={onClick}
@@ -128,8 +128,8 @@ function InspectorTabButton({
           aria-hidden="true"
           className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
             active
-              ? 'bg-white/20 text-white dark:bg-slate-200/30 dark:text-slate-950'
-              : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
+              ? 'bg-[var(--continua-accent)] text-[var(--continua-accent-contrast)]'
+              : 'bg-[var(--continua-text-primary)] text-[var(--continua-surface-elevated)]'
           }`}
         >
           {badgeCount}

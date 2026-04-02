@@ -198,7 +198,9 @@ describe('SessionComparePage', () => {
     expect(await screen.findByRole('link', { name: SESSION_COMPARE.baseline.name })).toBeInTheDocument();
     await user.click(screen.getByRole('link', { name: SESSION_COMPARE.baseline.name }));
 
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Session' })).toHaveAttribute(
       'href',
       `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`
@@ -242,7 +244,9 @@ describe('SessionComparePage', () => {
       expect(router.state.location.pathname).toBe(`/traces/${SESSION_COMPARE.baseline.id}`);
     });
 
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Session' })).toHaveAttribute(
       'href',
       `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`

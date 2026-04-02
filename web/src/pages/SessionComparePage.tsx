@@ -36,7 +36,7 @@ export function SessionComparePage() {
 
   if (!id) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="flex min-h-full items-center justify-center">
         <div className="text-red-600 dark:text-red-300">Session ID is required</div>
       </div>
     );
@@ -75,7 +75,7 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
   if (!baselineTraceId || !candidateTraceId) {
     return (
       <ComparePageShell returnTo={returnTo}>
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+        <section className="rounded-[1.5rem] border border-amber-300/40 bg-amber-50/80 p-6 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
           <h1 className="text-lg font-semibold">Comparison needs two traces</h1>
           <p className="mt-2 text-sm">
             Open this page from a session with both a baseline and candidate trace selected.
@@ -88,7 +88,7 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
   if (comparisonQuery.isLoading) {
     return (
       <ComparePageShell returnTo={returnTo}>
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+        <div className="app-empty-state">
           Loading comparison...
         </div>
       </ComparePageShell>
@@ -103,7 +103,7 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
         ) : isComparisonTooLargeError(comparisonQuery.error) ? (
           <ComparisonTooLargePanel error={comparisonQuery.error} />
         ) : (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+          <div className="app-alert-error">
             Error loading comparison: {queryErrorMessage(comparisonQuery.error)}
           </div>
         )}
@@ -114,7 +114,7 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
   if (!comparisonQuery.data) {
     return (
       <ComparePageShell returnTo={returnTo}>
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+        <div className="app-empty-state">
           Comparison not found.
         </div>
       </ComparePageShell>
@@ -125,21 +125,22 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
     <ComparePageShell returnTo={returnTo}>
       <CompareOverview comparison={comparisonQuery.data} currentCompareUrl={currentCompareUrl} />
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section className="app-surface p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Span Diff</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <div className="app-overline">Diff workspace</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">Span Diff</h2>
+            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
               Ordered baseline-first diff with inline semantic event comparison.
             </p>
           </div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">
+          <div className="text-sm text-[var(--continua-text-muted)]">
             {comparisonQuery.data.span_diffs.length} rows
           </div>
         </div>
 
         {comparisonQuery.data.span_diffs.length === 0 ? (
-          <div className="mt-6 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-300">
+          <div className="app-empty-state mt-6">
             No span rows were returned for this comparison. Both traces may be empty.
           </div>
         ) : (
@@ -158,7 +159,7 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
               return (
                 <div key={rowKey}>
                   {showCandidateOnlyDivider ? (
-                    <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+                    <div className="mb-3 rounded-xl border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] px-3 py-2 text-sm font-medium text-[var(--continua-accent)]">
                       Candidate-only branches
                     </div>
                   ) : null}
@@ -193,16 +194,14 @@ function ComparePageShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <Link
-          to={returnTo}
-          className="mb-4 inline-block text-sm text-blue-600 hover:text-blue-800 dark:text-sky-400 dark:hover:text-sky-300"
-        >
-          &larr; Back to Session
-        </Link>
-        <div className="space-y-6">{children}</div>
-      </div>
+    <div className="app-page">
+      <Link
+        to={returnTo}
+        className="inline-flex text-sm font-medium text-[var(--continua-accent)] transition hover:opacity-80"
+      >
+        &larr; Back to Session
+      </Link>
+      <div className="space-y-6">{children}</div>
     </div>
   );
 }
@@ -215,19 +214,19 @@ function CompareOverview({
   currentCompareUrl: string;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section className="app-surface sticky top-[4.9rem] z-10 p-6">
       <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
             Session Compare
           </p>
-          <h1 className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100">
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">
             {comparison.session.external_id}
           </h1>
           {comparison.session.name ? (
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{comparison.session.name}</p>
+            <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">{comparison.session.name}</p>
           ) : null}
-          <p className="mt-2 font-mono text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-2 font-mono text-xs text-[var(--continua-text-muted)]">
             {comparison.session.id}
           </p>
         </div>
@@ -295,20 +294,20 @@ function CompareTraceCard({
   currentCompareUrl: string;
 }) {
   return (
-    <article className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+    <article className="app-surface-muted p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
             {label}
           </p>
           <Link
             to={`/traces/${trace.id}`}
             state={{ returnTo: currentCompareUrl }}
-            className="mt-2 inline-block text-sm font-semibold text-blue-700 hover:text-blue-900 dark:text-sky-400 dark:hover:text-sky-300"
+            className="mt-2 inline-block text-sm font-semibold text-[var(--continua-accent)] hover:opacity-80"
           >
             {trace.name}
           </Link>
-          <p className="mt-2 font-mono text-xs text-slate-500 dark:text-slate-400">{trace.trace_id}</p>
+          <p className="mt-2 font-mono text-xs text-[var(--continua-text-muted)]">{trace.trace_id}</p>
         </div>
         <StatusBadge status={trace.status} />
       </div>
@@ -345,17 +344,18 @@ function CompareSpanRow({
   onToggleExpanded: () => void;
   currentCompareUrl: string;
 }) {
+  const rowToneClass =
+    row.diff_status === 'changed'
+      ? 'border-amber-300/35 bg-amber-50/60 dark:border-amber-400/20 dark:bg-amber-400/10'
+      : row.diff_status === 'baseline_only'
+        ? 'border-rose-300/35 bg-rose-50/60 dark:border-rose-400/20 dark:bg-rose-400/10'
+        : row.diff_status === 'candidate_only'
+          ? 'border-sky-300/35 bg-sky-50/60 dark:border-sky-400/20 dark:bg-sky-400/10'
+          : 'border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)]';
+
   return (
     <article
-      className={`rounded-xl border p-4 shadow-sm ${
-        row.diff_status === 'changed'
-          ? 'border-amber-200 bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-500/10'
-          : row.diff_status === 'baseline_only'
-            ? 'border-rose-200 bg-rose-50/70 dark:border-rose-500/30 dark:bg-rose-500/10'
-            : row.diff_status === 'candidate_only'
-              ? 'border-sky-200 bg-sky-50/70 dark:border-sky-500/30 dark:bg-sky-500/10'
-              : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
-      }`}
+      className={`rounded-[1.35rem] border p-4 shadow-[var(--continua-shadow-soft)] ${rowToneClass}`}
       style={{ marginLeft: `${row.depth * 12}px` }}
     >
       <div className="flex flex-col gap-4">
@@ -365,7 +365,7 @@ function CompareSpanRow({
           {row.changed_fields.map((field) => (
             <span
               key={field}
-              className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--continua-text-secondary)]"
             >
               {field}
             </span>
@@ -374,7 +374,7 @@ function CompareSpanRow({
             <button
               type="button"
               onClick={onToggleExpanded}
-              className="ml-auto rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100"
+              className="ml-auto rounded-full border border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-accent)] hover:text-[var(--continua-accent)]"
             >
               {expanded ? 'Hide semantic details' : 'Show semantic details'}
             </button>
@@ -397,7 +397,7 @@ function CompareSpanRow({
         </div>
 
         {expanded && hasSemanticContent ? (
-          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-[1.1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-3">
             <div className="space-y-3">
               {row.semantic_groups.map((group, index) => (
                 <CompareSemanticGroupRow
@@ -426,27 +426,27 @@ function CompareSpanSide({
 }) {
   if (!span) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-400">
+      <div className="rounded-[1.05rem] border border-dashed border-[var(--continua-border-strong)] bg-[var(--continua-surface-muted)] px-3 py-4 text-sm text-[var(--continua-text-muted)]">
         {label}: no matching span
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+    <div className="rounded-[1.05rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
             {label}
           </p>
           <Link
             to={`/traces/${traceId}?span=${encodeURIComponent(span.span_id)}`}
             state={{ returnTo: currentCompareUrl }}
-            className="mt-2 inline-block text-sm font-semibold text-blue-700 hover:text-blue-900 dark:text-sky-400 dark:hover:text-sky-300"
+            className="mt-2 inline-block text-sm font-semibold text-[var(--continua-accent)] hover:opacity-80"
           >
             {span.name}
           </Link>
-          <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{span.span_id}</p>
+          <p className="mt-1 font-mono text-xs text-[var(--continua-text-muted)]">{span.span_id}</p>
         </div>
         <StatusBadge status={span.status} />
       </div>
@@ -472,9 +472,9 @@ function CompareSemanticGroupRow({
   group: SpanDiffRow['semantic_groups'][number];
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+    <div className="rounded-[1.05rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+        <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-[var(--continua-text-secondary)]">
           {group.event_type}
         </span>
         <DiffStatusPill diffStatus={group.diff_status} small />
@@ -506,25 +506,25 @@ function CompareSemanticSide({
 }) {
   if (!event) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-400">
+      <div className="rounded-[1.05rem] border border-dashed border-[var(--continua-border-strong)] bg-[var(--continua-surface-muted)] px-3 py-4 text-sm text-[var(--continua-text-muted)]">
         {label}: no matching event
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
-      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+    <div className="rounded-[1.05rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-3">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
         {label}
       </p>
-      <p className="mt-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+      <p className="mt-2 text-sm font-medium text-[var(--continua-text-primary)]">
         {event.message ?? '(no message)'}
       </p>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+      <p className="mt-1 text-xs text-[var(--continua-text-muted)]">
         {formatRelativeTime(event.timestamp)}
       </p>
       {event.payload ? (
-        <pre className="mt-3 overflow-x-auto rounded-md bg-slate-950 px-3 py-2 text-xs text-slate-100">
+        <pre className="mt-3 overflow-x-auto rounded-[0.95rem] bg-slate-950 px-3 py-2 text-xs text-slate-100">
           {JSON.stringify(event.payload, null, 2)}
         </pre>
       ) : null}
@@ -538,7 +538,7 @@ function ComparisonTooLargePanel({
   error: ApiError & { detail: ComparisonTooLargeErrorDetail };
 }) {
   return (
-    <section className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+    <section className="rounded-[1.5rem] border border-amber-300/40 bg-amber-50/80 p-6 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
       <h1 className="text-lg font-semibold">Comparison exceeds the v1 ceiling</h1>
       <p className="mt-2 text-sm">{error.message}</p>
       <dl className="mt-4 grid gap-3 md:grid-cols-2">
@@ -579,12 +579,18 @@ function OverviewMetric({
   compact?: boolean;
 }) {
   return (
-    <div className={compact ? '' : 'rounded-lg border border-slate-200 p-4 dark:border-slate-800'}>
-      <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+    <div
+      className={
+        compact
+          ? 'rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] p-3'
+          : 'app-metric-panel'
+      }
+    >
+      <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
         {label}
       </dt>
-      <dd className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</dd>
-      {hint ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p> : null}
+      <dd className="mt-2 text-sm font-semibold text-[var(--continua-text-primary)]">{value}</dd>
+      {hint ? <p className="mt-1 text-xs text-[var(--continua-text-secondary)]">{hint}</p> : null}
     </div>
   );
 }
@@ -625,7 +631,7 @@ function MatchSourcePill({
 }) {
   return (
     <span
-      className={`rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200 ${
+      className={`rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2 py-0.5 font-medium text-[var(--continua-text-secondary)] ${
         small ? 'text-[11px]' : 'text-xs'
       }`}
       title={matchReason ?? undefined}

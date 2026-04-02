@@ -31,6 +31,7 @@ import { SessionDetailPage } from './SessionDetailPage';
 import { SessionsPage } from './SessionsPage';
 import { SettingsPage } from './SettingsPage';
 import { TracesPage } from './TracesPage';
+import { OverviewPage } from './OverviewPage';
 export {
   EMPTY_SESSION_NARRATIVE,
   OTHER_SESSION_EXTERNAL_ID,
@@ -115,7 +116,34 @@ export function buildFetchHandler({
     }
 
     if (/^\/api\/traces\/[^/]+$/.test(url.pathname)) {
-      return detail?.(url) ?? jsonResponse(TRACE_DETAIL);
+      if (detail) {
+        return detail(url);
+      }
+
+      const traceId = url.pathname.split('/').at(-1);
+      if (traceId === TRACE_ONE.id) {
+        return jsonResponse(TRACE_DETAIL);
+      }
+      if (traceId === TRACE_TWO.id) {
+        return jsonResponse({
+          ...TRACE_DETAIL,
+          ...TRACE_TWO,
+          trace_id: 'external-trace-latency',
+          user_id: 'user-456',
+          tags: ['latency'],
+        });
+      }
+      if (traceId === TRACE_THREE.id) {
+        return jsonResponse({
+          ...TRACE_DETAIL,
+          ...TRACE_THREE,
+          trace_id: 'external-trace-alpha',
+          user_id: 'user-123',
+          tags: ['alpha'],
+        });
+      }
+
+      return jsonResponse(TRACE_DETAIL);
     }
 
     if (url.pathname === '/api/sessions') {
@@ -208,6 +236,7 @@ export function renderTraceRoutes(
   const queryClient = createQueryClient();
   const router = createMemoryRouter(
     [
+      { path: '/', element: <OverviewPage /> },
       { path: '/traces', element: <TracesPage /> },
       { path: '/traces/:id', element: <TraceDetailPage /> },
       { path: '/sessions', element: <SessionsPage /> },
