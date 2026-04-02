@@ -102,29 +102,29 @@ export function ExecutionWaterfall({
 
   if (rows.length === 0 || !window) {
     return (
-      <section className="flex h-full items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-sm text-slate-500 dark:text-slate-400">No spans available for execution timing.</div>
+      <section className="flex h-full items-center justify-center rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+        <div className="text-sm text-[var(--continua-text-muted)]">No spans available for execution timing.</div>
       </section>
     );
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+      <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--continua-text-secondary)]">
           Execution Waterfall
         </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-sm text-[var(--continua-text-muted)]">
           Timing bars follow the visible tree order and selection state.
         </p>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,13rem)_minmax(0,1fr)] border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-r border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:border-slate-800 dark:text-slate-400">
+      <div className="grid grid-cols-[minmax(0,13rem)_minmax(0,1fr)] border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)]">
+        <div className="border-r border-[var(--continua-border-soft)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
           Visible spans
         </div>
         <div className="relative px-4 py-3">
-          <div className="relative flex h-full items-start justify-between gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+          <div className="relative flex h-full items-start justify-between gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
             {ticks.map((tick) => (
               <span
                 key={tick.leftPercent}
@@ -146,7 +146,7 @@ export function ExecutionWaterfall({
         onScroll={onScroll}
       >
         <div
-          className="divide-y divide-slate-100 dark:divide-slate-800"
+          className="divide-y divide-[var(--continua-border-soft)]"
           style={{
             paddingBottom: `${paddingBottom}px`,
             paddingTop: `${paddingTop}px`,
@@ -176,10 +176,10 @@ export function ExecutionWaterfall({
               >
                 <button
                   type="button"
-                  className={`flex h-full min-w-0 items-center border-r border-slate-200 px-4 py-3 text-left transition dark:border-slate-800 ${
+                  className={`flex h-full min-w-0 items-center border-r border-[var(--continua-border-soft)] px-4 py-3 text-left transition ${
                     isSelected
-                      ? 'bg-blue-50 dark:bg-sky-500/10'
-                      : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60'
+                      ? 'bg-[var(--continua-accent-faint)]'
+                      : 'bg-[var(--continua-surface-elevated)] hover:bg-[var(--continua-surface-muted)]'
                   }`}
                   onClick={() => onSelectSpanAndShowDetails(row.span.span_id)}
                 >
@@ -188,7 +188,7 @@ export function ExecutionWaterfall({
                     style={{ paddingLeft: `${row.depth * 12}px` }}
                   >
                     <div className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                      <div className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--continua-text-primary)]">
                         {row.span.name}
                       </div>
                       {row.span.status === 'FAILED' && retrySafety ? (
@@ -200,7 +200,7 @@ export function ExecutionWaterfall({
                       ) : null}
                     </div>
 
-                    <div className="mt-1 flex items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+                    <div className="mt-1 flex items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-[var(--continua-text-muted)]">
                       <span className="shrink-0">{row.span.status}</span>
                       <span aria-hidden="true">·</span>
                       <span className="shrink-0">{formatDuration(row.span.latency_ms)}</span>
@@ -234,7 +234,7 @@ export function ExecutionWaterfall({
                   >
                     <button
                       type="button"
-                      className={`absolute top-1/2 flex h-6 -translate-y-1/2 items-center rounded-full border px-2 text-xs font-medium text-slate-900 transition focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-50`}
+                      className={`absolute top-1/2 flex h-6 -translate-y-1/2 items-center rounded-full border px-2 text-xs font-medium text-slate-900 transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] dark:text-slate-50`}
                       style={{
                         left: `${bar.leftPercent}%`,
                         width: `${Math.max(bar.widthPercent, 0.35)}%`,

@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useState,
   type Dispatch,
   type SetStateAction,
 } from 'react';
@@ -52,6 +53,8 @@ export function TreeRail({
   onVisibleRowsChange,
   spanAssessments = EMPTY_SPAN_ASSESSMENTS,
 }: TreeRailProps) {
+  const [failedOnly, setFailedOnly] = useState(false);
+  const [kindFilter, setKindFilter] = useState<'ALL' | Span['kind']>('ALL');
   const {
     effectiveExpandedSpanIds,
     handleCollapseAll,
@@ -71,12 +74,31 @@ export function TreeRail({
     spanTree,
     spans,
   });
+  const availableKinds = useMemo(
+    () => Array.from(new Set(spans.map((span) => span.kind))),
+    [spans]
+  );
+  const filteredRows = useMemo(
+    () =>
+      visibleRows.filter((row) => {
+        if (failedOnly && !failedSpanIds.has(row.span.span_id)) {
+          return false;
+        }
+
+        if (kindFilter !== 'ALL' && row.span.kind !== kindFilter) {
+          return false;
+        }
+
+        return true;
+      }),
+    [failedOnly, failedSpanIds, kindFilter, visibleRows]
+  );
   const visibleRowIndexBySpanId = useMemo(
     () =>
       new Map(
-        visibleRows.map((row, index) => [row.span.span_id, index] as const)
+        filteredRows.map((row, index) => [row.span.span_id, index] as const)
       ),
-    [visibleRows]
+    [filteredRows]
   );
   const {
     containerRef,
@@ -87,12 +109,12 @@ export function TreeRail({
     virtualRows,
   } = useVirtualRows({
     estimatedRowHeight: showMetrics ? TREE_ROW_HEIGHT_WITH_METRICS : TREE_ROW_HEIGHT,
-    rows: visibleRows,
+    rows: filteredRows,
   });
 
   useEffect(() => {
-    onVisibleRowsChange(visibleRows);
-  }, [onVisibleRowsChange, visibleRows]);
+    onVisibleRowsChange(filteredRows);
+  }, [filteredRows, onVisibleRowsChange]);
 
   useEffect(() => {
     if (!selectedSpanId || !revealPath.has(selectedSpanId)) {
@@ -114,14 +136,14 @@ export function TreeRail({
   ]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/70">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+      <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--continua-text-secondary)]">
               Spans ({spans.length})
             </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-[var(--continua-text-muted)]">
               Search, expand, and inspect the visible span hierarchy.
             </p>
           </div>
@@ -135,31 +157,31 @@ export function TreeRail({
               value={searchQueryInput}
               onChange={(event) => setSearchQueryInput(event.target.value)}
               placeholder="Search name, kind, span ID, status, model, provider, errors"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+              className="app-input"
             />
           </label>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="rounded-full bg-white px-3 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800"
+              className="app-button-ghost"
               onClick={handleExpandAll}
             >
               Expand all
             </button>
             <button
               type="button"
-              className="rounded-full bg-white px-3 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800"
+              className="app-button-ghost"
               onClick={handleCollapseAll}
             >
               Collapse all
             </button>
             <button
               type="button"
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
                 showMetrics
-                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
-                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800'
+                  ? 'border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
+                  : 'border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)]'
               }`}
               aria-pressed={showMetrics}
               onClick={() => setShowMetrics((current) => !current)}
@@ -167,10 +189,52 @@ export function TreeRail({
               Show metrics
             </button>
             {matchedSpanIds !== null ? (
-              <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+              <span className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
                 {matchedSpanIds.size} match{matchedSpanIds.size === 1 ? '' : 'es'}
               </span>
             ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={failedOnly}
+              onClick={() => setFailedOnly((current) => !current)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
+                failedOnly
+                  ? 'border border-red-400/50 bg-red-100/80 text-red-900 dark:border-red-400/25 dark:bg-red-400/10 dark:text-red-100'
+                  : 'border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)]'
+              }`}
+            >
+              Failed only
+            </button>
+            <button
+              type="button"
+              aria-pressed={kindFilter === 'ALL'}
+              onClick={() => setKindFilter('ALL')}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                kindFilter === 'ALL'
+                  ? 'border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
+                  : 'border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)]'
+              }`}
+            >
+              All kinds
+            </button>
+            {availableKinds.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                aria-pressed={kindFilter === kind}
+                onClick={() => setKindFilter((current) => (current === kind ? 'ALL' : kind))}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                  kindFilter === kind
+                    ? 'border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
+                    : 'border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)]'
+                }`}
+              >
+                {kind}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -178,7 +242,7 @@ export function TreeRail({
       <div
         ref={containerRef}
         className="min-h-0 flex-1 overflow-y-auto"
-        data-visible-row-count={visibleRows.length}
+        data-visible-row-count={filteredRows.length}
         onScroll={onScroll}
       >
         <div

@@ -135,7 +135,9 @@ describe('SessionDetailPage', () => {
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
     await user.click(screen.getByRole('link', { name: 'Checkout Trace' }));
 
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Session' })).toHaveAttribute(
       'href',
       `/sessions/${SESSION_ID}?offset=20&sort_by=started_at&sort_dir=asc`
@@ -365,7 +367,9 @@ describe('SessionDetailPage', () => {
     expect(await screen.findByRole('link', { name: 'Storyline Route Trace' })).toBeInTheDocument();
     await user.click(screen.getByRole('link', { name: 'Storyline Route Trace' }));
 
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Session' })).toHaveAttribute(
       'href',
       `/sessions/${SESSION_ID}?offset=20&sort_by=started_at&sort_dir=asc`

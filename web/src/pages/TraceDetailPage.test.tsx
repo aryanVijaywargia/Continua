@@ -185,7 +185,7 @@ describe('TraceDetailPage', () => {
     expect(screen.getByRole('heading', { name: 'Execution Waterfall' })).toBeInTheDocument();
   });
 
-  it('renders the non-desktop stacked layout with Details active by default', async () => {
+  it('renders the non-desktop stacked layout with Summary active by default', async () => {
     setMatchMediaMatches(false);
     const rootSpan = createSpan({ span_id: 'mobile-root', name: 'Mobile root' });
 
@@ -204,18 +204,54 @@ describe('TraceDetailPage', () => {
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
-    expect(await screen.findByRole('button', { name: 'Details' })).toHaveAttribute(
+    expect(await screen.findByRole('button', { name: 'Summary' })).toHaveAttribute(
       'aria-pressed',
       'true'
     );
-    expect(screen.getByRole('button', { name: 'Waterfall' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Tree' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Execution' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Timeline' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reasoning' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Trace Context/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'State' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Trace Context')).toHaveAttribute(
       'aria-expanded',
       'false'
     );
+  });
+
+  it('opens the trace context sheet from a non-summary mobile tab', async () => {
+    setMatchMediaMatches(false);
+    const user = userEvent.setup();
+    const rootSpan = createSpan({ span_id: 'mobile-context-root', name: 'Mobile context root' });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', error_count: 0 }),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await screen.findByRole('button', { name: 'Timeline' });
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    expect(screen.getByLabelText('Trace Context')).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(screen.getByRole('button', { name: /Trace Context/i }));
+
+    expect(await screen.findByText('External Trace ID')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close trace context sheet' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Trace Context')).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Close trace context sheet' }));
+    await waitFor(() => {
+      expect(screen.queryByText('External Trace ID')).not.toBeInTheDocument();
+    });
+    expect(screen.getByLabelText('Trace Context')).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('renders the state tab with a badge and shows span decisions in details', async () => {
@@ -378,7 +414,7 @@ describe('TraceDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('selects a span from the reasoning tab and switches back to details on mobile', async () => {
+  it('selects a span from the summary workspace and keeps summary active on mobile', async () => {
     setMatchMediaMatches(false);
     const user = userEvent.setup();
     const rootSpan = createSpan({
@@ -421,11 +457,10 @@ describe('TraceDetailPage', () => {
     const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect(
-      await screen.findByRole('button', { name: 'Reasoning' })
+      await screen.findByRole('button', { name: 'Summary' })
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Reasoning' }));
-    expect(screen.getByRole('button', { name: 'Reasoning' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Summary' })).toHaveAttribute(
       'aria-pressed',
       'true'
     );
@@ -437,13 +472,9 @@ describe('TraceDetailPage', () => {
     );
 
     expect(view.router.state.location.search).toBe('?span=mobile-reasoning-child');
-    expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Summary' })).toHaveAttribute(
       'aria-pressed',
       'true'
-    );
-    expect(screen.getByRole('button', { name: 'Reasoning' })).toHaveAttribute(
-      'aria-pressed',
-      'false'
     );
     expect(
       within(screen.getByLabelText('Span breadcrumb')).getByText(
@@ -1082,7 +1113,9 @@ describe('TraceDetailPage', () => {
     );
 
     const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
 
     fetchMock.mockClear();
     await user.click(screen.getByRole('button', { name: 'Select span Query child' }));
@@ -2014,7 +2047,9 @@ describe('TraceDetailPage', () => {
     );
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.queryByText('Running state')).not.toBeInTheDocument();
 
     await act(async () => {
@@ -2768,7 +2803,9 @@ describe('TraceDetailPage', () => {
       },
     ]);
 
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Session' })).toHaveAttribute(
       'href',
       `/sessions/${SESSION_ID}?sort_by=started_at&offset=20`
@@ -2780,11 +2817,14 @@ describe('TraceDetailPage', () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
-    await screen.findByText('Trace Context');
+    await screen.findByRole('button', { name: /Trace Context/i });
 
     await user.click(screen.getByRole('button', { name: /Trace Context/i }));
 
-    expect(screen.getByText(SESSION_EXTERNAL_ID)).toBeInTheDocument();
-    expect(screen.getByText(SESSION_ID)).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', {
+        name: new RegExp(`${SESSION_EXTERNAL_ID}\\s*${SESSION_ID}`),
+      })
+    ).toBeInTheDocument();
   });
 });

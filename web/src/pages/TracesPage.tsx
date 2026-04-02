@@ -25,6 +25,7 @@ import {
 } from '../utils/format';
 
 const DEBOUNCE_MS = 300;
+const EMPTY_TRACES: Trace[] = [];
 
 function normalizeTrimmedDraft(value: string): string {
   return value.trim();
@@ -213,7 +214,7 @@ function TracesContent() {
     placeholderData: keepPreviousData,
   });
 
-  const traces = tracesQuery.data?.traces ?? [];
+  const traces = tracesQuery.data?.traces ?? EMPTY_TRACES;
   const total = tracesQuery.data?.total ?? 0;
   const currentListUrl = `${location.pathname}${location.search}`;
 
@@ -246,29 +247,69 @@ function TracesContent() {
   }, [filters.sort_by, filters.sort_dir, isSearchActive, setFilters]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Traces</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Find traces by name, owner, time window, or error signals.
+    <div className="app-page">
+      <section className="app-surface p-6 sm:p-7">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="app-overline">Trace triage</div>
+            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)] sm:text-4xl">
+              Find the run, isolate the failure, and jump straight into the workspace.
+            </h1>
+            <p className="mt-3 text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
+              Search names, user IDs, and matching span names.
             </p>
           </div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <TraceStat label="Tracked" value={String(total)} />
+            <TraceStat label="Live" value={String(runningTracesCount(filters.status, traces, tracesQuery.data?.total))} />
+            <TraceStat
+              label="Failures"
+              value={
+                filters.status === 'failed'
+                  ? String(total)
+                  : String(traces.filter((trace) => (trace.error_count ?? 0) > 0).length)
+              }
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="app-surface sticky top-[4.9rem] z-20 p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <QuickFilterButton
+            active={!filters.status}
+            label="All traces"
+            onClick={() => setFilters({ status: undefined }, 'push')}
+          />
+          <QuickFilterButton
+            active={filters.status === 'failed'}
+            label="Failed"
+            onClick={() => setFilters({ status: filters.status === 'failed' ? undefined : 'failed' }, 'push')}
+          />
+          <QuickFilterButton
+            active={filters.status === 'running'}
+            label="Running"
+            onClick={() => setFilters({ status: filters.status === 'running' ? undefined : 'running' }, 'push')}
+          />
+          <QuickFilterButton
+            active={Boolean(filters.has_errors)}
+            label="Has errors"
+            onClick={() =>
+              setFilters({ has_errors: filters.has_errors ? undefined : true }, 'push')
+            }
+          />
+          <div className="ml-auto text-sm text-[var(--continua-text-muted)]">
             <span>{total} total</span>
-            {tracesQuery.isFetching && !tracesQuery.isPending && (
-              <span className="ml-2 text-blue-600 dark:text-sky-400">Updating...</span>
-            )}
+            {tracesQuery.isFetching && !tracesQuery.isPending ? <span className="ml-2">Refreshing…</span> : null}
           </div>
         </div>
 
-        <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <div className="xl:col-span-2">
               <label
                 htmlFor="trace-search"
-                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
+                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
               >
                 Search
               </label>
@@ -284,9 +325,9 @@ function TracesContent() {
                 }
                 aria-describedby="trace-search-hint"
                 placeholder="Search traces"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+                className="app-input"
               />
-              <p id="trace-search-hint" className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p id="trace-search-hint" className="mt-1 text-xs text-[var(--continua-text-muted)]">
                 Search names, user IDs, and matching span names.
               </p>
             </div>
@@ -294,7 +335,7 @@ function TracesContent() {
             <div>
               <label
                 htmlFor="trace-status"
-                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
+                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
               >
                 Status
               </label>
@@ -311,7 +352,7 @@ function TracesContent() {
                     'push'
                   )
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+                className="app-select"
               >
                 <option value="">All statuses</option>
                 <option value="running">Running</option>
@@ -323,7 +364,7 @@ function TracesContent() {
             <div>
               <label
                 htmlFor="trace-start-date"
-                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
+                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
               >
                 Start Date
               </label>
@@ -341,14 +382,14 @@ function TracesContent() {
                     'push'
                   )
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+                className="app-input"
               />
             </div>
 
             <div>
               <label
                 htmlFor="trace-end-date"
-                className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
+                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
               >
                 End Date
               </label>
@@ -366,14 +407,14 @@ function TracesContent() {
                     'push'
                   )
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+                className="app-input"
               />
             </div>
 
             <div>
               <label
                 htmlFor="trace-user-id"
-                className="mb-1 block text-sm font-medium text-gray-700"
+                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
               >
                 User ID
               </label>
@@ -388,7 +429,7 @@ function TracesContent() {
                   handleEnterCommit(event, commitUserId, userIdDraft)
                 }
                 placeholder="Filter by user"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="app-input"
               />
             </div>
 
@@ -396,7 +437,7 @@ function TracesContent() {
               <div>
                 <label
                   htmlFor="trace-min-duration"
-                  className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
+                  className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
                 >
                   Min Duration (ms)
                 </label>
@@ -413,11 +454,11 @@ function TracesContent() {
                     handleEnterCommit(event, commitMinDuration, minDurationDraft)
                   }
                   placeholder="e.g. 1500"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+                  className="app-input"
                 />
               </div>
 
-              <label className="flex items-end gap-2 text-sm font-medium text-slate-700 xl:pt-0 dark:text-slate-200">
+              <label className="flex items-end gap-2 text-sm font-medium text-[var(--continua-text-secondary)] xl:pt-0">
                 <input
                   type="checkbox"
                   checked={Boolean(filters.has_errors)}
@@ -430,7 +471,7 @@ function TracesContent() {
                     )
                   }
                   aria-label="Only show traces with errors"
-                  className="mt-0 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950"
+                  className="mt-0 h-4 w-4 rounded border-[var(--continua-border-strong)] text-[var(--continua-accent)] focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
                 />
                 <span>Has errors</span>
               </label>
@@ -438,146 +479,121 @@ function TracesContent() {
           </div>
 
           {dateRangeError && (
-            <p className="mt-3 text-sm font-medium text-red-600">{dateRangeError}</p>
+            <p className="mt-3 text-sm font-medium text-red-600 dark:text-red-300">{dateRangeError}</p>
           )}
-        </section>
+      </section>
 
-        {hasActiveFilters && (
-          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex flex-wrap items-center gap-2">
-              {activeChips.map((chip) => (
-                <span
-                  key={chip.key}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+      {hasActiveFilters && (
+        <div className="app-surface p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {activeChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-strong)] bg-[var(--continua-surface-muted)] px-3 py-1.5 text-sm text-[var(--continua-text-secondary)]"
+              >
+                <span className="font-medium">{chip.label}:</span>
+                <span>{chip.value}</span>
+                <button
+                  type="button"
+                  onClick={() => clearChip(chip.key)}
+                  aria-label={`Clear ${chip.label} filter`}
+                  className="rounded-full p-0.5 text-[var(--continua-text-muted)] transition hover:bg-[var(--continua-surface-elevated)] hover:text-[var(--continua-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
                 >
-                  <span className="font-medium">{chip.label}:</span>
-                  <span>{chip.value}</span>
-                  <button
-                    type="button"
-                    onClick={() => clearChip(chip.key)}
-                    aria-label={`Clear ${chip.label} filter`}
-                    className="rounded-full p-0.5 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <button
-                type="button"
-                onClick={clearAll}
-                className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900 dark:hover:text-slate-100"
-              >
-                Clear all
-              </button>
-            </div>
+                  ×
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={clearAll}
+              className="app-button-secondary ml-auto"
+            >
+              Clear all
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {tracesQuery.error && (
-          isAuthError(tracesQuery.error) ? (
-            <div className="mb-4">
-              <AuthErrorBanner message={getErrorMessage(tracesQuery.error)} />
-            </div>
-          ) : (
-            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-semibold">Could not load traces</p>
-                <p className="text-sm">{getErrorMessage(tracesQuery.error)}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void tracesQuery.refetch()}
-                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-200"
-              >
-                Retry
-              </button>
-            </div>
-          )
-        )}
-
-        {dateRangeError ? (
-          <div className="rounded-xl border border-dashed border-red-200 bg-white p-8 text-center text-sm text-slate-600 shadow-sm dark:border-red-500/40 dark:bg-slate-900 dark:text-slate-300">
-            Fix the date range to load traces.
-          </div>
-        ) : tracesQuery.isPending && !tracesQuery.data ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-            Loading traces...
-          </div>
-        ) : tracesQuery.error && !tracesQuery.data ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-            Retry the request or adjust your filters to continue.
-          </div>
-        ) : traces.length === 0 ? (
-          hasActiveFilters ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">No matching traces</h2>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                Try broadening the filters or clearing them entirely.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">No traces yet</h2>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                Start sending traces from your application to see them here.
-              </p>
-            </div>
-          )
+      {tracesQuery.error && (
+        isAuthError(tracesQuery.error) ? (
+          <AuthErrorBanner message={getErrorMessage(tracesQuery.error)} />
         ) : (
-          <>
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
-                <thead className="bg-slate-50 dark:bg-slate-950/70">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Duration
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Tokens
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Cost
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      <SortableHeader
-                        label="Started"
-                        isActive={filters.sort_by === 'started_at'}
-                        isAscending={filters.sort_dir === 'asc'}
-                        isDisabled={isSearchActive}
-                        onClick={handleStartedSortToggle}
-                      />
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
-                  {traces.map((trace) => (
-                    <TraceRow
-                      key={trace.id}
-                      trace={trace}
-                      returnTo={currentListUrl}
-                    />
-                  ))}
-                </tbody>
-              </table>
+          <div className="app-alert-error flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold">Could not load traces</p>
+              <p className="text-sm">{getErrorMessage(tracesQuery.error)}</p>
             </div>
-            <PaginationControls
-              offset={filters.offset}
-              pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
-              total={total}
-              currentItemCount={traces.length}
-              onOffsetChange={(offset) => setFilters({ offset }, 'push')}
-              onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
-              onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
-            />
-          </>
-        )}
-      </div>
+            <button
+              type="button"
+              onClick={() => void tracesQuery.refetch()}
+              className="app-button-primary"
+            >
+              Retry
+            </button>
+          </div>
+        )
+      )}
+
+      {dateRangeError ? (
+        <div className="app-empty-state">Fix the date range to load traces.</div>
+      ) : tracesQuery.isPending && !tracesQuery.data ? (
+        <div className="app-empty-state">Loading traces...</div>
+      ) : tracesQuery.error && !tracesQuery.data ? (
+        <div className="app-empty-state">Retry the request or adjust your filters to continue.</div>
+      ) : traces.length === 0 ? (
+        hasActiveFilters ? (
+          <div className="app-empty-state">
+            <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">No matching traces</h2>
+            <p className="mt-2">Try broadening the filters or clearing them entirely.</p>
+          </div>
+        ) : (
+          <div className="app-empty-state">
+            <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">No traces yet</h2>
+            <p className="mt-2">Start sending traces from your application to see them here.</p>
+          </div>
+        )
+      ) : (
+        <>
+          <section className="app-surface overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[var(--continua-border-soft)] px-4 py-3 sm:px-5">
+              <div className="flex items-center gap-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+                <span>Name</span>
+                <span>Status</span>
+                <span>Duration</span>
+                <span>Tokens</span>
+                <span>Cost</span>
+              </div>
+              <SortableHeader
+                label="Started"
+                isActive={filters.sort_by === 'started_at'}
+                isAscending={filters.sort_dir === 'asc'}
+                isDisabled={isSearchActive}
+                onClick={handleStartedSortToggle}
+              />
+            </div>
+
+            <div className="space-y-3 p-4 sm:p-5">
+              {traces.map((trace) => (
+                <TraceRow
+                  key={trace.id}
+                  trace={trace}
+                  returnTo={currentListUrl}
+                />
+              ))}
+            </div>
+          </section>
+
+          <PaginationControls
+            offset={filters.offset}
+            pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
+            total={total}
+            currentItemCount={traces.length}
+            onOffsetChange={(offset) => setFilters({ offset }, 'push')}
+            onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
+            onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -592,51 +608,108 @@ function TraceRow({ trace, returnTo }: TraceRowProps) {
   const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
 
   return (
-    <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
-      <td className="px-6 py-4 align-top">
-        <div className="min-w-[16rem]">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to={`/traces/${trace.id}`}
-              state={{ returnTo }}
-              className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-sky-400 dark:hover:text-sky-300"
-            >
-              {trace.name}
-            </Link>
-            {trace.error_count && trace.error_count > 0 && (
-              <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-200">
-                {trace.error_count} error{trace.error_count === 1 ? '' : 's'}
-              </span>
-            )}
-          </div>
-          {trace.session_id && (
+    <article className="app-list-row">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to={`/traces/${trace.id}`}
+            state={{ returnTo }}
+            className="truncate text-sm font-semibold text-[var(--continua-text-primary)] transition hover:text-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
+          >
+            {trace.name}
+          </Link>
+          <StatusBadge status={trace.status} />
+          {trace.error_count && trace.error_count > 0 ? (
+            <span className="inline-flex rounded-full border border-red-300/60 bg-red-100/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-900 dark:border-red-400/25 dark:bg-red-400/10 dark:text-red-100">
+              {trace.error_count} error{trace.error_count === 1 ? '' : 's'}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--continua-text-muted)]">
+          <span>{formatRelativeTime(trace.started_at)}</span>
+          {trace.session_id ? (
             <Link
               to={`/sessions/${trace.session_id}`}
-              className="mt-1 inline-flex flex-col text-left text-xs transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:hover:text-sky-300"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-accent)]"
             >
-              <span className="font-medium text-slate-600 dark:text-slate-300">
-                {trace.session_external_id ?? trace.session_id}
-              </span>
-              <span className="font-mono text-slate-400 dark:text-slate-500">{trace.session_id}</span>
+              <span>{trace.session_external_id ?? trace.session_id}</span>
             </Link>
-          )}
+          ) : null}
         </div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap align-top">
-        <StatusBadge status={trace.status} />
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
-        {formatDuration(duration)}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
-        {formatTokens(totalTokens)}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
-        {formatCost(trace.total_cost_usd)}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 align-top dark:text-slate-400">
-        {formatRelativeTime(trace.started_at)}
-      </td>
-    </tr>
+      </div>
+
+      <div className="grid shrink-0 gap-3 text-right text-xs sm:grid-cols-4 sm:text-sm">
+        <MetricColumn label="Duration" value={formatDuration(duration)} />
+        <MetricColumn label="Tokens" value={formatTokens(totalTokens)} />
+        <MetricColumn label="Cost" value={formatCost(trace.total_cost_usd)} />
+        <MetricColumn
+          label="Errors"
+          value={trace.error_count && trace.error_count > 0 ? String(trace.error_count) : '0'}
+        />
+      </div>
+    </article>
   );
+}
+
+function MetricColumn({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-[5.25rem]">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--continua-text-muted)]">
+        {label}
+      </div>
+      <div className="mt-1 text-xs font-medium text-[var(--continua-text-primary)] sm:text-sm">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function TraceStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="app-surface-muted px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function QuickFilterButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? 'inline-flex items-center rounded-full border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] px-3 py-1.5 text-sm font-medium text-[var(--continua-accent)]'
+          : 'app-button-ghost'
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
+function runningTracesCount(
+  status: 'running' | 'completed' | 'failed' | undefined,
+  traces: Trace[],
+  total?: number
+) {
+  if (status === 'running') {
+    return total ?? traces.length;
+  }
+
+  return traces.filter((trace) => trace.status === 'RUNNING').length;
 }

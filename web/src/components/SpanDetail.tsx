@@ -46,7 +46,7 @@ export function SpanDetail({
 }: SpanDetailProps) {
   if (!span) {
     return (
-      <div className="h-full flex items-center justify-center text-slate-500 dark:text-slate-400">
+      <div className="flex h-full items-center justify-center text-[var(--continua-text-muted)]">
         Select a span to view details
       </div>
     );
@@ -77,9 +77,13 @@ export function SpanDetail({
           onSelectSpan={onSelectSpan}
           className="mb-3"
         />
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{span.name}</h2>
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-sm text-slate-500 dark:text-slate-400">{span.kind}</span>
+        <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+          {span.name}
+        </h2>
+        <div className="mt-2 flex items-center gap-2">
+          <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--continua-text-secondary)]">
+            {span.kind}
+          </span>
           <StatusBadge status={span.status} />
         </div>
       </div>
@@ -94,14 +98,14 @@ export function SpanDetail({
       {/* Token breakdown */}
       {(span.tokens_in || span.tokens_out) && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Token Breakdown</h3>
-          <div className="rounded bg-slate-50 p-3 text-sm dark:bg-slate-950/70">
+          <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">Token Breakdown</h3>
+          <div className="app-surface-muted p-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-600 dark:text-slate-300">Input tokens:</span>
+              <span className="text-[var(--continua-text-secondary)]">Input tokens:</span>
               <span className="font-mono">{span.tokens_in ?? 0}</span>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-slate-600 dark:text-slate-300">Output tokens:</span>
+              <span className="text-[var(--continua-text-secondary)]">Output tokens:</span>
               <span className="font-mono">{span.tokens_out ?? 0}</span>
             </div>
           </div>
@@ -112,7 +116,7 @@ export function SpanDetail({
       {span.error_message && (
         <div className="mb-6">
           <h3 className="text-sm font-medium text-red-700 mb-2">Error</h3>
-          <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800 font-mono whitespace-pre-wrap">
+          <div className="rounded border border-red-300/40 bg-red-50/80 p-3 font-mono text-sm text-red-800 whitespace-pre-wrap dark:border-red-400/25 dark:bg-red-400/10 dark:text-red-100">
             {span.error_message}
           </div>
         </div>
@@ -121,8 +125,8 @@ export function SpanDetail({
       {/* LLM context */}
       {showLLMContext && (
         <div className="mb-6">
-          <h3 className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">LLM Context</h3>
-          <div className="rounded bg-slate-50 p-3 text-sm dark:bg-slate-950/70">
+          <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">LLM Context</h3>
+          <div className="app-surface-muted p-3 text-sm">
             <DetailRow label="Model" value={span.model} />
             <DetailRow label="Provider" value={span.provider} className="mt-1" />
           </div>
@@ -132,7 +136,7 @@ export function SpanDetail({
       {/* Input */}
       {span.input !== undefined && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Input</h3>
+          <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">Input</h3>
           <TruncationBanner
             title="Input payload"
             truncated={span.input_truncated}
@@ -146,7 +150,7 @@ export function SpanDetail({
       {/* Output */}
       {span.output !== undefined && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Output</h3>
+          <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">Output</h3>
           <TruncationBanner
             title="Output payload"
             truncated={span.output_truncated}
@@ -160,34 +164,34 @@ export function SpanDetail({
       {/* Metadata */}
       {span.metadata && Object.keys(span.metadata).length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Metadata</h3>
+          <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">Metadata</h3>
           <JsonViewer data={span.metadata} />
         </div>
       )}
 
       {decisions.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Decisions</h3>
+          <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">Decisions</h3>
           <div className="space-y-3">
             {decisions.map((decision) => (
               <div
                 key={decision.event.id}
-                className="rounded border border-blue-100 bg-blue-50/70 p-3 dark:border-sky-500/30 dark:bg-sky-500/10"
+                className="rounded-xl border border-[var(--continua-border-strong)] bg-[var(--continua-surface-muted)] p-3"
               >
-                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <div className="text-sm font-semibold text-[var(--continua-text-primary)]">
                   {decision.question}
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--continua-text-secondary)]">
                   <span>Chosen</span>
                   <DecisionValuePill tone="accent">
                     {formatInlineSemanticValue(decision.chosen)}
                   </DecisionValuePill>
                 </div>
                 {decision.reasoning ? (
-                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{decision.reasoning}</p>
+                  <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">{decision.reasoning}</p>
                 ) : null}
                 {decision.alternatives && decision.alternatives.length > 0 ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--continua-text-muted)]">
                     <span>Alternatives</span>
                     {decision.alternatives.map((alternative, index) => (
                       <DecisionValuePill
@@ -206,28 +210,28 @@ export function SpanDetail({
 
       {span.status === 'FAILED' && retrySafety ? (
         <div className="mb-6">
-          <h3 className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+          <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">
             Retry Safety
           </h3>
-          <div className="rounded border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+          <div className="app-surface-muted p-4">
             <div className="flex flex-wrap items-center gap-3">
               <RetrySafetyBadge
                 classification={retrySafety.classification}
                 variant="full"
                 aria-label={getAccessibleSummary(retrySafety.classification)}
               />
-              <span className="text-sm text-slate-700 dark:text-slate-200">
+              <span className="text-sm text-[var(--continua-text-secondary)]">
                 Advisory only. Retry safety is inferred from recorded effect metadata.
               </span>
             </div>
-            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+            <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">
               {getReasonExplanation(retrySafety.reason)}
             </p>
             {(retrySafety.effectKind !== undefined ||
               retrySafety.hasExternalSideEffect !== undefined ||
               retrySafety.idempotent !== undefined ||
               retrySafety.idempotencyKey !== undefined) ? (
-              <div className="mt-4 rounded border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+              <div className="mt-4 rounded-xl border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] p-3 text-sm">
                 <DetailRow label="effect_kind" value={retrySafety.effectKind} mono />
                 {retrySafety.hasExternalSideEffect !== undefined ? (
                   <DetailRow
@@ -261,8 +265,8 @@ export function SpanDetail({
 
       {/* IDs */}
       <div className="mb-6">
-          <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Identifiers</h3>
-          <div className="rounded bg-slate-50 p-3 text-sm dark:bg-slate-950/70">
+          <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">Identifiers</h3>
+          <div className="app-surface-muted p-3 text-sm">
           <DetailRow label="Span UUID" value={span.id} mono />
           <DetailRow
             label="Span ID"
@@ -285,7 +289,7 @@ export function SpanDetail({
                   <button
                     type="button"
                     aria-label={`Select parent span ${span.parent_span_id}`}
-                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-2.5 py-1 text-xs font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
                     onClick={() => onSelectSpan(parentSpan.span_id)}
                   >
                     {span.parent_span_id}
@@ -309,8 +313,8 @@ export function SpanDetail({
 
       {/* Timestamps */}
       <div>
-        <h3 className="text-sm font-medium text-slate-700 mb-2 dark:text-slate-200">Timestamps</h3>
-        <div className="rounded bg-slate-50 p-3 text-sm dark:bg-slate-950/70">
+        <h3 className="mb-2 text-sm font-medium text-[var(--continua-text-secondary)]">Timestamps</h3>
+        <div className="app-surface-muted p-3 text-sm">
           <DetailRow
             label="Started"
             value={formatTimestamp(span.started_at)}
@@ -337,9 +341,9 @@ interface MetricCardProps {
 
 function MetricCard({ label, value }: MetricCardProps) {
   return (
-    <div className="rounded p-3 text-center bg-slate-50 dark:bg-slate-950/70">
-      <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{value}</div>
-      <div className="text-xs text-slate-500 mt-1 dark:text-slate-400">{label}</div>
+    <div className="app-surface-muted p-3 text-center">
+      <div className="text-xl font-semibold text-[var(--continua-text-primary)]">{value}</div>
+      <div className="mt-1 text-xs text-[var(--continua-text-muted)]">{label}</div>
     </div>
   );
 }
@@ -363,7 +367,7 @@ function DetailRow({
 
   return (
     <div className={`flex justify-between gap-4 ${className}`.trim()}>
-      <span className="text-slate-600 dark:text-slate-300">{label}:</span>
+      <span className="text-[var(--continua-text-secondary)]">{label}:</span>
       {hasValue ? (
         <span className="flex min-w-0 items-center justify-end gap-2">
           <span className={mono ? 'font-mono text-xs text-right' : 'text-right'}>
@@ -372,7 +376,7 @@ function DetailRow({
           {action}
         </span>
       ) : (
-        <span className="text-slate-400 dark:text-slate-500">-</span>
+        <span className="text-[var(--continua-text-muted)]">-</span>
       )}
     </div>
   );

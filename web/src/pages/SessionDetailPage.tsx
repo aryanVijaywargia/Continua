@@ -517,24 +517,22 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
 
   if (sessionQuery.error) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="app-page max-w-4xl">
           {isAuthError(sessionQuery.error) ? (
             <AuthErrorBanner message={queryErrorMessage(sessionQuery.error)} />
           ) : (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+            <div className="app-alert-error">
               Error loading session: {queryErrorMessage(sessionQuery.error)}
             </div>
           )}
-        </div>
       </div>
     );
   }
 
   if (!sessionQuery.data) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center dark:bg-slate-950">
-        <div className="text-slate-500 dark:text-slate-400">Session not found</div>
+      <div className="flex min-h-full items-center justify-center">
+        <div className="text-[var(--continua-text-muted)]">Session not found</div>
       </div>
     );
   }
@@ -542,20 +540,19 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
   const session = sessionQuery.data;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="app-page">
         <Link
           to={returnTo}
-          className="mb-4 inline-block text-sm text-blue-600 hover:text-blue-800 dark:text-sky-400 dark:hover:text-sky-300"
+          className="inline-flex text-sm font-medium text-[var(--continua-accent)] transition hover:opacity-80"
         >
           &larr; Back to Sessions
         </Link>
 
-        <section className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className="app-surface p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{session.external_id}</h1>
+                <h1 className="text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">{session.external_id}</h1>
                 <CopyButton
                   aria-label="Copy session external ID"
                   value={session.external_id}
@@ -564,7 +561,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                 />
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-3">
-                <span className="font-mono text-sm text-slate-500 dark:text-slate-400">{session.id}</span>
+                <span className="font-mono text-sm text-[var(--continua-text-muted)]">{session.id}</span>
                 <CopyButton
                   aria-label="Copy session UUID"
                   value={session.id}
@@ -573,28 +570,28 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                 />
               </div>
               {session.name ? (
-                <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{session.name}</p>
+                <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">{session.name}</p>
               ) : null}
             </div>
 
             <dl className="grid gap-4 sm:grid-cols-3">
               <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
                   User ID
                 </dt>
-                <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{session.user_id || '-'}</dd>
+                <dd className="mt-1 text-sm text-[var(--continua-text-primary)]">{session.user_id || '-'}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
                   Trace Count
                 </dt>
-                <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{session.trace_count ?? 0}</dd>
+                <dd className="mt-1 text-sm text-[var(--continua-text-primary)]">{session.trace_count ?? 0}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
                   Created
                 </dt>
-                <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">
+                <dd className="mt-1 text-sm text-[var(--continua-text-primary)]">
                   {formatRelativeTime(session.created_at)}
                 </dd>
               </div>
@@ -629,15 +626,16 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
 
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Traces</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <div className="app-overline">Trace browser</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">Traces</h2>
+            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
               Sort by started time and preserve table state in the URL.
             </p>
           </div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">
+          <div className="text-sm text-[var(--continua-text-muted)]">
             <span>{total} traces</span>
             {tracesQuery.isFetching && !tracesQuery.isPending && (
-              <span className="ml-2 text-blue-600 dark:text-sky-400">Updating...</span>
+              <span className="ml-2">Updating...</span>
             )}
           </div>
         </div>
@@ -648,26 +646,26 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
               <AuthErrorBanner message={queryErrorMessage(tracesQuery.error)} />
             </div>
           ) : (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+            <div className="app-alert-error mb-4">
               Error loading traces: {queryErrorMessage(tracesQuery.error)}
             </div>
           )
         )}
 
         {tracesQuery.isPending && !tracesQuery.data ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+          <div className="app-empty-state">
             Loading traces...
           </div>
         ) : traces.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">No traces in this session</h2>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          <div className="app-empty-state">
+            <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">No traces in this session</h2>
+            <p className="mt-2">
               Traces will appear here as they are ingested for this session.
             </p>
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="app-surface overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
                 <thead className="bg-slate-50 dark:bg-slate-950/70">
                   <tr>
@@ -721,7 +719,6 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
             />
           </>
         )}
-      </div>
     </div>
   );
 }
@@ -751,7 +748,7 @@ function SessionNarrativeSections({
         {isAuthError(error) ? (
           <AuthErrorBanner message={queryErrorMessage(error)} />
         ) : (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+          <div className="app-alert-error">
             Error loading narrative: {queryErrorMessage(error)}
           </div>
         )}
@@ -763,18 +760,18 @@ function SessionNarrativeSections({
     return (
       <section
         aria-label="Session narrative loading"
-        className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+        className="app-surface mb-6 p-6"
       >
         <div className="animate-pulse">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">
             Session Narrative
           </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Loading narrative...</p>
+          <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">Loading narrative...</p>
           <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
               <div
                 key={index}
-                className="h-20 rounded-lg bg-slate-100 dark:bg-slate-800"
+                className="h-20 rounded-[1.1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)]"
               />
             ))}
           </div>
@@ -794,24 +791,25 @@ function SessionNarrativeSections({
     return (
       <section
         aria-label="Session narrative placeholder"
-        className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+        className="app-surface mb-6 p-6"
       >
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            <div className="app-overline">Narrative</div>
+            <h2 className="mt-2 text-lg font-semibold text-[var(--continua-text-primary)]">
               Session Narrative
             </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
               A compact session storyline will appear here as traces are ingested for this session.
             </p>
           </div>
           {isFetching ? (
-            <div className="text-sm text-blue-600 dark:text-sky-400">Updating narrative...</div>
+            <div className="text-sm text-[var(--continua-accent)]">Updating narrative...</div>
           ) : null}
         </div>
 
-        <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300">
-          <p className="font-medium text-slate-900 dark:text-slate-100">No narrative yet</p>
+        <div className="app-empty-state mt-4 text-left">
+          <p className="font-medium text-[var(--continua-text-primary)]">No narrative yet</p>
           <p className="mt-1">
             This placeholder stays compact until the session has at least one ingested trace.
           </p>
@@ -824,19 +822,20 @@ function SessionNarrativeSections({
     <>
       <section
         aria-label="Session narrative summary"
-        className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+        className="app-surface mb-6 p-6"
       >
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            <div className="app-overline">Narrative</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
               Session Narrative
             </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
               Chronological summary for the returned storyline above the full trace browser.
             </p>
           </div>
           {isFetching && (
-            <div className="text-sm text-blue-600 dark:text-sky-400">Updating narrative...</div>
+            <div className="text-sm text-[var(--continua-accent)]">Updating narrative...</div>
           )}
         </div>
 
@@ -875,27 +874,28 @@ function SessionNarrativeSections({
 
       <section
         aria-label="Session narrative storyline"
-        className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+        className="app-surface mb-6 p-6"
       >
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Storyline</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <div className="app-overline">Lineage</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">Storyline</h2>
+            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
               Oldest-first trace flow for the narrative that was returned.
             </p>
           </div>
         </div>
 
         {narrative.summary.truncated && (
-          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+          <div className="mt-4 rounded-[1.15rem] border border-amber-300/40 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
             Narrative limited to the first {narrative.summary.returned_trace_count} traces. The
             table below remains the full browser.
           </div>
         )}
 
         {narrative.traces.length === 0 ? (
-          <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300">
-            <p className="font-medium text-slate-900 dark:text-slate-100">No narrative yet</p>
+          <div className="app-empty-state mt-4 text-left">
+            <p className="font-medium text-[var(--continua-text-primary)]">No narrative yet</p>
             <p className="mt-1">
               A compact session storyline will appear here as traces are ingested for this session.
             </p>
@@ -947,14 +947,14 @@ function StorylineTraceCard({
     isTerminalTraceStatus(parentTrace.status);
 
   return (
-    <article className="rounded-xl border border-slate-200 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-950/60">
+    <article className="app-surface-muted overflow-hidden p-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Link
               to={`/traces/${trace.id}`}
               state={{ returnTo }}
-              className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-sky-400 dark:hover:text-sky-300"
+              className="text-sm font-semibold text-[var(--continua-accent)] transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
             >
               {trace.name}
             </Link>
@@ -962,13 +962,13 @@ function StorylineTraceCard({
             <NarrativeLineageBadge lineage={trace.lineage} />
           </div>
 
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-[var(--continua-text-muted)]">
             <span className="font-mono">{trace.trace_id}</span>
             {trace.user_id ? <span>User {trace.user_id}</span> : null}
           </div>
 
           {semanticSnippet ? (
-            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{semanticSnippet}</p>
+            <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">{semanticSnippet}</p>
           ) : null}
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -997,7 +997,7 @@ function StorylineTraceCard({
           </div>
         </div>
 
-        <dl className="grid gap-3 sm:grid-cols-2 xl:w-[28rem] xl:grid-cols-3">
+        <dl className="grid gap-3 sm:grid-cols-2 xl:w-[30rem] xl:grid-cols-3">
           <MetricBlock label="Started" value={formatRelativeTime(trace.started_at)} compact />
           <MetricBlock label="Ended" value={formatRelativeTime(trace.ended_at)} compact />
           <MetricBlock
@@ -1054,7 +1054,7 @@ function CompareBar({
     (candidate && !isTerminalTraceStatus(candidate.status));
 
   return (
-    <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section className="app-surface sticky top-[5rem] z-20 mb-6 p-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="grid gap-3 sm:grid-cols-2 xl:w-[40rem]">
           <CompareSelectionCard
@@ -1073,14 +1073,14 @@ function CompareBar({
           <button
             type="button"
             onClick={() => swapCompare()}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100"
+            className="app-button-ghost"
           >
             Swap
           </button>
           <button
             type="button"
             onClick={() => clearCompare()}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100"
+            className="app-button-ghost"
           >
             Clear
           </button>
@@ -1088,7 +1088,7 @@ function CompareBar({
             <Link
               to={compareHref}
               state={{ returnTo: currentSessionDetailUrl }}
-              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-sky-500 dark:hover:bg-sky-400"
+              className="app-button-primary"
             >
               Open comparison
             </Link>
@@ -1096,7 +1096,7 @@ function CompareBar({
             <button
               type="button"
               disabled
-              className="cursor-not-allowed rounded-md bg-slate-200 px-3 py-2 text-sm font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+              className="cursor-not-allowed rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-2.5 text-sm font-medium text-[var(--continua-text-muted)]"
               title={
                 hasRunningSelection
                   ? 'Both selected traces must be terminal before comparison can open'
@@ -1110,7 +1110,7 @@ function CompareBar({
       </div>
 
       {(isBaselineLookupPending || isCandidateLookupPending || hasRunningSelection) ? (
-        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">
           {isBaselineLookupPending || isCandidateLookupPending
             ? 'Resolving selected trace details...'
             : 'Running traces stay visible here, but comparison remains disabled until they finish.'}
@@ -1130,24 +1130,24 @@ function CompareSelectionCard({
   isPending: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
-      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+    <div className="rounded-[1.15rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
         {label}
       </p>
       {isPending ? (
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading trace…</p>
+        <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">Loading trace…</p>
       ) : trace ? (
         <div className="mt-2">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{trace.name}</p>
+            <p className="text-sm font-semibold text-[var(--continua-text-primary)]">{trace.name}</p>
             <StatusBadge status={trace.status} />
           </div>
           {trace.trace_id ? (
-            <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{trace.trace_id}</p>
+            <p className="mt-1 font-mono text-xs text-[var(--continua-text-muted)]">{trace.trace_id}</p>
           ) : null}
         </div>
       ) : (
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">No trace selected</p>
+        <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">No trace selected</p>
       )}
     </div>
   );
@@ -1172,12 +1172,12 @@ function CompareRoleButton({
       disabled={disabled}
       onClick={onClick}
       title={title}
-      className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
         disabled
-          ? 'cursor-not-allowed border-slate-200 text-slate-400 dark:border-slate-800 dark:text-slate-500'
+          ? 'cursor-not-allowed border-[var(--continua-border-soft)] text-[var(--continua-text-muted)]'
           : isSelected
-            ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-100'
-            : 'border-slate-300 text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100'
+            ? 'border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
+            : 'border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] hover:border-[var(--continua-accent)] hover:text-[var(--continua-accent)]'
       }`}
     >
       {label}
@@ -1197,13 +1197,19 @@ function MetricBlock({
   compact?: boolean;
 }) {
   return (
-    <div className={compact ? '' : 'rounded-lg border border-slate-200 p-4 dark:border-slate-800'}>
-      <dt className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+    <div
+      className={
+        compact
+          ? 'rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] p-3'
+          : 'app-metric-panel'
+      }
+    >
+      <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
         {label}
       </dt>
-      <dd className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</dd>
+      <dd className="mt-2 text-sm font-semibold text-[var(--continua-text-primary)]">{value}</dd>
       {hint ? (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+        <p className="mt-1 text-xs text-[var(--continua-text-secondary)]">{hint}</p>
       ) : null}
     </div>
   );
@@ -1215,8 +1221,8 @@ function NarrativeLineageBadge({ lineage }: { lineage: SessionNarrativeLineage }
     lineage.type === 'explicit'
       ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-100'
       : lineage.type === 'inferred'
-        ? 'bg-indigo-100 text-indigo-900 dark:bg-indigo-500/15 dark:text-indigo-100'
-        : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200';
+        ? 'bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-100'
+        : 'bg-[var(--continua-surface-muted)] text-[var(--continua-text-secondary)]';
 
   return (
     <span
@@ -1259,12 +1265,12 @@ function SessionTraceRow({
   const isSelectable = isTerminalTraceStatus(trace.status);
 
   return (
-    <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
+    <tr className="border-b border-[var(--continua-border-soft)] transition hover:bg-[var(--continua-surface-muted)]">
       <td className="px-6 py-4 align-top">
         <Link
           to={`/traces/${trace.id}`}
           state={{ returnTo }}
-          className="text-sm font-semibold text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-sky-400 dark:hover:text-sky-300"
+          className="text-sm font-semibold text-[var(--continua-accent)] transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
         >
           {trace.name}
         </Link>
@@ -1288,16 +1294,16 @@ function SessionTraceRow({
       <td className="px-6 py-4 whitespace-nowrap align-top">
         <StatusBadge status={trace.status} />
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--continua-text-primary)] align-top">
         {formatDuration(duration)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--continua-text-primary)] align-top">
         {formatTokens(totalTokens)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 align-top dark:text-slate-100">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--continua-text-primary)] align-top">
         {formatCost(trace.total_cost_usd)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 align-top dark:text-slate-400">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--continua-text-muted)] align-top">
         {formatRelativeTime(trace.started_at)}
       </td>
     </tr>

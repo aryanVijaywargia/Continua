@@ -45,111 +45,110 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-            Settings
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Manage the debugger API key and local UI preferences for this browser.
-          </p>
-        </div>
+    <div className="app-page max-w-5xl">
+      <section className="app-surface p-6 sm:p-7">
+        <div className="app-overline">Local settings</div>
+        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)] sm:text-4xl">
+          Configure this browser as an operator workspace.
+        </h1>
+        <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
+          Manage the debugger API key and local UI preferences for this browser.
+        </p>
+      </section>
 
-        <div className="grid gap-6">
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                API Key
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                The key is stored locally and sent as `X-API-Key` on API requests.
-              </p>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <section className="app-surface p-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-[var(--continua-text-primary)]">
+              API key
+            </h2>
+            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
+              The key is stored locally and sent as `X-API-Key` on API requests.
+            </p>
+          </div>
+
+          <dl className="app-surface-muted p-4">
+            <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
+              Current key
+            </dt>
+            <dd className="mt-2 font-mono text-sm text-[var(--continua-text-primary)]">
+              {storedKey ? maskApiKey(storedKey) : 'Not configured'}
+            </dd>
+          </dl>
+
+          <form className="mt-5 space-y-4" onSubmit={handleSave}>
+            <div>
+              <label
+                htmlFor="settings-api-key"
+                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
+              >
+                New API key
+              </label>
+              <input
+                id="settings-api-key"
+                type="password"
+                value={draftKey}
+                onChange={(event) => setDraftKey(event.target.value)}
+                placeholder="ck_live_..."
+                className="app-input"
+              />
             </div>
 
-            <dl className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
-              <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                Current key
-              </dt>
-              <dd className="mt-2 font-mono text-sm text-slate-900 dark:text-slate-100">
-                {storedKey ? maskApiKey(storedKey) : 'Not configured'}
-              </dd>
-            </dl>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                className="app-button-primary"
+              >
+                Save key
+              </button>
+              <button
+                type="button"
+                onClick={handleClear}
+                className="app-button-secondary"
+              >
+                Clear key
+              </button>
+              {statusMessage ? (
+                <span className="text-sm text-[var(--continua-text-muted)]">
+                  {statusMessage}
+                </span>
+              ) : null}
+            </div>
+          </form>
+        </section>
 
-            <form className="mt-4 space-y-4" onSubmit={handleSave}>
-              <div>
-                <label
-                  htmlFor="settings-api-key"
-                  className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
-                >
-                  New API key
-                </label>
-                <input
-                  id="settings-api-key"
-                  type="password"
-                  value={draftKey}
-                  onChange={(event) => setDraftKey(event.target.value)}
-                  placeholder="ck_live_..."
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
-                />
-              </div>
+        <section className="app-surface p-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-[var(--continua-text-primary)]">
+              Theme
+            </h2>
+            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
+              Current rendering: {resolvedTheme}. System mode follows the OS preference.
+            </p>
+          </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap gap-3">
+            {(['system', 'light', 'dark'] as ThemeMode[]).map((themeMode) => {
+              const isActive = themeMode === mode;
+
+              return (
                 <button
-                  type="submit"
-                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                >
-                  Save key
-                </button>
-                <button
+                  key={themeMode}
                   type="button"
-                  onClick={handleClear}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+                  aria-pressed={isActive}
+                  onClick={() => setMode(themeMode)}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
+                    isActive
+                      ? 'border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
+                      : 'border border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] hover:border-[var(--continua-accent)] hover:text-[var(--continua-accent)]'
+                  }`}
                 >
-                  Clear key
+                  {formatThemeMode(themeMode)}
                 </button>
-                {statusMessage ? (
-                  <span className="text-sm text-slate-500 dark:text-slate-400">
-                    {statusMessage}
-                  </span>
-                ) : null}
-              </div>
-            </form>
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Theme
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Current rendering: {resolvedTheme}. System mode follows the OS preference.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              {(['system', 'light', 'dark'] as ThemeMode[]).map((themeMode) => {
-                const isActive = themeMode === mode;
-
-                return (
-                  <button
-                    key={themeMode}
-                    type="button"
-                    aria-pressed={isActive}
-                    onClick={() => setMode(themeMode)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
-                      isActive
-                        ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950'
-                        : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900'
-                    }`}
-                  >
-                    {formatThemeMode(themeMode)}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        </div>
+              );
+            })}
+          </div>
+        </section>
       </div>
     </div>
   );

@@ -25,7 +25,7 @@ export function SortableHeader({
 
   if (isDisabled) {
     return (
-      <span className="inline-flex items-center gap-1 text-slate-300 dark:text-slate-600">
+      <span className="inline-flex items-center gap-1 text-[var(--continua-text-muted)] opacity-55">
         <span>{label}</span>
         <span aria-hidden="true">{indicator}</span>
       </span>
@@ -36,7 +36,7 @@ export function SortableHeader({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 text-slate-500 transition hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-400 dark:hover:text-slate-200"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[var(--continua-text-secondary)] transition hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
     >
       <span>{label}</span>
       <span aria-hidden="true">{indicator}</span>

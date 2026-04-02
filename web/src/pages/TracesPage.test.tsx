@@ -3,7 +3,6 @@ import {
   fireEvent,
   screen,
   waitFor,
-  within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +21,7 @@ import {
   createDeferredResponse,
   getRequests,
   jsonResponse,
+  readRequestUrl,
   renderTraceRoutes,
   resetTestEntityCounter,
 } from './testUtils';
@@ -30,6 +30,13 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 function getTraceListRequests(): URL[] {
   return getRequests(fetchMock, '/api/traces');
+}
+
+function countTraceDetailRequests(): number {
+  return fetchMock.mock.calls.filter(([input]) => {
+    const url = new URL(readRequestUrl(input), 'http://localhost');
+    return /^\/api\/traces\/[^/]+$/.test(url.pathname);
+  }).length;
 }
 
 async function waitForListFetch(search: string) {
@@ -72,9 +79,12 @@ describe('TracesPage', () => {
 
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
     expect(
-      screen.getByText('Search names, user IDs, and matching span names.')
-    ).toBeInTheDocument();
+      screen.getAllByText('Search names, user IDs, and matching span names.').length
+    ).toBeGreaterThan(0);
     await waitForListFetch('?limit=20');
+    await waitFor(() => {
+      expect(countTraceDetailRequests()).toBe(0);
+    });
     expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument();
   });
 
@@ -359,7 +369,7 @@ describe('TracesPage', () => {
     await user.selectOptions(screen.getByLabelText('Status'), 'running');
 
     expect(screen.getByText('Checkout Trace')).toBeInTheDocument();
-    expect(screen.getByText('Updating...')).toBeInTheDocument();
+    expect(screen.getByText('Refreshing…')).toBeInTheDocument();
 
     deferred.resolve(jsonResponse({ traces: [TRACE_TWO], total: 1 }));
 
@@ -399,7 +409,7 @@ describe('TracesPage', () => {
     renderTraceRoutes(['/traces?q=trace']);
     expect(await screen.findByText('Zeta Trace')).toBeInTheDocument();
 
-    const links = within(screen.getByRole('table')).getAllByRole('link', {
+    const links = screen.getAllByRole('link', {
       name: /(Zeta|Alpha) Trace/,
     });
     expect(links.map((link) => link.textContent)).toEqual([
@@ -418,7 +428,9 @@ describe('TracesPage', () => {
       },
     ]);
 
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Traces' })).toHaveAttribute(
       'href',
       '/traces?q=checkout&status=failed'
@@ -431,7 +443,9 @@ describe('TracesPage', () => {
         state: { returnTo: '/sessions' },
       },
     ]);
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Traces' })).toHaveAttribute(
       'href',
       '/traces'
@@ -439,7 +453,9 @@ describe('TracesPage', () => {
     unrelatedState.unmount();
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
-    expect(await screen.findByText('Trace Context')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Trace Context/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Traces' })).toHaveAttribute(
       'href',
       '/traces'
@@ -466,7 +482,19 @@ describe('TracesPage', () => {
     const clearErrors = screen.getByRole('button', { name: 'Clear Errors filter' });
     const clearSession = screen.getByRole('button', { name: 'Clear Session filter' });
     const clearAll = screen.getByRole('button', { name: 'Clear all' });
+    const allTracesQuickFilter = screen.getByRole('button', { name: 'All traces' });
+    const failedQuickFilter = screen.getByRole('button', { name: 'Failed' });
+    const runningQuickFilter = screen.getByRole('button', { name: 'Running' });
+    const hasErrorsQuickFilter = screen.getByRole('button', { name: 'Has errors' });
 
+    await user.tab();
+    expect(allTracesQuickFilter).toHaveFocus();
+    await user.tab();
+    expect(failedQuickFilter).toHaveFocus();
+    await user.tab();
+    expect(runningQuickFilter).toHaveFocus();
+    await user.tab();
+    expect(hasErrorsQuickFilter).toHaveFocus();
     await user.tab();
     expect(searchInput).toHaveFocus();
     await user.tab();
@@ -490,9 +518,9 @@ describe('TracesPage', () => {
     await user.tab();
     expect(clearAll).toHaveFocus();
 
-    expect(searchInput.className).toContain('focus:ring-2');
+    expect(searchInput).toHaveClass('app-input');
     expect(clearSearch.className).toContain('focus:ring-2');
-    expect(clearAll.className).toContain('focus:ring-2');
+    expect(clearAll).toHaveClass('app-button-secondary');
   });
 
   it('rehydrates draft text inputs on back and forward navigation', async () => {
@@ -589,7 +617,7 @@ describe('TracesPage', () => {
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
     expect(screen.queryByRole('button', { name: 'Started' })).not.toBeInTheDocument();
-    expect(screen.getByText('Started')).toBeInTheDocument();
+    expect(screen.getAllByText('Started').length).toBeGreaterThan(0);
   });
 
   it('renders session external ID first on trace rows', async () => {
@@ -599,6 +627,6 @@ describe('TracesPage', () => {
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
     expect(screen.getByText('conv-checkout-123')).toBeInTheDocument();
-    expect(screen.getByText(SESSION_ID)).toBeInTheDocument();
+    expect(screen.queryByText(SESSION_ID)).not.toBeInTheDocument();
   });
 });
