@@ -11,7 +11,7 @@
     "lint": "pnpm -r lint",
     "lint:fix": "pnpm -r lint:fix",
     "type-check": "pnpm -r type-check",
-    "test": "pnpm -r test",
+    "test": "pnpm --filter @continua/sdk test && pnpm --filter web test",
     "clean": "pnpm -r clean"
   },
   "devDependencies": {

@@ -9,6 +9,7 @@ import (
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 )
 
+//nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
 func (o *storeOps) CreateRun(ctx context.Context, arg enginedb.CreateRunParams) (enginedb.EngineRun, error) {
 	return mapResult(o.q.CreateRun(ctx, arg))
 }

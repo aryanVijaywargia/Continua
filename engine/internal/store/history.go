@@ -8,6 +8,7 @@ import (
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 )
 
+//nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
 func (o *storeOps) AppendHistory(ctx context.Context, arg enginedb.AppendHistoryParams) (enginedb.EngineHistory, error) {
 	return mapResult(o.q.AppendHistory(ctx, arg))
 }

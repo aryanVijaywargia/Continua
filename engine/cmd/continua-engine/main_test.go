@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
 )
 
 func TestVersionCommand(t *testing.T) {

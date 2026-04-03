@@ -9,6 +9,8 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+
+	// Register the pgx database/sql driver used by golang-migrate's Postgres backend.
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 

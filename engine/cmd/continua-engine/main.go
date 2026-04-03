@@ -98,7 +98,7 @@ func newMigrator(databaseURL string) (*migrate.Migrate, error) {
 	return migrations.New(databaseURL, enginepgmigrations.Migrations)
 }
 
-func runMigrationsUp(stdout io.Writer, stderr io.Writer) error {
+func runMigrationsUp(stdout, stderr io.Writer) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -118,7 +118,7 @@ func runMigrationsUp(stdout io.Writer, stderr io.Writer) error {
 	return nil
 }
 
-func runMigrationsDown(stdout io.Writer, stderr io.Writer, steps int) error {
+func runMigrationsDown(stdout, stderr io.Writer, steps int) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err

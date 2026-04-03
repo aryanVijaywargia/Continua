@@ -138,7 +138,7 @@ func testDatabaseURL() string {
 	return DefaultTestDatabaseURL
 }
 
-func withDatabaseName(databaseURL string, databaseName string) (string, error) {
+func withDatabaseName(databaseURL, databaseName string) (string, error) {
 	parsed, err := url.Parse(databaseURL)
 	if err != nil {
 		return "", err
@@ -147,7 +147,7 @@ func withDatabaseName(databaseURL string, databaseName string) (string, error) {
 	return parsed.String(), nil
 }
 
-func applyMigrations(databaseURL string, migrationsDir string, migrationsTable string) error {
+func applyMigrations(databaseURL, migrationsDir, migrationsTable string) error {
 	migrator, err := migrations.NewWithTable(databaseURL, os.DirFS(migrationsDir), migrationsTable)
 	if err != nil {
 		return err
