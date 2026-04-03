@@ -3,7 +3,7 @@
 > **Status: Current**
 > This is the shortest repo-verified handoff for the current checkout. Use [README.md](../README.md) for setup, [docs/README.md](./README.md) for doc status, and [PHASE5_CURRENT_STATE_REPORT.md](./PHASE5_CURRENT_STATE_REPORT.md) only as deeper historical context.
 
-Status date: 2026-04-02
+Status date: 2026-04-03
 
 Purpose: give future agents a short, repo-verified baseline for the current product state after the debugger shell/overview/session-compare redesign landed in the working tree.
 
@@ -55,7 +55,6 @@ Implemented and active:
 - `sdks/python`
 
 Still scaffolded or future-facing:
-- `engine/`
 - `internal/proxy`
 - `internal/ws`
 - `internal/replay`
@@ -66,6 +65,10 @@ Still scaffolded or future-facing:
 - `sdks/typescript`
 
 Do not describe replay, live WebSocket runtime, proxy capture, score APIs, or TypeScript SDK parity as implemented.
+
+Engine note:
+- `engine/` now has schema/store/CLI foundation in place: a dedicated Postgres `engine` schema, sqlc-backed store, and `continua-engine` migration/version binary
+- workflow runtime packages under `engine/internal/` are still future-facing; there is no public execution API or debugger engine runtime yet
 
 ## Debugger Frontend Shape
 
@@ -106,6 +109,15 @@ Important persisted entities:
 - `traces`
 - `spans`
 - `span_events`
+
+Engine foundation entities now also exist in the shared Postgres deployment under the `engine` schema:
+- `engine.instances`
+- `engine.runs`
+- `engine.history`
+- `engine.inbox`
+- `engine.activity_tasks`
+- `engine.request_dedupe`
+- `engine.projection_checkpoints`
 
 Important semantics:
 - `sessions.external_id` is the user-facing session identifier
