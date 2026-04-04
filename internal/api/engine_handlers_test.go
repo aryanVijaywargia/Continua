@@ -512,8 +512,8 @@ func TestEngineHandlers_ReadSignalCancelAndTraceSurfaces(t *testing.T) {
 	require.NotNil(t, projectedAfterSignal.Engine)
 	assert.Equal(t, EngineRunStatusQUEUED, projectedAfterSignal.Engine.Status)
 	assert.Nil(t, projectedAfterSignal.Engine.WaitState)
-	assert.Equal(t, 0, projectedAfterSignal.Engine.PendingWork.PendingActivityTasks)
-	assert.Equal(t, 1, projectedAfterSignal.Engine.PendingWork.PendingInboxItems)
+	assert.EqualValues(t, 0, projectedAfterSignal.Engine.PendingWork.PendingActivityTasks)
+	assert.EqualValues(t, 1, projectedAfterSignal.Engine.PendingWork.PendingInboxItems)
 
 	cancelRec := invokeCancelEngineRun(t, server, projectID, runID)
 	require.Equal(t, http.StatusOK, cancelRec.Code)
@@ -536,7 +536,7 @@ func TestEngineHandlers_ReadSignalCancelAndTraceSurfaces(t *testing.T) {
 	server.engineControl = originalEngineControl
 	require.NotNil(t, projectedAfterCancel.Engine)
 	assert.Equal(t, EngineRunStatusQUEUED, projectedAfterCancel.Engine.Status)
-	assert.Equal(t, int(openInboxAfterReplay), projectedAfterCancel.Engine.PendingWork.PendingInboxItems)
+	assert.EqualValues(t, openInboxAfterReplay, projectedAfterCancel.Engine.PendingWork.PendingInboxItems)
 
 	_, err = platformStore.Pool().Exec(ctx, `
 		UPDATE engine.runs
@@ -690,12 +690,12 @@ func TestGetTrace_UsesLiveFallbackOnlyForNonCurrentProjectionStates(t *testing.T
 
 			if tc.projectedOnly {
 				assert.Equal(t, "projected", (*detail.Engine.CustomStatus)["step"])
-				assert.Equal(t, 2, detail.Engine.PendingWork.PendingActivityTasks)
-				assert.Equal(t, 3, detail.Engine.PendingWork.PendingInboxItems)
+				assert.EqualValues(t, 2, detail.Engine.PendingWork.PendingActivityTasks)
+				assert.EqualValues(t, 3, detail.Engine.PendingWork.PendingInboxItems)
 			} else {
 				assert.Equal(t, "live", (*detail.Engine.CustomStatus)["step"])
-				assert.Equal(t, 1, detail.Engine.PendingWork.PendingActivityTasks)
-				assert.Equal(t, 1, detail.Engine.PendingWork.PendingInboxItems)
+				assert.EqualValues(t, 1, detail.Engine.PendingWork.PendingActivityTasks)
+				assert.EqualValues(t, 1, detail.Engine.PendingWork.PendingInboxItems)
 			}
 		})
 	}
