@@ -186,15 +186,27 @@ func startCmd() *cobra.Command {
 					return writeJSONError(cmd.OutOrStdout(), "request_in_progress", "a start request with this request key is still in progress")
 				}
 
+				if _, err := tx.Tx().Exec(ctx, "SAVEPOINT start_create_instance"); err != nil {
+					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
+				}
 				instance, err := tx.CreateInstance(ctx, enginedb.CreateInstanceParams{
 					ProjectID:      darkLaunchProjectID,
 					InstanceKey:    instanceKey,
 					DefinitionName: definitionName,
 				})
 				if err != nil {
+					if _, rollbackErr := tx.Tx().Exec(ctx, "ROLLBACK TO SAVEPOINT start_create_instance"); rollbackErr != nil {
+						return writeJSONError(cmd.OutOrStdout(), "internal_error", rollbackErr.Error())
+					}
+					if _, releaseErr := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT start_create_instance"); releaseErr != nil {
+						return writeJSONError(cmd.OutOrStdout(), "internal_error", releaseErr.Error())
+					}
 					if errors.Is(err, enginestore.ErrAlreadyExists) {
 						return finalizeStartFailure(ctx, tx, claim.Row.ID, cmd.OutOrStdout(), "instance_conflict", "an instance with this key already exists")
 					}
+					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
+				}
+				if _, err := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT start_create_instance"); err != nil {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
 

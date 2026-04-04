@@ -87,9 +87,11 @@ func timerDeadline(input WorkflowInput) time.Time {
 		return time.Unix(0, 0).UTC()
 	}
 
-	parsed, err := time.Parse(time.RFC3339, input.TimerAt)
-	if err != nil {
-		return time.Unix(0, 0).UTC()
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		parsed, err := time.Parse(layout, input.TimerAt)
+		if err == nil {
+			return parsed.UTC()
+		}
 	}
-	return parsed.UTC()
+	return time.Unix(0, 0).UTC()
 }

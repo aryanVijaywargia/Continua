@@ -9,6 +9,8 @@ BEGIN
     END IF;
 END $$;
 
+DROP INDEX IF EXISTS engine.idx_engine_runs_claim;
+
 ALTER TYPE engine.run_lifecycle_status RENAME TO run_lifecycle_status_old;
 
 CREATE TYPE engine.run_lifecycle_status AS ENUM (
@@ -32,3 +34,7 @@ ALTER TABLE engine.runs
     DROP COLUMN waiting_for,
     DROP COLUMN custom_status,
     DROP COLUMN result;
+
+CREATE INDEX idx_engine_runs_claim
+    ON engine.runs(status, ready_at, lease_expires_at)
+    WHERE status IN ('queued', 'running');

@@ -32,7 +32,7 @@ func TestEngineRuntimeHappyPathAndTerminalRejection(t *testing.T) {
 	instanceKey := "runtime-happy-path"
 	input := map[string]any{
 		"name":     "Ada",
-		"timer_at": time.Now().Add(300 * time.Millisecond).UTC().Format(time.RFC3339),
+		"timer_at": time.Now().Add(300 * time.Millisecond).UTC().Format(time.RFC3339Nano),
 	}
 	inputJSON, err := json.Marshal(input)
 	if err != nil {
@@ -215,7 +215,7 @@ func TestEngineRuntimeTimerAndSignalPersistenceAcrossRestart(t *testing.T) {
 	timerInstanceKey := "runtime-restart-timer"
 	timerInput, _ := json.Marshal(map[string]any{
 		"name":     "Timer",
-		"timer_at": time.Now().Add(750 * time.Millisecond).UTC().Format(time.RFC3339),
+		"timer_at": time.Now().Add(750 * time.Millisecond).UTC().Format(time.RFC3339Nano),
 	})
 	if _, _, err := executeCommand(t,
 		"start",
