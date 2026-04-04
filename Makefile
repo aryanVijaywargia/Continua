@@ -33,6 +33,8 @@ generate: ## Generate ALL code (contracts, sqlc, API types)
 	pnpm --filter @continua/contracts generate
 	@echo "==> Generating platform database code..."
 	cd db/platform && sqlc generate
+	@echo "==> Generating engine database code..."
+	cd engine/db && sqlc generate
 	@echo "==> Copying generated Go types..."
 	@mkdir -p internal/api
 	@if [ -f contracts/generated/go/server_gen.go ]; then \

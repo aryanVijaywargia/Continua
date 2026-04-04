@@ -26,6 +26,7 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
 - generates `contracts/generated/typescript/api.ts`
 - generates `contracts/websocket/events.schema.json`
 - runs sqlc for `db/platform`
+- runs sqlc for `engine/db`
 - copies the generated Go server into `internal/api/server_gen.go`
 - regenerates Python SDK types when the OpenAPI bundle exists
 
@@ -56,8 +57,10 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
   - payload inspection + state diff + semantic reasoning surfaces
   - settings, auth recovery, command palette, theming
 - Real SDK: `sdks/python`
-- Stubbed or placeholder-heavy areas:
-  - `engine/`
+- Engine module reality:
+  - `engine/` now has schema/store/CLI foundation
+  - runtime workflow/activity packages under `engine/internal/` are still placeholder-heavy
+- Other stubbed or placeholder-heavy areas:
   - `internal/proxy`
   - `internal/ws`
   - `internal/replay`
@@ -75,10 +78,24 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
 - Postgres is the platform runtime source of truth.
 - SQLite under `db/platform/migrations/sqlite/` is only an early bootstrap scaffold, not a full parity target.
 - Engine DB work stays inside `engine/`.
+- Engine foundation state lives in the dedicated Postgres `engine` schema.
+- Engine migrations use their own migration bookkeeping table so they can coexist with platform migrations in the same physical database.
+- Engine foundation does not add cross-schema foreign keys to `public.projects`.
 
 ## Config reality
 - Runtime config is env-only via `internal/config/config.go`.
 - `config.example.yaml` is not the implementation contract and currently contains future-state drift.
+- Engine config is env-only via `engine/internal/config/config.go`, with `ENGINE_DATABASE_URL` overriding `DATABASE_URL`.
+
+## Engine foundation
+- The engine store owns its own pgx pool with conservative defaults:
+  - `MaxConns=10`
+  - `MinConns=2`
+  - `MaxConnLifetime=1h`
+  - `MaxConnIdleTime=30m`
+  - `HealthCheckPeriod=1m`
+- Claimable engine tables use lease-based claiming with `claimed_by`, `claimed_at`, and `lease_expires_at`.
+- Engine schema/query DDL uses fully-qualified `engine.*` names throughout.
 
 ## Useful reference docs
 - `docs/README.md`
