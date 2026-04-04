@@ -2,12 +2,19 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 )
+
+type WakeWaitingRunResult struct {
+	Run     enginedb.EngineRun
+	Applied bool
+}
 
 //nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
 func (o *storeOps) CreateRun(ctx context.Context, arg enginedb.CreateRunParams) (enginedb.EngineRun, error) {
@@ -16,6 +23,10 @@ func (o *storeOps) CreateRun(ctx context.Context, arg enginedb.CreateRunParams) 
 
 func (o *storeOps) GetRun(ctx context.Context, id uuid.UUID) (enginedb.EngineRun, error) {
 	return mapResult(o.q.GetRun(ctx, id))
+}
+
+func (o *storeOps) GetRunForUpdate(ctx context.Context, id uuid.UUID) (enginedb.EngineRun, error) {
+	return mapResult(o.q.GetRunForUpdate(ctx, id))
 }
 
 func (o *storeOps) ListRunsByInstance(
@@ -32,6 +43,55 @@ func (o *storeOps) UpdateRunStatus(
 	return mapResult(o.q.UpdateRunStatus(ctx, arg))
 }
 
+func (o *storeOps) TransitionRunToWaiting(
+	ctx context.Context,
+	arg enginedb.TransitionRunToWaitingParams,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToWaiting(ctx, arg)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
+}
+
+func (o *storeOps) TransitionRunToCompleted(
+	ctx context.Context,
+	arg enginedb.TransitionRunToCompletedParams,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToCompleted(ctx, arg)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
+}
+
+func (o *storeOps) TransitionRunToFailed(
+	ctx context.Context,
+	arg enginedb.TransitionRunToFailedParams,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToFailed(ctx, arg)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
+}
+
+func (o *storeOps) WakeWaitingRun(ctx context.Context, id uuid.UUID) (WakeWaitingRunResult, error) {
+	run, err := o.q.WakeWaitingRun(ctx, id)
+	if err == nil {
+		return WakeWaitingRunResult{Run: run, Applied: true}, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return WakeWaitingRunResult{}, normalizeError(err)
+	}
+
+	current, lookupErr := o.GetRun(ctx, id)
+	if lookupErr != nil {
+		return WakeWaitingRunResult{}, lookupErr
+	}
+	return WakeWaitingRunResult{Run: current, Applied: false}, nil
+}
+
 func (o *storeOps) ClaimNextRun(
 	ctx context.Context,
 	workerID string,
@@ -41,4 +101,15 @@ func (o *storeOps) ClaimNextRun(
 		ClaimedBy:           nullableWorkerID(workerID),
 		LeaseDurationMicros: leaseDurationMicros(leaseDuration),
 	}))
+}
+
+func (o *storeOps) classifyRunCASMiss(ctx context.Context, id uuid.UUID, err error) error {
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return normalizeError(err)
+	}
+
+	if _, lookupErr := o.GetRun(ctx, id); lookupErr != nil {
+		return lookupErr
+	}
+	return ErrStaleClaim
 }

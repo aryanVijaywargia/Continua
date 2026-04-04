@@ -64,6 +64,68 @@ func (q *Queries) CreateRequestDedupe(ctx context.Context, arg CreateRequestDedu
 	return i, err
 }
 
+const createStartRequestDedupeClaim = `-- name: CreateStartRequestDedupeClaim :one
+INSERT INTO engine.request_dedupe (
+    project_id,
+    request_scope,
+    request_key,
+    expires_at
+)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (project_id, request_scope, request_key) DO NOTHING
+RETURNING id, project_id, request_scope, request_key, instance_id, run_id, status, response_payload, error_code, error_message, expires_at, finalized_at, created_at, updated_at
+`
+
+type CreateStartRequestDedupeClaimParams struct {
+	ProjectID    uuid.UUID `json:"project_id"`
+	RequestScope string    `json:"request_scope"`
+	RequestKey   string    `json:"request_key"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+func (q *Queries) CreateStartRequestDedupeClaim(ctx context.Context, arg CreateStartRequestDedupeClaimParams) (EngineRequestDedupe, error) {
+	row := q.db.QueryRow(ctx, createStartRequestDedupeClaim,
+		arg.ProjectID,
+		arg.RequestScope,
+		arg.RequestKey,
+		arg.ExpiresAt,
+	)
+	var i EngineRequestDedupe
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.RequestScope,
+		&i.RequestKey,
+		&i.InstanceID,
+		&i.RunID,
+		&i.Status,
+		&i.ResponsePayload,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.ExpiresAt,
+		&i.FinalizedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const expireRequestDedupe = `-- name: ExpireRequestDedupe :execrows
+UPDATE engine.request_dedupe
+SET status = 'expired',
+    updated_at = NOW()
+WHERE status = 'in_progress'
+  AND expires_at < NOW()
+`
+
+func (q *Queries) ExpireRequestDedupe(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, expireRequestDedupe)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const finalizeRequestDedupeWithError = `-- name: FinalizeRequestDedupeWithError :one
 UPDATE engine.request_dedupe
 SET status = 'failed',
@@ -159,6 +221,85 @@ type GetRequestDedupeByScopeAndKeyParams struct {
 
 func (q *Queries) GetRequestDedupeByScopeAndKey(ctx context.Context, arg GetRequestDedupeByScopeAndKeyParams) (EngineRequestDedupe, error) {
 	row := q.db.QueryRow(ctx, getRequestDedupeByScopeAndKey, arg.ProjectID, arg.RequestScope, arg.RequestKey)
+	var i EngineRequestDedupe
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.RequestScope,
+		&i.RequestKey,
+		&i.InstanceID,
+		&i.RunID,
+		&i.Status,
+		&i.ResponsePayload,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.ExpiresAt,
+		&i.FinalizedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getRequestDedupeByScopeAndKeyForUpdate = `-- name: GetRequestDedupeByScopeAndKeyForUpdate :one
+SELECT id, project_id, request_scope, request_key, instance_id, run_id, status, response_payload, error_code, error_message, expires_at, finalized_at, created_at, updated_at
+FROM engine.request_dedupe
+WHERE project_id = $1
+  AND request_scope = $2
+  AND request_key = $3
+FOR UPDATE
+`
+
+type GetRequestDedupeByScopeAndKeyForUpdateParams struct {
+	ProjectID    uuid.UUID `json:"project_id"`
+	RequestScope string    `json:"request_scope"`
+	RequestKey   string    `json:"request_key"`
+}
+
+func (q *Queries) GetRequestDedupeByScopeAndKeyForUpdate(ctx context.Context, arg GetRequestDedupeByScopeAndKeyForUpdateParams) (EngineRequestDedupe, error) {
+	row := q.db.QueryRow(ctx, getRequestDedupeByScopeAndKeyForUpdate, arg.ProjectID, arg.RequestScope, arg.RequestKey)
+	var i EngineRequestDedupe
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.RequestScope,
+		&i.RequestKey,
+		&i.InstanceID,
+		&i.RunID,
+		&i.Status,
+		&i.ResponsePayload,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.ExpiresAt,
+		&i.FinalizedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const renewRequestDedupeClaim = `-- name: RenewRequestDedupeClaim :one
+UPDATE engine.request_dedupe
+SET status = 'in_progress',
+    instance_id = NULL,
+    run_id = NULL,
+    response_payload = NULL,
+    error_code = NULL,
+    error_message = NULL,
+    expires_at = $2,
+    finalized_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, project_id, request_scope, request_key, instance_id, run_id, status, response_payload, error_code, error_message, expires_at, finalized_at, created_at, updated_at
+`
+
+type RenewRequestDedupeClaimParams struct {
+	ID        uuid.UUID `json:"id"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func (q *Queries) RenewRequestDedupeClaim(ctx context.Context, arg RenewRequestDedupeClaimParams) (EngineRequestDedupe, error) {
+	row := q.db.QueryRow(ctx, renewRequestDedupeClaim, arg.ID, arg.ExpiresAt)
 	var i EngineRequestDedupe
 	err := row.Scan(
 		&i.ID,

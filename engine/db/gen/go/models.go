@@ -198,6 +198,7 @@ const (
 	EngineRunLifecycleStatusCompleted EngineRunLifecycleStatus = "completed"
 	EngineRunLifecycleStatusFailed    EngineRunLifecycleStatus = "failed"
 	EngineRunLifecycleStatusCancelled EngineRunLifecycleStatus = "cancelled"
+	EngineRunLifecycleStatusWaiting   EngineRunLifecycleStatus = "waiting"
 )
 
 func (e *EngineRunLifecycleStatus) Scan(src interface{}) error {
@@ -339,4 +340,8 @@ type EngineRun struct {
 	LeaseExpiresAt    pgtype.Timestamptz       `json:"lease_expires_at"`
 	CreatedAt         time.Time                `json:"created_at"`
 	UpdatedAt         time.Time                `json:"updated_at"`
+	Result            []byte                   `json:"result"`
+	CustomStatus      []byte                   `json:"custom_status"`
+	WaitingFor        []byte                   `json:"waiting_for"`
+	CompletedAt       pgtype.Timestamptz       `json:"completed_at"`
 }

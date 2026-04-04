@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 )
@@ -23,6 +24,30 @@ func (o *storeOps) ClaimNextInboxItem(
 		ClaimedBy:           nullableWorkerID(workerID),
 		LeaseDurationMicros: leaseDurationMicros(leaseDuration),
 	}))
+}
+
+func (o *storeOps) ListPendingInboxByRun(
+	ctx context.Context,
+	runID uuid.UUID,
+) ([]enginedb.EngineInbox, error) {
+	return o.q.ListPendingInboxByRun(ctx, pgtype.UUID{Bytes: runID, Valid: true})
+}
+
+func (o *storeOps) ListDueTimerRunIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rawIDs, err := o.q.ListDueTimerRunIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	runIDs := make([]uuid.UUID, 0, len(rawIDs))
+	for _, rawID := range rawIDs {
+		if !rawID.Valid {
+			continue
+		}
+		runIDs = append(runIDs, rawID.Bytes)
+	}
+
+	return runIDs, nil
 }
 
 func (o *storeOps) MarkInboxProcessed(ctx context.Context, id uuid.UUID) (enginedb.EngineInbox, error) {

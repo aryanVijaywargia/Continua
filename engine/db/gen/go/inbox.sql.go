@@ -120,6 +120,82 @@ func (q *Queries) CreateInboxItem(ctx context.Context, arg CreateInboxItemParams
 	return i, err
 }
 
+const listDueTimerRunIDs = `-- name: ListDueTimerRunIDs :many
+SELECT DISTINCT run_id
+FROM engine.inbox
+WHERE kind = 'timer'
+  AND run_id IS NOT NULL
+  AND status = 'pending'
+  AND available_at <= NOW()
+ORDER BY run_id ASC
+`
+
+func (q *Queries) ListDueTimerRunIDs(ctx context.Context) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listDueTimerRunIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var run_id pgtype.UUID
+		if err := rows.Scan(&run_id); err != nil {
+			return nil, err
+		}
+		items = append(items, run_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingInboxByRun = `-- name: ListPendingInboxByRun :many
+SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+FROM engine.inbox
+WHERE run_id = $1
+  AND status = 'pending'
+  AND available_at <= NOW()
+ORDER BY available_at ASC, id ASC
+`
+
+func (q *Queries) ListPendingInboxByRun(ctx context.Context, runID pgtype.UUID) ([]EngineInbox, error) {
+	rows, err := q.db.Query(ctx, listPendingInboxByRun, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineInbox{}
+	for rows.Next() {
+		var i EngineInbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.Kind,
+			&i.Payload,
+			&i.Status,
+			&i.AvailableAt,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.DedupeKey,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markInboxDiscarded = `-- name: MarkInboxDiscarded :one
 UPDATE engine.inbox
 SET status = 'discarded',
@@ -165,6 +241,7 @@ SET status = 'processed',
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
+  AND status = 'pending'
 RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
 `
 

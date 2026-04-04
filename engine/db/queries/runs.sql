@@ -14,6 +14,12 @@ SELECT *
 FROM engine.runs
 WHERE id = $1;
 
+-- name: GetRunForUpdate :one
+SELECT *
+FROM engine.runs
+WHERE id = $1
+FOR UPDATE;
+
 -- name: ListRunsByInstance :many
 SELECT *
 FROM engine.runs
@@ -28,6 +34,73 @@ SET status = $2,
     last_error_message = $4,
     updated_at = NOW()
 WHERE id = $1
+RETURNING *;
+
+-- name: TransitionRunToWaiting :one
+UPDATE engine.runs
+SET status = 'waiting',
+    waiting_for = $3,
+    custom_status = $4,
+    result = NULL,
+    completed_at = NULL,
+    last_error_code = NULL,
+    last_error_message = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING *;
+
+-- name: TransitionRunToCompleted :one
+UPDATE engine.runs
+SET status = 'completed',
+    result = $3,
+    custom_status = $4,
+    waiting_for = NULL,
+    completed_at = NOW(),
+    last_error_code = NULL,
+    last_error_message = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING *;
+
+-- name: TransitionRunToFailed :one
+UPDATE engine.runs
+SET status = 'failed',
+    result = NULL,
+    custom_status = $3,
+    waiting_for = NULL,
+    completed_at = NOW(),
+    last_error_code = $4,
+    last_error_message = $5,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING *;
+
+-- name: WakeWaitingRun :one
+UPDATE engine.runs
+SET status = 'queued',
+    waiting_for = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    ready_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'waiting'
 RETURNING *;
 
 -- name: ClaimNextRun :one

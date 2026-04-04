@@ -29,7 +29,7 @@ WHERE id = (
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
 `
 
 type ClaimNextRunParams struct {
@@ -56,6 +56,10 @@ func (q *Queries) ClaimNextRun(ctx context.Context, arg ClaimNextRunParams) (Eng
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -69,7 +73,7 @@ INSERT INTO engine.runs (
     ready_at
 )
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
 `
 
 type CreateRunParams struct {
@@ -105,12 +109,16 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (EngineRun
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
 	)
 	return i, err
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
 FROM engine.runs
 WHERE id = $1
 `
@@ -134,12 +142,50 @@ func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (EngineRun, error) {
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const getRunForUpdate = `-- name: GetRunForUpdate :one
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
+FROM engine.runs
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetRunForUpdate(ctx context.Context, id uuid.UUID) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, getRunForUpdate, id)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
 	)
 	return i, err
 }
 
 const listRunsByInstance = `-- name: ListRunsByInstance :many
-SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
 FROM engine.runs
 WHERE instance_id = $1
 ORDER BY created_at DESC, id DESC
@@ -177,6 +223,10 @@ func (q *Queries) ListRunsByInstance(ctx context.Context, arg ListRunsByInstance
 			&i.LeaseExpiresAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Result,
+			&i.CustomStatus,
+			&i.WaitingFor,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -188,6 +238,182 @@ func (q *Queries) ListRunsByInstance(ctx context.Context, arg ListRunsByInstance
 	return items, nil
 }
 
+const transitionRunToCompleted = `-- name: TransitionRunToCompleted :one
+UPDATE engine.runs
+SET status = 'completed',
+    result = $3,
+    custom_status = $4,
+    waiting_for = NULL,
+    completed_at = NOW(),
+    last_error_code = NULL,
+    last_error_message = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
+`
+
+type TransitionRunToCompletedParams struct {
+	ID           uuid.UUID `json:"id"`
+	ClaimedBy    *string   `json:"claimed_by"`
+	Result       []byte    `json:"result"`
+	CustomStatus []byte    `json:"custom_status"`
+}
+
+func (q *Queries) TransitionRunToCompleted(ctx context.Context, arg TransitionRunToCompletedParams) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, transitionRunToCompleted,
+		arg.ID,
+		arg.ClaimedBy,
+		arg.Result,
+		arg.CustomStatus,
+	)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const transitionRunToFailed = `-- name: TransitionRunToFailed :one
+UPDATE engine.runs
+SET status = 'failed',
+    result = NULL,
+    custom_status = $3,
+    waiting_for = NULL,
+    completed_at = NOW(),
+    last_error_code = $4,
+    last_error_message = $5,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
+`
+
+type TransitionRunToFailedParams struct {
+	ID               uuid.UUID `json:"id"`
+	ClaimedBy        *string   `json:"claimed_by"`
+	CustomStatus     []byte    `json:"custom_status"`
+	LastErrorCode    *string   `json:"last_error_code"`
+	LastErrorMessage *string   `json:"last_error_message"`
+}
+
+func (q *Queries) TransitionRunToFailed(ctx context.Context, arg TransitionRunToFailedParams) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, transitionRunToFailed,
+		arg.ID,
+		arg.ClaimedBy,
+		arg.CustomStatus,
+		arg.LastErrorCode,
+		arg.LastErrorMessage,
+	)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const transitionRunToWaiting = `-- name: TransitionRunToWaiting :one
+UPDATE engine.runs
+SET status = 'waiting',
+    waiting_for = $3,
+    custom_status = $4,
+    result = NULL,
+    completed_at = NULL,
+    last_error_code = NULL,
+    last_error_message = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
+`
+
+type TransitionRunToWaitingParams struct {
+	ID           uuid.UUID `json:"id"`
+	ClaimedBy    *string   `json:"claimed_by"`
+	WaitingFor   []byte    `json:"waiting_for"`
+	CustomStatus []byte    `json:"custom_status"`
+}
+
+func (q *Queries) TransitionRunToWaiting(ctx context.Context, arg TransitionRunToWaitingParams) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, transitionRunToWaiting,
+		arg.ID,
+		arg.ClaimedBy,
+		arg.WaitingFor,
+		arg.CustomStatus,
+	)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
 const updateRunStatus = `-- name: UpdateRunStatus :one
 UPDATE engine.runs
 SET status = $2,
@@ -195,7 +421,7 @@ SET status = $2,
     last_error_message = $4,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
 `
 
 type UpdateRunStatusParams struct {
@@ -229,6 +455,51 @@ func (q *Queries) UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams
 		&i.LeaseExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const wakeWaitingRun = `-- name: WakeWaitingRun :one
+UPDATE engine.runs
+SET status = 'queued',
+    waiting_for = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    ready_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'waiting'
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
+`
+
+func (q *Queries) WakeWaitingRun(ctx context.Context, id uuid.UUID) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, wakeWaitingRun, id)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
 	)
 	return i, err
 }

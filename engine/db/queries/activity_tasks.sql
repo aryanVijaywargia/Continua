@@ -12,11 +12,22 @@ INSERT INTO engine.activity_tasks (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
+-- name: GetActivityTask :one
+SELECT *
+FROM engine.activity_tasks
+WHERE id = $1;
+
 -- name: GetActivityTaskByRunAndKey :one
 SELECT *
 FROM engine.activity_tasks
 WHERE run_id = $1
   AND activity_key = $2;
+
+-- name: ListActivityTasksByRun :many
+SELECT *
+FROM engine.activity_tasks
+WHERE run_id = $1
+ORDER BY created_at ASC, id ASC;
 
 -- name: ClaimNextActivityTask :one
 UPDATE engine.activity_tasks
@@ -40,24 +51,28 @@ RETURNING *;
 -- name: CompleteActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'completed',
-    output = $2,
+    output = $3,
     completed_at = NOW(),
     claimed_by = NULL,
     claimed_at = NULL,
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
+  AND status = 'claimed'
+  AND claimed_by = $2
 RETURNING *;
 
 -- name: FailActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'failed',
-    last_error_code = $2,
-    last_error_message = $3,
+    last_error_code = $3,
+    last_error_message = $4,
     completed_at = NOW(),
     claimed_by = NULL,
     claimed_at = NULL,
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
+  AND status = 'claimed'
+  AND claimed_by = $2
 RETURNING *;
