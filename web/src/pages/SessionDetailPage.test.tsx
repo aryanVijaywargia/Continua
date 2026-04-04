@@ -73,6 +73,42 @@ describe('SessionDetailPage', () => {
     await waitForSessionTraceFetch(`?limit=20&session_id=${SESSION_ID}`);
   });
 
+  it('shows engine badges for engine-backed traces in the session table', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () =>
+          jsonResponse({
+            traces: [
+              {
+                ...TRACE_ONE,
+                engine: {
+                  run_id: '123e4567-e89b-12d3-a456-426614174101',
+                  definition_name: 'checkout',
+                  definition_version: 'v1',
+                  projection_state: 'catching_up',
+                },
+              },
+            ],
+            total: 1,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    expect(within(getTraceRow('Checkout Trace')).getByText('Engine')).toBeInTheDocument();
+  });
+
+  it('keeps non-engine session trace rows unchanged', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    expect(within(getTraceRow('Checkout Trace')).queryByText('Engine')).not.toBeInTheDocument();
+  });
+
   it('shows the auth recovery banner when the session request returns 401', async () => {
     fetchMock.mockImplementation(
       buildFetchHandler({

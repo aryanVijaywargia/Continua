@@ -144,6 +144,65 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
+export type EngineProjectionState =
+  | 'up_to_date'
+  | 'catching_up'
+  | 'summary_only'
+  | 'journal_expired';
+
+export type EngineRunStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'WAITING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export interface EngineTraceInfo {
+  run_id: string;
+  definition_name: string;
+  definition_version: string;
+  projection_state: EngineProjectionState;
+}
+
+export interface EngineWaitState {
+  kind?: string;
+  activity_key?: string;
+  activity_type?: string;
+  due_at?: string;
+  signal_name?: string;
+  timer_key?: string;
+  [key: string]: unknown;
+}
+
+export interface EnginePendingWork {
+  pending_activity_tasks: number;
+  pending_inbox_items: number;
+}
+
+export interface EngineFailureSummary {
+  error_code: string;
+  error_message: string;
+  status: string;
+}
+
+export interface EngineRunSummary {
+  run_id: string;
+  instance_key: string;
+  definition_name: string;
+  definition_version: string;
+  projection_state: EngineProjectionState;
+  status: EngineRunStatus;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
+  custom_status?: Record<string, unknown>;
+  pending_work: EnginePendingWork;
+  result?: JsonValue;
+  failure?: EngineFailureSummary;
+  wait_state?: EngineWaitState;
+}
+
 export interface Trace {
   id: string;
   session_id?: string;
@@ -157,6 +216,7 @@ export interface Trace {
   total_cost_usd?: number;
   error_count?: number;
   metadata?: Record<string, unknown>;
+  engine?: EngineTraceInfo;
 }
 
 export interface TraceDetail extends Trace {
@@ -167,6 +227,7 @@ export interface TraceDetail extends Trace {
   release?: string;
   input?: JsonValue;
   output?: JsonValue;
+  engine?: EngineRunSummary;
 }
 
 export interface TraceList {
@@ -237,6 +298,9 @@ export interface TimelineEvent {
 }
 
 export interface TimelineResponse {
+  engine?: {
+    projection_state: EngineProjectionState;
+  };
   events: TimelineEvent[];
   trace_status: TimelineTraceStatus;
   has_more: boolean;
@@ -311,6 +375,7 @@ export interface CompareTraceHeader {
   trace_id: string;
   name: string;
   status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  engine?: EngineTraceInfo;
   user_id?: string;
   started_at: string;
   ended_at?: string;

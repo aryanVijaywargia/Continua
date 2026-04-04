@@ -87,6 +87,34 @@ describe('SessionComparePage', () => {
     expect(screen.getByText('Called retry tool')).toBeInTheDocument();
   });
 
+  it('shows engine metadata in compare headers when present', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionCompare: () =>
+          jsonResponse({
+            ...SESSION_COMPARE,
+            baseline: {
+              ...SESSION_COMPARE.baseline,
+              engine: {
+                run_id: '123e4567-e89b-12d3-a456-426614174102',
+                definition_name: 'checkout',
+                definition_version: 'v1',
+                projection_state: 'catching_up',
+              },
+            },
+          }),
+      })
+    );
+
+    renderTraceRoutes([
+      `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
+    ]);
+
+    expect(await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })).toBeInTheDocument();
+    expect(screen.getByText('checkout@v1 · Catching up')).toBeInTheDocument();
+    expect(screen.getByText('Engine')).toBeInTheDocument();
+  });
+
   it('renders provenance badges and changed-field chips', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(

@@ -3,6 +3,7 @@ import { useCallback, useEffect } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { CopyButton } from '../components/CopyButton';
+import { EngineBadge } from '../components/EngineBadge';
 import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -1267,13 +1268,18 @@ function SessionTraceRow({
   return (
     <tr className="border-b border-[var(--continua-border-soft)] transition hover:bg-[var(--continua-surface-muted)]">
       <td className="px-6 py-4 align-top">
-        <Link
-          to={`/traces/${trace.id}`}
-          state={{ returnTo }}
-          className="text-sm font-semibold text-[var(--continua-accent)] transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
-        >
-          {trace.name}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to={`/traces/${trace.id}`}
+            state={{ returnTo }}
+            className="text-sm font-semibold text-[var(--continua-accent)] transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
+          >
+            {trace.name}
+          </Link>
+          {trace.engine ? (
+            <EngineBadge projectionState={trace.engine.projection_state} />
+          ) : null}
+        </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <CompareRoleButton
             disabled={!isSelectable}

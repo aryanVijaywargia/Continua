@@ -148,6 +148,79 @@ describe('TraceDetailPage', () => {
     );
   });
 
+  it('shows engine wait-state summary and projection banner for engine-backed traces', async () => {
+    const rootSpan = createSpan({ span_id: 'engine-root', name: 'Engine root' });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse({
+            ...createRunningTraceDetail(),
+            engine: {
+              run_id: '123e4567-e89b-12d3-a456-426614174103',
+              instance_key: 'instance-1',
+              definition_name: 'checkout',
+              definition_version: 'v1',
+              projection_state: 'catching_up',
+              status: 'WAITING',
+              created_at: '2026-03-14T10:00:00.000Z',
+              updated_at: '2026-03-14T10:00:05.000Z',
+              pending_work: {
+                pending_activity_tasks: 1,
+                pending_inbox_items: 2,
+              },
+              wait_state: {
+                kind: 'signal',
+                signal_name: 'approval',
+              },
+            },
+          }),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+            engine: {
+              projection_state: 'catching_up',
+            },
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(await screen.findByText('Projection catching up')).toBeInTheDocument();
+    expect(screen.getByText('Waiting on signal')).toBeInTheDocument();
+    expect(screen.getByText('approval')).toBeInTheDocument();
+    expect(screen.getByText('Engine')).toBeInTheDocument();
+  });
+
+  it('keeps non-engine trace detail free of engine surfaces', async () => {
+    const rootSpan = createSpan({ span_id: 'plain-root', name: 'Plain root' });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createRunningTraceDetail()),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(await screen.findByRole('heading', { name: 'Execution Waterfall' })).toBeInTheDocument();
+    expect(screen.queryByText('Projection catching up')).not.toBeInTheDocument();
+    expect(screen.queryByText('Projection summary only')).not.toBeInTheDocument();
+    expect(screen.queryByText('Projection journal expired')).not.toBeInTheDocument();
+    expect(screen.queryByText('Waiting on signal')).not.toBeInTheDocument();
+  });
+
   it('shows the auth recovery banner when the trace request returns 401', async () => {
     fetchMock.mockImplementation(
       buildFetchHandler({
