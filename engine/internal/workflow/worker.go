@@ -35,7 +35,7 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 		return err
 	}
 
-	if err := w.activator.Activate(ctx, run); err != nil {
+	if err := w.activator.Activate(ctx, &run); err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
 			log.Printf("workflow worker stale claim for run %s", run.ID)
 			return nil

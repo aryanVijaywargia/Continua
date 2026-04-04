@@ -41,7 +41,7 @@ func TestActivatorFailsRunWhenDefinitionVersionIsMissing(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	activator := NewActivator(store, registry)
-	if err := activator.Activate(ctx, claimed); err != nil {
+	if err := activator.Activate(ctx, &claimed); err != nil {
 		t.Fatalf("Activate() error = %v", err)
 	}
 
@@ -107,7 +107,7 @@ func TestActivatorPersistsReplayMismatchFailure(t *testing.T) {
 	}
 
 	activator := NewActivator(store, registry)
-	if err := activator.Activate(ctx, claimed); err != nil {
+	if err := activator.Activate(ctx, &claimed); err != nil {
 		t.Fatalf("Activate() error = %v", err)
 	}
 
@@ -178,7 +178,7 @@ func TestActivatorRejectsStaleClaimBeforeAppendingHistory(t *testing.T) {
 	}
 
 	activator := NewActivator(store, registry)
-	err = activator.Activate(ctx, staleClaim)
+	err = activator.Activate(ctx, &staleClaim)
 	if !errors.Is(err, enginestore.ErrStaleClaim) {
 		t.Fatalf("expected ErrStaleClaim, got %v", err)
 	}
@@ -191,7 +191,7 @@ func TestActivatorRejectsStaleClaimBeforeAppendingHistory(t *testing.T) {
 		t.Fatalf("expected no history mutation from stale activation, got %+v", historyRows)
 	}
 
-	if err := activator.Activate(ctx, freshClaim); err != nil {
+	if err := activator.Activate(ctx, &freshClaim); err != nil {
 		t.Fatalf("Activate() fresh claim error = %v", err)
 	}
 
@@ -248,7 +248,7 @@ func TestActivatorLateSignalWakeIsNotStranded(t *testing.T) {
 	activator := NewActivator(store, registry)
 	activationDone := make(chan error, 1)
 	go func() {
-		activationDone <- activator.Activate(ctx, claimed)
+		activationDone <- activator.Activate(ctx, &claimed)
 	}()
 
 	select {
@@ -340,7 +340,7 @@ func TestActivatorLateSignalWakeIsNotStranded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClaimNextRun() second activation error = %v", err)
 	}
-	if err := activator.Activate(ctx, reclaimed); err != nil {
+	if err := activator.Activate(ctx, &reclaimed); err != nil {
 		t.Fatalf("Activate() second pass error = %v", err)
 	}
 

@@ -474,7 +474,8 @@ func inspectCmd() *cobra.Command {
 					History:           make([]inspectHistoryEvent, 0, len(historyRows)),
 				}
 
-				for _, historyRow := range historyRows {
+				for i := range historyRows {
+					historyRow := historyRows[i]
 					response.History = append(response.History, inspectHistoryEvent{
 						SequenceNo: historyRow.SequenceNo,
 						EventType:  historyRow.EventType,
@@ -527,12 +528,12 @@ func withRuntime(
 	return fn(ctx, cfg, store, definitions, activities)
 }
 
-func buildRegistries() (*engineworkflow.Registry, *activity.Registry, error) {
-	definitions, err := engineworkflow.NewRegistry(darklaunch.Definitions()...)
+func buildRegistries() (definitions *engineworkflow.Registry, activities *activity.Registry, err error) {
+	definitions, err = engineworkflow.NewRegistry(darklaunch.Definitions()...)
 	if err != nil {
 		return nil, nil, err
 	}
-	activities, err := activity.NewRegistry(darklaunch.Handlers())
+	activities, err = activity.NewRegistry(darklaunch.Handlers())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -578,13 +579,13 @@ func loadLatestRun(
 		ListRunsByInstance(context.Context, enginedb.ListRunsByInstanceParams) ([]enginedb.EngineRun, error)
 	},
 	instanceKey string,
-) (enginedb.EngineInstance, enginedb.EngineRun, error) {
-	instance, err := store.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
+) (instance enginedb.EngineInstance, run enginedb.EngineRun, err error) {
+	instance, err = store.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
 		ProjectID:   darkLaunchProjectID,
 		InstanceKey: instanceKey,
 	})
 	if err != nil {
-		return enginedb.EngineInstance{}, enginedb.EngineRun{}, err
+		return instance, run, err
 	}
 
 	runs, err := store.ListRunsByInstance(ctx, enginedb.ListRunsByInstanceParams{
@@ -592,13 +593,14 @@ func loadLatestRun(
 		Limit:      1,
 	})
 	if err != nil {
-		return enginedb.EngineInstance{}, enginedb.EngineRun{}, err
+		return instance, run, err
 	}
 	if len(runs) == 0 {
-		return enginedb.EngineInstance{}, enginedb.EngineRun{}, enginestore.ErrNotFound
+		return instance, run, enginestore.ErrNotFound
 	}
 
-	return instance, runs[0], nil
+	run = runs[0]
+	return instance, run, nil
 }
 
 func loadLatestRunForUpdate(
@@ -609,18 +611,19 @@ func loadLatestRunForUpdate(
 		GetRunForUpdate(context.Context, uuid.UUID) (enginedb.EngineRun, error)
 	},
 	instanceKey string,
-) (enginedb.EngineInstance, enginedb.EngineRun, error) {
-	instance, run, err := loadLatestRun(ctx, store, instanceKey)
+) (instance enginedb.EngineInstance, run enginedb.EngineRun, err error) {
+	instance, run, err = loadLatestRun(ctx, store, instanceKey)
 	if err != nil {
-		return enginedb.EngineInstance{}, enginedb.EngineRun{}, err
+		return instance, run, err
 	}
 
 	lockedRun, err := store.GetRunForUpdate(ctx, run.ID)
 	if err != nil {
-		return enginedb.EngineInstance{}, enginedb.EngineRun{}, err
+		return instance, run, err
 	}
 
-	return instance, lockedRun, nil
+	run = lockedRun
+	return instance, run, nil
 }
 
 func finalizeStartFailure(
@@ -675,7 +678,7 @@ func writeRawJSON(writer io.Writer, payload []byte, exitCode ...int) error {
 	return nil
 }
 
-func writeJSONError(writer io.Writer, code string, message string) error {
+func writeJSONError(writer io.Writer, code, message string) error {
 	if err := writeJSON(writer, jsonCommandError{
 		Error: jsonErrorPayload{
 			Code:    code,

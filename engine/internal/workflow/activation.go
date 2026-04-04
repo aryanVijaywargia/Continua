@@ -24,7 +24,7 @@ func NewActivator(store *store.Store, definitions *Registry) *Activator {
 	}
 }
 
-func (a *Activator) Activate(ctx context.Context, claimedRun enginedb.EngineRun) error {
+func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun) error {
 	tx, err := a.store.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func (a *Activator) Activate(ctx context.Context, claimedRun enginedb.EngineRun)
 			FailureCode:    "definition_version_mismatch",
 			FailureMessage: fmt.Sprintf("definition %s@%s is not registered", instance.DefinitionName, run.DefinitionVersion),
 		}
-		if err := a.commitDecision(ctx, tx, instance, run, workerClaimedBy, decision); err != nil {
+		if err := a.commitDecision(ctx, tx, &run, workerClaimedBy, &decision); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
@@ -86,7 +86,7 @@ func (a *Activator) Activate(ctx context.Context, claimedRun enginedb.EngineRun)
 		return err
 	}
 
-	if err := a.commitDecision(ctx, tx, instance, run, workerClaimedBy, decision); err != nil {
+	if err := a.commitDecision(ctx, tx, &run, workerClaimedBy, &decision); err != nil {
 		return err
 	}
 	if decision.Kind == decisionCompleted {
@@ -101,16 +101,16 @@ func (a *Activator) Activate(ctx context.Context, claimedRun enginedb.EngineRun)
 func (a *Activator) commitDecision(
 	ctx context.Context,
 	tx *store.Tx,
-	instance enginedb.EngineInstance,
-	run enginedb.EngineRun,
+	run *enginedb.EngineRun,
 	workerClaimedBy *string,
-	decision activationDecision,
+	decision *activationDecision,
 ) error {
 	sequence := decision.NextSequence
 	var activityHistoryID *int64
 	var timerHistoryID *int64
 
-	for _, event := range decision.Events {
+	for i := range decision.Events {
+		event := decision.Events[i]
 		appended, err := tx.AppendHistory(ctx, enginedb.AppendHistoryParams{
 			ProjectID:  run.ProjectID,
 			InstanceID: run.InstanceID,
@@ -210,7 +210,7 @@ func (a *Activator) commitDecision(
 	}
 }
 
-func sameClaimedBy(left *string, right *string) bool {
+func sameClaimedBy(left, right *string) bool {
 	if left == nil || right == nil {
 		return left == nil && right == nil
 	}

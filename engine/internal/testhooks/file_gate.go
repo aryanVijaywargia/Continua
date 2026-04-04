@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func ApplyFileGate(ctx context.Context, markerFile string, releaseFile string) error {
+func ApplyFileGate(ctx context.Context, markerFile, releaseFile string) error {
 	if markerFile == "" && releaseFile == "" {
 		return nil
 	}

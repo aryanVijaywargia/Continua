@@ -62,6 +62,11 @@ type pendingTimer struct {
 	payload enginehistory.TimerScheduledPayload
 }
 
+type pendingInboxItem struct {
+	inboxID uuid.UUID
+	kind    string
+}
+
 type blockedPanic struct{}
 
 type replayMismatchPanic struct {
@@ -88,8 +93,7 @@ type workflowRunner struct {
 	pendingActivities map[string]activityOutcome
 	pendingSignals    map[string][]pendingSignal
 	pendingTimers     map[string]pendingTimer
-	pendingCancels    []uuid.UUID
-	frontierPrepared  bool
+	pendingFrontier   []pendingInboxItem
 
 	queuedEvents     []queuedHistoryEvent
 	waitingFor       json.RawMessage
@@ -137,7 +141,8 @@ func newWorkflowRunner(
 		pendingTimers:     make(map[string]pendingTimer),
 	}
 
-	for _, row := range historyRows[1:] {
+	for i := 1; i < len(historyRows); i++ {
+		row := historyRows[i]
 		payload, err := enginehistory.DecodePayload(row.EventType, row.Payload)
 		if err != nil {
 			return nil, fmt.Errorf("decode history event %s: %w", row.EventType, err)
@@ -152,7 +157,8 @@ func newWorkflowRunner(
 		})
 	}
 
-	for _, task := range activityTasks {
+	for i := range activityTasks {
+		task := activityTasks[i]
 		switch task.Status {
 		case enginedb.EngineActivityTaskStatusCompleted:
 			runner.pendingActivities[task.ActivityKey] = activityOutcome{
@@ -174,7 +180,8 @@ func newWorkflowRunner(
 		}
 	}
 
-	for _, inboxRow := range inboxRows {
+	for i := range inboxRows {
+		inboxRow := inboxRows[i]
 		switch inboxRow.Kind {
 		case "timer":
 			timerPayload := enginehistory.TimerScheduledPayload{}
@@ -195,10 +202,14 @@ func newWorkflowRunner(
 				pendingSignal{inboxID: inboxRow.ID, payload: signalPayload},
 			)
 		case "cancel":
-			runner.pendingCancels = append(runner.pendingCancels, inboxRow.ID)
 		default:
 			return nil, fmt.Errorf("unsupported inbox kind %q", inboxRow.Kind)
 		}
+
+		runner.pendingFrontier = append(runner.pendingFrontier, pendingInboxItem{
+			inboxID: inboxRow.ID,
+			kind:    inboxRow.Kind,
+		})
 	}
 
 	return runner, nil
@@ -292,7 +303,7 @@ func (r *workflowRunner) Input(out any) error {
 	return json.Unmarshal(r.input, out)
 }
 
-func (r *workflowRunner) Activity(key, activityType string, input any, out any) error {
+func (r *workflowRunner) Activity(key, activityType string, input, out any) error {
 	if key == "" {
 		return publicworkflow.ErrEmptyKey
 	}
@@ -397,6 +408,7 @@ func (r *workflowRunner) SleepUntil(key string, at time.Time) error {
 		}
 
 		if pending, ok := r.pendingTimers[key]; ok && pending.payload.DueAt.Equal(at) {
+			r.removePendingFrontier(pending.inboxID)
 			r.queueEvent(enginehistory.EventTimerFired, enginehistory.TimerFiredPayload{TimerKey: key})
 			r.consumedInboxIDs = append(r.consumedInboxIDs, pending.inboxID)
 			delete(r.pendingTimers, key)
@@ -447,6 +459,7 @@ func (r *workflowRunner) ReceiveSignal(name string, out any) error {
 	if signals := r.pendingSignals[name]; len(signals) > 0 {
 		nextSignal := signals[0]
 		r.pendingSignals[name] = signals[1:]
+		r.removePendingFrontier(nextSignal.inboxID)
 		r.queueEvent(enginehistory.EventSignalReceived, nextSignal.payload)
 		r.consumedInboxIDs = append(r.consumedInboxIDs, nextSignal.inboxID)
 		return unmarshalOptional(nextSignal.payload.Payload, out)
@@ -501,7 +514,7 @@ func (r *workflowRunner) SetResult(value any) error {
 
 func (r *workflowRunner) advanceState() {
 	r.consumeRecordedCancels()
-	r.prepareFrontier()
+	r.consumeFrontierCancels()
 }
 
 func (r *workflowRunner) consumeRecordedCancels() {
@@ -515,21 +528,18 @@ func (r *workflowRunner) consumeRecordedCancels() {
 	}
 }
 
-func (r *workflowRunner) prepareFrontier() {
-	if r.frontierPrepared || r.cursor != len(r.replayEvents) {
+func (r *workflowRunner) consumeFrontierCancels() {
+	if r.cursor != len(r.replayEvents) {
 		return
 	}
 
-	if len(r.pendingCancels) > 0 {
+	for len(r.pendingFrontier) > 0 && r.pendingFrontier[0].kind == "cancel" {
+		nextCancel := r.pendingFrontier[0]
+		r.pendingFrontier = r.pendingFrontier[1:]
 		r.cancelRequested = true
-		for _, inboxID := range r.pendingCancels {
-			r.queueEvent(enginehistory.EventCancelRequested, enginehistory.CancelRequestedPayload{})
-			r.consumedInboxIDs = append(r.consumedInboxIDs, inboxID)
-		}
-		r.pendingCancels = nil
+		r.queueEvent(enginehistory.EventCancelRequested, enginehistory.CancelRequestedPayload{})
+		r.consumedInboxIDs = append(r.consumedInboxIDs, nextCancel.inboxID)
 	}
-
-	r.frontierPrepared = true
 }
 
 func (r *workflowRunner) peek() (decodedEvent, bool) {
@@ -546,6 +556,19 @@ func (r *workflowRunner) queueEvent(eventType string, payload any) {
 	})
 }
 
+func (r *workflowRunner) removePendingFrontier(inboxID uuid.UUID) {
+	for idx, item := range r.pendingFrontier {
+		if item.inboxID != inboxID {
+			continue
+		}
+
+		r.pendingFrontier = append(r.pendingFrontier[:idx], r.pendingFrontier[idx+1:]...)
+		return
+	}
+
+	panic(fmt.Sprintf("frontier inbox %s missing from pending frontier", inboxID))
+}
+
 func (r *workflowRunner) blockOnWait(wait any, scheduledEvent *queuedHistoryEvent, _ any) {
 	if scheduledEvent != nil {
 		r.queuedEvents = append(r.queuedEvents, *scheduledEvent)
@@ -558,7 +581,7 @@ func (r *workflowRunner) blockOnWait(wait any, scheduledEvent *queuedHistoryEven
 	panic(blockedPanic{})
 }
 
-func (r *workflowRunner) replayMismatch(expectedType string, expectedKey string, actual decodedEvent, detail string) {
+func (r *workflowRunner) replayMismatch(expectedType, expectedKey string, actual decodedEvent, detail string) {
 	panic(replayMismatchPanic{
 		payload: enginehistory.WorkflowReplayMismatchPayload{
 			ExpectedType: expectedType,
@@ -608,8 +631,7 @@ func (r *workflowRunner) failedDecision(failure enginehistory.WorkflowFailedPayl
 
 func matchActivityScheduled(
 	recorded *enginehistory.ActivityScheduledPayload,
-	key string,
-	activityType string,
+	key, activityType string,
 	input json.RawMessage,
 ) bool {
 	return recorded.ActivityKey == key &&
@@ -632,7 +654,7 @@ func unmarshalOptional(raw []byte, out any) error {
 	return json.Unmarshal(raw, out)
 }
 
-func equalJSON(left json.RawMessage, right json.RawMessage) bool {
+func equalJSON(left, right json.RawMessage) bool {
 	if bytes.Equal(bytes.TrimSpace(left), bytes.TrimSpace(right)) {
 		return true
 	}

@@ -22,6 +22,6 @@ func applyTestFinalHook(ctx context.Context) error {
 	return applyTestHook(ctx, TestWorkflowFinalMarkerEnv, TestWorkflowFinalReleaseEnv)
 }
 
-func applyTestHook(ctx context.Context, markerEnv string, releaseEnv string) error {
+func applyTestHook(ctx context.Context, markerEnv, releaseEnv string) error {
 	return enginetesthooks.ApplyFileGate(ctx, os.Getenv(markerEnv), os.Getenv(releaseEnv))
 }

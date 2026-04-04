@@ -26,7 +26,7 @@ type StartRequestDedupeClaim struct {
 	State StartRequestDedupeClaimState
 }
 
-func (c StartRequestDedupeClaim) NeedsExecution() bool {
+func (c *StartRequestDedupeClaim) NeedsExecution() bool {
 	return c.State == StartRequestDedupeClaimStateClaimedNew || c.State == StartRequestDedupeClaimStateClaimedReclaimed
 }
 

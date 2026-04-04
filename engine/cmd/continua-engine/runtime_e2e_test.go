@@ -157,7 +157,10 @@ func TestStartCommandDedupeAndRegistrationErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initial start error = %v", err)
 	}
-	firstResponse := stdout
+	var firstResponse startResponse
+	if err := json.Unmarshal([]byte(stdout), &firstResponse); err != nil {
+		t.Fatalf("Unmarshal(initial start stdout) error = %v", err)
+	}
 
 	stdout, _, err = executeCommand(t,
 		"start",
@@ -170,8 +173,12 @@ func TestStartCommandDedupeAndRegistrationErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("duplicate request key start error = %v", err)
 	}
-	if stdout != firstResponse {
-		t.Fatalf("expected duplicate request key to replay cached response, got %q want %q", stdout, firstResponse)
+	var duplicateResponse startResponse
+	if err := json.Unmarshal([]byte(stdout), &duplicateResponse); err != nil {
+		t.Fatalf("Unmarshal(duplicate start stdout) error = %v", err)
+	}
+	if duplicateResponse != firstResponse {
+		t.Fatalf("expected duplicate request key to replay cached response, got %+v want %+v", duplicateResponse, firstResponse)
 	}
 
 	stdout, _, err = executeCommand(t,
@@ -808,7 +815,7 @@ func fileLineCount(t *testing.T, path string) int {
 
 func darklaunchTestEnv(key, value string) string { return key + "=" + value }
 
-func TestHelperProcessServe(t *testing.T) {
+func TestHelperProcessServe(_ *testing.T) {
 	if os.Getenv("GO_WANT_ENGINE_SERVE_HELPER") != "1" {
 		return
 	}
@@ -823,7 +830,8 @@ func TestHelperProcessServe(t *testing.T) {
 
 func filterEventTypes(history []inspectHistoryEvent) []string {
 	result := make([]string, 0, len(history))
-	for _, event := range history {
+	for i := range history {
+		event := history[i]
 		switch event.EventType {
 		case "custom_status.updated", "cancel.requested":
 			continue

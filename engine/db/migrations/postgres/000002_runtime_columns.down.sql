@@ -20,12 +20,14 @@ CREATE TYPE engine.run_lifecycle_status AS ENUM (
 );
 
 ALTER TABLE engine.runs
+    ALTER COLUMN status DROP DEFAULT,
     ALTER COLUMN status TYPE engine.run_lifecycle_status
     USING status::text::engine.run_lifecycle_status;
 
 DROP TYPE engine.run_lifecycle_status_old;
 
 ALTER TABLE engine.runs
+    ALTER COLUMN status SET DEFAULT 'queued',
     DROP COLUMN completed_at,
     DROP COLUMN waiting_for,
     DROP COLUMN custom_status,
