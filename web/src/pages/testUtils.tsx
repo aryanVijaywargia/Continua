@@ -223,7 +223,11 @@ function createQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
+        gcTime: Infinity,
         retry: false,
+      },
+      mutations: {
+        gcTime: Infinity,
       },
     },
   });
