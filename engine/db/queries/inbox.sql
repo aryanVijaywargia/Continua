@@ -38,6 +38,12 @@ WHERE run_id = $1
   AND available_at <= NOW()
 ORDER BY available_at ASC, id ASC;
 
+-- name: CountOpenInboxByRun :one
+SELECT COUNT(*)
+FROM engine.inbox
+WHERE run_id = $1
+  AND status IN ('pending', 'claimed');
+
 -- name: ListDueTimerRunIDs :many
 SELECT DISTINCT run_id
 FROM engine.inbox

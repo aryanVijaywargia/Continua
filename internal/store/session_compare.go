@@ -62,18 +62,22 @@ type SessionCompareSessionHeader struct {
 }
 
 type SessionCompareTraceHeader struct {
-	ID             uuid.UUID
-	TraceID        string
-	Name           string
-	Status         string
-	UserID         *string
-	StartedAt      time.Time
-	EndedAt        *time.Time
-	DurationMs     *int64
-	ErrorCount     *int
-	TotalCostUsd   *float32
-	TotalTokensIn  *int64
-	TotalTokensOut *int64
+	ID                      uuid.UUID
+	TraceID                 string
+	Name                    string
+	Status                  string
+	EngineRunID             *uuid.UUID
+	EngineDefinitionName    *string
+	EngineDefinitionVersion *string
+	EngineProjectionState   *string
+	UserID                  *string
+	StartedAt               time.Time
+	EndedAt                 *time.Time
+	DurationMs              *int64
+	ErrorCount              *int
+	TotalCostUsd            *float32
+	TotalTokensIn           *int64
+	TotalTokensOut          *int64
 }
 
 type SessionCompareSummary struct {
@@ -253,6 +257,10 @@ func (s *Store) ValidateCompareEligibility(
 			row.BaselineTraceID,
 			row.BaselineName,
 			row.BaselineStatus,
+			uuidPtr(row.BaselineEngineRunID),
+			row.BaselineEngineDefinitionName,
+			row.BaselineEngineDefinitionVersion,
+			row.BaselineEngineProjectionState,
 			row.BaselineUserID,
 			row.BaselineStartedAt,
 			row.BaselineEndedAt,
@@ -267,6 +275,10 @@ func (s *Store) ValidateCompareEligibility(
 			row.CandidateTraceID,
 			row.CandidateName,
 			row.CandidateStatus,
+			uuidPtr(row.CandidateEngineRunID),
+			row.CandidateEngineDefinitionName,
+			row.CandidateEngineDefinitionVersion,
+			row.CandidateEngineProjectionState,
 			row.CandidateUserID,
 			row.CandidateStartedAt,
 			row.CandidateEndedAt,
@@ -1008,6 +1020,10 @@ func compareTraceHeaderFromValidationRow(
 	traceID string,
 	name *string,
 	status string,
+	engineRunID *uuid.UUID,
+	engineDefinitionName *string,
+	engineDefinitionVersion *string,
+	engineProjectionState *string,
 	userID *string,
 	startedAt time.Time,
 	endedAt pgtype.Timestamptz,
@@ -1018,13 +1034,17 @@ func compareTraceHeaderFromValidationRow(
 	totalTokensOut int64,
 ) SessionCompareTraceHeader {
 	header := SessionCompareTraceHeader{
-		ID:         id,
-		TraceID:    traceID,
-		Name:       derefString(name),
-		Status:     normalizeCompareTraceStatus(status),
-		UserID:     userID,
-		StartedAt:  startedAt,
-		DurationMs: durationMs,
+		ID:                      id,
+		TraceID:                 traceID,
+		Name:                    derefString(name),
+		Status:                  normalizeCompareTraceStatus(status),
+		EngineRunID:             engineRunID,
+		EngineDefinitionName:    engineDefinitionName,
+		EngineDefinitionVersion: engineDefinitionVersion,
+		EngineProjectionState:   engineProjectionState,
+		UserID:                  userID,
+		StartedAt:               startedAt,
+		DurationMs:              durationMs,
 	}
 
 	if endedAt.Valid {
@@ -1047,6 +1067,15 @@ func compareTraceHeaderFromValidationRow(
 	header.TotalTokensOut = &totalOut
 
 	return header
+}
+
+func uuidPtr(value pgtype.UUID) *uuid.UUID {
+	if !value.Valid {
+		return nil
+	}
+
+	id := uuid.UUID(value.Bytes)
+	return &id
 }
 
 func countCompareRows(rows []platform.GetCompareSpanCountsRow, traceID uuid.UUID) int {

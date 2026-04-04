@@ -21,6 +21,10 @@ SELECT
     baseline.total_cost AS baseline_total_cost_usd,
     baseline.total_tokens_in AS baseline_total_tokens_in,
     baseline.total_tokens_out AS baseline_total_tokens_out,
+    baseline.engine_run_id AS baseline_engine_run_id,
+    baseline.engine_definition_name AS baseline_engine_definition_name,
+    baseline.engine_definition_version AS baseline_engine_definition_version,
+    baseline.engine_projection_state AS baseline_engine_projection_state,
     candidate.id AS candidate_id,
     candidate.trace_id AS candidate_trace_id,
     candidate.name AS candidate_name,
@@ -38,7 +42,11 @@ SELECT
     COALESCE(candidate.error_count, 0::integer) AS candidate_error_count,
     candidate.total_cost AS candidate_total_cost_usd,
     candidate.total_tokens_in AS candidate_total_tokens_in,
-    candidate.total_tokens_out AS candidate_total_tokens_out
+    candidate.total_tokens_out AS candidate_total_tokens_out,
+    candidate.engine_run_id AS candidate_engine_run_id,
+    candidate.engine_definition_name AS candidate_engine_definition_name,
+    candidate.engine_definition_version AS candidate_engine_definition_version,
+    candidate.engine_projection_state AS candidate_engine_projection_state
 FROM sessions s
 JOIN traces baseline
     ON baseline.id = $3

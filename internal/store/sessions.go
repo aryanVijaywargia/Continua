@@ -97,3 +97,8 @@ func (t *Tx) GetOrCreateSessionByExternalID(ctx context.Context, projectID uuid.
 		ExternalID: externalID,
 	})
 }
+
+// UpdateSession updates session mutable fields within a transaction.
+func (t *Tx) UpdateSession(ctx context.Context, params platform.UpdateSessionParams) (platform.Session, error) {
+	return t.q.UpdateSession(ctx, params)
+}

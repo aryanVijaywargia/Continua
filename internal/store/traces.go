@@ -70,6 +70,16 @@ func (t *Tx) CreateTrace(ctx context.Context, params *platform.CreateTraceParams
 	return t.q.CreateTrace(ctx, *params)
 }
 
+// CreateEngineTraceShell creates a projected engine trace shell within a transaction.
+func (t *Tx) CreateEngineTraceShell(ctx context.Context, params *platform.CreateEngineTraceShellParams) (platform.Trace, error) {
+	return t.q.CreateEngineTraceShell(ctx, *params)
+}
+
+// UpdateEngineTraceSummary refreshes the projected engine summary fields on a trace shell.
+func (t *Tx) UpdateEngineTraceSummary(ctx context.Context, params *platform.UpdateEngineTraceSummaryParams) (platform.Trace, error) {
+	return t.q.UpdateEngineTraceSummary(ctx, *params)
+}
+
 // GetTrace retrieves a trace by its internal UUID.
 func (s *Store) GetTrace(ctx context.Context, id uuid.UUID) (TraceRead, error) {
 	trace, err := s.q.GetTrace(ctx, id)

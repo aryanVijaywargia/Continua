@@ -28,8 +28,9 @@ func NewRouter(server *Server, s *store.Store) http.Handler {
 
 	// Protected: all OpenAPI routes
 	r.Group(func(r chi.Router) {
-		// Apply API key authentication
+		r.Use(engineRouteAvailabilityMiddleware(server))
 		r.Use(middleware.APIKeyAuth(s))
+		r.Use(enginePreviewHeaderMiddleware())
 
 		// Mount OpenAPI handlers
 		HandlerWithOptions(server, ChiServerOptions{

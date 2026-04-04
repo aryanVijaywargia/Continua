@@ -107,6 +107,303 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/engine/runs:
+    post:
+      operationId: startEngineRun
+      summary: Start an engine workflow run
+      tags:
+        - Engine
+      parameters:
+        - name: X-Continua-Engine-Preview
+          in: header
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineStartRunRequest'
+      responses:
+        '200':
+          description: Engine run started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineStartRunResponse'
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Duplicate, in-progress, or conflicting request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/instances/{instance_key}:
+    get:
+      operationId: getEngineInstance
+      summary: Get an engine instance and current run
+      tags:
+        - Engine
+      parameters:
+        - name: instance_key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Engine instance detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineInstanceResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Instance not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}:
+    get:
+      operationId: getEngineRun
+      summary: Get an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Engine run detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/result:
+    get:
+      operationId: getEngineRunResult
+      summary: Get the terminal result for an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Engine run terminal result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResultResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run not terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/history:
+    get:
+      operationId: getEngineRunHistory
+      summary: Get engine run history
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: after
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        '200':
+          description: Engine run history page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunHistoryResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/signal:
+    post:
+      operationId: signalEngineRun
+      summary: Deliver a signal to an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineSignalRunRequest'
+      responses:
+        '200':
+          description: Signal accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineControlResponse'
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/cancel:
+    post:
+      operationId: cancelEngineRun
+      summary: Request cancellation of an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cancel accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineControlResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/traces:
     get:
       operationId: listTraces
@@ -517,6 +814,115 @@ components:
         error:
           type: string
           description: Error message describing the size limit violation
+    EngineProjectionState:
+      type: string
+      enum:
+        - up_to_date
+        - catching_up
+        - summary_only
+        - journal_expired
+    EngineRunStatus:
+      type: string
+      enum:
+        - QUEUED
+        - RUNNING
+        - WAITING
+        - COMPLETED
+        - FAILED
+        - CANCELLED
+    EngineTraceInfo:
+      type: object
+      required:
+        - run_id
+        - definition_name
+        - definition_version
+        - projection_state
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        definition_name:
+          type: string
+        definition_version:
+          type: string
+        projection_state:
+          $ref: '#/components/schemas/EngineProjectionState'
+    EngineWaitState:
+      type: object
+      additionalProperties: true
+      properties:
+        kind:
+          type: string
+        activity_key:
+          type: string
+        activity_type:
+          type: string
+        timer_key:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        signal_name:
+          type: string
+    EnginePendingWork:
+      type: object
+      required:
+        - pending_activity_tasks
+        - pending_inbox_items
+      properties:
+        pending_activity_tasks:
+          type: integer
+          format: int64
+        pending_inbox_items:
+          type: integer
+          format: int64
+    EngineFailureSummary:
+      type: object
+      required:
+        - error_code
+        - error_message
+        - status
+      properties:
+        error_code:
+          type: string
+        error_message:
+          type: string
+        status:
+          type: string
+    EngineRunSummary:
+      allOf:
+        - $ref: '#/components/schemas/EngineTraceInfo'
+        - type: object
+          required:
+            - status
+            - instance_key
+            - pending_work
+            - created_at
+            - updated_at
+          properties:
+            status:
+              $ref: '#/components/schemas/EngineRunStatus'
+            instance_key:
+              type: string
+            custom_status:
+              type: object
+            wait_state:
+              $ref: '#/components/schemas/EngineWaitState'
+            pending_work:
+              $ref: '#/components/schemas/EnginePendingWork'
+            result:
+              description: Terminal workflow result payload when available.
+            failure:
+              $ref: '#/components/schemas/EngineFailureSummary'
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+            completed_at:
+              type: string
+              format: date-time
     Trace:
       type: object
       required:
@@ -558,6 +964,8 @@ components:
           description: Count of failed spans in this trace
         metadata:
           type: object
+        engine:
+          $ref: '#/components/schemas/EngineTraceInfo'
     TraceDetail:
       allOf:
         - $ref: '#/components/schemas/Trace'
@@ -579,6 +987,176 @@ components:
               description: Trace input payload (any valid JSON)
             output:
               description: Trace output payload (any valid JSON)
+            engine:
+              $ref: '#/components/schemas/EngineRunSummary'
+    EngineStartSession:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        metadata:
+          type: object
+    EngineStartTrace:
+      type: object
+      properties:
+        name:
+          type: string
+        user_id:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        environment:
+          type: string
+        release:
+          type: string
+        metadata:
+          type: object
+    EngineStartRunRequest:
+      type: object
+      required:
+        - instance_key
+        - definition_name
+        - definition_version
+        - request_key
+      properties:
+        instance_key:
+          type: string
+        definition_name:
+          type: string
+        definition_version:
+          type: string
+        request_key:
+          type: string
+        input:
+          description: Workflow input payload (any valid JSON)
+        session:
+          $ref: '#/components/schemas/EngineStartSession'
+        trace:
+          $ref: '#/components/schemas/EngineStartTrace'
+    EngineStartRunResponse:
+      type: object
+      required:
+        - run_id
+        - instance_key
+        - trace_id
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        instance_key:
+          type: string
+        trace_id:
+          type: string
+    EngineInstanceResponse:
+      type: object
+      required:
+        - instance_id
+        - instance_key
+        - definition_name
+        - status
+        - current_run
+      properties:
+        instance_id:
+          type: string
+          format: uuid
+        instance_key:
+          type: string
+        definition_name:
+          type: string
+        status:
+          type: string
+        current_run:
+          $ref: '#/components/schemas/EngineRunSummary'
+    EngineRunResponse:
+      allOf:
+        - $ref: '#/components/schemas/EngineRunSummary'
+        - type: object
+          required:
+            - instance_id
+          properties:
+            instance_id:
+              type: string
+              format: uuid
+    EngineRunResultResponse:
+      type: object
+      required:
+        - run_id
+        - status
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/EngineRunStatus'
+        result:
+          description: Terminal workflow result payload when available.
+        failure:
+          $ref: '#/components/schemas/EngineFailureSummary'
+    EngineHistoryEvent:
+      type: object
+      required:
+        - id
+        - sequence_no
+        - event_type
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        sequence_no:
+          type: integer
+          format: int32
+        event_type:
+          type: string
+        payload:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+    EngineRunHistoryResponse:
+      type: object
+      required:
+        - events
+        - has_more
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineHistoryEvent'
+        has_more:
+          type: boolean
+        next_after:
+          type: integer
+    EngineSignalRunRequest:
+      type: object
+      required:
+        - signal_name
+      properties:
+        signal_name:
+          type: string
+        payload:
+          description: Signal payload (any valid JSON)
+    EngineControlResponse:
+      type: object
+      required:
+        - run_id
+        - instance_key
+        - accepted
+        - wake_applied
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        instance_key:
+          type: string
+        accepted:
+          type: boolean
+        wake_applied:
+          type: boolean
     TraceList:
       type: object
       required:
@@ -984,6 +1562,8 @@ components:
         total_tokens_out:
           type: integer
           format: int64
+        engine:
+          $ref: '#/components/schemas/EngineTraceInfo'
     CompareSummary:
       type: object
       required:
@@ -1476,6 +2056,13 @@ components:
         poll_cursor:
           type: string
           description: Opaque cursor representing the last event included in this response. Use for incremental polling even when `has_more` is false.
+        engine:
+          type: object
+          required:
+            - projection_state
+          properties:
+            projection_state:
+              $ref: '#/components/schemas/EngineProjectionState'
     IngestResponse:
       type: object
       required:

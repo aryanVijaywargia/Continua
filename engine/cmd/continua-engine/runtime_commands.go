@@ -19,8 +19,10 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/activity"
+	"github.com/continua-ai/continua/engine/internal/catalog"
 	"github.com/continua-ai/continua/engine/internal/config"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
+	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	engineworker "github.com/continua-ai/continua/engine/internal/worker"
 	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
@@ -92,9 +94,14 @@ func serveCmd() *cobra.Command {
 			defer stop()
 
 			return withRuntime(ctx, func(ctx context.Context, cfg *config.Config, store *enginestore.Store, definitions *engineworkflow.Registry, activities *activity.Registry) error {
+				if err := catalog.PublishStoreDefinitions(ctx, store, definitions.List()); err != nil {
+					return err
+				}
+
 				workflowWorker := engineworkflow.NewWorker(store, definitions, cfg.Runtime.RunLeaseTTL)
 				activityWorker := activity.NewWorker(store, activities, cfg.Runtime.ActivityLeaseTTL)
 				maintenanceWorker := engineworker.NewMaintenanceWorker(store)
+				projectorWorker := engineprojector.New(store)
 
 				log.Printf("starting continua-engine serve")
 
@@ -107,6 +114,9 @@ func serveCmd() *cobra.Command {
 				})
 				group.Go(func() error {
 					return engineworker.RunLoop(groupCtx, cfg.Runtime.MaintenancePollInterval, "maintenance", maintenanceWorker.PollOnce)
+				})
+				group.Go(func() error {
+					return engineworker.RunLoop(groupCtx, cfg.Runtime.WorkflowPollInterval, "projector", projectorWorker.PollOnce)
 				})
 
 				err := group.Wait()
@@ -347,6 +357,11 @@ func signalCmd() *cobra.Command {
 				if err != nil && !errors.Is(err, enginestore.ErrNotFound) {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
+				if err == nil {
+					if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), wake.Run); syncErr != nil {
+						return writeJSONError(cmd.OutOrStdout(), "internal_error", syncErr.Error())
+					}
+				}
 
 				response := controlResponse{
 					InstanceID:  instance.ID.String(),
@@ -426,6 +441,11 @@ func cancelCmd() *cobra.Command {
 				wake, err := tx.WakeWaitingRun(ctx, run.ID)
 				if err != nil && !errors.Is(err, enginestore.ErrNotFound) {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
+				}
+				if err == nil {
+					if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), wake.Run); syncErr != nil {
+						return writeJSONError(cmd.OutOrStdout(), "internal_error", syncErr.Error())
+					}
 				}
 
 				response := controlResponse{

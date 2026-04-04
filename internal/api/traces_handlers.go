@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/internal/store"
@@ -81,7 +82,24 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
-	resp := traceDetailToAPI(&trace)
+	var engineSummary *EngineRunSummary
+	if shouldReadLiveEngineSummary(&trace) {
+		if s.engineControl == nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to read engine summary")
+			return
+		}
+
+		summary, err := s.engineControl.ReadRunSummary(r.Context(), projectID, uuid.UUID(trace.EngineRunID.Bytes))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to read engine summary")
+			return
+		}
+
+		mapped := engineRunSummaryToAPI(&summary)
+		engineSummary = &mapped
+	}
+
+	resp := traceDetailToAPIWithEngine(&trace, engineSummary)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -152,6 +170,7 @@ func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id opena
 	}
 
 	resp := TimelineResponse{
+		Engine:      engineTimelineMetadataFromTrace(&trace),
 		Events:      apiEvents,
 		HasMore:     page.hasMore,
 		TraceStatus: mapTimelineTraceStatus(trace.Status),

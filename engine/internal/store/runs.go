@@ -76,6 +76,17 @@ func (o *storeOps) TransitionRunToFailed(
 	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
 }
 
+func (o *storeOps) TransitionRunToCancelled(
+	ctx context.Context,
+	arg enginedb.TransitionRunToCancelledParams,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToCancelled(ctx, arg)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
+}
+
 func (o *storeOps) WakeWaitingRun(ctx context.Context, id uuid.UUID) (WakeWaitingRunResult, error) {
 	run, err := o.q.WakeWaitingRun(ctx, id)
 	if err == nil {

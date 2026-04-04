@@ -259,6 +259,13 @@ type EngineActivityTask struct {
 	UpdatedAt        time.Time                `json:"updated_at"`
 }
 
+type EngineDefinitionCatalog struct {
+	DefinitionName    string    `json:"definition_name"`
+	DefinitionVersion string    `json:"definition_version"`
+	PublishedAt       time.Time `json:"published_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
 type EngineHistory struct {
 	ID         int64     `json:"id"`
 	ProjectID  uuid.UUID `json:"project_id"`

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	"github.com/continua-ai/continua/internal/store"
 	"github.com/continua-ai/continua/internal/testutil"
 )
@@ -75,6 +77,104 @@ func TestTraceDetailToAPI_MapsSummaryAndDetailFields(t *testing.T) {
 	assert.Equal(t, environment, *detail.Environment)
 	require.NotNil(t, detail.Release)
 	assert.Equal(t, release, *detail.Release)
+}
+
+func TestTraceToAPI_MapsEngineMetadata(t *testing.T) {
+	runID := uuid.New()
+	trace := platform.Trace{
+		ID:                      uuid.New(),
+		TraceID:                 "engine:" + runID.String(),
+		Name:                    testutil.StrPtr("Engine Trace"),
+		Status:                  "running",
+		StartTime:               testutil.PgtypeTimestamptz(time.Now().UTC()),
+		EngineRunID:             pgtype.UUID{Bytes: runID, Valid: true},
+		EngineDefinitionName:    testutil.StrPtr("checkout"),
+		EngineDefinitionVersion: testutil.StrPtr("v1"),
+		EngineProjectionState:   testutil.StrPtr(publicprojection.StateUpToDate.String()),
+	}
+
+	apiTrace := traceToAPI(&store.TraceRead{Trace: trace})
+
+	require.NotNil(t, apiTrace.Engine)
+	assert.Equal(t, runID, uuid.UUID(apiTrace.Engine.RunId))
+	assert.Equal(t, "checkout", apiTrace.Engine.DefinitionName)
+	assert.Equal(t, "v1", apiTrace.Engine.DefinitionVersion)
+	assert.Equal(t, UpToDate, apiTrace.Engine.ProjectionState)
+}
+
+func TestTraceDetailToAPIWithProjectedEngineSummary_UsesProjectedInstanceKey(t *testing.T) {
+	runID := uuid.New()
+	trace := platform.Trace{
+		ID:                         uuid.New(),
+		TraceID:                    "engine:" + runID.String(),
+		Name:                       testutil.StrPtr("Engine Trace"),
+		Status:                     "running",
+		StartTime:                  testutil.PgtypeTimestamptz(time.Now().UTC()),
+		EngineRunID:                pgtype.UUID{Bytes: runID, Valid: true},
+		EngineInstanceKey:          testutil.StrPtr("instance-1"),
+		EngineRunStatus:            testutil.StrPtr(string(enginedb.EngineRunLifecycleStatusWaiting)),
+		EngineCustomStatus:         []byte(`{"step":"approval"}`),
+		EngineWaitState:            []byte(`{"kind":"signal","signal_name":"approval"}`),
+		EnginePendingActivityTasks: testutil.Int64Ptr(2),
+		EnginePendingInboxItems:    testutil.Int64Ptr(1),
+		EngineDefinitionName:       testutil.StrPtr("checkout"),
+		EngineDefinitionVersion:    testutil.StrPtr("v1"),
+		EngineProjectionState:      testutil.StrPtr(publicprojection.StateUpToDate.String()),
+	}
+	sessionExternalID := "session-1"
+
+	detail := traceDetailToAPIWithEngine(&store.TraceRead{
+		Trace:             trace,
+		SessionExternalID: &sessionExternalID,
+	}, nil)
+
+	require.NotNil(t, detail.Engine)
+	assert.Equal(t, "instance-1", detail.Engine.InstanceKey)
+	assert.Equal(t, EngineRunStatusWAITING, detail.Engine.Status)
+	require.NotNil(t, detail.Engine.CustomStatus)
+	assert.Equal(t, "approval", (*detail.Engine.CustomStatus)["step"])
+	require.NotNil(t, detail.Engine.WaitState)
+	require.NotNil(t, detail.Engine.WaitState.SignalName)
+	assert.Equal(t, "approval", *detail.Engine.WaitState.SignalName)
+	assert.EqualValues(t, 2, detail.Engine.PendingWork.PendingActivityTasks)
+	assert.EqualValues(t, 1, detail.Engine.PendingWork.PendingInboxItems)
+}
+
+func TestTraceDetailToAPIWithEngine_PrefersLiveEngineSummary(t *testing.T) {
+	runID := uuid.New()
+	trace := platform.Trace{
+		ID:                      uuid.New(),
+		TraceID:                 "engine:" + runID.String(),
+		Name:                    testutil.StrPtr("Engine Trace"),
+		Status:                  "running",
+		StartTime:               testutil.PgtypeTimestamptz(time.Now().UTC()),
+		EngineRunID:             pgtype.UUID{Bytes: runID, Valid: true},
+		EngineInstanceKey:       testutil.StrPtr("instance-1"),
+		EngineDefinitionName:    testutil.StrPtr("checkout"),
+		EngineDefinitionVersion: testutil.StrPtr("v1"),
+		EngineProjectionState:   testutil.StrPtr(publicprojection.StateCatchingUp.String()),
+	}
+
+	live := engineRunSummaryToAPI(&engineRunSummary{
+		RunID:             runID,
+		InstanceKey:       "instance-1",
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		ProjectionState:   publicprojection.StateCatchingUp.String(),
+		Status:            enginedb.EngineRunLifecycleStatusWaiting,
+		CreatedAt:         time.Now().Add(-time.Minute).UTC(),
+		UpdatedAt:         time.Now().UTC(),
+		WaitState:         json.RawMessage(`{"kind":"signal","signal_name":"approval"}`),
+	})
+
+	detail := traceDetailToAPIWithEngine(&store.TraceRead{Trace: trace}, &live)
+
+	require.NotNil(t, detail.Engine)
+	assert.Equal(t, "instance-1", detail.Engine.InstanceKey)
+	assert.Equal(t, EngineRunStatusWAITING, detail.Engine.Status)
+	require.NotNil(t, detail.Engine.WaitState)
+	require.NotNil(t, detail.Engine.WaitState.SignalName)
+	assert.Equal(t, "approval", *detail.Engine.WaitState.SignalName)
 }
 
 func TestTraceDetailToAPI_TagsMapping(t *testing.T) {
