@@ -630,6 +630,9 @@ func (s *engineControlService) CancelRun(
 		return engineControlResult{}, err
 	}
 	cancelDedupeKey := engineCancelDedupeKey + run.ID.String()
+	if _, err := tx.Tx().Exec(ctx, "SAVEPOINT cancel_enqueue"); err != nil {
+		return engineControlResult{}, err
+	}
 	if _, err := engineTx.CreateInboxItem(ctx, enginedb.CreateInboxItemParams{
 		ProjectID:   projectID,
 		InstanceID:  run.InstanceID,
@@ -638,7 +641,17 @@ func (s *engineControlService) CancelRun(
 		Payload:     cancelPayload,
 		AvailableAt: time.Now().UTC(),
 		DedupeKey:   &cancelDedupeKey,
-	}); err != nil && !isUniqueViolation(err) {
+	}); err != nil {
+		if _, rollbackErr := tx.Tx().Exec(ctx, "ROLLBACK TO SAVEPOINT cancel_enqueue"); rollbackErr != nil {
+			return engineControlResult{}, rollbackErr
+		}
+		if _, releaseErr := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT cancel_enqueue"); releaseErr != nil {
+			return engineControlResult{}, releaseErr
+		}
+		if !isUniqueViolation(err) {
+			return engineControlResult{}, err
+		}
+	} else if _, err := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT cancel_enqueue"); err != nil {
 		return engineControlResult{}, err
 	}
 
