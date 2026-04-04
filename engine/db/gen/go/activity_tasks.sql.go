@@ -68,23 +68,26 @@ func (q *Queries) ClaimNextActivityTask(ctx context.Context, arg ClaimNextActivi
 const completeActivityTask = `-- name: CompleteActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'completed',
-    output = $2,
+    output = $3,
     completed_at = NOW(),
     claimed_by = NULL,
     claimed_at = NULL,
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
+  AND status = 'claimed'
+  AND claimed_by = $2
 RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at
 `
 
 type CompleteActivityTaskParams struct {
-	ID     uuid.UUID `json:"id"`
-	Output []byte    `json:"output"`
+	ID        uuid.UUID `json:"id"`
+	ClaimedBy *string   `json:"claimed_by"`
+	Output    []byte    `json:"output"`
 }
 
 func (q *Queries) CompleteActivityTask(ctx context.Context, arg CompleteActivityTaskParams) (EngineActivityTask, error) {
-	row := q.db.QueryRow(ctx, completeActivityTask, arg.ID, arg.Output)
+	row := q.db.QueryRow(ctx, completeActivityTask, arg.ID, arg.ClaimedBy, arg.Output)
 	var i EngineActivityTask
 	err := row.Scan(
 		&i.ID,
@@ -177,25 +180,67 @@ func (q *Queries) CreateActivityTask(ctx context.Context, arg CreateActivityTask
 const failActivityTask = `-- name: FailActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'failed',
-    last_error_code = $2,
-    last_error_message = $3,
+    last_error_code = $3,
+    last_error_message = $4,
     completed_at = NOW(),
     claimed_by = NULL,
     claimed_at = NULL,
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
+  AND status = 'claimed'
+  AND claimed_by = $2
 RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at
 `
 
 type FailActivityTaskParams struct {
 	ID               uuid.UUID `json:"id"`
+	ClaimedBy        *string   `json:"claimed_by"`
 	LastErrorCode    *string   `json:"last_error_code"`
 	LastErrorMessage *string   `json:"last_error_message"`
 }
 
 func (q *Queries) FailActivityTask(ctx context.Context, arg FailActivityTaskParams) (EngineActivityTask, error) {
-	row := q.db.QueryRow(ctx, failActivityTask, arg.ID, arg.LastErrorCode, arg.LastErrorMessage)
+	row := q.db.QueryRow(ctx, failActivityTask,
+		arg.ID,
+		arg.ClaimedBy,
+		arg.LastErrorCode,
+		arg.LastErrorMessage,
+	)
+	var i EngineActivityTask
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunID,
+		&i.HistoryID,
+		&i.ActivityKey,
+		&i.ActivityType,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.AvailableAt,
+		&i.AttemptCount,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getActivityTask = `-- name: GetActivityTask :one
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at
+FROM engine.activity_tasks
+WHERE id = $1
+`
+
+func (q *Queries) GetActivityTask(ctx context.Context, id uuid.UUID) (EngineActivityTask, error) {
+	row := q.db.QueryRow(ctx, getActivityTask, id)
 	var i EngineActivityTask
 	err := row.Scan(
 		&i.ID,
@@ -260,4 +305,52 @@ func (q *Queries) GetActivityTaskByRunAndKey(ctx context.Context, arg GetActivit
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listActivityTasksByRun = `-- name: ListActivityTasksByRun :many
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at
+FROM engine.activity_tasks
+WHERE run_id = $1
+ORDER BY created_at ASC, id ASC
+`
+
+func (q *Queries) ListActivityTasksByRun(ctx context.Context, runID uuid.UUID) ([]EngineActivityTask, error) {
+	rows, err := q.db.Query(ctx, listActivityTasksByRun, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineActivityTask{}
+	for rows.Next() {
+		var i EngineActivityTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.ActivityKey,
+			&i.ActivityType,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.AvailableAt,
+			&i.AttemptCount,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

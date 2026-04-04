@@ -24,6 +24,10 @@ var (
 func main() {
 	rootCmd := newRootCmd()
 	if err := rootCmd.Execute(); err != nil {
+		var exitErr commandExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.code)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -31,9 +35,11 @@ func main() {
 
 func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "continua-engine",
-		Short: "Continua durable execution engine",
-		Long:  "Continua Engine manages the durable execution engine schema and runtime foundations.",
+		Use:           "continua-engine",
+		Short:         "Continua durable execution engine",
+		Long:          "Continua Engine manages the durable execution engine schema and runtime foundations.",
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -41,6 +47,11 @@ func newRootCmd() *cobra.Command {
 
 	rootCmd.AddCommand(versionCmd())
 	rootCmd.AddCommand(migrateCmd())
+	rootCmd.AddCommand(serveCmd())
+	rootCmd.AddCommand(startCmd())
+	rootCmd.AddCommand(signalCmd())
+	rootCmd.AddCommand(cancelCmd())
+	rootCmd.AddCommand(inspectCmd())
 	return rootCmd
 }
 

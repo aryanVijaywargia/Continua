@@ -19,6 +19,7 @@ const uniqueViolationSQLState = "23505"
 var (
 	ErrNotFound        = errors.New("engine store: record not found")
 	ErrAlreadyExists   = errors.New("engine store: record already exists")
+	ErrStaleClaim      = errors.New("engine store: stale claim")
 	ErrStaleCheckpoint = errors.New("engine store: stale checkpoint")
 )
 

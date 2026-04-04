@@ -30,6 +30,23 @@ WHERE id = (
 )
 RETURNING *;
 
+-- name: ListPendingInboxByRun :many
+SELECT *
+FROM engine.inbox
+WHERE run_id = $1
+  AND status = 'pending'
+  AND available_at <= NOW()
+ORDER BY available_at ASC, id ASC;
+
+-- name: ListDueTimerRunIDs :many
+SELECT DISTINCT run_id
+FROM engine.inbox
+WHERE kind = 'timer'
+  AND run_id IS NOT NULL
+  AND status = 'pending'
+  AND available_at <= NOW()
+ORDER BY run_id ASC;
+
 -- name: MarkInboxProcessed :one
 UPDATE engine.inbox
 SET status = 'processed',
@@ -39,6 +56,7 @@ SET status = 'processed',
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
+  AND status = 'pending'
 RETURNING *;
 
 -- name: MarkInboxDiscarded :one
