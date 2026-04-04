@@ -358,7 +358,7 @@ func signalCmd() *cobra.Command {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
 				if err == nil {
-					if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), wake.Run); syncErr != nil {
+					if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
 						return writeJSONError(cmd.OutOrStdout(), "internal_error", syncErr.Error())
 					}
 				}
@@ -443,7 +443,7 @@ func cancelCmd() *cobra.Command {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
 				if err == nil {
-					if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), wake.Run); syncErr != nil {
+					if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
 						return writeJSONError(cmd.OutOrStdout(), "internal_error", syncErr.Error())
 					}
 				}

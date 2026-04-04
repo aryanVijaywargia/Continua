@@ -36,7 +36,7 @@ func (w *MaintenanceWorker) PollOnce(ctx context.Context, _ string) error {
 			return wakeErr
 		}
 		if wakeErr == nil {
-			if err := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), wake.Run); err != nil {
+			if err := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); err != nil {
 				_ = tx.Rollback(ctx)
 				return err
 			}

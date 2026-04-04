@@ -3,10 +3,11 @@ package catalog
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5"
+
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/store"
 	publicworkflow "github.com/continua-ai/continua/engine/pkg/workflow"
-	"github.com/jackc/pgx/v5"
 )
 
 type definitionCatalogWriter interface {

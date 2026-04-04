@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -48,7 +47,7 @@ func (s *Server) StartEngineRun(w http.ResponseWriter, r *http.Request, _ StartE
 		return
 	}
 
-	result, err := s.engineControl.StartRun(r.Context(), projectID, startReq)
+	result, err := s.engineControl.StartRun(r.Context(), projectID, &startReq)
 	if err != nil {
 		writeEngineError(w, err, "Failed to start engine run")
 		return
@@ -56,12 +55,12 @@ func (s *Server) StartEngineRun(w http.ResponseWriter, r *http.Request, _ StartE
 
 	writeJSON(w, http.StatusOK, EngineStartRunResponse{
 		InstanceKey: result.InstanceKey,
-		RunId:       openapi_types.UUID(result.RunID),
+		RunId:       result.RunID,
 		TraceId:     result.TraceID,
 	})
 }
 
-func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
+func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {
 		return
@@ -71,7 +70,7 @@ func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runId open
 		return
 	}
 
-	result, err := s.engineControl.GetRun(r.Context(), projectID, uuid.UUID(runId))
+	result, err := s.engineControl.GetRun(r.Context(), projectID, runID)
 	if err != nil {
 		writeEngineError(w, err, "Failed to get engine run")
 		return
@@ -80,7 +79,7 @@ func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runId open
 	writeJSON(w, http.StatusOK, engineRunResponseToAPI(&result))
 }
 
-func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, _ CancelEngineRunParams) {
+func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ CancelEngineRunParams) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {
 		return
@@ -90,7 +89,7 @@ func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runId o
 		return
 	}
 
-	result, err := s.engineControl.CancelRun(r.Context(), projectID, uuid.UUID(runId))
+	result, err := s.engineControl.CancelRun(r.Context(), projectID, runID)
 	if err != nil {
 		writeEngineError(w, err, "Failed to cancel engine run")
 		return
@@ -99,7 +98,7 @@ func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runId o
 	writeJSON(w, http.StatusOK, engineControlResponseToAPI(&result))
 }
 
-func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params GetEngineRunHistoryParams) {
+func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, params GetEngineRunHistoryParams) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {
 		return
@@ -118,7 +117,7 @@ func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, run
 		limit = *params.Limit
 	}
 
-	page, err := s.engineControl.GetRunHistory(r.Context(), projectID, uuid.UUID(runId), after, limit)
+	page, err := s.engineControl.GetRunHistory(r.Context(), projectID, runID, after, limit)
 	if err != nil {
 		writeEngineError(w, err, "Failed to get engine run history")
 		return
@@ -127,7 +126,7 @@ func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, run
 	writeJSON(w, http.StatusOK, engineHistoryPageToAPI(&page))
 }
 
-func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
+func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {
 		return
@@ -137,7 +136,7 @@ func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runI
 		return
 	}
 
-	result, err := s.engineControl.GetRunResult(r.Context(), projectID, uuid.UUID(runId))
+	result, err := s.engineControl.GetRunResult(r.Context(), projectID, runID)
 	if err != nil {
 		writeEngineError(w, err, "Failed to get engine run result")
 		return
@@ -146,7 +145,7 @@ func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runI
 	writeJSON(w, http.StatusOK, engineRunResultResponseToAPI(&result))
 }
 
-func (s *Server) SignalEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, _ SignalEngineRunParams) {
+func (s *Server) SignalEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ SignalEngineRunParams) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {
 		return
@@ -167,7 +166,7 @@ func (s *Server) SignalEngineRun(w http.ResponseWriter, r *http.Request, runId o
 		return
 	}
 
-	result, err := s.engineControl.SignalRun(r.Context(), projectID, uuid.UUID(runId), engineSignalRequest{
+	result, err := s.engineControl.SignalRun(r.Context(), projectID, runID, engineSignalRequest{
 		SignalName: req.SignalName,
 		Payload:    payload,
 	})
@@ -194,21 +193,29 @@ func engineStartRunRequestFromAPI(req *EngineStartRunRequest) (engineStartRunReq
 	}
 
 	if req.Session != nil {
+		var sessionMetadata map[string]interface{}
+		if req.Session.Metadata != nil {
+			sessionMetadata = cloneJSONObject(*req.Session.Metadata)
+		}
 		result.Session = &engineStartSession{
 			Key:      deref(req.Session.Key),
 			Name:     deref(req.Session.Name),
-			Metadata: derefMap(req.Session.Metadata),
+			Metadata: sessionMetadata,
 		}
 	}
 
 	if req.Trace != nil {
+		var traceMetadata map[string]interface{}
+		if req.Trace.Metadata != nil {
+			traceMetadata = cloneJSONObject(*req.Trace.Metadata)
+		}
 		result.Trace = &engineStartTrace{
 			Name:        deref(req.Trace.Name),
 			UserID:      deref(req.Trace.UserId),
 			Tags:        derefSlice(req.Trace.Tags),
 			Environment: deref(req.Trace.Environment),
 			Release:     deref(req.Trace.Release),
-			Metadata:    derefMap(req.Trace.Metadata),
+			Metadata:    traceMetadata,
 		}
 	}
 
@@ -227,13 +234,13 @@ func marshalOptionalJSONValue(value interface{}) (json.RawMessage, error) {
 	return payload, nil
 }
 
-func derefMap(ptr *map[string]interface{}) map[string]interface{} {
-	if ptr == nil {
+func cloneJSONObject(value map[string]interface{}) map[string]interface{} {
+	if value == nil {
 		return nil
 	}
 
-	cloned := make(map[string]interface{}, len(*ptr))
-	for key, value := range *ptr {
+	cloned := make(map[string]interface{}, len(value))
+	for key, value := range value {
 		cloned[key] = value
 	}
 	return cloned

@@ -48,7 +48,7 @@ func TestProjectorPollOnce_RestartSafeForProjectedActivityRows(t *testing.T) {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("expected 1 history row, got %d", len(rows))
 	}
-	if err := projectHistoryRow(fixture.ctx, tx.Tx(), target, rows[0]); err != nil {
+	if err := projectHistoryRow(fixture.ctx, tx.Tx(), &target, &rows[0]); err != nil {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("projectHistoryRow() error = %v", err)
 	}
@@ -379,7 +379,7 @@ func TestSyncProjectedRunSummary_MissingProjectedTraceFailsForPublicRuns(t *test
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	err = SyncProjectedRunSummary(ctx, tx.Tx(), run)
+	err = SyncProjectedRunSummary(ctx, tx.Tx(), &run)
 	_ = tx.Rollback(ctx)
 	if err == nil {
 		t.Fatal("expected SyncProjectedRunSummary to fail when projected trace is missing")
@@ -402,7 +402,7 @@ func TestSyncProjectedRunSummary_AllowsDarkLaunchRunsWithoutProjectedTrace(t *te
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	if err := SyncProjectedRunSummary(ctx, tx.Tx(), run); err != nil {
+	if err := SyncProjectedRunSummary(ctx, tx.Tx(), &run); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatalf("SyncProjectedRunSummary() error = %v", err)
 	}

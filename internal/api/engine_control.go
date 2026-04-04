@@ -128,8 +128,15 @@ func newEngineControlService(platformStore *store.Store) *engineControlService {
 func (s *engineControlService) StartRun(
 	ctx context.Context,
 	projectID uuid.UUID,
-	req engineStartRunRequest,
+	req *engineStartRunRequest,
 ) (engineStartRunResult, error) {
+	if req == nil {
+		return engineStartRunResult{}, &engineAPIError{
+			Code:       "invalid_request",
+			Message:    "request body is required",
+			HTTPStatus: 400,
+		}
+	}
 	if stringsTrimSpaceEmpty(req.InstanceKey) || stringsTrimSpaceEmpty(req.DefinitionName) ||
 		stringsTrimSpaceEmpty(req.DefinitionVersion) || stringsTrimSpaceEmpty(req.RequestKey) {
 		return engineStartRunResult{}, &engineAPIError{
@@ -160,7 +167,7 @@ func (s *engineControlService) StartRun(
 
 	switch claim.State {
 	case startRequestDedupeClaimStateExistingFinalized:
-		return decodeStartRunReplay(claim.Row)
+		return decodeStartRunReplay(&claim.Row)
 	case startRequestDedupeClaimStateExistingInProgress:
 		return engineStartRunResult{}, &engineAPIError{
 			Code:       "request_in_progress",
@@ -255,7 +262,7 @@ func (s *engineControlService) StartRun(
 		return engineStartRunResult{}, err
 	}
 	if req.Session != nil {
-		mergedSession, mergeErr := mergeSessionUpdate(session, req.Session)
+		mergedSession, mergeErr := mergeSessionUpdate(&session, req.Session)
 		if mergeErr != nil {
 			return engineStartRunResult{}, mergeErr
 		}
@@ -374,7 +381,7 @@ func (s *engineControlService) GetInstance(
 		return engineInstanceResult{}, err
 	}
 
-	summary, err := s.buildRunSummary(ctx, instance, run)
+	summary, err := s.buildRunSummary(ctx, &instance, &run)
 	if err != nil {
 		return engineInstanceResult{}, err
 	}
@@ -410,7 +417,7 @@ func (s *engineControlService) GetRun(
 		return engineRunSummary{}, err
 	}
 
-	return s.buildRunSummary(ctx, instance, run)
+	return s.buildRunSummary(ctx, &instance, &run)
 }
 
 func (s *engineControlService) GetRunResult(
@@ -557,11 +564,11 @@ func (s *engineControlService) SignalRun(
 		return engineControlResult{}, err
 	}
 
-	currentRun, wakeApplied, err := wakeRunIfWaiting(ctx, engineTx, run)
+	currentRun, wakeApplied, err := wakeRunIfWaiting(ctx, engineTx, &run)
 	if err != nil {
 		return engineControlResult{}, err
 	}
-	if err := syncProjectedTraceSummary(ctx, tx, engineTx, currentRun); err != nil {
+	if err := syncProjectedTraceSummary(ctx, tx, engineTx, &currentRun); err != nil {
 		return engineControlResult{}, err
 	}
 
@@ -635,11 +642,11 @@ func (s *engineControlService) CancelRun(
 		return engineControlResult{}, err
 	}
 
-	currentRun, wakeApplied, err := wakeRunIfWaiting(ctx, engineTx, run)
+	currentRun, wakeApplied, err := wakeRunIfWaiting(ctx, engineTx, &run)
 	if err != nil {
 		return engineControlResult{}, err
 	}
-	if err := syncProjectedTraceSummary(ctx, tx, engineTx, currentRun); err != nil {
+	if err := syncProjectedTraceSummary(ctx, tx, engineTx, &currentRun); err != nil {
 		return engineControlResult{}, err
 	}
 
@@ -665,9 +672,12 @@ func (s *engineControlService) ReadRunSummary(
 
 func (s *engineControlService) buildRunSummary(
 	ctx context.Context,
-	instance enginedb.EngineInstance,
-	run enginedb.EngineRun,
+	instance *enginedb.EngineInstance,
+	run *enginedb.EngineRun,
 ) (engineRunSummary, error) {
+	if instance == nil || run == nil {
+		return engineRunSummary{}, errors.New("instance and run are required")
+	}
 	pendingActivityTasks, err := s.engine.CountOpenActivityTasksByRun(ctx, run.ID)
 	if err != nil {
 		return engineRunSummary{}, err
@@ -704,7 +714,7 @@ func (s *engineControlService) buildRunSummary(
 	}, nil
 }
 
-func (req engineStartRunRequest) TraceMetadata() map[string]any {
+func (req *engineStartRunRequest) TraceMetadata() map[string]any {
 	if req.Trace == nil {
 		return nil
 	}
@@ -728,28 +738,28 @@ func (s *engineControlService) projectionStateForRun(ctx context.Context, projec
 	return *trace.EngineProjectionState, nil
 }
 
-func (req engineStartRunRequest) TraceUserID() string {
+func (req *engineStartRunRequest) TraceUserID() string {
 	if req.Trace == nil {
 		return ""
 	}
 	return req.Trace.UserID
 }
 
-func (req engineStartRunRequest) TraceTags() []string {
+func (req *engineStartRunRequest) TraceTags() []string {
 	if req.Trace == nil {
 		return nil
 	}
 	return append([]string(nil), req.Trace.Tags...)
 }
 
-func (req engineStartRunRequest) TraceEnvironment() string {
+func (req *engineStartRunRequest) TraceEnvironment() string {
 	if req.Trace == nil {
 		return ""
 	}
 	return req.Trace.Environment
 }
 
-func (req engineStartRunRequest) TraceRelease() string {
+func (req *engineStartRunRequest) TraceRelease() string {
 	if req.Trace == nil {
 		return ""
 	}
@@ -757,10 +767,10 @@ func (req engineStartRunRequest) TraceRelease() string {
 }
 
 func mergeSessionUpdate(
-	session platformdb.Session,
+	session *platformdb.Session,
 	input *engineStartSession,
 ) (*platformdb.UpdateSessionParams, error) {
-	if input == nil {
+	if input == nil || session == nil {
 		return nil, nil
 	}
 
@@ -796,7 +806,7 @@ func mergeSessionUpdate(
 	}, nil
 }
 
-func mergeJSONObject(base map[string]any, incoming map[string]any) map[string]any {
+func mergeJSONObject(base, incoming map[string]any) map[string]any {
 	if len(base) == 0 && len(incoming) == 0 {
 		return map[string]any{}
 	}
@@ -836,12 +846,15 @@ func marshalJSONObject(value map[string]any) ([]byte, error) {
 func wakeRunIfWaiting(
 	ctx context.Context,
 	engineTx *enginedb.Queries,
-	run enginedb.EngineRun,
+	run *enginedb.EngineRun,
 ) (enginedb.EngineRun, bool, error) {
+	if run == nil {
+		return enginedb.EngineRun{}, false, errors.New("run is required")
+	}
 	updatedRun, err := engineTx.WakeWaitingRun(ctx, run.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return run, false, nil
+			return *run, false, nil
 		}
 		return enginedb.EngineRun{}, false, err
 	}
@@ -852,8 +865,11 @@ func syncProjectedTraceSummary(
 	ctx context.Context,
 	tx *store.Tx,
 	engineTx *enginedb.Queries,
-	run enginedb.EngineRun,
+	run *enginedb.EngineRun,
 ) error {
+	if run == nil {
+		return errors.New("run is required")
+	}
 	pendingActivityTasks, err := engineTx.CountOpenActivityTasksByRun(ctx, run.ID)
 	if err != nil {
 		return err

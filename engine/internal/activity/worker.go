@@ -70,7 +70,7 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 		return err
 	}
 	if err == nil {
-		if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), wake.Run); syncErr != nil {
+		if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
 			return syncErr
 		}
 	}
@@ -105,7 +105,7 @@ func (w *Worker) failTask(
 		return err
 	}
 	if err == nil {
-		if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), wake.Run); syncErr != nil {
+		if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
 			return syncErr
 		}
 	}

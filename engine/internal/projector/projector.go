@@ -18,7 +18,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
@@ -32,7 +31,6 @@ const (
 	engineRootSpanPrefix         = "engine:root:"
 	engineActivitySpanPrefix     = "engine:activity:"
 	engineOriginalEventTypeKey   = "__continua_original_event_type"
-	uniqueViolationCode          = "23505"
 	defaultProjectorBatchSize    = int32(1000)
 	defaultProjectedEventLevel   = "info"
 	defaultProjectedSpanLevel    = "default"
@@ -93,7 +91,7 @@ func (p *Projector) PollOnce(ctx context.Context, _ string) error {
 		return tx.Commit(ctx)
 	}
 
-	lastProjectedID, err := p.projectHistoryRows(ctx, tx.Tx(), target, historyRows)
+	lastProjectedID, err := p.projectHistoryRows(ctx, tx.Tx(), &target, historyRows)
 	if err != nil {
 		return err
 	}
@@ -107,7 +105,7 @@ func (p *Projector) PollOnce(ctx context.Context, _ string) error {
 	if err != nil {
 		return err
 	}
-	if err := SyncProjectedRunSummary(ctx, tx.Tx(), run); err != nil {
+	if err := SyncProjectedRunSummary(ctx, tx.Tx(), &run); err != nil {
 		return err
 	}
 
@@ -217,8 +215,11 @@ func WriteTerminalSummary(
 func SyncProjectedRunSummary(
 	ctx context.Context,
 	tx pgx.Tx,
-	run enginedb.EngineRun,
+	run *enginedb.EngineRun,
 ) error {
+	if run == nil {
+		return errors.New("run is required")
+	}
 	queries := enginedb.New(tx)
 	pendingActivityTasks, err := queries.CountOpenActivityTasksByRun(ctx, run.ID)
 	if err != nil {
@@ -253,12 +254,15 @@ func SyncProjectedRunSummary(
 func (p *Projector) projectHistoryRows(
 	ctx context.Context,
 	tx pgx.Tx,
-	target projectionTarget,
+	target *projectionTarget,
 	rows []enginedb.EngineHistory,
 ) (int64, error) {
+	if target == nil {
+		return 0, errors.New("projection target is required")
+	}
 	lastProjectedID := target.LastProjectedHistoryID
 	for i := range rows {
-		row := rows[i]
+		row := &rows[i]
 		if err := projectHistoryRow(ctx, tx, target, row); err != nil {
 			return lastProjectedID, err
 		}
@@ -270,9 +274,12 @@ func (p *Projector) projectHistoryRows(
 func projectHistoryRow(
 	ctx context.Context,
 	tx pgx.Tx,
-	target projectionTarget,
-	row enginedb.EngineHistory,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
 ) error {
+	if target == nil || row == nil {
+		return errors.New("projection target and history row are required")
+	}
 	payload, err := publichistory.DecodePayload(row.EventType, row.Payload)
 	if err != nil {
 		return err
@@ -286,27 +293,27 @@ func projectHistoryRow(
 	case *publichistory.ActivityFailedPayload:
 		return projectActivityFailed(ctx, tx, target, row, typed)
 	case *publichistory.TimerScheduledPayload:
-		return emitProjectedEvent(ctx, tx, projectedEvent{
+		return emitProjectedEvent(ctx, tx, &projectedEvent{
 			ProjectID:  target.ProjectID,
 			TraceID:    target.TraceID,
 			SpanID:     rootSpanExternalID(target.RunID),
 			EventType:  "wait",
 			Message:    nil,
 			EventTS:    row.CreatedAt,
-			Sequence:   int32(row.SequenceNo*10 + 1),
+			Sequence:   row.SequenceNo*10 + 1,
 			Payload:    mustMarshalMap(map[string]any{"wait_kind": "timer", "phase": "entered", "wait_id": "timer:" + typed.TimerKey}),
 			HistoryID:  row.ID,
 			RunID:      target.RunID,
 			VariantKey: "timer_wait_entered",
 		})
 	case *publichistory.TimerFiredPayload:
-		return emitProjectedEvent(ctx, tx, projectedEvent{
+		return emitProjectedEvent(ctx, tx, &projectedEvent{
 			ProjectID: target.ProjectID,
 			TraceID:   target.TraceID,
 			SpanID:    rootSpanExternalID(target.RunID),
 			EventType: "wait",
 			EventTS:   row.CreatedAt,
-			Sequence:  int32(row.SequenceNo*10 + 1),
+			Sequence:  row.SequenceNo*10 + 1,
 			Payload: mustMarshalMap(map[string]any{
 				"wait_kind":  "timer",
 				"phase":      "resolved",
@@ -325,11 +332,11 @@ func projectHistoryRow(
 func projectActivityScheduled(
 	ctx context.Context,
 	tx pgx.Tx,
-	target projectionTarget,
-	row enginedb.EngineHistory,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
 	payload *publichistory.ActivityScheduledPayload,
 ) error {
-	if err := upsertActivitySpan(ctx, tx, target, activitySpanUpdate{
+	if err := upsertActivitySpan(ctx, tx, target, &activitySpanUpdate{
 		ActivityKey:  payload.ActivityKey,
 		ActivityType: payload.ActivityType,
 		Status:       "running",
@@ -339,13 +346,13 @@ func projectActivityScheduled(
 		return err
 	}
 
-	if err := emitProjectedEvent(ctx, tx, projectedEvent{
+	if err := emitProjectedEvent(ctx, tx, &projectedEvent{
 		ProjectID: target.ProjectID,
 		TraceID:   target.TraceID,
 		SpanID:    rootSpanExternalID(target.RunID),
 		EventType: "effect",
 		EventTS:   row.CreatedAt,
-		Sequence:  int32(row.SequenceNo*10 + 1),
+		Sequence:  row.SequenceNo*10 + 1,
 		Payload: mustMarshalMap(map[string]any{
 			"effect_kind":              "activity",
 			"has_external_side_effect": true,
@@ -358,13 +365,13 @@ func projectActivityScheduled(
 		return err
 	}
 
-	return emitProjectedEvent(ctx, tx, projectedEvent{
+	return emitProjectedEvent(ctx, tx, &projectedEvent{
 		ProjectID: target.ProjectID,
 		TraceID:   target.TraceID,
 		SpanID:    rootSpanExternalID(target.RunID),
 		EventType: "wait",
 		EventTS:   row.CreatedAt,
-		Sequence:  int32(row.SequenceNo*10 + 2),
+		Sequence:  row.SequenceNo*10 + 2,
 		Payload: mustMarshalMap(map[string]any{
 			"wait_kind": "activity",
 			"phase":     "entered",
@@ -379,11 +386,11 @@ func projectActivityScheduled(
 func projectActivityCompleted(
 	ctx context.Context,
 	tx pgx.Tx,
-	target projectionTarget,
-	row enginedb.EngineHistory,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
 	payload *publichistory.ActivityCompletedPayload,
 ) error {
-	if err := upsertActivitySpan(ctx, tx, target, activitySpanUpdate{
+	if err := upsertActivitySpan(ctx, tx, target, &activitySpanUpdate{
 		ActivityKey:  payload.ActivityKey,
 		ActivityType: payload.ActivityType,
 		Status:       "completed",
@@ -393,13 +400,13 @@ func projectActivityCompleted(
 		return err
 	}
 
-	if err := emitProjectedEvent(ctx, tx, projectedEvent{
+	if err := emitProjectedEvent(ctx, tx, &projectedEvent{
 		ProjectID: target.ProjectID,
 		TraceID:   target.TraceID,
 		SpanID:    rootSpanExternalID(target.RunID),
 		EventType: "decision",
 		EventTS:   row.CreatedAt,
-		Sequence:  int32(row.SequenceNo*10 + 1),
+		Sequence:  row.SequenceNo*10 + 1,
 		Payload: mustMarshalMap(map[string]any{
 			"question": "activity:" + payload.ActivityKey + ":outcome",
 			"chosen":   "completed",
@@ -411,13 +418,13 @@ func projectActivityCompleted(
 		return err
 	}
 
-	return emitProjectedEvent(ctx, tx, projectedEvent{
+	return emitProjectedEvent(ctx, tx, &projectedEvent{
 		ProjectID: target.ProjectID,
 		TraceID:   target.TraceID,
 		SpanID:    rootSpanExternalID(target.RunID),
 		EventType: "wait",
 		EventTS:   row.CreatedAt,
-		Sequence:  int32(row.SequenceNo*10 + 2),
+		Sequence:  row.SequenceNo*10 + 2,
 		Payload: mustMarshalMap(map[string]any{
 			"wait_kind":  "activity",
 			"phase":      "resolved",
@@ -433,11 +440,11 @@ func projectActivityCompleted(
 func projectActivityFailed(
 	ctx context.Context,
 	tx pgx.Tx,
-	target projectionTarget,
-	row enginedb.EngineHistory,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
 	payload *publichistory.ActivityFailedPayload,
 ) error {
-	if err := upsertActivitySpan(ctx, tx, target, activitySpanUpdate{
+	if err := upsertActivitySpan(ctx, tx, target, &activitySpanUpdate{
 		ActivityKey:   payload.ActivityKey,
 		ActivityType:  payload.ActivityType,
 		Status:        "failed",
@@ -451,13 +458,13 @@ func projectActivityFailed(
 		return err
 	}
 
-	if err := emitProjectedEvent(ctx, tx, projectedEvent{
+	if err := emitProjectedEvent(ctx, tx, &projectedEvent{
 		ProjectID: target.ProjectID,
 		TraceID:   target.TraceID,
 		SpanID:    rootSpanExternalID(target.RunID),
 		EventType: "decision",
 		EventTS:   row.CreatedAt,
-		Sequence:  int32(row.SequenceNo*10 + 1),
+		Sequence:  row.SequenceNo*10 + 1,
 		Payload: mustMarshalMap(map[string]any{
 			"question":  "activity:" + payload.ActivityKey + ":outcome",
 			"chosen":    "failed",
@@ -470,13 +477,13 @@ func projectActivityFailed(
 		return err
 	}
 
-	return emitProjectedEvent(ctx, tx, projectedEvent{
+	return emitProjectedEvent(ctx, tx, &projectedEvent{
 		ProjectID: target.ProjectID,
 		TraceID:   target.TraceID,
 		SpanID:    rootSpanExternalID(target.RunID),
 		EventType: "wait",
 		EventTS:   row.CreatedAt,
-		Sequence:  int32(row.SequenceNo*10 + 2),
+		Sequence:  row.SequenceNo*10 + 2,
 		Payload: mustMarshalMap(map[string]any{
 			"wait_kind":  "activity",
 			"phase":      "resolved",
@@ -492,8 +499,8 @@ func projectActivityFailed(
 func projectCustomHistoryEvent(
 	ctx context.Context,
 	tx pgx.Tx,
-	target projectionTarget,
-	row enginedb.EngineHistory,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
 ) error {
 	payload, err := mergeOriginalEventType(row.Payload, row.EventType)
 	if err != nil {
@@ -501,14 +508,14 @@ func projectCustomHistoryEvent(
 	}
 
 	message := row.EventType
-	return emitProjectedEvent(ctx, tx, projectedEvent{
+	return emitProjectedEvent(ctx, tx, &projectedEvent{
 		ProjectID:  target.ProjectID,
 		TraceID:    target.TraceID,
 		SpanID:     rootSpanExternalID(target.RunID),
 		EventType:  "custom",
 		Message:    &message,
 		EventTS:    row.CreatedAt,
-		Sequence:   int32(row.SequenceNo * 10),
+		Sequence:   row.SequenceNo * 10,
 		Payload:    payload,
 		HistoryID:  row.ID,
 		RunID:      target.RunID,
@@ -530,9 +537,12 @@ type activitySpanUpdate struct {
 func upsertActivitySpan(
 	ctx context.Context,
 	tx pgx.Tx,
-	target projectionTarget,
-	update activitySpanUpdate,
+	target *projectionTarget,
+	update *activitySpanUpdate,
 ) error {
+	if target == nil || update == nil {
+		return errors.New("projection target and activity update are required")
+	}
 	spanID := activitySpanExternalID(target.RunID, update.ActivityKey)
 	commandTag, err := tx.Exec(ctx, `
 		INSERT INTO public.spans (
@@ -610,7 +620,10 @@ type projectedEvent struct {
 	VariantKey string
 }
 
-func emitProjectedEvent(ctx context.Context, tx pgx.Tx, event projectedEvent) error {
+func emitProjectedEvent(ctx context.Context, tx pgx.Tx, event *projectedEvent) error {
+	if event == nil {
+		return errors.New("projected event is required")
+	}
 	idempotencyKey := fmt.Sprintf("%s:%d:%s", event.RunID.String(), event.HistoryID, event.VariantKey)
 	commandTag, err := tx.Exec(ctx, `
 		INSERT INTO public.span_events (
@@ -723,7 +736,7 @@ func refreshTraceCounters(ctx context.Context, tx pgx.Tx, traceID uuid.UUID) err
 	return err
 }
 
-func terminalStatuses(status enginedb.EngineRunLifecycleStatus) (traceStatus string, spanStatus string) {
+func terminalStatuses(status enginedb.EngineRunLifecycleStatus) (traceStatus, spanStatus string) {
 	switch status {
 	case enginedb.EngineRunLifecycleStatusCompleted:
 		return "completed", "completed"
@@ -759,7 +772,7 @@ func mergeOriginalEventType(raw json.RawMessage, originalEventType string) (json
 	if err := json.Unmarshal(raw, &payload); err != nil || payload == nil {
 		return json.Marshal(map[string]any{
 			engineOriginalEventTypeKey: originalEventType,
-			"engine_payload":           json.RawMessage(raw),
+			"engine_payload":           raw,
 		})
 	}
 
@@ -826,9 +839,4 @@ func (p *pgtypeTimestamptz) Scan(src any) error {
 	default:
 		return fmt.Errorf("unsupported timestamptz source %T", src)
 	}
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode
 }

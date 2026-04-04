@@ -196,7 +196,7 @@ func (a *Activator) commitDecision(
 				return err
 			}
 		}
-		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), updatedRun)
+		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
 	case decisionCompleted:
 		updatedRun, err := tx.TransitionRunToCompleted(ctx, enginedb.TransitionRunToCompletedParams{
 			ID:           run.ID,
@@ -220,7 +220,7 @@ func (a *Activator) commitDecision(
 		); err != nil {
 			return err
 		}
-		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), updatedRun)
+		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
 	case decisionFailed:
 		errorCode := decision.FailureCode
 		errorMessage := decision.FailureMessage
@@ -247,7 +247,7 @@ func (a *Activator) commitDecision(
 		); err != nil {
 			return err
 		}
-		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), updatedRun)
+		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
 	case decisionCancelled:
 		errorCode := decision.FailureCode
 		errorMessage := decision.FailureMessage
@@ -274,7 +274,7 @@ func (a *Activator) commitDecision(
 		); err != nil {
 			return err
 		}
-		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), updatedRun)
+		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
 	default:
 		return fmt.Errorf("unsupported activation decision kind %q", decision.Kind)
 	}

@@ -96,7 +96,7 @@ func TestTraceToAPI_MapsEngineMetadata(t *testing.T) {
 	apiTrace := traceToAPI(&store.TraceRead{Trace: trace})
 
 	require.NotNil(t, apiTrace.Engine)
-	assert.Equal(t, runID, uuid.UUID(apiTrace.Engine.RunId))
+	assert.Equal(t, runID, apiTrace.Engine.RunId)
 	assert.Equal(t, "checkout", apiTrace.Engine.DefinitionName)
 	assert.Equal(t, "v1", apiTrace.Engine.DefinitionVersion)
 	assert.Equal(t, UpToDate, apiTrace.Engine.ProjectionState)

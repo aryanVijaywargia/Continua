@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
@@ -18,7 +17,7 @@ func engineInstanceResponseToAPI(result *engineInstanceResult) EngineInstanceRes
 	return EngineInstanceResponse{
 		CurrentRun:     engineRunSummaryToAPI(&result.CurrentRun),
 		DefinitionName: result.Instance.DefinitionName,
-		InstanceId:     openapi_types.UUID(result.Instance.ID),
+		InstanceId:     result.Instance.ID,
 		InstanceKey:    result.Instance.InstanceKey,
 		Status:         string(result.Instance.Status),
 	}
@@ -32,12 +31,12 @@ func engineRunResponseToAPI(summary *engineRunSummary) EngineRunResponse {
 		DefinitionName:    summary.DefinitionName,
 		DefinitionVersion: summary.DefinitionVersion,
 		Failure:           engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
-		InstanceId:        openapi_types.UUID(summary.InstanceID),
+		InstanceId:        summary.InstanceID,
 		InstanceKey:       summary.InstanceKey,
 		PendingWork:       enginePendingWorkToAPI(summary),
 		ProjectionState:   engineProjectionStateFromString(summary.ProjectionState),
 		Result:            parseOptionalJSONValueRaw(summary.Result),
-		RunId:             openapi_types.UUID(summary.RunID),
+		RunId:             summary.RunID,
 		Status:            engineRunStatusToAPI(summary.Status),
 		UpdatedAt:         summary.UpdatedAt,
 		WaitState:         parseOptionalWaitState(summary.WaitState),
@@ -48,7 +47,7 @@ func engineRunResultResponseToAPI(summary *engineRunSummary) EngineRunResultResp
 	return EngineRunResultResponse{
 		Failure: engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
 		Result:  parseOptionalJSONValueRaw(summary.Result),
-		RunId:   openapi_types.UUID(summary.RunID),
+		RunId:   summary.RunID,
 		Status:  engineRunStatusToAPI(summary.Status),
 	}
 }
@@ -65,7 +64,7 @@ func engineRunSummaryToAPI(summary *engineRunSummary) EngineRunSummary {
 		PendingWork:       enginePendingWorkToAPI(summary),
 		ProjectionState:   engineProjectionStateFromString(summary.ProjectionState),
 		Result:            parseOptionalJSONValueRaw(summary.Result),
-		RunId:             openapi_types.UUID(summary.RunID),
+		RunId:             summary.RunID,
 		Status:            engineRunStatusToAPI(summary.Status),
 		UpdatedAt:         summary.UpdatedAt,
 		WaitState:         parseOptionalWaitState(summary.WaitState),
@@ -99,7 +98,7 @@ func engineControlResponseToAPI(result *engineControlResult) EngineControlRespon
 	return EngineControlResponse{
 		Accepted:    result.Accepted,
 		InstanceKey: result.InstanceKey,
-		RunId:       openapi_types.UUID(result.RunID),
+		RunId:       result.RunID,
 		WakeApplied: result.WakeApplied,
 	}
 }
@@ -227,7 +226,7 @@ func engineTraceInfoFromParts(
 		DefinitionName:    *definitionName,
 		DefinitionVersion: *definitionVersion,
 		ProjectionState:   engineProjectionStateFromString(*projectionState),
-		RunId:             openapi_types.UUID(*runID),
+		RunId:             *runID,
 	}
 }
 
@@ -299,6 +298,7 @@ func parseOptionalWaitState(raw json.RawMessage) *EngineWaitState {
 	return &state
 }
 
+//nolint:gocritic // Generated OpenAPI types use *map[string]any for nullable object fields.
 func parseOptionalJSONObjectRaw(raw json.RawMessage) *map[string]interface{} {
 	if payload := parseJSONObject(raw); payload != nil {
 		return &payload

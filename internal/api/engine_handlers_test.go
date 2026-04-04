@@ -14,7 +14,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -140,7 +139,7 @@ func TestNewRouter_EnabledEngineRoutesStillAuthenticate(t *testing.T) {
 
 func TestStartEngineRun_CreatesProjectedShellAndReplaysDedupe(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishDefinition(ctx, engineQueries, "checkout", "v1"))
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
 	existingSession, err := platformStore.Queries().GetOrCreateSessionByExternalID(ctx, platformdb.GetOrCreateSessionByExternalIDParams{
 		ProjectID:  projectID,
@@ -187,12 +186,12 @@ func TestStartEngineRun_CreatesProjectedShellAndReplaysDedupe(t *testing.T) {
 
 	run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
 		ProjectID: projectID,
-		ID:        uuid.UUID(first.RunId),
+		ID:        first.RunId,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, enginedb.EngineRunLifecycleStatusQueued, run.Status)
 
-	history, err := engineQueries.GetHistoryByRun(ctx, uuid.UUID(first.RunId))
+	history, err := engineQueries.GetHistoryByRun(ctx, first.RunId)
 	require.NoError(t, err)
 	require.Len(t, history, 1)
 	assert.Equal(t, publichistory.EventWorkflowStarted, history[0].EventType)
@@ -211,7 +210,7 @@ func TestStartEngineRun_CreatesProjectedShellAndReplaysDedupe(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, trace.EngineRunID.Valid)
-	assert.Equal(t, uuid.UUID(first.RunId), uuid.UUID(trace.EngineRunID.Bytes))
+	assert.Equal(t, first.RunId, uuid.UUID(trace.EngineRunID.Bytes))
 	require.NotNil(t, trace.EngineInstanceKey)
 	assert.Equal(t, "instance-1", *trace.EngineInstanceKey)
 	require.NotNil(t, trace.EngineRunStatus)
@@ -271,7 +270,7 @@ func TestStartEngineRun_RejectsUnknownDefinitionAndInstanceConflict(t *testing.T
 		require.True(t, errors.Is(err, pgx.ErrNoRows))
 	})
 
-	require.NoError(t, publishDefinition(ctx, engineQueries, "checkout", "v1"))
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
 	first := invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
 		DefinitionName:    "checkout",
@@ -311,7 +310,7 @@ func TestStartEngineRun_RejectsUnknownDefinitionAndInstanceConflict(t *testing.T
 
 func TestStartEngineRun_RejectsMissingRequiredFields(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishDefinition(ctx, engineQueries, "checkout", "v1"))
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
 	type counts struct {
 		instances int
@@ -389,7 +388,7 @@ func TestStartEngineRun_RejectsMissingRequiredFields(t *testing.T) {
 func TestStartEngineRun_ProjectScopedDedupeDoesNotLeakAcrossProjects(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectAID := setupEngineHandlerTest(t)
 	projectBID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
-	require.NoError(t, publishDefinition(ctx, engineQueries, "checkout", "v1"))
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
 	req := EngineStartRunRequest{
 		DefinitionName:    "checkout",
@@ -422,7 +421,7 @@ func TestStartEngineRun_ProjectScopedDedupeDoesNotLeakAcrossProjects(t *testing.
 
 func TestEngineHandlers_ReadSignalCancelAndTraceSurfaces(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishDefinition(ctx, engineQueries, "checkout", "v1"))
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
 	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
 		DefinitionName:    "checkout",
@@ -431,7 +430,7 @@ func TestEngineHandlers_ReadSignalCancelAndTraceSurfaces(t *testing.T) {
 		RequestKey:        "req-read",
 	}))
 
-	runID := uuid.UUID(start.RunId)
+	runID := start.RunId
 	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
 		ProjectID: projectID,
 		TraceID:   start.TraceId,
@@ -557,7 +556,7 @@ func TestEngineHandlers_ReadSignalCancelAndTraceSurfaces(t *testing.T) {
 
 func TestGetEngineRunResult_ReturnsCancelledFailureSummary(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishDefinition(ctx, engineQueries, "checkout", "v1"))
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
 	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
 		DefinitionName:    "checkout",
@@ -566,7 +565,7 @@ func TestGetEngineRunResult_ReturnsCancelledFailureSummary(t *testing.T) {
 		RequestKey:        "req-cancelled-result",
 	}))
 
-	runID := uuid.UUID(start.RunId)
+	runID := start.RunId
 	_, err := platformStore.Pool().Exec(ctx, `
 		UPDATE engine.runs
 		SET status = 'cancelled',
@@ -593,7 +592,7 @@ func TestGetEngineRunResult_ReturnsCancelledFailureSummary(t *testing.T) {
 
 func TestGetTrace_UsesLiveFallbackOnlyForNonCurrentProjectionStates(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishDefinition(ctx, engineQueries, "checkout", "v1"))
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
 	testCases := []struct {
 		name            string
@@ -646,7 +645,7 @@ func TestGetTrace_UsesLiveFallbackOnlyForNonCurrentProjectionStates(t *testing.T
 				},
 			}))
 
-			runID := uuid.UUID(start.RunId)
+			runID := start.RunId
 			trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
 				ProjectID: projectID,
 				TraceID:   start.TraceId,
@@ -704,7 +703,7 @@ func TestGetTrace_UsesLiveFallbackOnlyForNonCurrentProjectionStates(t *testing.T
 
 func TestGetTrace_LiveFallbackFailureReturns500(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishDefinition(ctx, engineQueries, "checkout", "v1"))
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
 	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
 		DefinitionName:    "checkout",
@@ -749,10 +748,10 @@ func setupEngineHandlerTest(t *testing.T) (context.Context, *store.Store, *engin
 	return ctx, platformStore, enginedb.New(pool), server, projectID
 }
 
-func publishDefinition(ctx context.Context, queries *enginedb.Queries, name, version string) error {
+func publishCheckoutDefinition(ctx context.Context, queries *enginedb.Queries) error {
 	_, err := queries.UpsertDefinitionCatalogEntry(ctx, enginedb.UpsertDefinitionCatalogEntryParams{
-		DefinitionName:    name,
-		DefinitionVersion: version,
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
 	})
 	return err
 }
@@ -790,7 +789,7 @@ func invokeGetEngineRun(t *testing.T, server *Server, projectID, runID uuid.UUID
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.GetEngineRun(rec, req, openapi_types.UUID(runID))
+	server.GetEngineRun(rec, req, runID)
 	return rec
 }
 
@@ -806,7 +805,7 @@ func invokeGetEngineRunHistory(
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.GetEngineRunHistory(rec, req, openapi_types.UUID(runID), params)
+	server.GetEngineRunHistory(rec, req, runID, params)
 	return rec
 }
 
@@ -817,7 +816,7 @@ func invokeGetEngineRunResult(t *testing.T, server *Server, projectID, runID uui
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.GetEngineRunResult(rec, req, openapi_types.UUID(runID))
+	server.GetEngineRunResult(rec, req, runID)
 	return rec
 }
 
@@ -837,7 +836,7 @@ func invokeSignalEngineRun(
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.SignalEngineRun(rec, req, openapi_types.UUID(runID), SignalEngineRunParams{XContinuaEnginePreview: testutil.StrPtr("1")})
+	server.SignalEngineRun(rec, req, runID, SignalEngineRunParams{XContinuaEnginePreview: testutil.StrPtr("1")})
 	return rec
 }
 
@@ -849,10 +848,11 @@ func invokeCancelEngineRun(t *testing.T, server *Server, projectID, runID uuid.U
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.CancelEngineRun(rec, req, openapi_types.UUID(runID), CancelEngineRunParams{XContinuaEnginePreview: testutil.StrPtr("1")})
+	server.CancelEngineRun(rec, req, runID, CancelEngineRunParams{XContinuaEnginePreview: testutil.StrPtr("1")})
 	return rec
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func setEngineRunWaiting(
 	t *testing.T,
 	ctx context.Context,
@@ -887,6 +887,7 @@ type projectedEngineSummaryUpdate struct {
 	PendingInboxItems    int64
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func setProjectedEngineSummary(
 	t *testing.T,
 	ctx context.Context,
@@ -909,6 +910,7 @@ func setProjectedEngineSummary(
 	require.NoError(t, err)
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func createPendingWorkForRun(
 	t *testing.T,
 	ctx context.Context,
@@ -950,6 +952,7 @@ func createPendingWorkForRun(
 	require.NoError(t, err)
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func setTraceProjectionState(t *testing.T, ctx context.Context, platformStore *store.Store, traceID uuid.UUID, projectionState string) {
 	t.Helper()
 

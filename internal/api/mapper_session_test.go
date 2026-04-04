@@ -74,7 +74,7 @@ func TestCompareTraceHeaderToAPI_MapsEngineMetadata(t *testing.T) {
 	apiHeader := compareTraceHeaderToAPI(&header)
 
 	require.NotNil(t, apiHeader.Engine)
-	assert.Equal(t, runID, uuid.UUID(apiHeader.Engine.RunId))
+	assert.Equal(t, runID, apiHeader.Engine.RunId)
 	assert.Equal(t, "checkout", apiHeader.Engine.DefinitionName)
 	assert.Equal(t, "v1", apiHeader.Engine.DefinitionVersion)
 	assert.Equal(t, CatchingUp, apiHeader.Engine.ProjectionState)

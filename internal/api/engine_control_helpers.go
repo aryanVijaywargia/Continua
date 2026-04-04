@@ -109,7 +109,10 @@ func claimStartRequestDedupe(
 	return startRequestDedupeClaim{}, errors.New("could not acquire request dedupe claim")
 }
 
-func decodeStartRunReplay(row enginedb.EngineRequestDedupe) (engineStartRunResult, error) {
+func decodeStartRunReplay(row *enginedb.EngineRequestDedupe) (engineStartRunResult, error) {
+	if row == nil {
+		return engineStartRunResult{}, errors.New("request dedupe row is required")
+	}
 	if row.Status == enginedb.EngineRequestDedupeStatusFailed {
 		apiErr := &engineAPIError{
 			Code:       derefString(row.ErrorCode),
