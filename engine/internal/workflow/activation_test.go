@@ -25,7 +25,7 @@ func TestActivatorFailsRunWhenDefinitionVersionIsMissing(t *testing.T) {
 	ctx := context.Background()
 
 	instance, run := createStartedRun(t, store, workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-version-mismatch",
 		definitionName:    "demo",
 		definitionVersion: "v-missing",
@@ -72,7 +72,7 @@ func TestActivatorPersistsReplayMismatchFailure(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-replay-mismatch",
 		definitionName:    "demo",
 		definitionVersion: "v1",
@@ -143,7 +143,7 @@ func TestActivatorRejectsStaleClaimBeforeAppendingHistory(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-stale-claim",
 		definitionName:    "stale-claim",
 		definitionVersion: "v1",
@@ -210,7 +210,7 @@ func TestActivatorWaitingDecisionRefreshesProjectedTraceSummary(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-projected-wait",
 		definitionName:    "projected-wait",
 		definitionVersion: "v1",
@@ -327,7 +327,7 @@ func TestActivatorCancellationTransitionsRunToCancelledAndProjectsTerminalSummar
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-cancelled",
 		definitionName:    "cancelled-workflow",
 		definitionVersion: "v1",
@@ -478,7 +478,7 @@ func TestActivatorLateSignalWakeIsNotStranded(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-late-signal",
 		definitionName:    "late-signal",
 		definitionVersion: "v1",

@@ -192,7 +192,7 @@ func (a *Activator) commitDecision(
 			return err
 		}
 		if lastHistoryID > 0 {
-			if err := engineprojector.UpdateLatestHistory(ctx, tx.Tx(), run.ID, lastHistoryID); err != nil {
+			if err := engineprojector.UpdateLatestHistory(ctx, tx.Tx(), run.ProjectID, run.ID, lastHistoryID); err != nil {
 				return err
 			}
 		}
@@ -210,6 +210,7 @@ func (a *Activator) commitDecision(
 		if err := engineprojector.WriteTerminalSummary(
 			ctx,
 			tx.Tx(),
+			run.ProjectID,
 			run.ID,
 			updatedRun.Status,
 			updatedRun.CompletedAt.Time,
@@ -237,6 +238,7 @@ func (a *Activator) commitDecision(
 		if err := engineprojector.WriteTerminalSummary(
 			ctx,
 			tx.Tx(),
+			run.ProjectID,
 			run.ID,
 			updatedRun.Status,
 			updatedRun.CompletedAt.Time,
@@ -264,6 +266,7 @@ func (a *Activator) commitDecision(
 		if err := engineprojector.WriteTerminalSummary(
 			ctx,
 			tx.Tx(),
+			run.ProjectID,
 			run.ID,
 			updatedRun.Status,
 			updatedRun.CompletedAt.Time,

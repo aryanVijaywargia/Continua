@@ -1,5 +1,5 @@
 import type { EngineProjectionState } from '../api/client';
-import { formatProjectionStateLabel } from './EngineBadge';
+import { formatProjectionStateLabel } from './engineProjectionState';
 
 type ProjectionBannerTone = {
   className: string;

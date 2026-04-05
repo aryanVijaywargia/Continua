@@ -11,6 +11,7 @@ import {
 } from '../api/client';
 import { setMatchMediaMatches } from '../test/matchMedia';
 import { getAccessibleSummary, getReasonExplanation } from '../utils/retrySafety';
+import { TIMELINE_POLL_INTERVAL_MS } from './useTraceTimeline';
 import {
   SESSION_EXTERNAL_ID,
   SESSION_ID,
@@ -90,6 +91,14 @@ function getRunningStatePanel(): HTMLElement {
     throw new Error('Running state panel not found');
   }
   return panel;
+}
+
+async function advancePollingInterval(
+  ms = TIMELINE_POLL_INTERVAL_MS + 100
+): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
 }
 
 beforeEach(() => {
@@ -757,8 +766,9 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect(await screen.findByRole('heading', { name: 'Failure Summary' })).toBeInTheDocument();
+    const breadcrumb = await screen.findByLabelText('Span breadcrumb');
     expect(
-      within(screen.getByLabelText('Span breadcrumb')).getByText('Failed tool')
+      within(breadcrumb).getByText('Failed tool')
     ).toBeInTheDocument();
 
     const rootRow = screen.getByRole('button', { name: 'Select span Root agent' });
@@ -787,7 +797,7 @@ describe('TraceDetailPage', () => {
       await screen.findByRole('button', { name: 'Select span Failed tool' })
     ).toBeInTheDocument();
     expect(
-      within(screen.getByLabelText('Span breadcrumb')).getByText('Failed tool')
+      within(await screen.findByLabelText('Span breadcrumb')).getByText('Failed tool')
     ).toBeInTheDocument();
   });
 
@@ -1514,9 +1524,7 @@ describe('TraceDetailPage', () => {
     ).toBeInTheDocument();
     expect(view.router.state.location.search).toBe('?span=running-child');
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 3100));
-    });
+    await advancePollingInterval();
 
     await user.click(screen.getByRole('button', { name: 'Timeline' }));
     expect(await screen.findByText('Poll update')).toBeInTheDocument();
@@ -1585,8 +1593,9 @@ describe('TraceDetailPage', () => {
     fetchMock.mockClear();
     currentSpans = [completedCostSpan, runningSpanCompleted];
 
+    await advancePollingInterval();
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 3100));
+      await Promise.resolve();
     });
 
     await waitFor(() => {
@@ -2690,9 +2699,7 @@ describe('TraceDetailPage', () => {
       }),
     ];
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 3100));
-    });
+    await advancePollingInterval();
 
     expect(await screen.findByText('Waiting on model')).toBeInTheDocument();
     expect(countRequests(`/api/traces/${TRACE_ONE.id}/spans`)).toBeGreaterThanOrEqual(2);
@@ -2748,9 +2755,7 @@ describe('TraceDetailPage', () => {
       },
     ];
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 3100));
-    });
+    await advancePollingInterval();
 
     expect(await screen.findByText('Actively executing')).toBeInTheDocument();
     expect(screen.queryByText('Waiting on tool')).not.toBeInTheDocument();
@@ -2793,9 +2798,7 @@ describe('TraceDetailPage', () => {
         `/api/traces/${TRACE_ONE.id}/spans`
       );
 
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 3100));
-      });
+      await advancePollingInterval();
 
       expect(countRequests(`/api/traces/${TRACE_ONE.id}/spans`)).toBe(
         initialSpansRequestCount

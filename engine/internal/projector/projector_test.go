@@ -177,6 +177,7 @@ func TestProjectorPollOnce_DoesNotOverwriteTerminalTraceSummary(t *testing.T) {
 	if err := WriteTerminalSummary(
 		fixture.ctx,
 		tx.Tx(),
+		fixture.projectID,
 		fixture.run.ID,
 		enginedb.EngineRunLifecycleStatusCompleted,
 		completedAt,
@@ -312,7 +313,7 @@ func TestProjectionStateAdvancesAcrossStartActivationAndProjector(t *testing.T) 
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	if err := UpdateLatestHistory(fixture.ctx, tx.Tx(), fixture.run.ID, activityHistory.ID); err != nil {
+	if err := UpdateLatestHistory(fixture.ctx, tx.Tx(), fixture.projectID, fixture.run.ID, activityHistory.ID); err != nil {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("UpdateLatestHistory() error = %v", err)
 	}
@@ -366,6 +367,7 @@ func TestSyncProjectedRunSummary_MissingProjectedTraceFailsForPublicRuns(t *test
 	ctx := context.Background()
 
 	projectID := uuid.New()
+	enginetest.EnsurePlatformProject(t, db.Pool, projectID)
 	instance, run := createStartedRun(t, store, workflowTestCase{
 		projectID:         projectID,
 		instanceKey:       "instance-missing-trace",
@@ -432,6 +434,7 @@ func newProjectorFixture(t *testing.T) *projectorFixture {
 	ctx := context.Background()
 
 	projectID := uuid.New()
+	enginetest.EnsurePlatformProject(t, db.Pool, projectID)
 	instance, run := createStartedRun(t, store, workflowTestCase{
 		projectID:         projectID,
 		instanceKey:       "instance-" + uuid.NewString()[:8],

@@ -1,4 +1,5 @@
 import type { EngineProjectionState } from '../api/client';
+import { formatProjectionStateLabel } from './engineProjectionState';
 
 const toneByProjectionState: Record<EngineProjectionState, string> = {
   up_to_date:
@@ -10,19 +11,6 @@ const toneByProjectionState: Record<EngineProjectionState, string> = {
   journal_expired:
     'border-rose-300/60 bg-rose-100/80 text-rose-900 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-100',
 };
-
-export function formatProjectionStateLabel(state: EngineProjectionState): string {
-  switch (state) {
-    case 'catching_up':
-      return 'Catching up';
-    case 'summary_only':
-      return 'Summary only';
-    case 'journal_expired':
-      return 'Journal expired';
-    default:
-      return 'Up to date';
-  }
-}
 
 export function EngineBadge({
   projectionState = 'up_to_date',

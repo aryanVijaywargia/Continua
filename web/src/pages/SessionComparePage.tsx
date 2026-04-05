@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
-import { EngineBadge, formatProjectionStateLabel } from '../components/EngineBadge';
+import { EngineBadge } from '../components/EngineBadge';
+import { formatProjectionStateLabel } from '../components/engineProjectionState';
 import { StatusBadge } from '../components/StatusBadge';
 import {
   ApiError,

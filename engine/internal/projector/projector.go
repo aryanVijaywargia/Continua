@@ -115,6 +115,7 @@ func (p *Projector) PollOnce(ctx context.Context, _ string) error {
 func UpdateLatestHistory(
 	ctx context.Context,
 	tx pgx.Tx,
+	projectID uuid.UUID,
 	runID uuid.UUID,
 	latestHistoryID int64,
 ) error {
@@ -133,7 +134,7 @@ func UpdateLatestHistory(
 	if err != nil {
 		return err
 	}
-	if commandTag.RowsAffected() == 0 {
+	if commandTag.RowsAffected() == 0 && projectID != darkLaunchProjectID {
 		return fmt.Errorf("projected trace not found for run %s", runID)
 	}
 	return nil
@@ -142,6 +143,7 @@ func UpdateLatestHistory(
 func WriteTerminalSummary(
 	ctx context.Context,
 	tx pgx.Tx,
+	projectID uuid.UUID,
 	runID uuid.UUID,
 	runStatus enginedb.EngineRunLifecycleStatus,
 	completedAt time.Time,
@@ -178,7 +180,7 @@ func WriteTerminalSummary(
 	if err != nil {
 		return err
 	}
-	if commandTag.RowsAffected() == 0 {
+	if commandTag.RowsAffected() == 0 && projectID != darkLaunchProjectID {
 		return fmt.Errorf("projected trace not found for run %s", runID)
 	}
 
@@ -205,7 +207,7 @@ func WriteTerminalSummary(
 	if err != nil {
 		return err
 	}
-	if commandTag.RowsAffected() == 0 {
+	if commandTag.RowsAffected() == 0 && projectID != darkLaunchProjectID {
 		return fmt.Errorf("projected root span not found for run %s", runID)
 	}
 
