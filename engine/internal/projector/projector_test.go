@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
@@ -49,7 +50,7 @@ func TestProjectorPollOnce_RestartSafeForProjectedActivityRows(t *testing.T) {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("expected 1 history row, got %d", len(rows))
 	}
-	if err := projectHistoryRow(fixture.ctx, tx.Tx(), &target, &rows[0]); err != nil {
+	if err := projectHistoryRow(fixture.ctx, tx, &target, &rows[0]); err != nil {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("projectHistoryRow() error = %v", err)
 	}
@@ -376,6 +377,492 @@ func TestProjectionStateAdvancesAcrossStartActivationAndProjector(t *testing.T) 
 	}
 }
 
+func TestProjectorPollOnce_TerminatedHistoryProjectsFailureAndCleanup(t *testing.T) {
+	fixture := newProjectorFixture(t)
+	baseTime := time.Now().UTC().Round(time.Microsecond)
+
+	activityHistory := fixture.appendHistoryEvent(2, publichistory.EventActivityScheduled, publichistory.ActivityScheduledPayload{
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
+	})
+	timerHistory := fixture.appendHistoryEvent(3, publichistory.EventTimerScheduled, publichistory.TimerScheduledPayload{
+		TimerKey: "deadline",
+		DueAt:    baseTime.Add(5 * time.Minute),
+	})
+
+	if _, err := fixture.store.CreateActivityTask(fixture.ctx, enginedb.CreateActivityTaskParams{
+		ProjectID:    fixture.projectID,
+		InstanceID:   fixture.instance.ID,
+		RunID:        fixture.run.ID,
+		HistoryID:    &activityHistory.ID,
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
+		AvailableAt:  baseTime.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateActivityTask() error = %v", err)
+	}
+
+	timerPayload, err := publichistory.MarshalPayload(publichistory.TimerScheduledPayload{
+		TimerKey: "deadline",
+		DueAt:    baseTime.Add(5 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("MarshalPayload(timer) error = %v", err)
+	}
+	if _, err := fixture.store.CreateInboxItem(fixture.ctx, enginedb.CreateInboxItemParams{
+		ProjectID:   fixture.projectID,
+		InstanceID:  fixture.instance.ID,
+		RunID:       pgtype.UUID{Bytes: fixture.run.ID, Valid: true},
+		HistoryID:   &timerHistory.ID,
+		Kind:        "timer",
+		Payload:     timerPayload,
+		AvailableAt: baseTime.Add(5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateInboxItem(timer) error = %v", err)
+	}
+
+	fixture.setTraceProjection(timerHistory.ID, fixture.startedHistory.ID, publicprojection.StateCatchingUp.String())
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-terminal-prep"); err != nil {
+		t.Fatalf("PollOnce() initial projection error = %v", err)
+	}
+
+	if _, err := fixture.store.CancelOpenActivityTasksByRun(fixture.ctx, fixture.run.ID); err != nil {
+		t.Fatalf("CancelOpenActivityTasksByRun() error = %v", err)
+	}
+	if _, err := fixture.store.DiscardOpenInboxItemsByRun(fixture.ctx, fixture.run.ID); err != nil {
+		t.Fatalf("DiscardOpenInboxItemsByRun() error = %v", err)
+	}
+
+	terminatedAt := baseTime.Add(6 * time.Minute)
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE engine.runs
+		SET status = 'terminated',
+		    waiting_for = NULL,
+		    result = NULL,
+		    completed_at = $2,
+		    last_error_code = 'terminated',
+		    last_error_message = 'run terminated by operator',
+		    updated_at = $2
+		WHERE id = $1
+	`, fixture.run.ID, terminatedAt); err != nil {
+		t.Fatalf("mark run terminated: %v", err)
+	}
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE engine.instances
+		SET status = 'terminated',
+		    updated_at = $2
+		WHERE id = $1
+	`, fixture.instance.ID, terminatedAt); err != nil {
+		t.Fatalf("mark instance terminated: %v", err)
+	}
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE public.traces
+		SET engine_wait_state = $2::jsonb,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, fixture.traceID, mustJSON(t, map[string]any{"kind": "signal", "signal_name": "approval"})); err != nil {
+		t.Fatalf("seed projected wait state: %v", err)
+	}
+
+	terminalHistory := fixture.appendHistoryEvent(4, publichistory.EventWorkflowTerminated, publichistory.WorkflowTerminatedPayload{
+		ErrorCode:    "terminated",
+		ErrorMessage: "run terminated by operator",
+	})
+
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-terminated"); err != nil {
+		t.Fatalf("PollOnce() terminal projection error = %v", err)
+	}
+
+	var traceStatus string
+	var runStatus string
+	var waitState []byte
+	var pendingActivityTasks int64
+	var pendingInboxItems int64
+	var traceOutput []byte
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT status,
+		       engine_run_status,
+		       engine_wait_state,
+		       engine_pending_activity_tasks,
+		       engine_pending_inbox_items,
+		       output
+		FROM public.traces
+		WHERE id = $1
+	`, fixture.traceID).Scan(&traceStatus, &runStatus, &waitState, &pendingActivityTasks, &pendingInboxItems, &traceOutput); err != nil {
+		t.Fatalf("query terminated trace summary: %v", err)
+	}
+	if traceStatus != "failed" {
+		t.Fatalf("expected failed trace status for terminated run, got %q", traceStatus)
+	}
+	if runStatus != string(enginedb.EngineRunLifecycleStatusTerminated) {
+		t.Fatalf("expected projected terminated engine status, got %q", runStatus)
+	}
+	if len(waitState) != 0 {
+		t.Fatalf("expected terminal projection to clear wait state, got %s", waitState)
+	}
+	if pendingActivityTasks != 0 || pendingInboxItems != 0 {
+		t.Fatalf("expected terminal projection to clear pending counts, got activity=%d inbox=%d", pendingActivityTasks, pendingInboxItems)
+	}
+
+	var outputPayload map[string]any
+	if err := json.Unmarshal(traceOutput, &outputPayload); err != nil {
+		t.Fatalf("json.Unmarshal(trace output) error = %v", err)
+	}
+	if outputPayload["error_code"] != "terminated" || outputPayload["error_message"] != "run terminated by operator" {
+		t.Fatalf("unexpected terminated trace output: %+v", outputPayload)
+	}
+
+	var rootSpanStatus string
+	var rootSpanMessage *string
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT status, status_message
+		FROM public.spans
+		WHERE trace_id = $1
+		  AND span_id = $2
+	`, fixture.traceID, rootSpanExternalID(fixture.run.ID)).Scan(&rootSpanStatus, &rootSpanMessage); err != nil {
+		t.Fatalf("query terminated root span: %v", err)
+	}
+	if rootSpanStatus != "failed" {
+		t.Fatalf("expected failed root span for terminated run, got %q", rootSpanStatus)
+	}
+	if rootSpanMessage == nil || *rootSpanMessage != "run terminated by operator" {
+		t.Fatalf("expected terminated root span message, got %+v", rootSpanMessage)
+	}
+
+	var activitySpanStatus string
+	var activitySpanMessage *string
+	var activitySpanMetadata []byte
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT status, status_message, metadata
+		FROM public.spans
+		WHERE trace_id = $1
+		  AND span_id = $2
+	`, fixture.traceID, activitySpanExternalID(fixture.run.ID, "ship-order")).Scan(&activitySpanStatus, &activitySpanMessage, &activitySpanMetadata); err != nil {
+		t.Fatalf("query terminated activity span: %v", err)
+	}
+	if activitySpanStatus != "failed" {
+		t.Fatalf("expected failed activity span after termination, got %q", activitySpanStatus)
+	}
+	if activitySpanMessage == nil || *activitySpanMessage != "run terminated by operator" {
+		t.Fatalf("expected terminated activity span message, got %+v", activitySpanMessage)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(activitySpanMetadata, &metadata); err != nil {
+		t.Fatalf("json.Unmarshal(activity span metadata) error = %v", err)
+	}
+	if metadata[terminalHistoryMetadataKey] != float64(terminalHistory.ID) {
+		t.Fatalf("expected terminal history metadata %d, got %+v", terminalHistory.ID, metadata)
+	}
+
+	resolvedWaits := queryResolvedWaitEvents(t, fixture, "terminated")
+	if len(resolvedWaits) != 2 {
+		t.Fatalf("expected 2 terminated wait resolution events, got %+v", resolvedWaits)
+	}
+	if resolvedWaits[0].Sequence != terminalHistory.SequenceNo*10+1 || resolvedWaits[0].WaitID != "activity:ship-order" {
+		t.Fatalf("unexpected first terminated wait event: %+v", resolvedWaits[0])
+	}
+	if resolvedWaits[1].Sequence != terminalHistory.SequenceNo*10+2 || resolvedWaits[1].WaitID != "timer:deadline" {
+		t.Fatalf("unexpected second terminated wait event: %+v", resolvedWaits[1])
+	}
+
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-terminated-idempotent"); err != nil {
+		t.Fatalf("PollOnce() idempotent projection error = %v", err)
+	}
+	resolvedWaitsAfterReplay := queryResolvedWaitEvents(t, fixture, "terminated")
+	if len(resolvedWaitsAfterReplay) != len(resolvedWaits) {
+		t.Fatalf("expected terminated cleanup replay to stay idempotent, got before=%d after=%d", len(resolvedWaits), len(resolvedWaitsAfterReplay))
+	}
+}
+
+func TestProjectorPollOnce_CancelledHistoryClearsPureSignalWaitWithoutSyntheticSignalEvent(t *testing.T) {
+	fixture := newProjectorFixture(t)
+	cancelledAt := time.Now().UTC().Round(time.Microsecond)
+
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE engine.runs
+		SET status = 'cancelled',
+		    waiting_for = NULL,
+		    result = NULL,
+		    completed_at = $2,
+		    last_error_code = 'cancelled',
+		    last_error_message = 'workflow cancelled',
+		    updated_at = $2
+		WHERE id = $1
+	`, fixture.run.ID, cancelledAt); err != nil {
+		t.Fatalf("mark run cancelled: %v", err)
+	}
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE engine.instances
+		SET status = 'cancelled',
+		    updated_at = $2
+		WHERE id = $1
+	`, fixture.instance.ID, cancelledAt); err != nil {
+		t.Fatalf("mark instance cancelled: %v", err)
+	}
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE public.traces
+		SET engine_wait_state = $2::jsonb,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, fixture.traceID, mustJSON(t, map[string]any{"kind": "signal", "signal_name": "approval"})); err != nil {
+		t.Fatalf("seed signal wait state: %v", err)
+	}
+
+	fixture.appendHistoryEvent(2, publichistory.EventWorkflowCancelled, publichistory.WorkflowCancelledPayload{})
+
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-cancelled-signal"); err != nil {
+		t.Fatalf("PollOnce() error = %v", err)
+	}
+
+	var traceStatus string
+	var waitState []byte
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT status, engine_wait_state
+		FROM public.traces
+		WHERE id = $1
+	`, fixture.traceID).Scan(&traceStatus, &waitState); err != nil {
+		t.Fatalf("query cancelled trace summary: %v", err)
+	}
+	if traceStatus != "cancelled" {
+		t.Fatalf("expected cancelled trace status, got %q", traceStatus)
+	}
+	if len(waitState) != 0 {
+		t.Fatalf("expected cancelled projection to clear pure signal wait state, got %s", waitState)
+	}
+	if resolvedWaits := queryResolvedWaitEvents(t, fixture, "cancelled"); len(resolvedWaits) != 0 {
+		t.Fatalf("expected no synthetic signal wait resolution events, got %+v", resolvedWaits)
+	}
+}
+
+func TestProjectorPollOnce_ClearsWaitStateOnEveryTerminalTransition(t *testing.T) {
+	testCases := []struct {
+		name           string
+		runStatus      enginedb.EngineRunLifecycleStatus
+		instanceStatus enginedb.EngineInstanceLifecycleStatus
+		eventType      string
+		payload        any
+		result         []byte
+		errorCode      *string
+		errorMessage   *string
+	}{
+		{
+			name:           "completed",
+			runStatus:      enginedb.EngineRunLifecycleStatusCompleted,
+			instanceStatus: enginedb.EngineInstanceLifecycleStatusCompleted,
+			eventType:      publichistory.EventWorkflowCompleted,
+			payload: publichistory.WorkflowCompletedPayload{
+				Result: mustJSON(t, map[string]bool{"ok": true}),
+			},
+			result: mustJSON(t, map[string]bool{"ok": true}),
+		},
+		{
+			name:           "failed",
+			runStatus:      enginedb.EngineRunLifecycleStatusFailed,
+			instanceStatus: enginedb.EngineInstanceLifecycleStatusFailed,
+			eventType:      publichistory.EventWorkflowFailed,
+			payload: publichistory.WorkflowFailedPayload{
+				ErrorCode:    "failed",
+				ErrorMessage: "workflow failed",
+			},
+			errorCode:    enginetest.Ptr("failed"),
+			errorMessage: enginetest.Ptr("workflow failed"),
+		},
+		{
+			name:           "cancelled",
+			runStatus:      enginedb.EngineRunLifecycleStatusCancelled,
+			instanceStatus: enginedb.EngineInstanceLifecycleStatusCancelled,
+			eventType:      publichistory.EventWorkflowCancelled,
+			payload:        publichistory.WorkflowCancelledPayload{},
+			errorCode:      enginetest.Ptr("cancelled"),
+			errorMessage:   enginetest.Ptr("workflow cancelled"),
+		},
+		{
+			name:           "terminated",
+			runStatus:      enginedb.EngineRunLifecycleStatusTerminated,
+			instanceStatus: enginedb.EngineInstanceLifecycleStatusTerminated,
+			eventType:      publichistory.EventWorkflowTerminated,
+			payload: publichistory.WorkflowTerminatedPayload{
+				ErrorCode:    "terminated",
+				ErrorMessage: "run terminated by operator",
+			},
+			errorCode:    enginetest.Ptr("terminated"),
+			errorMessage: enginetest.Ptr("run terminated by operator"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newProjectorFixture(t)
+			completedAt := time.Now().UTC().Round(time.Microsecond)
+
+			if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+				UPDATE engine.runs
+				SET status = $2,
+				    waiting_for = NULL,
+				    result = $3,
+				    completed_at = $4,
+				    last_error_code = $5,
+				    last_error_message = $6,
+				    updated_at = $4
+				WHERE id = $1
+			`, fixture.run.ID, tc.runStatus, tc.result, completedAt, tc.errorCode, tc.errorMessage); err != nil {
+				t.Fatalf("mark run terminal: %v", err)
+			}
+			if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+				UPDATE engine.instances
+				SET status = $2,
+				    updated_at = $3
+				WHERE id = $1
+			`, fixture.instance.ID, tc.instanceStatus, completedAt); err != nil {
+				t.Fatalf("mark instance terminal: %v", err)
+			}
+			if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+				UPDATE public.traces
+				SET engine_wait_state = $2::jsonb,
+				    updated_at = NOW()
+				WHERE id = $1
+			`, fixture.traceID, mustJSON(t, map[string]any{"kind": "signal", "signal_name": "approval"})); err != nil {
+				t.Fatalf("seed wait state: %v", err)
+			}
+
+			terminalHistory := fixture.appendHistoryEvent(2, tc.eventType, tc.payload)
+			fixture.setTraceProjection(terminalHistory.ID, fixture.startedHistory.ID, publicprojection.StateCatchingUp.String())
+
+			if err := fixture.projector.PollOnce(fixture.ctx, "projector-terminal-clear-"+tc.name); err != nil {
+				t.Fatalf("PollOnce() error = %v", err)
+			}
+
+			var waitState []byte
+			if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+				SELECT engine_wait_state
+				FROM public.traces
+				WHERE id = $1
+			`, fixture.traceID).Scan(&waitState); err != nil {
+				t.Fatalf("query wait state: %v", err)
+			}
+			if len(waitState) != 0 {
+				t.Fatalf("expected terminal projection to clear wait state, got %s", waitState)
+			}
+		})
+	}
+}
+
+func TestProjectorPollOnce_TerminatedCleanupSkipsAlreadyCompletedActivities(t *testing.T) {
+	fixture := newProjectorFixture(t)
+	baseTime := time.Now().UTC().Round(time.Microsecond)
+
+	activityHistory := fixture.appendHistoryEvent(2, publichistory.EventActivityScheduled, publichistory.ActivityScheduledPayload{
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
+	})
+	activityTask, err := fixture.store.CreateActivityTask(fixture.ctx, enginedb.CreateActivityTaskParams{
+		ProjectID:    fixture.projectID,
+		InstanceID:   fixture.instance.ID,
+		RunID:        fixture.run.ID,
+		HistoryID:    &activityHistory.ID,
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
+		AvailableAt:  baseTime,
+	})
+	if err != nil {
+		t.Fatalf("CreateActivityTask() error = %v", err)
+	}
+	fixture.setTraceProjection(activityHistory.ID, fixture.startedHistory.ID, publicprojection.StateCatchingUp.String())
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-activity-started"); err != nil {
+		t.Fatalf("PollOnce(activity scheduled) error = %v", err)
+	}
+
+	completedHistory := fixture.appendHistoryEvent(3, publichistory.EventActivityCompleted, publichistory.ActivityCompletedPayload{
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Output:       mustJSON(t, map[string]bool{"ok": true}),
+	})
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE engine.activity_tasks
+		SET status = 'completed',
+		    output = $2,
+		    completed_at = $3,
+		    updated_at = $3
+		WHERE id = $1
+	`, activityTask.ID, mustJSON(t, map[string]bool{"ok": true}), baseTime.Add(time.Second)); err != nil {
+		t.Fatalf("mark activity task completed: %v", err)
+	}
+	fixture.setTraceProjection(completedHistory.ID, activityHistory.ID, publicprojection.StateCatchingUp.String())
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-activity-completed"); err != nil {
+		t.Fatalf("PollOnce(activity completed) error = %v", err)
+	}
+
+	timerHistory := fixture.appendHistoryEvent(4, publichistory.EventTimerScheduled, publichistory.TimerScheduledPayload{
+		TimerKey: "deadline",
+		DueAt:    baseTime.Add(5 * time.Minute),
+	})
+	timerPayload, err := publichistory.MarshalPayload(publichistory.TimerScheduledPayload{
+		TimerKey: "deadline",
+		DueAt:    baseTime.Add(5 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("MarshalPayload(timer) error = %v", err)
+	}
+	if _, err := fixture.store.CreateInboxItem(fixture.ctx, enginedb.CreateInboxItemParams{
+		ProjectID:   fixture.projectID,
+		InstanceID:  fixture.instance.ID,
+		RunID:       pgtype.UUID{Bytes: fixture.run.ID, Valid: true},
+		HistoryID:   &timerHistory.ID,
+		Kind:        "timer",
+		Payload:     timerPayload,
+		AvailableAt: baseTime.Add(5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateInboxItem(timer) error = %v", err)
+	}
+
+	terminatedAt := baseTime.Add(2 * time.Second)
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE engine.runs
+		SET status = 'terminated',
+		    waiting_for = NULL,
+		    completed_at = $2,
+		    last_error_code = 'terminated',
+		    last_error_message = 'run terminated by operator',
+		    updated_at = $2
+		WHERE id = $1
+	`, fixture.run.ID, terminatedAt); err != nil {
+		t.Fatalf("mark run terminated: %v", err)
+	}
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		UPDATE engine.instances
+		SET status = 'terminated',
+		    updated_at = $2
+		WHERE id = $1
+	`, fixture.instance.ID, terminatedAt); err != nil {
+		t.Fatalf("mark instance terminated: %v", err)
+	}
+	if _, err := fixture.store.DiscardOpenInboxItemsByRun(fixture.ctx, fixture.run.ID); err != nil {
+		t.Fatalf("DiscardOpenInboxItemsByRun() error = %v", err)
+	}
+
+	terminalHistory := fixture.appendHistoryEvent(5, publichistory.EventWorkflowTerminated, publichistory.WorkflowTerminatedPayload{
+		ErrorCode:    "terminated",
+		ErrorMessage: "run terminated by operator",
+	})
+	fixture.setTraceProjection(terminalHistory.ID, completedHistory.ID, publicprojection.StateCatchingUp.String())
+
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-terminate-after-completion"); err != nil {
+		t.Fatalf("PollOnce(terminated) error = %v", err)
+	}
+
+	resolvedWaits := queryResolvedWaitEvents(t, fixture, "terminated")
+	if len(resolvedWaits) != 1 {
+		t.Fatalf("expected only timer cleanup event after completed activity, got %+v", resolvedWaits)
+	}
+	if resolvedWaits[0].WaitID != "timer:deadline" {
+		t.Fatalf("expected terminated cleanup to resolve only the timer wait, got %+v", resolvedWaits)
+	}
+}
+
 func TestSyncProjectedRunSummary_MissingProjectedTraceFailsForPublicRuns(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	store := enginestore.New(db.Pool)
@@ -645,4 +1132,52 @@ func mustJSON(t *testing.T, value any) json.RawMessage {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	return raw
+}
+
+type resolvedWaitEvent struct {
+	Sequence int32
+	WaitID   string
+}
+
+func queryResolvedWaitEvents(t *testing.T, fixture *projectorFixture, resolution string) []resolvedWaitEvent {
+	t.Helper()
+
+	rows, err := fixture.db.Pool.Query(fixture.ctx, `
+		SELECT sequence, payload
+		FROM public.span_events
+		WHERE trace_id = $1
+		  AND event_type = 'wait'
+		ORDER BY sequence ASC, created_at ASC
+	`, fixture.traceID)
+	if err != nil {
+		t.Fatalf("query wait events: %v", err)
+	}
+	defer rows.Close()
+
+	var resolved []resolvedWaitEvent
+	for rows.Next() {
+		var sequence int32
+		var payload []byte
+		if err := rows.Scan(&sequence, &payload); err != nil {
+			t.Fatalf("scan wait event: %v", err)
+		}
+
+		var decoded map[string]any
+		if err := json.Unmarshal(payload, &decoded); err != nil {
+			t.Fatalf("json.Unmarshal(wait event payload) error = %v", err)
+		}
+		if decoded["resolution"] != resolution {
+			continue
+		}
+		waitID, _ := decoded["wait_id"].(string)
+		resolved = append(resolved, resolvedWaitEvent{
+			Sequence: sequence,
+			WaitID:   waitID,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate wait events: %v", err)
+	}
+
+	return resolved
 }

@@ -742,7 +742,8 @@ func parseOptionalJSON(value string) (json.RawMessage, error) {
 func isTerminalRun(status enginedb.EngineRunLifecycleStatus) bool {
 	return status == enginedb.EngineRunLifecycleStatusCompleted ||
 		status == enginedb.EngineRunLifecycleStatusFailed ||
-		status == enginedb.EngineRunLifecycleStatusCancelled
+		status == enginedb.EngineRunLifecycleStatusCancelled ||
+		status == enginedb.EngineRunLifecycleStatusTerminated
 }
 
 func stringPtrOrNil(value string) *string {
