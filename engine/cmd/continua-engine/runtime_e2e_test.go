@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	enginehistory "github.com/continua-ai/continua/engine/internal/history"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
 	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
@@ -204,6 +205,77 @@ func TestStartCommandDedupeAndRegistrationErrors(t *testing.T) {
 		t.Fatal("expected unknown definition start to fail")
 	}
 	assertJSONErrorCode(t, stdout, "definition_not_registered")
+}
+
+func TestEngineRuntimeCancelTransitionsRunToCancelled(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	configureRuntimeEnv(t, db.DatabaseURL)
+
+	serve := startServe(t)
+	defer serve.stop(t)
+
+	instanceKey := "runtime-cancel-terminal"
+	input := map[string]any{
+		"name":     "Cancel",
+		"timer_at": time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339Nano),
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("Marshal(input) error = %v", err)
+	}
+
+	if _, _, err := executeCommand(t,
+		"start",
+		"--instance-key", instanceKey,
+		"--definition", darklaunch.DemoDefinitionName,
+		"--version", darklaunch.DemoDefinitionVersion,
+		"--request-key", "req-cancel-terminal",
+		"--input", string(inputJSON),
+	); err != nil {
+		t.Fatalf("start command error = %v", err)
+	}
+
+	waitForInspect(t, instanceKey, func(state inspectResponse) bool {
+		return state.Status == string(enginedb.EngineRunLifecycleStatusWaiting) &&
+			jsonContainsKind(state.WaitingFor, "timer")
+	})
+
+	stdout, stderr, err := executeCommand(t, "cancel", "--instance-key", instanceKey)
+	if err != nil {
+		t.Fatalf("cancel command error = %v", err)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var cancelled controlResponse
+	if err := json.Unmarshal([]byte(stdout), &cancelled); err != nil {
+		t.Fatalf("Unmarshal(cancel stdout) error = %v", err)
+	}
+	if !cancelled.Accepted || !cancelled.WakeApplied {
+		t.Fatalf("expected cancel accepted with wake, got %+v", cancelled)
+	}
+
+	state := waitForInspect(t, instanceKey, func(state inspectResponse) bool {
+		return state.Status == string(enginedb.EngineRunLifecycleStatusCancelled)
+	})
+	if len(state.Result) != 0 {
+		t.Fatalf("expected cancelled run to have no result payload, got %s", state.Result)
+	}
+	if len(state.History) < 3 {
+		t.Fatalf("expected cancel.requested + terminal history, got %+v", state.History)
+	}
+	lastEvent := state.History[len(state.History)-1]
+	if lastEvent.EventType != enginehistory.EventWorkflowFailed {
+		t.Fatalf("expected terminal cancellation history row to use workflow.failed, got %+v", lastEvent)
+	}
+	var failurePayload map[string]any
+	if err := json.Unmarshal(lastEvent.Payload, &failurePayload); err != nil {
+		t.Fatalf("Unmarshal(cancel terminal payload) error = %v", err)
+	}
+	if failurePayload["error_code"] != "cancelled" {
+		t.Fatalf("expected cancelled failure payload, got %+v", failurePayload)
+	}
 }
 
 func TestEngineRuntimeTimerAndSignalPersistenceAcrossRestart(t *testing.T) {

@@ -5,8 +5,4 @@ package api
 const (
 	Explicit  TimelineEventSource = TimelineEventSourceExplicit
 	Synthetic TimelineEventSource = TimelineEventSourceSynthetic
-
-	TraceDetailStatusCOMPLETED TraceDetailStatus = COMPLETED
-	TraceDetailStatusFAILED    TraceDetailStatus = FAILED
-	TraceDetailStatusRUNNING   TraceDetailStatus = RUNNING
 )

@@ -8,7 +8,9 @@ import {
 import { mergeTimelineEvents } from '../utils/timeline';
 
 const TIMELINE_PAGE_LIMIT = 100;
-export const TIMELINE_POLL_INTERVAL_MS = 3000;
+const TEST_TIMELINE_POLL_INTERVAL_MS = 25;
+export const TIMELINE_POLL_INTERVAL_MS =
+  import.meta.env.MODE === 'test' ? TEST_TIMELINE_POLL_INTERVAL_MS : 3000;
 
 interface TimelineSnapshot {
   events: TimelineEvent[];

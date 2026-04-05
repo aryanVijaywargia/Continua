@@ -3,6 +3,7 @@ import {
   fireEvent,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,6 +38,14 @@ function countTraceDetailRequests(): number {
     const url = new URL(readRequestUrl(input), 'http://localhost');
     return /^\/api\/traces\/[^/]+$/.test(url.pathname);
   }).length;
+}
+
+function getTraceRow(name: string): HTMLElement {
+  const row = screen.getByRole('link', { name }).closest('article');
+  if (!row) {
+    throw new Error(`Expected a table row for ${name}`);
+  }
+  return row;
 }
 
 async function waitForListFetch(search: string) {
@@ -86,6 +95,42 @@ describe('TracesPage', () => {
       expect(countTraceDetailRequests()).toBe(0);
     });
     expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument();
+  });
+
+  it('shows an engine badge for engine-backed traces', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () =>
+          jsonResponse({
+            traces: [
+              {
+                ...TRACE_ONE,
+                engine: {
+                  run_id: '123e4567-e89b-12d3-a456-426614174100',
+                  definition_name: 'checkout',
+                  definition_version: 'v1',
+                  projection_state: 'up_to_date',
+                },
+              },
+            ],
+            total: 1,
+          }),
+      })
+    );
+
+    renderTraceRoutes(['/traces']);
+
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    expect(screen.getByText('Engine')).toBeInTheDocument();
+  });
+
+  it('keeps non-engine trace rows visually unchanged', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes(['/traces']);
+
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    expect(within(getTraceRow('Checkout Trace')).queryByText('Engine')).not.toBeInTheDocument();
   });
 
   it('shows the auth recovery banner when the traces request returns 401', async () => {

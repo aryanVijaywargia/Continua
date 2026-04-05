@@ -161,6 +161,43 @@ func TestIngest_SyncTrueOverridesAsyncHeader(t *testing.T) {
 	assert.Equal(t, traceID, trace.TraceID)
 }
 
+func TestIngest_NonEngineTraceLeavesEngineColumnsNull(t *testing.T) {
+	server, _, q, projectID := newAsyncIngestServer(t)
+	traceID := "trace-" + uuid.NewString()[:8]
+	sync := true
+
+	rec := invokeIngest(
+		t,
+		server,
+		projectID,
+		`{"batch_key":"batch-non-engine-null","traces":[{"trace_id":"`+traceID+`","name":"plain"}]}`,
+		IngestParams{Sync: &sync},
+		nil,
+	)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	trace, err := q.GetTraceByExternalID(context.Background(), platform.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   traceID,
+	})
+	require.NoError(t, err)
+
+	assert.False(t, trace.EngineRunID.Valid)
+	assert.Nil(t, trace.EngineDefinitionName)
+	assert.Nil(t, trace.EngineDefinitionVersion)
+	assert.Nil(t, trace.EngineProjectionState)
+	assert.Nil(t, trace.EngineLatestHistoryID)
+	assert.Nil(t, trace.EngineLastProjectedHistoryID)
+	assert.False(t, trace.EngineProjectionUpdatedAt.Valid)
+	assert.Nil(t, trace.EngineInstanceKey)
+	assert.Nil(t, trace.EngineRunStatus)
+	assert.Nil(t, trace.EngineCustomStatus)
+	assert.Nil(t, trace.EngineWaitState)
+	assert.Nil(t, trace.EnginePendingActivityTasks)
+	assert.Nil(t, trace.EnginePendingInboxItems)
+}
+
 func TestIngest_SyncTrueAcceptsUnknownExplicitEventType(t *testing.T) {
 	server, _, q, projectID := newAsyncIngestServer(t)
 	traceID := "trace-" + uuid.NewString()[:8]

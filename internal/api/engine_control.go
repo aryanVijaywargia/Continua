@@ -1,0 +1,923 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	platformdb "github.com/continua-ai/continua/db/gen/go/platform"
+	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	publichistory "github.com/continua-ai/continua/engine/pkg/history"
+	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
+	"github.com/continua-ai/continua/internal/store"
+)
+
+const (
+	engineRequestScopeStart = "engine.start"
+	engineTracePrefix       = "engine:"
+	engineRootSpanPrefix    = "engine:root:"
+	engineCancelDedupeKey   = "cancel:"
+)
+
+type engineControlService struct {
+	platform *store.Store
+	engine   *enginedb.Queries
+}
+
+type engineStartRunRequest struct {
+	InstanceKey       string
+	DefinitionName    string
+	DefinitionVersion string
+	RequestKey        string
+	Input             json.RawMessage
+	Session           *engineStartSession
+	Trace             *engineStartTrace
+}
+
+type engineStartSession struct {
+	Key      string
+	Name     string
+	Metadata map[string]any
+}
+
+type engineStartTrace struct {
+	Name        string
+	UserID      string
+	Tags        []string
+	Environment string
+	Release     string
+	Metadata    map[string]any
+}
+
+type engineStartRunResult struct {
+	RunID       uuid.UUID
+	InstanceKey string
+	TraceID     string
+}
+
+type engineInstanceResult struct {
+	Instance   enginedb.EngineInstance
+	CurrentRun engineRunSummary
+}
+
+type engineRunSummary struct {
+	RunID                uuid.UUID
+	InstanceID           uuid.UUID
+	InstanceKey          string
+	DefinitionName       string
+	DefinitionVersion    string
+	ProjectionState      string
+	Status               enginedb.EngineRunLifecycleStatus
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	CompletedAt          *time.Time
+	CustomStatus         json.RawMessage
+	WaitState            json.RawMessage
+	PendingActivityTasks int64
+	PendingInboxItems    int64
+	Result               json.RawMessage
+	LastErrorCode        *string
+	LastErrorMessage     *string
+}
+
+type engineHistoryPage struct {
+	Events    []enginedb.EngineHistory
+	HasMore   bool
+	NextAfter *int
+}
+
+type engineSignalRequest struct {
+	SignalName string
+	Payload    json.RawMessage
+}
+
+type engineControlResult struct {
+	RunID       uuid.UUID
+	InstanceKey string
+	Accepted    bool
+	WakeApplied bool
+}
+
+type engineAPIError struct {
+	Code       string
+	Message    string
+	HTTPStatus int
+}
+
+func (e *engineAPIError) Error() string {
+	return e.Code + ": " + e.Message
+}
+
+func newEngineControlService(platformStore *store.Store) *engineControlService {
+	if platformStore == nil {
+		return nil
+	}
+
+	return &engineControlService{
+		platform: platformStore,
+		engine:   enginedb.New(platformStore.Pool()),
+	}
+}
+
+func (s *engineControlService) StartRun(
+	ctx context.Context,
+	projectID uuid.UUID,
+	req *engineStartRunRequest,
+) (engineStartRunResult, error) {
+	if req == nil {
+		return engineStartRunResult{}, &engineAPIError{
+			Code:       "invalid_request",
+			Message:    "request body is required",
+			HTTPStatus: 400,
+		}
+	}
+	if stringsTrimSpaceEmpty(req.InstanceKey) || stringsTrimSpaceEmpty(req.DefinitionName) ||
+		stringsTrimSpaceEmpty(req.DefinitionVersion) || stringsTrimSpaceEmpty(req.RequestKey) {
+		return engineStartRunResult{}, &engineAPIError{
+			Code:       "invalid_request",
+			Message:    "instance_key, definition_name, definition_version, and request_key are required",
+			HTTPStatus: 400,
+		}
+	}
+
+	tx, err := s.platform.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return engineStartRunResult{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	engineTx := enginedb.New(tx.Tx())
+	claim, err := claimStartRequestDedupe(ctx, engineTx, claimStartRequestDedupeParams{
+		ProjectID:    projectID,
+		RequestScope: engineRequestScopeStart,
+		RequestKey:   req.RequestKey,
+		ExpiresAt:    time.Now().Add(time.Hour),
+	})
+	if err != nil {
+		return engineStartRunResult{}, err
+	}
+
+	switch claim.State {
+	case startRequestDedupeClaimStateExistingFinalized:
+		return decodeStartRunReplay(&claim.Row)
+	case startRequestDedupeClaimStateExistingInProgress:
+		return engineStartRunResult{}, &engineAPIError{
+			Code:       "request_in_progress",
+			Message:    "a start request with this request key is still in progress",
+			HTTPStatus: 409,
+		}
+	}
+
+	if _, err := engineTx.GetDefinitionCatalogEntry(ctx, enginedb.GetDefinitionCatalogEntryParams{
+		DefinitionName:    req.DefinitionName,
+		DefinitionVersion: req.DefinitionVersion,
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineStartRunResult{}, finalizeStartFailure(ctx, engineTx, tx.Tx(), claim.Row.ID, &engineAPIError{
+				Code:       "definition_not_registered",
+				Message:    fmt.Sprintf("definition %s@%s is not registered", req.DefinitionName, req.DefinitionVersion),
+				HTTPStatus: 400,
+			})
+		}
+		return engineStartRunResult{}, err
+	}
+
+	now := time.Now().UTC()
+
+	if _, err := tx.Tx().Exec(ctx, "SAVEPOINT start_create_instance"); err != nil {
+		return engineStartRunResult{}, err
+	}
+	instance, err := engineTx.CreateInstance(ctx, enginedb.CreateInstanceParams{
+		ProjectID:      projectID,
+		InstanceKey:    req.InstanceKey,
+		DefinitionName: req.DefinitionName,
+	})
+	if err != nil {
+		if _, rollbackErr := tx.Tx().Exec(ctx, "ROLLBACK TO SAVEPOINT start_create_instance"); rollbackErr != nil {
+			return engineStartRunResult{}, rollbackErr
+		}
+		if _, releaseErr := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT start_create_instance"); releaseErr != nil {
+			return engineStartRunResult{}, releaseErr
+		}
+		if isUniqueViolation(err) {
+			return engineStartRunResult{}, finalizeStartFailure(ctx, engineTx, tx.Tx(), claim.Row.ID, &engineAPIError{
+				Code:       "instance_conflict",
+				Message:    "an instance with this key already exists",
+				HTTPStatus: 409,
+			})
+		}
+		return engineStartRunResult{}, err
+	}
+	if _, err := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT start_create_instance"); err != nil {
+		return engineStartRunResult{}, err
+	}
+
+	run, err := engineTx.CreateRun(ctx, enginedb.CreateRunParams{
+		ProjectID:         projectID,
+		InstanceID:        instance.ID,
+		RunNumber:         1,
+		DefinitionVersion: req.DefinitionVersion,
+		ReadyAt:           now,
+	})
+	if err != nil {
+		return engineStartRunResult{}, err
+	}
+
+	startedPayload, err := publichistory.MarshalPayload(publichistory.WorkflowStartedPayload{
+		DefinitionName:    req.DefinitionName,
+		DefinitionVersion: req.DefinitionVersion,
+		InstanceKey:       req.InstanceKey,
+		Input:             cloneRaw(req.Input),
+	})
+	if err != nil {
+		return engineStartRunResult{}, err
+	}
+	startedEvent, err := engineTx.AppendHistory(ctx, enginedb.AppendHistoryParams{
+		ProjectID:  projectID,
+		InstanceID: instance.ID,
+		RunID:      run.ID,
+		SequenceNo: 1,
+		EventType:  publichistory.EventWorkflowStarted,
+		Payload:    startedPayload,
+	})
+	if err != nil {
+		return engineStartRunResult{}, err
+	}
+
+	sessionExternalID := req.InstanceKey
+	if req.Session != nil && !stringsTrimSpaceEmpty(req.Session.Key) {
+		sessionExternalID = req.Session.Key
+	}
+
+	session, err := tx.GetOrCreateSessionByExternalID(ctx, projectID, sessionExternalID)
+	if err != nil {
+		return engineStartRunResult{}, err
+	}
+	if req.Session != nil {
+		mergedSession, mergeErr := mergeSessionUpdate(&session, req.Session)
+		if mergeErr != nil {
+			return engineStartRunResult{}, mergeErr
+		}
+		if mergedSession != nil {
+			session, err = tx.UpdateSession(ctx, *mergedSession)
+			if err != nil {
+				return engineStartRunResult{}, err
+			}
+		}
+	}
+
+	traceName := req.DefinitionName
+	if req.Trace != nil && !stringsTrimSpaceEmpty(req.Trace.Name) {
+		traceName = req.Trace.Name
+	}
+
+	traceMetadata, err := marshalJSONObject(req.TraceMetadata())
+	if err != nil {
+		return engineStartRunResult{}, err
+	}
+
+	traceID := engineTracePrefix + run.ID.String()
+	projectionState := publicprojection.StateUpToDate.String()
+	runStatus := string(enginedb.EngineRunLifecycleStatusQueued)
+	traceRow, err := tx.CreateEngineTraceShell(ctx, &platformdb.CreateEngineTraceShellParams{
+		ProjectID:                    projectID,
+		SessionID:                    pgtype.UUID{Bytes: session.ID, Valid: true},
+		TraceID:                      traceID,
+		Name:                         stringPtr(traceName),
+		UserID:                       stringPtr(req.TraceUserID()),
+		Tags:                         req.TraceTags(),
+		Environment:                  stringPtr(req.TraceEnvironment()),
+		Release:                      stringPtr(req.TraceRelease()),
+		Metadata:                     traceMetadata,
+		Input:                        cloneRaw(req.Input),
+		Output:                       nil,
+		Status:                       "running",
+		StartTime:                    pgtype.Timestamptz{Time: now, Valid: true},
+		EndTime:                      pgtype.Timestamptz{},
+		EngineRunID:                  pgtype.UUID{Bytes: run.ID, Valid: true},
+		EngineInstanceKey:            stringPtr(req.InstanceKey),
+		EngineRunStatus:              &runStatus,
+		EngineCustomStatus:           nil,
+		EngineWaitState:              nil,
+		EnginePendingActivityTasks:   int64Ptr(0),
+		EnginePendingInboxItems:      int64Ptr(0),
+		EngineDefinitionName:         stringPtr(req.DefinitionName),
+		EngineDefinitionVersion:      stringPtr(req.DefinitionVersion),
+		EngineProjectionState:        &projectionState,
+		EngineLatestHistoryID:        int64Ptr(startedEvent.ID),
+		EngineLastProjectedHistoryID: int64Ptr(startedEvent.ID),
+		EngineProjectionUpdatedAt:    pgtype.Timestamptz{Time: now, Valid: true},
+	})
+	if err != nil {
+		return engineStartRunResult{}, err
+	}
+
+	rootSpanID := engineRootSpanPrefix + run.ID.String()
+	if _, err := tx.CreateSpan(ctx, &platformdb.CreateSpanParams{
+		ProjectID: projectID,
+		TraceID:   traceRow.ID,
+		SpanID:    rootSpanID,
+		Name:      traceName,
+		Type:      "chain",
+		Status:    "running",
+		Level:     "default",
+		StartTime: now,
+		Input:     cloneRaw(req.Input),
+		Metadata:  nil,
+		Depth:     int32Pointer(0),
+	}); err != nil {
+		return engineStartRunResult{}, err
+	}
+
+	result := engineStartRunResult{
+		RunID:       run.ID,
+		InstanceKey: req.InstanceKey,
+		TraceID:     traceID,
+	}
+	if err := finalizeStartSuccess(ctx, engineTx, tx.Tx(), claim.Row.ID, result); err != nil {
+		return engineStartRunResult{}, err
+	}
+
+	return result, nil
+}
+
+func (s *engineControlService) GetInstance(
+	ctx context.Context,
+	projectID uuid.UUID,
+	instanceKey string,
+) (engineInstanceResult, error) {
+	instance, err := s.engine.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
+		ProjectID:   projectID,
+		InstanceKey: instanceKey,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineInstanceResult{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine instance not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineInstanceResult{}, err
+	}
+
+	run, err := s.engine.GetLatestRunByInstance(ctx, instance.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineInstanceResult{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineInstanceResult{}, err
+	}
+
+	summary, err := s.buildRunSummary(ctx, &instance, &run)
+	if err != nil {
+		return engineInstanceResult{}, err
+	}
+
+	return engineInstanceResult{
+		Instance:   instance,
+		CurrentRun: summary,
+	}, nil
+}
+
+func (s *engineControlService) GetRun(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) (engineRunSummary, error) {
+	run, err := s.engine.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineRunSummary{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineRunSummary{}, err
+	}
+
+	instance, err := s.engine.GetInstance(ctx, run.InstanceID)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
+	return s.buildRunSummary(ctx, &instance, &run)
+}
+
+func (s *engineControlService) GetRunResult(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) (engineRunSummary, error) {
+	summary, err := s.GetRun(ctx, projectID, runID)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
+	if !isTerminalEngineRun(summary.Status) {
+		return engineRunSummary{}, &engineAPIError{
+			Code:       "run_not_terminal",
+			Message:    "run has not reached a terminal state",
+			HTTPStatus: 409,
+		}
+	}
+
+	return summary, nil
+}
+
+func (s *engineControlService) GetRunHistory(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+	after int,
+	limit int,
+) (engineHistoryPage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if after < 0 {
+		after = 0
+	}
+
+	if _, err := s.engine.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        runID,
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineHistoryPage{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineHistoryPage{}, err
+	}
+
+	rows, err := s.engine.ListHistoryByRunAfterSequence(ctx, enginedb.ListHistoryByRunAfterSequenceParams{
+		RunID:      runID,
+		SequenceNo: int32(after),
+		Limit:      int32(limit + 1),
+	})
+	if err != nil {
+		return engineHistoryPage{}, err
+	}
+
+	page := engineHistoryPage{
+		Events: rows,
+	}
+	if len(rows) > limit {
+		page.HasMore = true
+		page.Events = rows[:limit]
+	}
+	if len(page.Events) > 0 {
+		nextAfter := int(page.Events[len(page.Events)-1].SequenceNo)
+		page.NextAfter = &nextAfter
+	}
+
+	return page, nil
+}
+
+func (s *engineControlService) SignalRun(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+	req engineSignalRequest,
+) (engineControlResult, error) {
+	if stringsTrimSpaceEmpty(req.SignalName) {
+		return engineControlResult{}, &engineAPIError{
+			Code:       "invalid_request",
+			Message:    "signal_name is required",
+			HTTPStatus: 400,
+		}
+	}
+
+	tx, err := s.platform.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return engineControlResult{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	engineTx := enginedb.New(tx.Tx())
+	run, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineControlResult{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineControlResult{}, err
+	}
+	if isTerminalEngineRun(run.Status) {
+		return engineControlResult{}, &engineAPIError{
+			Code:       "run_terminal",
+			Message:    "cannot signal a terminal run",
+			HTTPStatus: 409,
+		}
+	}
+
+	instance, err := engineTx.GetInstance(ctx, run.InstanceID)
+	if err != nil {
+		return engineControlResult{}, err
+	}
+
+	payload, err := publichistory.MarshalPayload(publichistory.SignalReceivedPayload{
+		SignalName: req.SignalName,
+		Payload:    cloneRaw(req.Payload),
+	})
+	if err != nil {
+		return engineControlResult{}, err
+	}
+	if _, err := engineTx.CreateInboxItem(ctx, enginedb.CreateInboxItemParams{
+		ProjectID:   projectID,
+		InstanceID:  run.InstanceID,
+		RunID:       pgtype.UUID{Bytes: run.ID, Valid: true},
+		Kind:        "signal",
+		Payload:     payload,
+		AvailableAt: time.Now().UTC(),
+	}); err != nil {
+		return engineControlResult{}, err
+	}
+
+	currentRun, wakeApplied, err := wakeRunIfWaiting(ctx, engineTx, &run)
+	if err != nil {
+		return engineControlResult{}, err
+	}
+	if err := syncProjectedTraceSummary(ctx, tx, engineTx, &currentRun); err != nil {
+		return engineControlResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return engineControlResult{}, err
+	}
+
+	return engineControlResult{
+		RunID:       run.ID,
+		InstanceKey: instance.InstanceKey,
+		Accepted:    true,
+		WakeApplied: wakeApplied,
+	}, nil
+}
+
+func (s *engineControlService) CancelRun(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) (engineControlResult, error) {
+	tx, err := s.platform.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return engineControlResult{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	engineTx := enginedb.New(tx.Tx())
+	run, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineControlResult{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineControlResult{}, err
+	}
+	if isTerminalEngineRun(run.Status) {
+		return engineControlResult{}, &engineAPIError{
+			Code:       "run_terminal",
+			Message:    "cannot cancel a terminal run",
+			HTTPStatus: 409,
+		}
+	}
+
+	instance, err := engineTx.GetInstance(ctx, run.InstanceID)
+	if err != nil {
+		return engineControlResult{}, err
+	}
+
+	cancelPayload, err := publichistory.MarshalPayload(publichistory.CancelRequestedPayload{})
+	if err != nil {
+		return engineControlResult{}, err
+	}
+	cancelDedupeKey := engineCancelDedupeKey + run.ID.String()
+	if _, err := tx.Tx().Exec(ctx, "SAVEPOINT cancel_enqueue"); err != nil {
+		return engineControlResult{}, err
+	}
+	if _, err := engineTx.CreateInboxItem(ctx, enginedb.CreateInboxItemParams{
+		ProjectID:   projectID,
+		InstanceID:  run.InstanceID,
+		RunID:       pgtype.UUID{Bytes: run.ID, Valid: true},
+		Kind:        "cancel",
+		Payload:     cancelPayload,
+		AvailableAt: time.Now().UTC(),
+		DedupeKey:   &cancelDedupeKey,
+	}); err != nil {
+		if _, rollbackErr := tx.Tx().Exec(ctx, "ROLLBACK TO SAVEPOINT cancel_enqueue"); rollbackErr != nil {
+			return engineControlResult{}, rollbackErr
+		}
+		if _, releaseErr := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT cancel_enqueue"); releaseErr != nil {
+			return engineControlResult{}, releaseErr
+		}
+		if !isUniqueViolation(err) {
+			return engineControlResult{}, err
+		}
+	} else if _, err := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT cancel_enqueue"); err != nil {
+		return engineControlResult{}, err
+	}
+
+	currentRun, wakeApplied, err := wakeRunIfWaiting(ctx, engineTx, &run)
+	if err != nil {
+		return engineControlResult{}, err
+	}
+	if err := syncProjectedTraceSummary(ctx, tx, engineTx, &currentRun); err != nil {
+		return engineControlResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return engineControlResult{}, err
+	}
+
+	return engineControlResult{
+		RunID:       run.ID,
+		InstanceKey: instance.InstanceKey,
+		Accepted:    true,
+		WakeApplied: wakeApplied,
+	}, nil
+}
+
+func (s *engineControlService) ReadRunSummary(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) (engineRunSummary, error) {
+	return s.GetRun(ctx, projectID, runID)
+}
+
+func (s *engineControlService) buildRunSummary(
+	ctx context.Context,
+	instance *enginedb.EngineInstance,
+	run *enginedb.EngineRun,
+) (engineRunSummary, error) {
+	if instance == nil || run == nil {
+		return engineRunSummary{}, errors.New("instance and run are required")
+	}
+	pendingActivityTasks, err := s.engine.CountOpenActivityTasksByRun(ctx, run.ID)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
+	pendingInboxItems, err := s.engine.CountOpenInboxByRun(ctx, pgtype.UUID{Bytes: run.ID, Valid: true})
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
+	projectionState, err := s.projectionStateForRun(ctx, run.ProjectID, run.ID)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
+	return engineRunSummary{
+		RunID:                run.ID,
+		InstanceID:           instance.ID,
+		InstanceKey:          instance.InstanceKey,
+		DefinitionName:       instance.DefinitionName,
+		DefinitionVersion:    run.DefinitionVersion,
+		ProjectionState:      projectionState,
+		Status:               run.Status,
+		CreatedAt:            run.CreatedAt,
+		UpdatedAt:            run.UpdatedAt,
+		CompletedAt:          pgTimePtr(run.CompletedAt),
+		CustomStatus:         cloneRaw(run.CustomStatus),
+		WaitState:            cloneRaw(run.WaitingFor),
+		PendingActivityTasks: pendingActivityTasks,
+		PendingInboxItems:    pendingInboxItems,
+		Result:               cloneRaw(run.Result),
+		LastErrorCode:        run.LastErrorCode,
+		LastErrorMessage:     run.LastErrorMessage,
+	}, nil
+}
+
+func (req *engineStartRunRequest) TraceMetadata() map[string]any {
+	if req.Trace == nil {
+		return nil
+	}
+	return req.Trace.Metadata
+}
+
+func (s *engineControlService) projectionStateForRun(ctx context.Context, projectID, runID uuid.UUID) (string, error) {
+	trace, err := s.platform.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   engineTracePrefix + runID.String(),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return publicprojection.StateUpToDate.String(), nil
+		}
+		return "", err
+	}
+	if stringsTrimSpaceEmpty(derefString(trace.EngineProjectionState)) {
+		return publicprojection.StateUpToDate.String(), nil
+	}
+	return *trace.EngineProjectionState, nil
+}
+
+func (req *engineStartRunRequest) TraceUserID() string {
+	if req.Trace == nil {
+		return ""
+	}
+	return req.Trace.UserID
+}
+
+func (req *engineStartRunRequest) TraceTags() []string {
+	if req.Trace == nil {
+		return nil
+	}
+	return append([]string(nil), req.Trace.Tags...)
+}
+
+func (req *engineStartRunRequest) TraceEnvironment() string {
+	if req.Trace == nil {
+		return ""
+	}
+	return req.Trace.Environment
+}
+
+func (req *engineStartRunRequest) TraceRelease() string {
+	if req.Trace == nil {
+		return ""
+	}
+	return req.Trace.Release
+}
+
+func mergeSessionUpdate(
+	session *platformdb.Session,
+	input *engineStartSession,
+) (*platformdb.UpdateSessionParams, error) {
+	if input == nil || session == nil {
+		return nil, nil
+	}
+
+	existingMetadata, err := parseJSONObjectBytes(session.Metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	updated := false
+	name := session.Name
+	if !stringsTrimSpaceEmpty(input.Name) {
+		name = stringPtr(input.Name)
+		updated = true
+	}
+
+	mergedMetadata := mergeJSONObject(existingMetadata, input.Metadata)
+	if len(input.Metadata) > 0 {
+		updated = true
+	}
+	metadataBytes, err := marshalJSONObject(mergedMetadata)
+	if err != nil {
+		return nil, err
+	}
+
+	if !updated {
+		return nil, nil
+	}
+
+	return &platformdb.UpdateSessionParams{
+		ID:       session.ID,
+		Name:     name,
+		Metadata: metadataBytes,
+	}, nil
+}
+
+func mergeJSONObject(base, incoming map[string]any) map[string]any {
+	if len(base) == 0 && len(incoming) == 0 {
+		return map[string]any{}
+	}
+
+	merged := make(map[string]any, len(base)+len(incoming))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range incoming {
+		merged[key] = value
+	}
+	return merged
+}
+
+func parseJSONObjectBytes(raw []byte) (map[string]any, error) {
+	if len(raw) == 0 {
+		return map[string]any{}, nil
+	}
+
+	var value map[string]any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	if value == nil {
+		return map[string]any{}, nil
+	}
+	return value, nil
+}
+
+func marshalJSONObject(value map[string]any) ([]byte, error) {
+	if len(value) == 0 {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(value)
+}
+
+func wakeRunIfWaiting(
+	ctx context.Context,
+	engineTx *enginedb.Queries,
+	run *enginedb.EngineRun,
+) (enginedb.EngineRun, bool, error) {
+	if run == nil {
+		return enginedb.EngineRun{}, false, errors.New("run is required")
+	}
+	updatedRun, err := engineTx.WakeWaitingRun(ctx, run.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return *run, false, nil
+		}
+		return enginedb.EngineRun{}, false, err
+	}
+	return updatedRun, true, nil
+}
+
+func syncProjectedTraceSummary(
+	ctx context.Context,
+	tx *store.Tx,
+	engineTx *enginedb.Queries,
+	run *enginedb.EngineRun,
+) error {
+	if run == nil {
+		return errors.New("run is required")
+	}
+	pendingActivityTasks, err := engineTx.CountOpenActivityTasksByRun(ctx, run.ID)
+	if err != nil {
+		return err
+	}
+
+	pendingInboxItems, err := engineTx.CountOpenInboxByRun(ctx, pgtype.UUID{Bytes: run.ID, Valid: true})
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.UpdateEngineTraceSummary(ctx, &platformdb.UpdateEngineTraceSummaryParams{
+		EngineRunID:                pgtype.UUID{Bytes: run.ID, Valid: true},
+		EngineRunStatus:            stringPtr(string(run.Status)),
+		EngineCustomStatus:         cloneRaw(run.CustomStatus),
+		EngineWaitState:            cloneRaw(run.WaitingFor),
+		EnginePendingActivityTasks: int64Ptr(pendingActivityTasks),
+		EnginePendingInboxItems:    int64Ptr(pendingInboxItems),
+	})
+	return err
+}
+
+func isTerminalEngineRun(status enginedb.EngineRunLifecycleStatus) bool {
+	switch status {
+	case enginedb.EngineRunLifecycleStatusCompleted,
+		enginedb.EngineRunLifecycleStatusFailed,
+		enginedb.EngineRunLifecycleStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func pgTimePtr(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Time
+}

@@ -181,6 +181,9 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 		SELECT DISTINCT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release,
 		       t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost,
 		       t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out,
+		       t.engine_run_id, t.engine_definition_name, t.engine_definition_version, t.engine_projection_state,
+		       t.engine_latest_history_id, t.engine_last_projected_history_id, t.engine_projection_updated_at, t.engine_instance_key,
+		       t.engine_run_status, t.engine_custom_status, t.engine_wait_state, t.engine_pending_activity_tasks, t.engine_pending_inbox_items,
 		       sess.external_id AS session_external_id%s%s
 		%s
 		WHERE %s
@@ -207,7 +210,11 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 			&trace.Tags, &trace.Environment, &trace.Release, &trace.Metadata, &trace.Input, &trace.Output,
 			&trace.Status, &trace.StartTime, &trace.EndTime, &trace.ServerReceivedAt, &trace.DurationMs,
 			&trace.TotalSpans, &trace.TotalCost, &trace.ErrorCount, &trace.Version, &trace.CreatedAt,
-			&trace.UpdatedAt, &trace.SearchVector, &trace.TotalTokensIn, &trace.TotalTokensOut, &trace.SessionExternalID,
+			&trace.UpdatedAt, &trace.SearchVector, &trace.TotalTokensIn, &trace.TotalTokensOut,
+			&trace.EngineRunID, &trace.EngineDefinitionName, &trace.EngineDefinitionVersion, &trace.EngineProjectionState,
+			&trace.EngineLatestHistoryID, &trace.EngineLastProjectedHistoryID, &trace.EngineProjectionUpdatedAt, &trace.EngineInstanceKey,
+			&trace.EngineRunStatus, &trace.EngineCustomStatus, &trace.EngineWaitState, &trace.EnginePendingActivityTasks, &trace.EnginePendingInboxItems,
+			&trace.SessionExternalID,
 		}
 		if hasSearchQuery {
 			scanArgs = append(scanArgs, &traceMatchPriority, &combinedRank)

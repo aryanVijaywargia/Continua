@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -69,6 +70,24 @@ const (
 	CompareTraceHeaderStatusCOMPLETED CompareTraceHeaderStatus = "COMPLETED"
 	CompareTraceHeaderStatusFAILED    CompareTraceHeaderStatus = "FAILED"
 	CompareTraceHeaderStatusRUNNING   CompareTraceHeaderStatus = "RUNNING"
+)
+
+// Defines values for EngineProjectionState.
+const (
+	CatchingUp     EngineProjectionState = "catching_up"
+	JournalExpired EngineProjectionState = "journal_expired"
+	SummaryOnly    EngineProjectionState = "summary_only"
+	UpToDate       EngineProjectionState = "up_to_date"
+)
+
+// Defines values for EngineRunStatus.
+const (
+	EngineRunStatusCANCELLED EngineRunStatus = "CANCELLED"
+	EngineRunStatusCOMPLETED EngineRunStatus = "COMPLETED"
+	EngineRunStatusFAILED    EngineRunStatus = "FAILED"
+	EngineRunStatusQUEUED    EngineRunStatus = "QUEUED"
+	EngineRunStatusRUNNING   EngineRunStatus = "RUNNING"
+	EngineRunStatusWAITING   EngineRunStatus = "WAITING"
 )
 
 // Defines values for IngestEventLevel.
@@ -215,9 +234,9 @@ const (
 
 // Defines values for TraceDetailStatus.
 const (
-	COMPLETED TraceDetailStatus = "COMPLETED"
-	FAILED    TraceDetailStatus = "FAILED"
-	RUNNING   TraceDetailStatus = "RUNNING"
+	TraceDetailStatusCOMPLETED TraceDetailStatus = "COMPLETED"
+	TraceDetailStatusFAILED    TraceDetailStatus = "FAILED"
+	TraceDetailStatusRUNNING   TraceDetailStatus = "RUNNING"
 )
 
 // Defines values for ListSessionsParamsSortBy.
@@ -342,6 +361,7 @@ type CompareSummary struct {
 type CompareTraceHeader struct {
 	DurationMs     *int64                   `json:"duration_ms,omitempty"`
 	EndedAt        *time.Time               `json:"ended_at,omitempty"`
+	Engine         *EngineTraceInfo         `json:"engine,omitempty"`
 	ErrorCount     *int                     `json:"error_count,omitempty"`
 	Id             openapi_types.UUID       `json:"id"`
 	Name           string                   `json:"name"`
@@ -372,6 +392,172 @@ type ComparisonTooLargeErrorDetail struct {
 	CandidateSpanCount     int `json:"candidate_span_count"`
 	MaxSemanticEvents      int `json:"max_semantic_events"`
 	MaxSpans               int `json:"max_spans"`
+}
+
+// EngineControlResponse defines model for EngineControlResponse.
+type EngineControlResponse struct {
+	Accepted    bool               `json:"accepted"`
+	InstanceKey string             `json:"instance_key"`
+	RunId       openapi_types.UUID `json:"run_id"`
+	WakeApplied bool               `json:"wake_applied"`
+}
+
+// EngineFailureSummary defines model for EngineFailureSummary.
+type EngineFailureSummary struct {
+	ErrorCode    string `json:"error_code"`
+	ErrorMessage string `json:"error_message"`
+	Status       string `json:"status"`
+}
+
+// EngineHistoryEvent defines model for EngineHistoryEvent.
+type EngineHistoryEvent struct {
+	CreatedAt  time.Time               `json:"created_at"`
+	EventType  string                  `json:"event_type"`
+	Id         int64                   `json:"id"`
+	Payload    *map[string]interface{} `json:"payload,omitempty"`
+	SequenceNo int32                   `json:"sequence_no"`
+}
+
+// EngineInstanceResponse defines model for EngineInstanceResponse.
+type EngineInstanceResponse struct {
+	CurrentRun     EngineRunSummary   `json:"current_run"`
+	DefinitionName string             `json:"definition_name"`
+	InstanceId     openapi_types.UUID `json:"instance_id"`
+	InstanceKey    string             `json:"instance_key"`
+	Status         string             `json:"status"`
+}
+
+// EnginePendingWork defines model for EnginePendingWork.
+type EnginePendingWork struct {
+	PendingActivityTasks int64 `json:"pending_activity_tasks"`
+	PendingInboxItems    int64 `json:"pending_inbox_items"`
+}
+
+// EngineProjectionState defines model for EngineProjectionState.
+type EngineProjectionState string
+
+// EngineRunHistoryResponse defines model for EngineRunHistoryResponse.
+type EngineRunHistoryResponse struct {
+	Events    []EngineHistoryEvent `json:"events"`
+	HasMore   bool                 `json:"has_more"`
+	NextAfter *int                 `json:"next_after,omitempty"`
+}
+
+// EngineRunResponse defines model for EngineRunResponse.
+type EngineRunResponse struct {
+	CompletedAt       *time.Time              `json:"completed_at,omitempty"`
+	CreatedAt         time.Time               `json:"created_at"`
+	CustomStatus      *map[string]interface{} `json:"custom_status,omitempty"`
+	DefinitionName    string                  `json:"definition_name"`
+	DefinitionVersion string                  `json:"definition_version"`
+	Failure           *EngineFailureSummary   `json:"failure,omitempty"`
+	InstanceId        openapi_types.UUID      `json:"instance_id"`
+	InstanceKey       string                  `json:"instance_key"`
+	PendingWork       EnginePendingWork       `json:"pending_work"`
+	ProjectionState   EngineProjectionState   `json:"projection_state"`
+
+	// Result Terminal workflow result payload when available.
+	Result    interface{}        `json:"result,omitempty"`
+	RunId     openapi_types.UUID `json:"run_id"`
+	Status    EngineRunStatus    `json:"status"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	WaitState *EngineWaitState   `json:"wait_state,omitempty"`
+}
+
+// EngineRunResultResponse defines model for EngineRunResultResponse.
+type EngineRunResultResponse struct {
+	Failure *EngineFailureSummary `json:"failure,omitempty"`
+
+	// Result Terminal workflow result payload when available.
+	Result interface{}        `json:"result,omitempty"`
+	RunId  openapi_types.UUID `json:"run_id"`
+	Status EngineRunStatus    `json:"status"`
+}
+
+// EngineRunStatus defines model for EngineRunStatus.
+type EngineRunStatus string
+
+// EngineRunSummary defines model for EngineRunSummary.
+type EngineRunSummary struct {
+	CompletedAt       *time.Time              `json:"completed_at,omitempty"`
+	CreatedAt         time.Time               `json:"created_at"`
+	CustomStatus      *map[string]interface{} `json:"custom_status,omitempty"`
+	DefinitionName    string                  `json:"definition_name"`
+	DefinitionVersion string                  `json:"definition_version"`
+	Failure           *EngineFailureSummary   `json:"failure,omitempty"`
+	InstanceKey       string                  `json:"instance_key"`
+	PendingWork       EnginePendingWork       `json:"pending_work"`
+	ProjectionState   EngineProjectionState   `json:"projection_state"`
+
+	// Result Terminal workflow result payload when available.
+	Result    interface{}        `json:"result,omitempty"`
+	RunId     openapi_types.UUID `json:"run_id"`
+	Status    EngineRunStatus    `json:"status"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	WaitState *EngineWaitState   `json:"wait_state,omitempty"`
+}
+
+// EngineSignalRunRequest defines model for EngineSignalRunRequest.
+type EngineSignalRunRequest struct {
+	// Payload Signal payload (any valid JSON)
+	Payload    interface{} `json:"payload,omitempty"`
+	SignalName string      `json:"signal_name"`
+}
+
+// EngineStartRunRequest defines model for EngineStartRunRequest.
+type EngineStartRunRequest struct {
+	DefinitionName    string `json:"definition_name"`
+	DefinitionVersion string `json:"definition_version"`
+
+	// Input Workflow input payload (any valid JSON)
+	Input       interface{}         `json:"input,omitempty"`
+	InstanceKey string              `json:"instance_key"`
+	RequestKey  string              `json:"request_key"`
+	Session     *EngineStartSession `json:"session,omitempty"`
+	Trace       *EngineStartTrace   `json:"trace,omitempty"`
+}
+
+// EngineStartRunResponse defines model for EngineStartRunResponse.
+type EngineStartRunResponse struct {
+	InstanceKey string             `json:"instance_key"`
+	RunId       openapi_types.UUID `json:"run_id"`
+	TraceId     string             `json:"trace_id"`
+}
+
+// EngineStartSession defines model for EngineStartSession.
+type EngineStartSession struct {
+	Key      *string                 `json:"key,omitempty"`
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Name     *string                 `json:"name,omitempty"`
+}
+
+// EngineStartTrace defines model for EngineStartTrace.
+type EngineStartTrace struct {
+	Environment *string                 `json:"environment,omitempty"`
+	Metadata    *map[string]interface{} `json:"metadata,omitempty"`
+	Name        *string                 `json:"name,omitempty"`
+	Release     *string                 `json:"release,omitempty"`
+	Tags        *[]string               `json:"tags,omitempty"`
+	UserId      *string                 `json:"user_id,omitempty"`
+}
+
+// EngineTraceInfo defines model for EngineTraceInfo.
+type EngineTraceInfo struct {
+	DefinitionName    string                `json:"definition_name"`
+	DefinitionVersion string                `json:"definition_version"`
+	ProjectionState   EngineProjectionState `json:"projection_state"`
+	RunId             openapi_types.UUID    `json:"run_id"`
+}
+
+// EngineWaitState defines model for EngineWaitState.
+type EngineWaitState struct {
+	ActivityKey          *string                `json:"activity_key,omitempty"`
+	ActivityType         *string                `json:"activity_type,omitempty"`
+	DueAt                *time.Time             `json:"due_at,omitempty"`
+	Kind                 *string                `json:"kind,omitempty"`
+	SignalName           *string                `json:"signal_name,omitempty"`
+	TimerKey             *string                `json:"timer_key,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
 // Error defines model for Error.
@@ -739,6 +925,9 @@ type TimelineEventType string
 
 // TimelineResponse defines model for TimelineResponse.
 type TimelineResponse struct {
+	Engine *struct {
+		ProjectionState EngineProjectionState `json:"projection_state"`
+	} `json:"engine,omitempty"`
 	Events  []TimelineEvent `json:"events"`
 	HasMore bool            `json:"has_more"`
 
@@ -755,7 +944,8 @@ type TimelineResponseTraceStatus string
 
 // Trace defines model for Trace.
 type Trace struct {
-	EndedAt *time.Time `json:"ended_at,omitempty"`
+	EndedAt *time.Time       `json:"ended_at,omitempty"`
+	Engine  *EngineTraceInfo `json:"engine,omitempty"`
 
 	// ErrorCount Count of failed spans in this trace
 	ErrorCount        *int                    `json:"error_count,omitempty"`
@@ -776,8 +966,9 @@ type TraceStatus string
 
 // TraceDetail defines model for TraceDetail.
 type TraceDetail struct {
-	EndedAt     *time.Time `json:"ended_at,omitempty"`
-	Environment *string    `json:"environment,omitempty"`
+	EndedAt     *time.Time        `json:"ended_at,omitempty"`
+	Engine      *EngineRunSummary `json:"engine,omitempty"`
+	Environment *string           `json:"environment,omitempty"`
 
 	// ErrorCount Count of failed spans in this trace
 	ErrorCount *int               `json:"error_count,omitempty"`
@@ -894,6 +1085,30 @@ type GetTraceEventsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// StartEngineRunParams defines parameters for StartEngineRun.
+type StartEngineRunParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
+}
+
+// CancelEngineRunParams defines parameters for CancelEngineRun.
+type CancelEngineRunParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
+}
+
+// GetEngineRunHistoryParams defines parameters for GetEngineRunHistory.
+type GetEngineRunHistoryParams struct {
+	After *int `form:"after,omitempty" json:"after,omitempty"`
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// SignalEngineRunParams defines parameters for SignalEngineRun.
+type SignalEngineRunParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
+}
+
 // IngestParams defines parameters for Ingest.
 type IngestParams struct {
 	// Sync If true, wait for processing to complete before returning
@@ -905,8 +1120,157 @@ type IngestParams struct {
 	XContinuaAsyncVersion *string `json:"X-Continua-Async-Version,omitempty"`
 }
 
+// StartEngineRunJSONRequestBody defines body for StartEngineRun for application/json ContentType.
+type StartEngineRunJSONRequestBody = EngineStartRunRequest
+
+// SignalEngineRunJSONRequestBody defines body for SignalEngineRun for application/json ContentType.
+type SignalEngineRunJSONRequestBody = EngineSignalRunRequest
+
 // IngestJSONRequestBody defines body for Ingest for application/json ContentType.
 type IngestJSONRequestBody = IngestRequest
+
+// Getter for additional properties for EngineWaitState. Returns the specified
+// element and whether it was found
+func (a EngineWaitState) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for EngineWaitState
+func (a *EngineWaitState) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for EngineWaitState to handle AdditionalProperties
+func (a *EngineWaitState) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["activity_key"]; found {
+		err = json.Unmarshal(raw, &a.ActivityKey)
+		if err != nil {
+			return fmt.Errorf("error reading 'activity_key': %w", err)
+		}
+		delete(object, "activity_key")
+	}
+
+	if raw, found := object["activity_type"]; found {
+		err = json.Unmarshal(raw, &a.ActivityType)
+		if err != nil {
+			return fmt.Errorf("error reading 'activity_type': %w", err)
+		}
+		delete(object, "activity_type")
+	}
+
+	if raw, found := object["due_at"]; found {
+		err = json.Unmarshal(raw, &a.DueAt)
+		if err != nil {
+			return fmt.Errorf("error reading 'due_at': %w", err)
+		}
+		delete(object, "due_at")
+	}
+
+	if raw, found := object["kind"]; found {
+		err = json.Unmarshal(raw, &a.Kind)
+		if err != nil {
+			return fmt.Errorf("error reading 'kind': %w", err)
+		}
+		delete(object, "kind")
+	}
+
+	if raw, found := object["signal_name"]; found {
+		err = json.Unmarshal(raw, &a.SignalName)
+		if err != nil {
+			return fmt.Errorf("error reading 'signal_name': %w", err)
+		}
+		delete(object, "signal_name")
+	}
+
+	if raw, found := object["timer_key"]; found {
+		err = json.Unmarshal(raw, &a.TimerKey)
+		if err != nil {
+			return fmt.Errorf("error reading 'timer_key': %w", err)
+		}
+		delete(object, "timer_key")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for EngineWaitState to handle AdditionalProperties
+func (a EngineWaitState) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.ActivityKey != nil {
+		object["activity_key"], err = json.Marshal(a.ActivityKey)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'activity_key': %w", err)
+		}
+	}
+
+	if a.ActivityType != nil {
+		object["activity_type"], err = json.Marshal(a.ActivityType)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'activity_type': %w", err)
+		}
+	}
+
+	if a.DueAt != nil {
+		object["due_at"], err = json.Marshal(a.DueAt)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'due_at': %w", err)
+		}
+	}
+
+	if a.Kind != nil {
+		object["kind"], err = json.Marshal(a.Kind)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'kind': %w", err)
+		}
+	}
+
+	if a.SignalName != nil {
+		object["signal_name"], err = json.Marshal(a.SignalName)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'signal_name': %w", err)
+		}
+	}
+
+	if a.TimerKey != nil {
+		object["timer_key"], err = json.Marshal(a.TimerKey)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'timer_key': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -934,6 +1298,27 @@ type ServerInterface interface {
 	// List spans for a trace
 	// (GET /api/traces/{id}/spans)
 	ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Get an engine instance and current run
+	// (GET /v1/engine/instances/{instance_key})
+	GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string)
+	// Start an engine workflow run
+	// (POST /v1/engine/runs)
+	StartEngineRun(w http.ResponseWriter, r *http.Request, params StartEngineRunParams)
+	// Get an engine run
+	// (GET /v1/engine/runs/{run_id})
+	GetEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
+	// Request cancellation of an engine run
+	// (POST /v1/engine/runs/{run_id}/cancel)
+	CancelEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params CancelEngineRunParams)
+	// Get engine run history
+	// (GET /v1/engine/runs/{run_id}/history)
+	GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params GetEngineRunHistoryParams)
+	// Get the terminal result for an engine run
+	// (GET /v1/engine/runs/{run_id}/result)
+	GetEngineRunResult(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
+	// Deliver a signal to an engine run
+	// (POST /v1/engine/runs/{run_id}/signal)
+	SignalEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params SignalEngineRunParams)
 	// Ingest traces, spans, and events
 	// (POST /v1/ingest)
 	Ingest(w http.ResponseWriter, r *http.Request, params IngestParams)
@@ -991,6 +1376,48 @@ func (_ Unimplemented) GetTraceEvents(w http.ResponseWriter, r *http.Request, id
 // List spans for a trace
 // (GET /api/traces/{id}/spans)
 func (_ Unimplemented) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get an engine instance and current run
+// (GET /v1/engine/instances/{instance_key})
+func (_ Unimplemented) GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Start an engine workflow run
+// (POST /v1/engine/runs)
+func (_ Unimplemented) StartEngineRun(w http.ResponseWriter, r *http.Request, params StartEngineRunParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get an engine run
+// (GET /v1/engine/runs/{run_id})
+func (_ Unimplemented) GetEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Request cancellation of an engine run
+// (POST /v1/engine/runs/{run_id}/cancel)
+func (_ Unimplemented) CancelEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params CancelEngineRunParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get engine run history
+// (GET /v1/engine/runs/{run_id}/history)
+func (_ Unimplemented) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params GetEngineRunHistoryParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get the terminal result for an engine run
+// (GET /v1/engine/runs/{run_id}/result)
+func (_ Unimplemented) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Deliver a signal to an engine run
+// (POST /v1/engine/runs/{run_id}/signal)
+func (_ Unimplemented) SignalEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params SignalEngineRunParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1447,6 +1874,305 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetEngineInstance operation middleware
+func (siw *ServerInterfaceWrapper) GetEngineInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "instance_key" -------------
+	var instanceKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "instance_key", chi.URLParam(r, "instance_key"), &instanceKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "instance_key", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEngineInstance(w, r, instanceKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartEngineRun operation middleware
+func (siw *ServerInterfaceWrapper) StartEngineRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StartEngineRunParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartEngineRun(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEngineRun operation middleware
+func (siw *ServerInterfaceWrapper) GetEngineRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEngineRun(w, r, runId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelEngineRun operation middleware
+func (siw *ServerInterfaceWrapper) CancelEngineRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CancelEngineRunParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelEngineRun(w, r, runId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEngineRunHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetEngineRunHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEngineRunHistoryParams
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "after", r.URL.Query(), &params.After)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEngineRunHistory(w, r, runId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEngineRunResult operation middleware
+func (siw *ServerInterfaceWrapper) GetEngineRunResult(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEngineRunResult(w, r, runId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SignalEngineRun operation middleware
+func (siw *ServerInterfaceWrapper) SignalEngineRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SignalEngineRunParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SignalEngineRun(w, r, runId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Ingest operation middleware
 func (siw *ServerInterfaceWrapper) Ingest(w http.ResponseWriter, r *http.Request) {
 
@@ -1668,6 +2394,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/traces/{id}/spans", wrapper.ListSpansByTrace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/engine/instances/{instance_key}", wrapper.GetEngineInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/runs", wrapper.StartEngineRun)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/engine/runs/{run_id}", wrapper.GetEngineRun)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/runs/{run_id}/cancel", wrapper.CancelEngineRun)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/engine/runs/{run_id}/history", wrapper.GetEngineRunHistory)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/engine/runs/{run_id}/result", wrapper.GetEngineRunResult)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/runs/{run_id}/signal", wrapper.SignalEngineRun)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/ingest", wrapper.Ingest)

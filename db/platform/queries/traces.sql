@@ -61,6 +61,41 @@ INSERT INTO traces (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING *;
 
+-- name: CreateEngineTraceShell :one
+INSERT INTO traces (
+    project_id, session_id, trace_id, name, user_id, tags,
+    environment, release, metadata, input, output,
+    status, start_time, end_time,
+    engine_run_id, engine_instance_key, engine_run_status,
+    engine_custom_status, engine_wait_state, engine_pending_activity_tasks,
+    engine_pending_inbox_items, engine_definition_name, engine_definition_version,
+    engine_projection_state, engine_latest_history_id,
+    engine_last_projected_history_id, engine_projection_updated_at
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11,
+    $12, $13, $14,
+    $15, $16, $17,
+    $18, $19, $20,
+    $21, $22, $23,
+    $24, $25,
+    $26, $27
+)
+RETURNING *;
+
+-- name: UpdateEngineTraceSummary :one
+UPDATE traces
+SET engine_run_status = $2,
+    engine_custom_status = $3,
+    engine_wait_state = $4,
+    engine_pending_activity_tasks = $5,
+    engine_pending_inbox_items = $6,
+    updated_at = NOW(),
+    version = COALESCE(version, 1) + 1
+WHERE engine_run_id = $1
+RETURNING *;
+
 -- name: UpsertTrace :one
 -- Upsert trace with patch semantics: NULL values don't overwrite existing.
 -- Status is protected: 'failed'/'error' status can never be downgraded.

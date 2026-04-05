@@ -127,3 +127,91 @@ func (q *Queries) GetHistoryByRun(ctx context.Context, runID uuid.UUID) ([]Engin
 	}
 	return items, nil
 }
+
+const listHistoryByRunAfterID = `-- name: ListHistoryByRunAfterID :many
+SELECT id, project_id, instance_id, run_id, sequence_no, event_type, payload, created_at
+FROM engine.history
+WHERE run_id = $1
+  AND id > $2
+ORDER BY id ASC
+LIMIT $3
+`
+
+type ListHistoryByRunAfterIDParams struct {
+	RunID uuid.UUID `json:"run_id"`
+	ID    int64     `json:"id"`
+	Limit int32     `json:"limit"`
+}
+
+func (q *Queries) ListHistoryByRunAfterID(ctx context.Context, arg ListHistoryByRunAfterIDParams) ([]EngineHistory, error) {
+	rows, err := q.db.Query(ctx, listHistoryByRunAfterID, arg.RunID, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineHistory{}
+	for rows.Next() {
+		var i EngineHistory
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.SequenceNo,
+			&i.EventType,
+			&i.Payload,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHistoryByRunAfterSequence = `-- name: ListHistoryByRunAfterSequence :many
+SELECT id, project_id, instance_id, run_id, sequence_no, event_type, payload, created_at
+FROM engine.history
+WHERE run_id = $1
+  AND sequence_no > $2
+ORDER BY sequence_no ASC, id ASC
+LIMIT $3
+`
+
+type ListHistoryByRunAfterSequenceParams struct {
+	RunID      uuid.UUID `json:"run_id"`
+	SequenceNo int32     `json:"sequence_no"`
+	Limit      int32     `json:"limit"`
+}
+
+func (q *Queries) ListHistoryByRunAfterSequence(ctx context.Context, arg ListHistoryByRunAfterSequenceParams) ([]EngineHistory, error) {
+	rows, err := q.db.Query(ctx, listHistoryByRunAfterSequence, arg.RunID, arg.SequenceNo, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineHistory{}
+	for rows.Next() {
+		var i EngineHistory
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.SequenceNo,
+			&i.EventType,
+			&i.Payload,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

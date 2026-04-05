@@ -137,6 +137,11 @@ jobs:
         env:
           DATABASE_URL: postgres://continua:continua@localhost:5432/continua_test?sslmode=disable
 
+      - name: Run engine DB migrations
+        run: cd engine && go run ./cmd/continua-engine migrate up
+        env:
+          DATABASE_URL: postgres://continua:continua@localhost:5432/continua_test?sslmode=disable
+
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
         env:

@@ -15,12 +15,15 @@ import {
   fetchSpans,
   fetchTrace,
   isAuthError,
+  type EngineWaitState,
   type Span,
   type TimelineEvent,
   type TraceDetail,
 } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { CopyButton } from '../components/CopyButton';
+import { EngineBadge } from '../components/EngineBadge';
+import { EngineProjectionBanner } from '../components/EngineProjectionBanner';
 import { ExecutionWaterfall } from '../components/ExecutionWaterfall';
 import { FailureSummary } from '../components/FailureSummary';
 import { InspectorTabs } from '../components/InspectorTabs';
@@ -85,6 +88,42 @@ const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
 
 function queryErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function describeEngineWaitState(waitState?: EngineWaitState): {
+  heading: string;
+  detail: string;
+} | null {
+  if (!waitState?.kind) {
+    return null;
+  }
+
+  switch (waitState.kind) {
+    case 'activity':
+      return {
+        heading: 'Waiting on activity',
+        detail: waitState.activity_type
+          ? `${waitState.activity_type}${waitState.activity_key ? ` · ${waitState.activity_key}` : ''}`
+          : (waitState.activity_key ?? 'Activity work'),
+      };
+    case 'timer':
+      return {
+        heading: 'Waiting on timer',
+        detail: waitState.due_at
+          ? `Scheduled for ${formatTimestamp(waitState.due_at)}`
+          : (waitState.timer_key ?? 'Timer wait'),
+      };
+    case 'signal':
+      return {
+        heading: 'Waiting on signal',
+        detail: waitState.signal_name ?? 'Signal receipt',
+      };
+    default:
+      return {
+        heading: 'Waiting on engine state',
+        detail: waitState.kind,
+      };
+  }
 }
 
 export function TraceDetailPage() {
@@ -315,6 +354,9 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
               <h1 className="truncate text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">
                 {trace.name}
               </h1>
+              {trace.engine ? (
+                <EngineBadge projectionState={trace.engine.projection_state} />
+              ) : null}
               <StatusBadge status={timelineStatus ?? trace.status} />
             </div>
 
@@ -327,7 +369,16 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
                   {trace.session_external_id}
                 </span>
               ) : null}
+              {trace.engine ? (
+                <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2.5 py-1">
+                  {trace.engine.definition_name}@{trace.engine.definition_version}
+                </span>
+              ) : null}
             </div>
+
+            {trace.engine?.status === 'WAITING' ? (
+              <EngineWaitStateSummary engine={trace.engine} />
+            ) : null}
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <TraceHeaderMetric label="Duration" value={formatDuration(duration)} />
@@ -365,6 +416,8 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       {timelineAuthError ? (
         <AuthErrorBanner message={queryErrorMessage(timeline.rawError)} />
       ) : null}
+
+      <EngineProjectionBanner projectionState={trace.engine?.projection_state} />
 
       <div className="min-h-[42rem] flex-1">
         <TraceWorkspace
@@ -418,6 +471,29 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
         />
       ) : null}
     </div>
+  );
+}
+
+function EngineWaitStateSummary({
+  engine,
+}: {
+  engine: NonNullable<TraceDetail['engine']>;
+}) {
+  const summary = describeEngineWaitState(engine.wait_state);
+  if (!summary) {
+    return null;
+  }
+
+  return (
+    <section className="mt-4 rounded-[1.25rem] border border-sky-300/40 bg-sky-50/80 px-4 py-3 text-sky-900 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">{summary.heading}</h2>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-75">
+          {engine.pending_work.pending_activity_tasks} tasks · {engine.pending_work.pending_inbox_items} inbox
+        </span>
+      </div>
+      <p className="mt-1 text-sm leading-6">{summary.detail}</p>
+    </section>
   );
 }
 

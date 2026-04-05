@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class Error(BaseModel):
@@ -23,6 +23,67 @@ class SizeError(BaseModel):
     error: str = Field(
         ..., description="Error message describing the size limit violation"
     )
+
+
+class EngineProjectionState(Enum):
+    up_to_date = "up_to_date"
+    catching_up = "catching_up"
+    summary_only = "summary_only"
+    journal_expired = "journal_expired"
+
+
+class EngineRunStatus(Enum):
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    WAITING = "WAITING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class EngineTraceInfo(BaseModel):
+    run_id: UUID
+    definition_name: str
+    definition_version: str
+    projection_state: EngineProjectionState
+
+
+class EngineWaitState(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    kind: str | None = None
+    activity_key: str | None = None
+    activity_type: str | None = None
+    timer_key: str | None = None
+    due_at: AwareDatetime | None = None
+    signal_name: str | None = None
+
+
+class EnginePendingWork(BaseModel):
+    pending_activity_tasks: int
+    pending_inbox_items: int
+
+
+class EngineFailureSummary(BaseModel):
+    error_code: str
+    error_message: str
+    status: str
+
+
+class EngineRunSummary(EngineTraceInfo):
+    status: EngineRunStatus
+    instance_key: str
+    custom_status: dict[str, Any] | None = None
+    wait_state: EngineWaitState | None = None
+    pending_work: EnginePendingWork
+    result: Any | None = Field(
+        None, description="Terminal workflow result payload when available."
+    )
+    failure: EngineFailureSummary | None = None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    completed_at: AwareDatetime | None = None
 
 
 class Status(Enum):
@@ -46,6 +107,7 @@ class Trace(BaseModel):
         None, description="Count of failed spans in this trace"
     )
     metadata: dict[str, Any] | None = None
+    engine: EngineTraceInfo | None = None
 
 
 class TraceDetail(Trace):
@@ -58,6 +120,87 @@ class TraceDetail(Trace):
     output: Any | None = Field(
         None, description="Trace output payload (any valid JSON)"
     )
+    engine: EngineRunSummary | None = None
+
+
+class EngineStartSession(BaseModel):
+    key: str | None = None
+    name: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class EngineStartTrace(BaseModel):
+    name: str | None = None
+    user_id: str | None = None
+    tags: list[str] | None = None
+    environment: str | None = None
+    release: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class EngineStartRunRequest(BaseModel):
+    instance_key: str
+    definition_name: str
+    definition_version: str
+    request_key: str
+    input: Any | None = Field(
+        None, description="Workflow input payload (any valid JSON)"
+    )
+    session: EngineStartSession | None = None
+    trace: EngineStartTrace | None = None
+
+
+class EngineStartRunResponse(BaseModel):
+    run_id: UUID
+    instance_key: str
+    trace_id: str
+
+
+class EngineInstanceResponse(BaseModel):
+    instance_id: UUID
+    instance_key: str
+    definition_name: str
+    status: str
+    current_run: EngineRunSummary
+
+
+class EngineRunResponse(EngineRunSummary):
+    instance_id: UUID
+
+
+class EngineRunResultResponse(BaseModel):
+    run_id: UUID
+    status: EngineRunStatus
+    result: Any | None = Field(
+        None, description="Terminal workflow result payload when available."
+    )
+    failure: EngineFailureSummary | None = None
+
+
+class EngineHistoryEvent(BaseModel):
+    id: int
+    sequence_no: int
+    event_type: str
+    payload: dict[str, Any] | None = None
+    created_at: AwareDatetime
+
+
+class EngineRunHistoryResponse(BaseModel):
+    events: list[EngineHistoryEvent]
+    has_more: bool
+    next_after: int | None = None
+
+
+class EngineSignalRunRequest(BaseModel):
+    signal_name: str
+    payload: Any | None = Field(None, description="Signal payload (any valid JSON)")
+
+
+class EngineControlResponse(BaseModel):
+    run_id: UUID
+    instance_key: str
+    accepted: bool
+    wake_applied: bool
 
 
 class TraceList(BaseModel):
@@ -226,6 +369,7 @@ class CompareTraceHeader(BaseModel):
     total_cost_usd: float | None = None
     total_tokens_in: int | None = None
     total_tokens_out: int | None = None
+    engine: EngineTraceInfo | None = None
 
 
 class CompareSummary(BaseModel):
@@ -474,6 +618,10 @@ class TraceStatus(Enum):
     FAILED = "FAILED"
 
 
+class Engine(BaseModel):
+    projection_state: EngineProjectionState
+
+
 class TimelineResponse(BaseModel):
     events: list[TimelineEvent]
     trace_status: TraceStatus
@@ -485,6 +633,7 @@ class TimelineResponse(BaseModel):
         None,
         description="Opaque cursor representing the last event included in this response. Use for incremental polling even when `has_more` is false.",
     )
+    engine: Engine | None = None
 
 
 class Status7(Enum):

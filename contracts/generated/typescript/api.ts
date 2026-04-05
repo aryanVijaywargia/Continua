@@ -47,6 +47,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/engine/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start an engine workflow run */
+        post: operations["startEngineRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/instances/{instance_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an engine instance and current run */
+        get: operations["getEngineInstance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an engine run */
+        get: operations["getEngineRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the terminal result for an engine run */
+        get: operations["getEngineRunResult"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get engine run history */
+        get: operations["getEngineRunHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}/signal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deliver a signal to an engine run */
+        post: operations["signalEngineRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request cancellation of an engine run */
+        post: operations["cancelEngineRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/traces": {
         parameters: {
             query?: never;
@@ -196,6 +315,55 @@ export interface components {
             /** @description Error message describing the size limit violation */
             error: string;
         };
+        /** @enum {string} */
+        EngineProjectionState: "up_to_date" | "catching_up" | "summary_only" | "journal_expired";
+        /** @enum {string} */
+        EngineRunStatus: "QUEUED" | "RUNNING" | "WAITING" | "COMPLETED" | "FAILED" | "CANCELLED";
+        EngineTraceInfo: {
+            /** Format: uuid */
+            run_id: string;
+            definition_name: string;
+            definition_version: string;
+            projection_state: components["schemas"]["EngineProjectionState"];
+        };
+        EngineWaitState: {
+            kind?: string;
+            activity_key?: string;
+            activity_type?: string;
+            timer_key?: string;
+            /** Format: date-time */
+            due_at?: string;
+            signal_name?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        EnginePendingWork: {
+            /** Format: int64 */
+            pending_activity_tasks: number;
+            /** Format: int64 */
+            pending_inbox_items: number;
+        };
+        EngineFailureSummary: {
+            error_code: string;
+            error_message: string;
+            status: string;
+        };
+        EngineRunSummary: components["schemas"]["EngineTraceInfo"] & {
+            status: components["schemas"]["EngineRunStatus"];
+            instance_key: string;
+            custom_status?: Record<string, never>;
+            wait_state?: components["schemas"]["EngineWaitState"];
+            pending_work: components["schemas"]["EnginePendingWork"];
+            /** @description Terminal workflow result payload when available. */
+            result?: unknown;
+            failure?: components["schemas"]["EngineFailureSummary"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            completed_at?: string;
+        };
         Trace: {
             /** Format: uuid */
             id: string;
@@ -215,6 +383,7 @@ export interface components {
             /** @description Count of failed spans in this trace */
             error_count?: number;
             metadata?: Record<string, never>;
+            engine?: components["schemas"]["EngineTraceInfo"];
         };
         TraceDetail: components["schemas"]["Trace"] & {
             trace_id?: string;
@@ -226,6 +395,83 @@ export interface components {
             input?: unknown;
             /** @description Trace output payload (any valid JSON) */
             output?: unknown;
+            engine?: components["schemas"]["EngineRunSummary"];
+        };
+        EngineStartSession: {
+            key?: string;
+            name?: string;
+            metadata?: Record<string, never>;
+        };
+        EngineStartTrace: {
+            name?: string;
+            user_id?: string;
+            tags?: string[];
+            environment?: string;
+            release?: string;
+            metadata?: Record<string, never>;
+        };
+        EngineStartRunRequest: {
+            instance_key: string;
+            definition_name: string;
+            definition_version: string;
+            request_key: string;
+            /** @description Workflow input payload (any valid JSON) */
+            input?: unknown;
+            session?: components["schemas"]["EngineStartSession"];
+            trace?: components["schemas"]["EngineStartTrace"];
+        };
+        EngineStartRunResponse: {
+            /** Format: uuid */
+            run_id: string;
+            instance_key: string;
+            trace_id: string;
+        };
+        EngineInstanceResponse: {
+            /** Format: uuid */
+            instance_id: string;
+            instance_key: string;
+            definition_name: string;
+            status: string;
+            current_run: components["schemas"]["EngineRunSummary"];
+        };
+        EngineRunResponse: components["schemas"]["EngineRunSummary"] & {
+            /** Format: uuid */
+            instance_id: string;
+        };
+        EngineRunResultResponse: {
+            /** Format: uuid */
+            run_id: string;
+            status: components["schemas"]["EngineRunStatus"];
+            /** @description Terminal workflow result payload when available. */
+            result?: unknown;
+            failure?: components["schemas"]["EngineFailureSummary"];
+        };
+        EngineHistoryEvent: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int32 */
+            sequence_no: number;
+            event_type: string;
+            payload?: Record<string, never>;
+            /** Format: date-time */
+            created_at: string;
+        };
+        EngineRunHistoryResponse: {
+            events: components["schemas"]["EngineHistoryEvent"][];
+            has_more: boolean;
+            next_after?: number;
+        };
+        EngineSignalRunRequest: {
+            signal_name: string;
+            /** @description Signal payload (any valid JSON) */
+            payload?: unknown;
+        };
+        EngineControlResponse: {
+            /** Format: uuid */
+            run_id: string;
+            instance_key: string;
+            accepted: boolean;
+            wake_applied: boolean;
         };
         TraceList: {
             traces: components["schemas"]["Trace"][];
@@ -415,6 +661,7 @@ export interface components {
             total_tokens_in?: number;
             /** Format: int64 */
             total_tokens_out?: number;
+            engine?: components["schemas"]["EngineTraceInfo"];
         };
         CompareSummary: {
             total_spans_baseline: number;
@@ -634,6 +881,9 @@ export interface components {
             next_cursor?: string;
             /** @description Opaque cursor representing the last event included in this response. Use for incremental polling even when `has_more` is false. */
             poll_cursor?: string;
+            engine?: {
+                projection_state: components["schemas"]["EngineProjectionState"];
+            };
         };
         IngestResponse: {
             /**
@@ -797,6 +1047,367 @@ export interface operations {
             };
             /** @description Batch not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    startEngineRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineStartRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Engine run started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineStartRunResponse"];
+                };
+            };
+            /** @description Invalid request or missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Duplicate, in-progress, or conflicting request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEngineInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Engine instance detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineInstanceResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Instance not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEngineRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Engine run detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineRunResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEngineRunResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Engine run terminal result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineRunResultResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not terminal */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEngineRunHistory: {
+        parameters: {
+            query?: {
+                after?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Engine run history page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineRunHistoryResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    signalEngineRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview"?: string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineSignalRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Signal accepted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineControlResponse"];
+                };
+            };
+            /** @description Invalid request or missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run terminal */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelEngineRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview"?: string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancel accepted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineControlResponse"];
+                };
+            };
+            /** @description Missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run terminal */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

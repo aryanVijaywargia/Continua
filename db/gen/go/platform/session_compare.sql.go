@@ -105,6 +105,10 @@ SELECT
     baseline.total_cost AS baseline_total_cost_usd,
     baseline.total_tokens_in AS baseline_total_tokens_in,
     baseline.total_tokens_out AS baseline_total_tokens_out,
+    baseline.engine_run_id AS baseline_engine_run_id,
+    baseline.engine_definition_name AS baseline_engine_definition_name,
+    baseline.engine_definition_version AS baseline_engine_definition_version,
+    baseline.engine_projection_state AS baseline_engine_projection_state,
     candidate.id AS candidate_id,
     candidate.trace_id AS candidate_trace_id,
     candidate.name AS candidate_name,
@@ -122,7 +126,11 @@ SELECT
     COALESCE(candidate.error_count, 0::integer) AS candidate_error_count,
     candidate.total_cost AS candidate_total_cost_usd,
     candidate.total_tokens_in AS candidate_total_tokens_in,
-    candidate.total_tokens_out AS candidate_total_tokens_out
+    candidate.total_tokens_out AS candidate_total_tokens_out,
+    candidate.engine_run_id AS candidate_engine_run_id,
+    candidate.engine_definition_name AS candidate_engine_definition_name,
+    candidate.engine_definition_version AS candidate_engine_definition_version,
+    candidate.engine_projection_state AS candidate_engine_projection_state
 FROM sessions s
 JOIN traces baseline
     ON baseline.id = $3
@@ -144,33 +152,41 @@ type GetCompareValidationParams struct {
 }
 
 type GetCompareValidationRow struct {
-	SessionID               uuid.UUID          `json:"session_id"`
-	SessionExternalID       string             `json:"session_external_id"`
-	SessionName             *string            `json:"session_name"`
-	BaselineID              uuid.UUID          `json:"baseline_id"`
-	BaselineTraceID         string             `json:"baseline_trace_id"`
-	BaselineName            *string            `json:"baseline_name"`
-	BaselineStatus          string             `json:"baseline_status"`
-	BaselineUserID          *string            `json:"baseline_user_id"`
-	BaselineStartedAt       time.Time          `json:"baseline_started_at"`
-	BaselineEndedAt         pgtype.Timestamptz `json:"baseline_ended_at"`
-	BaselineDurationMs      *int64             `json:"baseline_duration_ms"`
-	BaselineErrorCount      *int32             `json:"baseline_error_count"`
-	BaselineTotalCostUsd    pgtype.Numeric     `json:"baseline_total_cost_usd"`
-	BaselineTotalTokensIn   int64              `json:"baseline_total_tokens_in"`
-	BaselineTotalTokensOut  int64              `json:"baseline_total_tokens_out"`
-	CandidateID             uuid.UUID          `json:"candidate_id"`
-	CandidateTraceID        string             `json:"candidate_trace_id"`
-	CandidateName           *string            `json:"candidate_name"`
-	CandidateStatus         string             `json:"candidate_status"`
-	CandidateUserID         *string            `json:"candidate_user_id"`
-	CandidateStartedAt      time.Time          `json:"candidate_started_at"`
-	CandidateEndedAt        pgtype.Timestamptz `json:"candidate_ended_at"`
-	CandidateDurationMs     *int64             `json:"candidate_duration_ms"`
-	CandidateErrorCount     *int32             `json:"candidate_error_count"`
-	CandidateTotalCostUsd   pgtype.Numeric     `json:"candidate_total_cost_usd"`
-	CandidateTotalTokensIn  int64              `json:"candidate_total_tokens_in"`
-	CandidateTotalTokensOut int64              `json:"candidate_total_tokens_out"`
+	SessionID                        uuid.UUID          `json:"session_id"`
+	SessionExternalID                string             `json:"session_external_id"`
+	SessionName                      *string            `json:"session_name"`
+	BaselineID                       uuid.UUID          `json:"baseline_id"`
+	BaselineTraceID                  string             `json:"baseline_trace_id"`
+	BaselineName                     *string            `json:"baseline_name"`
+	BaselineStatus                   string             `json:"baseline_status"`
+	BaselineUserID                   *string            `json:"baseline_user_id"`
+	BaselineStartedAt                time.Time          `json:"baseline_started_at"`
+	BaselineEndedAt                  pgtype.Timestamptz `json:"baseline_ended_at"`
+	BaselineDurationMs               *int64             `json:"baseline_duration_ms"`
+	BaselineErrorCount               *int32             `json:"baseline_error_count"`
+	BaselineTotalCostUsd             pgtype.Numeric     `json:"baseline_total_cost_usd"`
+	BaselineTotalTokensIn            int64              `json:"baseline_total_tokens_in"`
+	BaselineTotalTokensOut           int64              `json:"baseline_total_tokens_out"`
+	BaselineEngineRunID              pgtype.UUID        `json:"baseline_engine_run_id"`
+	BaselineEngineDefinitionName     *string            `json:"baseline_engine_definition_name"`
+	BaselineEngineDefinitionVersion  *string            `json:"baseline_engine_definition_version"`
+	BaselineEngineProjectionState    *string            `json:"baseline_engine_projection_state"`
+	CandidateID                      uuid.UUID          `json:"candidate_id"`
+	CandidateTraceID                 string             `json:"candidate_trace_id"`
+	CandidateName                    *string            `json:"candidate_name"`
+	CandidateStatus                  string             `json:"candidate_status"`
+	CandidateUserID                  *string            `json:"candidate_user_id"`
+	CandidateStartedAt               time.Time          `json:"candidate_started_at"`
+	CandidateEndedAt                 pgtype.Timestamptz `json:"candidate_ended_at"`
+	CandidateDurationMs              *int64             `json:"candidate_duration_ms"`
+	CandidateErrorCount              *int32             `json:"candidate_error_count"`
+	CandidateTotalCostUsd            pgtype.Numeric     `json:"candidate_total_cost_usd"`
+	CandidateTotalTokensIn           int64              `json:"candidate_total_tokens_in"`
+	CandidateTotalTokensOut          int64              `json:"candidate_total_tokens_out"`
+	CandidateEngineRunID             pgtype.UUID        `json:"candidate_engine_run_id"`
+	CandidateEngineDefinitionName    *string            `json:"candidate_engine_definition_name"`
+	CandidateEngineDefinitionVersion *string            `json:"candidate_engine_definition_version"`
+	CandidateEngineProjectionState   *string            `json:"candidate_engine_projection_state"`
 }
 
 func (q *Queries) GetCompareValidation(ctx context.Context, arg GetCompareValidationParams) (GetCompareValidationRow, error) {
@@ -197,6 +213,10 @@ func (q *Queries) GetCompareValidation(ctx context.Context, arg GetCompareValida
 		&i.BaselineTotalCostUsd,
 		&i.BaselineTotalTokensIn,
 		&i.BaselineTotalTokensOut,
+		&i.BaselineEngineRunID,
+		&i.BaselineEngineDefinitionName,
+		&i.BaselineEngineDefinitionVersion,
+		&i.BaselineEngineProjectionState,
 		&i.CandidateID,
 		&i.CandidateTraceID,
 		&i.CandidateName,
@@ -209,6 +229,10 @@ func (q *Queries) GetCompareValidation(ctx context.Context, arg GetCompareValida
 		&i.CandidateTotalCostUsd,
 		&i.CandidateTotalTokensIn,
 		&i.CandidateTotalTokensOut,
+		&i.CandidateEngineRunID,
+		&i.CandidateEngineDefinitionName,
+		&i.CandidateEngineDefinitionVersion,
+		&i.CandidateEngineProjectionState,
 	)
 	return i, err
 }

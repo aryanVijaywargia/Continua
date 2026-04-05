@@ -84,6 +84,7 @@ export const TRACE_ZETA: Trace = {
 
 export const TRACE_DETAIL: TraceDetail = {
   ...TRACE_ONE,
+  engine: undefined,
   trace_id: 'external-trace-checkout',
   user_id: 'user-123',
   tags: ['checkout'],

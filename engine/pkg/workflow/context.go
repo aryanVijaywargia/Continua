@@ -6,6 +6,7 @@ import (
 )
 
 var ErrEmptyKey = errors.New("workflow: stable key is required")
+var ErrCancelled = errors.New("workflow: cancelled")
 
 type Context interface {
 	Input(out any) error

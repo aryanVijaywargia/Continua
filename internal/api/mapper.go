@@ -19,6 +19,7 @@ func traceToAPI(t *store.TraceRead) Trace {
 		Id:     t.ID,
 		Name:   deref(t.Name),
 		Status: TraceStatus(mapTraceStatus(t.Status)),
+		Engine: engineTraceInfoFromTrace(t),
 	}
 
 	// Session ID
@@ -78,9 +79,14 @@ func traceToAPI(t *store.TraceRead) Trace {
 // NOTE: oapi-codegen currently flattens TraceDetail's allOf shape, so any new
 // summary fields added to traceToAPI must also be copied into TraceDetail here.
 func traceDetailToAPI(t *store.TraceRead) TraceDetail {
+	return traceDetailToAPIWithEngine(t, nil)
+}
+
+func traceDetailToAPIWithEngine(t *store.TraceRead, engine *EngineRunSummary) TraceDetail {
 	summary := traceToAPI(t)
 	trace := TraceDetail{
 		Id:                summary.Id,
+		Engine:            engine,
 		Name:              summary.Name,
 		Status:            TraceDetailStatus(summary.Status),
 		StartedAt:         summary.StartedAt,
@@ -92,6 +98,10 @@ func traceDetailToAPI(t *store.TraceRead) TraceDetail {
 		TotalCostUsd:      summary.TotalCostUsd,
 		ErrorCount:        summary.ErrorCount,
 		Metadata:          summary.Metadata,
+	}
+
+	if trace.Engine == nil {
+		trace.Engine = projectedEngineRunSummaryFromTrace(t)
 	}
 
 	if t.TraceID != "" {
@@ -414,6 +424,7 @@ func compareSessionHeaderToAPI(header *store.SessionCompareSessionHeader) Compar
 func compareTraceHeaderToAPI(header *store.SessionCompareTraceHeader) CompareTraceHeader {
 	return CompareTraceHeader{
 		Id:             header.ID,
+		Engine:         engineTraceInfoFromCompareHeader(header),
 		TraceId:        header.TraceID,
 		Name:           header.Name,
 		Status:         CompareTraceHeaderStatus(header.Status),

@@ -25,7 +25,7 @@ func TestActivatorFailsRunWhenDefinitionVersionIsMissing(t *testing.T) {
 	ctx := context.Background()
 
 	instance, run := createStartedRun(t, store, workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-version-mismatch",
 		definitionName:    "demo",
 		definitionVersion: "v-missing",
@@ -72,7 +72,7 @@ func TestActivatorPersistsReplayMismatchFailure(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-replay-mismatch",
 		definitionName:    "demo",
 		definitionVersion: "v1",
@@ -143,7 +143,7 @@ func TestActivatorRejectsStaleClaimBeforeAppendingHistory(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-stale-claim",
 		definitionName:    "stale-claim",
 		definitionVersion: "v1",
@@ -204,13 +204,281 @@ func TestActivatorRejectsStaleClaimBeforeAppendingHistory(t *testing.T) {
 	}
 }
 
+func TestActivatorWaitingDecisionRefreshesProjectedTraceSummary(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-projected-wait",
+		definitionName:    "projected-wait",
+		definitionVersion: "v1",
+	}
+	instance, run := createStartedRun(t, store, testCase)
+
+	historyRows, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+	if len(historyRows) != 1 {
+		t.Fatalf("expected started history row, got %+v", historyRows)
+	}
+
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO public.traces (
+		    id,
+		    project_id,
+		    trace_id,
+		    name,
+		    status,
+		    start_time,
+		    engine_run_id,
+		    engine_instance_key,
+		    engine_run_status,
+		    engine_pending_activity_tasks,
+		    engine_pending_inbox_items,
+		    engine_definition_name,
+		    engine_definition_version,
+		    engine_projection_state,
+		    engine_latest_history_id,
+		    engine_last_projected_history_id,
+		    engine_projection_updated_at
+		)
+		VALUES (
+		    $1,
+		    $2,
+		    $3,
+		    $4,
+		    'running',
+		    NOW(),
+		    $5,
+		    $6,
+		    'queued',
+		    0,
+		    0,
+		    $7,
+		    $8,
+		    'up_to_date',
+		    $9,
+		    $9,
+		    NOW()
+		)
+	`, uuidOrFatal(t), testCase.projectID, "engine:"+run.ID.String(), "Projected Wait", run.ID, instance.InstanceKey, instance.DefinitionName, run.DefinitionVersion, historyRows[0].ID); err != nil {
+		t.Fatalf("insert projected trace shell: %v", err)
+	}
+
+	registry, err := NewRegistry(publicworkflow.Definition{
+		Name:    "projected-wait",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var signal map[string]string
+			return ctx.ReceiveSignal("approval", &signal)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	claimed, err := store.ClaimNextRun(ctx, "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() error = %v", err)
+	}
+
+	activator := NewActivator(store, registry)
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	var engineRunStatus string
+	var waitState []byte
+	var pendingActivityTasks int64
+	var pendingInboxItems int64
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT engine_run_status,
+		       engine_wait_state,
+		       engine_pending_activity_tasks,
+		       engine_pending_inbox_items
+		FROM public.traces
+		WHERE engine_run_id = $1
+	`, run.ID).Scan(&engineRunStatus, &waitState, &pendingActivityTasks, &pendingInboxItems); err != nil {
+		t.Fatalf("query projected trace summary: %v", err)
+	}
+
+	if engineRunStatus != string(enginedb.EngineRunLifecycleStatusWaiting) {
+		t.Fatalf("expected projected waiting run status, got %q", engineRunStatus)
+	}
+	if pendingActivityTasks != 0 || pendingInboxItems != 0 {
+		t.Fatalf("expected no pending work for signal wait, got activity=%d inbox=%d", pendingActivityTasks, pendingInboxItems)
+	}
+
+	var waitPayload map[string]any
+	if err := json.Unmarshal(waitState, &waitPayload); err != nil {
+		t.Fatalf("json.Unmarshal(waitState) error = %v", err)
+	}
+	if waitPayload["kind"] != "signal" || waitPayload["signal_name"] != "approval" {
+		t.Fatalf("unexpected projected wait state: %+v", waitPayload)
+	}
+}
+
+func TestActivatorCancellationTransitionsRunToCancelledAndProjectsTerminalSummary(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-cancelled",
+		definitionName:    "cancelled-workflow",
+		definitionVersion: "v1",
+	}
+	instance, run := createStartedRun(t, store, testCase)
+
+	historyRows, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO public.traces (
+		    id,
+		    project_id,
+		    trace_id,
+		    name,
+		    status,
+		    start_time,
+		    engine_run_id,
+		    engine_instance_key,
+		    engine_run_status,
+		    engine_pending_activity_tasks,
+		    engine_pending_inbox_items,
+		    engine_definition_name,
+		    engine_definition_version,
+		    engine_projection_state,
+		    engine_latest_history_id,
+		    engine_last_projected_history_id,
+		    engine_projection_updated_at
+		)
+		VALUES (
+		    $1,
+		    $2,
+		    $3,
+		    $4,
+		    'running',
+		    NOW(),
+		    $5,
+		    $6,
+		    'queued',
+		    0,
+		    0,
+		    $7,
+		    $8,
+		    'up_to_date',
+		    $9,
+		    $9,
+		    NOW()
+		)
+	`, uuidOrFatal(t), testCase.projectID, "engine:"+run.ID.String(), "Cancelled Run", run.ID, instance.InstanceKey, instance.DefinitionName, run.DefinitionVersion, historyRows[0].ID); err != nil {
+		t.Fatalf("insert projected trace shell: %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO public.spans (
+		    project_id,
+		    trace_id,
+		    span_id,
+		    name,
+		    type,
+		    status,
+		    level,
+		    start_time,
+		    depth
+		)
+		SELECT project_id, id, $2, 'Cancelled Run', 'chain', 'running', 'default', NOW(), 0
+		FROM public.traces
+		WHERE engine_run_id = $1
+	`, run.ID, "engine:root:"+run.ID.String()); err != nil {
+		t.Fatalf("insert projected root span: %v", err)
+	}
+
+	cancelPayload, err := enginehistory.MarshalPayload(enginehistory.CancelRequestedPayload{})
+	if err != nil {
+		t.Fatalf("MarshalPayload(cancel) error = %v", err)
+	}
+	if _, err := store.CreateInboxItem(ctx, enginedb.CreateInboxItemParams{
+		ProjectID:   run.ProjectID,
+		InstanceID:  run.InstanceID,
+		RunID:       pgtype.UUID{Bytes: run.ID, Valid: true},
+		Kind:        "cancel",
+		Payload:     cancelPayload,
+		AvailableAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateInboxItem(cancel) error = %v", err)
+	}
+
+	registry, err := NewRegistry(publicworkflow.Definition{
+		Name:    "cancelled-workflow",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			if ctx.CancellationRequested() {
+				return publicworkflow.ErrCancelled
+			}
+			return ctx.SetResult(map[string]bool{"ok": true})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	claimed, err := store.ClaimNextRun(ctx, "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() error = %v", err)
+	}
+
+	activator := NewActivator(store, registry)
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	updatedRun, err := store.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun() error = %v", err)
+	}
+	if updatedRun.Status != enginedb.EngineRunLifecycleStatusCancelled {
+		t.Fatalf("expected cancelled run status, got %+v", updatedRun)
+	}
+	if updatedRun.LastErrorCode == nil || *updatedRun.LastErrorCode != "cancelled" {
+		t.Fatalf("expected cancelled error code, got %+v", updatedRun)
+	}
+
+	var traceStatus string
+	var traceRunStatus string
+	var traceOutput []byte
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT status, engine_run_status, output
+		FROM public.traces
+		WHERE engine_run_id = $1
+	`, run.ID).Scan(&traceStatus, &traceRunStatus, &traceOutput); err != nil {
+		t.Fatalf("query projected trace summary: %v", err)
+	}
+	if traceStatus != "cancelled" || traceRunStatus != "cancelled" {
+		t.Fatalf("expected cancelled projected summary, got trace=%q run=%q", traceStatus, traceRunStatus)
+	}
+
+	var outputPayload map[string]any
+	if err := json.Unmarshal(traceOutput, &outputPayload); err != nil {
+		t.Fatalf("json.Unmarshal(trace output) error = %v", err)
+	}
+	if outputPayload["status"] != "cancelled" || outputPayload["error_code"] != "cancelled" {
+		t.Fatalf("unexpected cancelled terminal payload %+v", outputPayload)
+	}
+}
+
 func TestActivatorLateSignalWakeIsNotStranded(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	store := enginestore.New(db.Pool)
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         uuidOrFatal(t),
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-late-signal",
 		definitionName:    "late-signal",
 		definitionVersion: "v1",

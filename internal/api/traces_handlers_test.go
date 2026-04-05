@@ -291,6 +291,90 @@ func TestGetTraceEvents_PaginationHandlesMixedKnownAndUnknownEventTypes(t *testi
 	assert.NotEqual(t, *tailCursor, *incrementalPoll.PollCursor)
 }
 
+func TestGetTraceEvents_EngineProjectedSemanticEventsUseExistingTimelineContract(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	base := time.Date(2026, 3, 7, 11, 45, 0, 0, time.UTC)
+	trace := createTimelineTrace(ctx, t, q, projectID, "running", base, nil)
+	runID := uuid.New()
+
+	_, err := pool.Exec(ctx, `
+		UPDATE traces
+		SET engine_run_id = $2,
+		    engine_definition_name = 'checkout',
+		    engine_definition_version = 'v1',
+		    engine_projection_state = 'up_to_date',
+		    engine_projection_updated_at = NOW()
+		WHERE id = $1
+	`, trace.ID, runID)
+	require.NoError(t, err)
+
+	insertTimelineEvent(
+		ctx, t, q, projectID, trace.ID, "engine:root:"+runID.String(), "effect", "info",
+		base.Add(time.Second), testutil.Int32Ptr(11), "scheduled activity", map[string]any{
+			"effect_kind":              "activity",
+			"has_external_side_effect": true,
+			"effect_id":                "activity:send-email",
+		},
+	)
+	insertTimelineEvent(
+		ctx, t, q, projectID, trace.ID, "engine:root:"+runID.String(), "wait", "info",
+		base.Add(2*time.Second), testutil.Int32Ptr(12), "waiting on activity", map[string]any{
+			"wait_kind": "activity",
+			"phase":     "entered",
+			"wait_id":   "activity:send-email",
+		},
+	)
+	insertTimelineEvent(
+		ctx, t, q, projectID, trace.ID, "engine:root:"+runID.String(), "wait", "info",
+		base.Add(3*time.Second), testutil.Int32Ptr(21), "timer entered", map[string]any{
+			"wait_kind": "timer",
+			"phase":     "entered",
+			"wait_id":   "timer:reminder",
+		},
+	)
+	insertTimelineEvent(
+		ctx, t, q, projectID, trace.ID, "engine:root:"+runID.String(), "wait", "info",
+		base.Add(4*time.Second), testutil.Int32Ptr(22), "timer fired", map[string]any{
+			"wait_kind":  "timer",
+			"phase":      "resolved",
+			"wait_id":    "timer:reminder",
+			"resolution": "fired",
+		},
+	)
+
+	rec := invokeGetTraceEvents(t, server, projectID, trace.ID, GetTraceEventsParams{})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[TimelineResponse](t, rec)
+	require.Len(t, resp.Events, 4)
+	require.NotNil(t, resp.Engine)
+	assert.Equal(t, UpToDate, resp.Engine.ProjectionState)
+	assert.Equal(t, []TimelineEventType{
+		TimelineEventTypeEffect,
+		TimelineEventTypeWait,
+		TimelineEventTypeWait,
+		TimelineEventTypeWait,
+	}, []TimelineEventType{
+		resp.Events[0].EventType,
+		resp.Events[1].EventType,
+		resp.Events[2].EventType,
+		resp.Events[3].EventType,
+	})
+	require.NotNil(t, resp.Events[0].Payload)
+	assert.Equal(t, "activity:send-email", (*resp.Events[0].Payload)["effect_id"])
+	require.NotNil(t, resp.Events[1].Payload)
+	assert.Equal(t, "activity", (*resp.Events[1].Payload)["wait_kind"])
+	assert.Equal(t, "entered", (*resp.Events[1].Payload)["phase"])
+	require.NotNil(t, resp.Events[3].Payload)
+	assert.Equal(t, "fired", (*resp.Events[3].Payload)["resolution"])
+}
+
 func TestGetTraceEvents_InvalidCursorReturns400(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
@@ -345,6 +429,7 @@ func TestGetTraceEvents_EmptyTimeline(t *testing.T) {
 	assert.False(t, resp.HasMore)
 	assert.Nil(t, resp.NextCursor)
 	assert.Nil(t, resp.PollCursor)
+	assert.Nil(t, resp.Engine)
 }
 
 func TestGetTraceEvents_ProjectScopingReturns404(t *testing.T) {

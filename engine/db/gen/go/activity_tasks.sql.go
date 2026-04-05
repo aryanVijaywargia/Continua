@@ -114,6 +114,20 @@ func (q *Queries) CompleteActivityTask(ctx context.Context, arg CompleteActivity
 	return i, err
 }
 
+const countOpenActivityTasksByRun = `-- name: CountOpenActivityTasksByRun :one
+SELECT COUNT(*)
+FROM engine.activity_tasks
+WHERE run_id = $1
+  AND status IN ('queued', 'claimed')
+`
+
+func (q *Queries) CountOpenActivityTasksByRun(ctx context.Context, runID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countOpenActivityTasksByRun, runID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createActivityTask = `-- name: CreateActivityTask :one
 INSERT INTO engine.activity_tasks (
     project_id,

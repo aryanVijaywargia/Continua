@@ -47,6 +47,15 @@ afterEach(() => {
 });
 
 describe('SessionsPage', () => {
+  it('does not introduce engine aggregate badges on the sessions index', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes(['/sessions']);
+
+    expect(await screen.findByText('conv-checkout-123')).toBeInTheDocument();
+    expect(screen.queryByText('Engine')).not.toBeInTheDocument();
+  });
+
   it('rehydrates URL state and fetches with the typed sessions params', async () => {
     fetchMock.mockImplementation(
       buildFetchHandler({

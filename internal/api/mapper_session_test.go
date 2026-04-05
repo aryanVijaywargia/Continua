@@ -9,6 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
+	"github.com/continua-ai/continua/internal/store"
+	"github.com/continua-ai/continua/internal/testutil"
 )
 
 func TestSessionToAPI_IncludesExternalID(t *testing.T) {
@@ -52,4 +55,27 @@ func TestSessionWithCountToAPI_IncludesTraceCountAndExternalID(t *testing.T) {
 	assert.Equal(t, session.ExternalID, apiSession.ExternalId)
 	require.NotNil(t, apiSession.TraceCount)
 	assert.Equal(t, 7, *apiSession.TraceCount)
+}
+
+func TestCompareTraceHeaderToAPI_MapsEngineMetadata(t *testing.T) {
+	runID := uuid.New()
+	header := store.SessionCompareTraceHeader{
+		ID:                      uuid.New(),
+		TraceID:                 "engine:" + runID.String(),
+		Name:                    "Engine Trace",
+		Status:                  "RUNNING",
+		EngineRunID:             &runID,
+		EngineDefinitionName:    testutil.StrPtr("checkout"),
+		EngineDefinitionVersion: testutil.StrPtr("v1"),
+		EngineProjectionState:   testutil.StrPtr(publicprojection.StateCatchingUp.String()),
+		StartedAt:               time.Now().UTC(),
+	}
+
+	apiHeader := compareTraceHeaderToAPI(&header)
+
+	require.NotNil(t, apiHeader.Engine)
+	assert.Equal(t, runID, apiHeader.Engine.RunId)
+	assert.Equal(t, "checkout", apiHeader.Engine.DefinitionName)
+	assert.Equal(t, "v1", apiHeader.Engine.DefinitionVersion)
+	assert.Equal(t, CatchingUp, apiHeader.Engine.ProjectionState)
 }

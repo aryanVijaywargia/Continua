@@ -14,10 +14,23 @@ SELECT *
 FROM engine.runs
 WHERE id = $1;
 
+-- name: GetRunByProjectAndID :one
+SELECT *
+FROM engine.runs
+WHERE project_id = $1
+  AND id = $2;
+
 -- name: GetRunForUpdate :one
 SELECT *
 FROM engine.runs
 WHERE id = $1
+FOR UPDATE;
+
+-- name: GetRunByProjectAndIDForUpdate :one
+SELECT *
+FROM engine.runs
+WHERE project_id = $1
+  AND id = $2
 FOR UPDATE;
 
 -- name: ListRunsByInstance :many
@@ -26,6 +39,13 @@ FROM engine.runs
 WHERE instance_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3;
+
+-- name: GetLatestRunByInstance :one
+SELECT *
+FROM engine.runs
+WHERE instance_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
 
 -- name: UpdateRunStatus :one
 UPDATE engine.runs
@@ -75,6 +95,24 @@ RETURNING *;
 -- name: TransitionRunToFailed :one
 UPDATE engine.runs
 SET status = 'failed',
+    result = NULL,
+    custom_status = $3,
+    waiting_for = NULL,
+    completed_at = NOW(),
+    last_error_code = $4,
+    last_error_message = $5,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING *;
+
+-- name: TransitionRunToCancelled :one
+UPDATE engine.runs
+SET status = 'cancelled',
     result = NULL,
     custom_status = $3,
     waiting_for = NULL,

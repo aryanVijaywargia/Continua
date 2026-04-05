@@ -47,6 +47,9 @@ func runDemoWorkflow(ctx workflow.Context) error {
 	if err := ctx.SetCustomStatus(map[string]string{"phase": "activity"}); err != nil {
 		return err
 	}
+	if ctx.CancellationRequested() {
+		return workflow.ErrCancelled
+	}
 
 	var activityOutput ActivityOutput
 	if err := ctx.Activity("compose-greeting", DemoActivityType, ActivityInput{Name: input.Name}, &activityOutput); err != nil {
@@ -56,12 +59,18 @@ func runDemoWorkflow(ctx workflow.Context) error {
 	if err := ctx.SetCustomStatus(map[string]string{"phase": "timer"}); err != nil {
 		return err
 	}
+	if ctx.CancellationRequested() {
+		return workflow.ErrCancelled
+	}
 	if err := ctx.SleepUntil("demo-timer", timerDeadline(input)); err != nil {
 		return err
 	}
 
 	if err := ctx.SetCustomStatus(map[string]string{"phase": "signal"}); err != nil {
 		return err
+	}
+	if ctx.CancellationRequested() {
+		return workflow.ErrCancelled
 	}
 
 	var signal SignalPayload

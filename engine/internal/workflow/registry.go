@@ -43,3 +43,16 @@ func (r *Registry) Get(name, version string) (publicworkflow.Definition, bool) {
 	definition, ok := r.definitions[definitionKey{name: name, version: version}]
 	return definition, ok
 }
+
+func (r *Registry) List() []publicworkflow.Definition {
+	if r == nil {
+		return nil
+	}
+
+	definitions := make([]publicworkflow.Definition, 0, len(r.definitions))
+	for _, definition := range r.definitions {
+		definitions = append(definitions, definition)
+	}
+
+	return definitions
+}

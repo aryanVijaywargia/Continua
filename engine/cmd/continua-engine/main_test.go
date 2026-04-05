@@ -44,14 +44,14 @@ func TestMigrateCommandsRoundTrip(t *testing.T) {
 	t.Setenv("ENGINE_DATABASE_URL", db.DatabaseURL)
 	t.Setenv("DATABASE_URL", "")
 
-	stdout, stderr, err := executeCommand(t, "migrate", "down", "1")
+	stdout, stderr, err := executeCommand(t, "migrate", "down", "2")
 	if err != nil {
 		t.Fatalf("execute migrate down 1: %v", err)
 	}
 	if stderr != "" {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
-	if !strings.Contains(stdout, "Rolled back 1 engine migration step(s)") {
+	if !strings.Contains(stdout, "Rolled back 2 engine migration step(s)") {
 		t.Fatalf("unexpected migrate down output: %q", stdout)
 	}
 
@@ -143,9 +143,9 @@ func TestMigrateDownRejectsWaitingRuns(t *testing.T) {
 		t.Fatalf("TransitionRunToWaiting() error = %v", err)
 	}
 
-	stdout, stderr, err := executeCommand(t, "migrate", "down", "1")
+	stdout, stderr, err := executeCommand(t, "migrate", "down", "2")
 	if err == nil {
-		t.Fatal("expected migrate down 1 to fail when waiting rows exist")
+		t.Fatal("expected migrate down 2 to fail when waiting rows exist")
 	}
 	if stdout != "" {
 		t.Fatalf("expected empty stdout on failed rollback, got %q", stdout)

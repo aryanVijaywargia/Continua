@@ -61,6 +61,20 @@ func (q *Queries) ClaimNextInboxItem(ctx context.Context, arg ClaimNextInboxItem
 	return i, err
 }
 
+const countOpenInboxByRun = `-- name: CountOpenInboxByRun :one
+SELECT COUNT(*)
+FROM engine.inbox
+WHERE run_id = $1
+  AND status IN ('pending', 'claimed')
+`
+
+func (q *Queries) CountOpenInboxByRun(ctx context.Context, runID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countOpenInboxByRun, runID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createInboxItem = `-- name: CreateInboxItem :one
 INSERT INTO engine.inbox (
     project_id,

@@ -9,6 +9,7 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
+	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	"github.com/continua-ai/continua/engine/internal/store"
 )
 
@@ -108,6 +109,7 @@ func (a *Activator) commitDecision(
 	sequence := decision.NextSequence
 	var activityHistoryID *int64
 	var timerHistoryID *int64
+	var lastHistoryID int64
 
 	for i := range decision.Events {
 		event := decision.Events[i]
@@ -129,6 +131,7 @@ func (a *Activator) commitDecision(
 		case enginehistory.EventTimerScheduled:
 			timerHistoryID = &appended.ID
 		}
+		lastHistoryID = appended.ID
 		sequence++
 	}
 
@@ -179,32 +182,102 @@ func (a *Activator) commitDecision(
 
 	switch decision.Kind {
 	case decisionWaiting:
-		_, err := tx.TransitionRunToWaiting(ctx, enginedb.TransitionRunToWaitingParams{
+		updatedRun, err := tx.TransitionRunToWaiting(ctx, enginedb.TransitionRunToWaitingParams{
 			ID:           run.ID,
 			ClaimedBy:    workerClaimedBy,
 			WaitingFor:   decision.WaitingFor,
 			CustomStatus: decision.CustomStatus,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		if lastHistoryID > 0 {
+			if err := engineprojector.UpdateLatestHistory(ctx, tx.Tx(), run.ProjectID, run.ID, lastHistoryID); err != nil {
+				return err
+			}
+		}
+		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
 	case decisionCompleted:
-		_, err := tx.TransitionRunToCompleted(ctx, enginedb.TransitionRunToCompletedParams{
+		updatedRun, err := tx.TransitionRunToCompleted(ctx, enginedb.TransitionRunToCompletedParams{
 			ID:           run.ID,
 			ClaimedBy:    workerClaimedBy,
 			Result:       decision.Result,
 			CustomStatus: decision.CustomStatus,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		if err := engineprojector.WriteTerminalSummary(
+			ctx,
+			tx.Tx(),
+			run.ProjectID,
+			run.ID,
+			updatedRun.Status,
+			updatedRun.CompletedAt.Time,
+			decision.Result,
+			nil,
+			nil,
+			lastHistoryID,
+		); err != nil {
+			return err
+		}
+		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
 	case decisionFailed:
 		errorCode := decision.FailureCode
 		errorMessage := decision.FailureMessage
-		_, err := tx.TransitionRunToFailed(ctx, enginedb.TransitionRunToFailedParams{
+		updatedRun, err := tx.TransitionRunToFailed(ctx, enginedb.TransitionRunToFailedParams{
 			ID:               run.ID,
 			ClaimedBy:        workerClaimedBy,
 			CustomStatus:     decision.CustomStatus,
 			LastErrorCode:    &errorCode,
 			LastErrorMessage: &errorMessage,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		if err := engineprojector.WriteTerminalSummary(
+			ctx,
+			tx.Tx(),
+			run.ProjectID,
+			run.ID,
+			updatedRun.Status,
+			updatedRun.CompletedAt.Time,
+			nil,
+			&errorCode,
+			&errorMessage,
+			lastHistoryID,
+		); err != nil {
+			return err
+		}
+		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
+	case decisionCancelled:
+		errorCode := decision.FailureCode
+		errorMessage := decision.FailureMessage
+		updatedRun, err := tx.TransitionRunToCancelled(ctx, enginedb.TransitionRunToCancelledParams{
+			ID:               run.ID,
+			ClaimedBy:        workerClaimedBy,
+			CustomStatus:     decision.CustomStatus,
+			LastErrorCode:    &errorCode,
+			LastErrorMessage: &errorMessage,
+		})
+		if err != nil {
+			return err
+		}
+		if err := engineprojector.WriteTerminalSummary(
+			ctx,
+			tx.Tx(),
+			run.ProjectID,
+			run.ID,
+			updatedRun.Status,
+			updatedRun.CompletedAt.Time,
+			nil,
+			&errorCode,
+			&errorMessage,
+			lastHistoryID,
+		); err != nil {
+			return err
+		}
+		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
 	default:
 		return fmt.Errorf("unsupported activation decision kind %q", decision.Kind)
 	}

@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
+	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	"github.com/continua-ai/continua/engine/internal/store"
 )
 
@@ -48,7 +50,13 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 		return w.failTask(ctx, task.ID, task.RunID, workerID, &code, &message)
 	}
 
-	_, err = w.store.CompleteActivityTask(ctx, task.ID, workerID, output)
+	tx, err := w.store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	_, err = tx.CompleteActivityTask(ctx, task.ID, workerID, output)
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
 			log.Printf("activity worker stale completion for task %s", task.ID)
@@ -57,11 +65,16 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 		return err
 	}
 
-	_, err = w.store.WakeWaitingRun(ctx, task.RunID)
+	wake, err := tx.WakeWaitingRun(ctx, task.RunID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
-	return nil
+	if err == nil {
+		if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
+			return syncErr
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (w *Worker) failTask(
@@ -72,7 +85,13 @@ func (w *Worker) failTask(
 	errorCode *string,
 	errorMessage *string,
 ) error {
-	_, err := w.store.FailActivityTask(ctx, taskID, workerID, errorCode, errorMessage)
+	tx, err := w.store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	_, err = tx.FailActivityTask(ctx, taskID, workerID, errorCode, errorMessage)
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
 			log.Printf("activity worker stale failure for task %s", taskID)
@@ -81,9 +100,14 @@ func (w *Worker) failTask(
 		return err
 	}
 
-	_, err = w.store.WakeWaitingRun(ctx, runID)
+	wake, err := tx.WakeWaitingRun(ctx, runID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
-	return nil
+	if err == nil {
+		if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
+			return syncErr
+		}
+	}
+	return tx.Commit(ctx)
 }

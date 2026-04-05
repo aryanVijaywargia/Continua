@@ -6,6 +6,6 @@ import (
 
 // Module provides API handlers for the application.
 var Module = fx.Module("api",
-	fx.Provide(NewServer),
+	fx.Provide(newConfiguredServer),
 	fx.Provide(NewRouter),
 )

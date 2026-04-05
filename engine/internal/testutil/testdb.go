@@ -25,6 +25,8 @@ import (
 // as a built-in function.
 const DefaultTestDatabaseURL = "postgres://continua:continua@localhost:5432/continua_test?sslmode=disable"
 
+var DefaultPlatformProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+
 // TestDatabase is an isolated Postgres database prepared with both platform and
 // engine migrations.
 type TestDatabase struct {
@@ -126,6 +128,20 @@ func NullableUUID(id uuid.UUID) pgtype.UUID {
 // Ptr returns a pointer to the provided value.
 func Ptr[T any](value T) *T {
 	return &value
+}
+
+// EnsurePlatformProject inserts a matching public.projects row for engine tests
+// that project into the shared platform schema.
+func EnsurePlatformProject(t *testing.T, pool *pgxpool.Pool, projectID uuid.UUID) {
+	t.Helper()
+
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO public.projects (id, name, api_key_hash)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id) DO NOTHING
+	`, projectID, "Engine Test Project", "engine-test"); err != nil {
+		t.Fatalf("ensure platform project: %v", err)
+	}
 }
 
 func testDatabaseURL() string {

@@ -29,6 +29,24 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, resp)
 }
 
+func writeEngineError(w http.ResponseWriter, err error, fallbackMessage string) {
+	var apiErr *engineAPIError
+	if errors.As(err, &apiErr) {
+		writeError(w, apiErr.HTTPStatus, apiErr.Code, apiErr.Message)
+		return
+	}
+
+	writeError(w, http.StatusInternalServerError, "internal_error", fallbackMessage)
+}
+
+func decodeJSONRequest(w http.ResponseWriter, r *http.Request, dest any) bool {
+	if err := json.NewDecoder(r.Body).Decode(dest); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "Failed to parse request body: "+err.Error())
+		return false
+	}
+	return true
+}
+
 // write413Error writes a 413 error response in the spec-compliant format.
 // Per spec: {"error": "batch exceeds 5MB limit"}
 func write413Error(w http.ResponseWriter, message string) {

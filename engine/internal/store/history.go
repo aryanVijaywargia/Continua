@@ -17,6 +17,20 @@ func (o *storeOps) GetHistoryByRun(ctx context.Context, runID uuid.UUID) ([]engi
 	return o.q.GetHistoryByRun(ctx, runID)
 }
 
+func (o *storeOps) ListHistoryByRunAfterID(
+	ctx context.Context,
+	arg enginedb.ListHistoryByRunAfterIDParams,
+) ([]enginedb.EngineHistory, error) {
+	return o.q.ListHistoryByRunAfterID(ctx, arg)
+}
+
+func (o *storeOps) ListHistoryByRunAfterSequence(
+	ctx context.Context,
+	arg enginedb.ListHistoryByRunAfterSequenceParams,
+) ([]enginedb.EngineHistory, error) {
+	return o.q.ListHistoryByRunAfterSequence(ctx, arg)
+}
+
 func (o *storeOps) GetHistoryByInstance(
 	ctx context.Context,
 	instanceID uuid.UUID,

@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
+import { EngineBadge } from '../components/EngineBadge';
+import { formatProjectionStateLabel } from '../components/engineProjectionState';
 import { StatusBadge } from '../components/StatusBadge';
 import {
   ApiError,
@@ -300,14 +302,25 @@ function CompareTraceCard({
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
             {label}
           </p>
-          <Link
-            to={`/traces/${trace.id}`}
-            state={{ returnTo: currentCompareUrl }}
-            className="mt-2 inline-block text-sm font-semibold text-[var(--continua-accent)] hover:opacity-80"
-          >
-            {trace.name}
-          </Link>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Link
+              to={`/traces/${trace.id}`}
+              state={{ returnTo: currentCompareUrl }}
+              className="inline-block text-sm font-semibold text-[var(--continua-accent)] hover:opacity-80"
+            >
+              {trace.name}
+            </Link>
+            {trace.engine ? (
+              <EngineBadge projectionState={trace.engine.projection_state} />
+            ) : null}
+          </div>
           <p className="mt-2 font-mono text-xs text-[var(--continua-text-muted)]">{trace.trace_id}</p>
+          {trace.engine ? (
+            <p className="mt-2 text-xs text-[var(--continua-text-secondary)]">
+              {trace.engine.definition_name}@{trace.engine.definition_version} ·{' '}
+              {formatProjectionStateLabel(trace.engine.projection_state)}
+            </p>
+          ) : null}
         </div>
         <StatusBadge status={trace.status} />
       </div>

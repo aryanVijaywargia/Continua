@@ -29,6 +29,12 @@ FROM engine.activity_tasks
 WHERE run_id = $1
 ORDER BY created_at ASC, id ASC;
 
+-- name: CountOpenActivityTasksByRun :one
+SELECT COUNT(*)
+FROM engine.activity_tasks
+WHERE run_id = $1
+  AND status IN ('queued', 'claimed');
+
 -- name: ClaimNextActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'claimed',

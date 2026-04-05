@@ -39,6 +39,135 @@ func (q *Queries) CountTracesBySession(ctx context.Context, arg CountTracesBySes
 	return count, err
 }
 
+const createEngineTraceShell = `-- name: CreateEngineTraceShell :one
+INSERT INTO traces (
+    project_id, session_id, trace_id, name, user_id, tags,
+    environment, release, metadata, input, output,
+    status, start_time, end_time,
+    engine_run_id, engine_instance_key, engine_run_status,
+    engine_custom_status, engine_wait_state, engine_pending_activity_tasks,
+    engine_pending_inbox_items, engine_definition_name, engine_definition_version,
+    engine_projection_state, engine_latest_history_id,
+    engine_last_projected_history_id, engine_projection_updated_at
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11,
+    $12, $13, $14,
+    $15, $16, $17,
+    $18, $19, $20,
+    $21, $22, $23,
+    $24, $25,
+    $26, $27
+)
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out, engine_run_id, engine_definition_name, engine_definition_version, engine_projection_state, engine_latest_history_id, engine_last_projected_history_id, engine_projection_updated_at, engine_instance_key, engine_run_status, engine_custom_status, engine_wait_state, engine_pending_activity_tasks, engine_pending_inbox_items
+`
+
+type CreateEngineTraceShellParams struct {
+	ProjectID                    uuid.UUID          `json:"project_id"`
+	SessionID                    pgtype.UUID        `json:"session_id"`
+	TraceID                      string             `json:"trace_id"`
+	Name                         *string            `json:"name"`
+	UserID                       *string            `json:"user_id"`
+	Tags                         []string           `json:"tags"`
+	Environment                  *string            `json:"environment"`
+	Release                      *string            `json:"release"`
+	Metadata                     []byte             `json:"metadata"`
+	Input                        []byte             `json:"input"`
+	Output                       []byte             `json:"output"`
+	Status                       string             `json:"status"`
+	StartTime                    pgtype.Timestamptz `json:"start_time"`
+	EndTime                      pgtype.Timestamptz `json:"end_time"`
+	EngineRunID                  pgtype.UUID        `json:"engine_run_id"`
+	EngineInstanceKey            *string            `json:"engine_instance_key"`
+	EngineRunStatus              *string            `json:"engine_run_status"`
+	EngineCustomStatus           []byte             `json:"engine_custom_status"`
+	EngineWaitState              []byte             `json:"engine_wait_state"`
+	EnginePendingActivityTasks   *int64             `json:"engine_pending_activity_tasks"`
+	EnginePendingInboxItems      *int64             `json:"engine_pending_inbox_items"`
+	EngineDefinitionName         *string            `json:"engine_definition_name"`
+	EngineDefinitionVersion      *string            `json:"engine_definition_version"`
+	EngineProjectionState        *string            `json:"engine_projection_state"`
+	EngineLatestHistoryID        *int64             `json:"engine_latest_history_id"`
+	EngineLastProjectedHistoryID *int64             `json:"engine_last_projected_history_id"`
+	EngineProjectionUpdatedAt    pgtype.Timestamptz `json:"engine_projection_updated_at"`
+}
+
+func (q *Queries) CreateEngineTraceShell(ctx context.Context, arg CreateEngineTraceShellParams) (Trace, error) {
+	row := q.db.QueryRow(ctx, createEngineTraceShell,
+		arg.ProjectID,
+		arg.SessionID,
+		arg.TraceID,
+		arg.Name,
+		arg.UserID,
+		arg.Tags,
+		arg.Environment,
+		arg.Release,
+		arg.Metadata,
+		arg.Input,
+		arg.Output,
+		arg.Status,
+		arg.StartTime,
+		arg.EndTime,
+		arg.EngineRunID,
+		arg.EngineInstanceKey,
+		arg.EngineRunStatus,
+		arg.EngineCustomStatus,
+		arg.EngineWaitState,
+		arg.EnginePendingActivityTasks,
+		arg.EnginePendingInboxItems,
+		arg.EngineDefinitionName,
+		arg.EngineDefinitionVersion,
+		arg.EngineProjectionState,
+		arg.EngineLatestHistoryID,
+		arg.EngineLastProjectedHistoryID,
+		arg.EngineProjectionUpdatedAt,
+	)
+	var i Trace
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.SessionID,
+		&i.TraceID,
+		&i.Name,
+		&i.UserID,
+		&i.Tags,
+		&i.Environment,
+		&i.Release,
+		&i.Metadata,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.TotalSpans,
+		&i.TotalCost,
+		&i.ErrorCount,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SearchVector,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
+		&i.EngineRunID,
+		&i.EngineDefinitionName,
+		&i.EngineDefinitionVersion,
+		&i.EngineProjectionState,
+		&i.EngineLatestHistoryID,
+		&i.EngineLastProjectedHistoryID,
+		&i.EngineProjectionUpdatedAt,
+		&i.EngineInstanceKey,
+		&i.EngineRunStatus,
+		&i.EngineCustomStatus,
+		&i.EngineWaitState,
+		&i.EnginePendingActivityTasks,
+		&i.EnginePendingInboxItems,
+	)
+	return i, err
+}
+
 const createTrace = `-- name: CreateTrace :one
 INSERT INTO traces (
     project_id, session_id, trace_id, name, user_id, tags,
@@ -46,7 +175,7 @@ INSERT INTO traces (
     status, start_time, end_time
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out, engine_run_id, engine_definition_name, engine_definition_version, engine_projection_state, engine_latest_history_id, engine_last_projected_history_id, engine_projection_updated_at, engine_instance_key, engine_run_status, engine_custom_status, engine_wait_state, engine_pending_activity_tasks, engine_pending_inbox_items
 `
 
 type CreateTraceParams struct {
@@ -111,12 +240,25 @@ func (q *Queries) CreateTrace(ctx context.Context, arg CreateTraceParams) (Trace
 		&i.SearchVector,
 		&i.TotalTokensIn,
 		&i.TotalTokensOut,
+		&i.EngineRunID,
+		&i.EngineDefinitionName,
+		&i.EngineDefinitionVersion,
+		&i.EngineProjectionState,
+		&i.EngineLatestHistoryID,
+		&i.EngineLastProjectedHistoryID,
+		&i.EngineProjectionUpdatedAt,
+		&i.EngineInstanceKey,
+		&i.EngineRunStatus,
+		&i.EngineCustomStatus,
+		&i.EngineWaitState,
+		&i.EnginePendingActivityTasks,
+		&i.EnginePendingInboxItems,
 	)
 	return i, err
 }
 
 const getTrace = `-- name: GetTrace :one
-SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, t.engine_run_id, t.engine_definition_name, t.engine_definition_version, t.engine_projection_state, t.engine_latest_history_id, t.engine_last_projected_history_id, t.engine_projection_updated_at, t.engine_instance_key, t.engine_run_status, t.engine_custom_status, t.engine_wait_state, t.engine_pending_activity_tasks, t.engine_pending_inbox_items, s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
 WHERE t.id = $1
@@ -157,13 +299,26 @@ func (q *Queries) GetTrace(ctx context.Context, id uuid.UUID) (GetTraceRow, erro
 		&i.Trace.SearchVector,
 		&i.Trace.TotalTokensIn,
 		&i.Trace.TotalTokensOut,
+		&i.Trace.EngineRunID,
+		&i.Trace.EngineDefinitionName,
+		&i.Trace.EngineDefinitionVersion,
+		&i.Trace.EngineProjectionState,
+		&i.Trace.EngineLatestHistoryID,
+		&i.Trace.EngineLastProjectedHistoryID,
+		&i.Trace.EngineProjectionUpdatedAt,
+		&i.Trace.EngineInstanceKey,
+		&i.Trace.EngineRunStatus,
+		&i.Trace.EngineCustomStatus,
+		&i.Trace.EngineWaitState,
+		&i.Trace.EnginePendingActivityTasks,
+		&i.Trace.EnginePendingInboxItems,
 		&i.SessionExternalID,
 	)
 	return i, err
 }
 
 const getTraceByExternalID = `-- name: GetTraceByExternalID :one
-SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out FROM traces WHERE project_id = $1 AND trace_id = $2
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out, engine_run_id, engine_definition_name, engine_definition_version, engine_projection_state, engine_latest_history_id, engine_last_projected_history_id, engine_projection_updated_at, engine_instance_key, engine_run_status, engine_custom_status, engine_wait_state, engine_pending_activity_tasks, engine_pending_inbox_items FROM traces WHERE project_id = $1 AND trace_id = $2
 `
 
 type GetTraceByExternalIDParams struct {
@@ -201,6 +356,19 @@ func (q *Queries) GetTraceByExternalID(ctx context.Context, arg GetTraceByExtern
 		&i.SearchVector,
 		&i.TotalTokensIn,
 		&i.TotalTokensOut,
+		&i.EngineRunID,
+		&i.EngineDefinitionName,
+		&i.EngineDefinitionVersion,
+		&i.EngineProjectionState,
+		&i.EngineLatestHistoryID,
+		&i.EngineLastProjectedHistoryID,
+		&i.EngineProjectionUpdatedAt,
+		&i.EngineInstanceKey,
+		&i.EngineRunStatus,
+		&i.EngineCustomStatus,
+		&i.EngineWaitState,
+		&i.EnginePendingActivityTasks,
+		&i.EnginePendingInboxItems,
 	)
 	return i, err
 }
@@ -234,7 +402,7 @@ func (q *Queries) GetTraceVersion(ctx context.Context, id uuid.UUID) (*int32, er
 }
 
 const listTraces = `-- name: ListTraces :many
-SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, t.engine_run_id, t.engine_definition_name, t.engine_definition_version, t.engine_projection_state, t.engine_latest_history_id, t.engine_last_projected_history_id, t.engine_projection_updated_at, t.engine_instance_key, t.engine_run_status, t.engine_custom_status, t.engine_wait_state, t.engine_pending_activity_tasks, t.engine_pending_inbox_items, s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
 WHERE t.project_id = $1
@@ -289,6 +457,19 @@ func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]ListT
 			&i.Trace.SearchVector,
 			&i.Trace.TotalTokensIn,
 			&i.Trace.TotalTokensOut,
+			&i.Trace.EngineRunID,
+			&i.Trace.EngineDefinitionName,
+			&i.Trace.EngineDefinitionVersion,
+			&i.Trace.EngineProjectionState,
+			&i.Trace.EngineLatestHistoryID,
+			&i.Trace.EngineLastProjectedHistoryID,
+			&i.Trace.EngineProjectionUpdatedAt,
+			&i.Trace.EngineInstanceKey,
+			&i.Trace.EngineRunStatus,
+			&i.Trace.EngineCustomStatus,
+			&i.Trace.EngineWaitState,
+			&i.Trace.EnginePendingActivityTasks,
+			&i.Trace.EnginePendingInboxItems,
 			&i.SessionExternalID,
 		); err != nil {
 			return nil, err
@@ -302,7 +483,7 @@ func (q *Queries) ListTraces(ctx context.Context, arg ListTracesParams) ([]ListT
 }
 
 const listTracesAsc = `-- name: ListTracesAsc :many
-SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, t.engine_run_id, t.engine_definition_name, t.engine_definition_version, t.engine_projection_state, t.engine_latest_history_id, t.engine_last_projected_history_id, t.engine_projection_updated_at, t.engine_instance_key, t.engine_run_status, t.engine_custom_status, t.engine_wait_state, t.engine_pending_activity_tasks, t.engine_pending_inbox_items, s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
 WHERE t.project_id = $1
@@ -357,6 +538,19 @@ func (q *Queries) ListTracesAsc(ctx context.Context, arg ListTracesAscParams) ([
 			&i.Trace.SearchVector,
 			&i.Trace.TotalTokensIn,
 			&i.Trace.TotalTokensOut,
+			&i.Trace.EngineRunID,
+			&i.Trace.EngineDefinitionName,
+			&i.Trace.EngineDefinitionVersion,
+			&i.Trace.EngineProjectionState,
+			&i.Trace.EngineLatestHistoryID,
+			&i.Trace.EngineLastProjectedHistoryID,
+			&i.Trace.EngineProjectionUpdatedAt,
+			&i.Trace.EngineInstanceKey,
+			&i.Trace.EngineRunStatus,
+			&i.Trace.EngineCustomStatus,
+			&i.Trace.EngineWaitState,
+			&i.Trace.EnginePendingActivityTasks,
+			&i.Trace.EnginePendingInboxItems,
 			&i.SessionExternalID,
 		); err != nil {
 			return nil, err
@@ -370,7 +564,7 @@ func (q *Queries) ListTracesAsc(ctx context.Context, arg ListTracesAscParams) ([
 }
 
 const listTracesBySession = `-- name: ListTracesBySession :many
-SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, t.engine_run_id, t.engine_definition_name, t.engine_definition_version, t.engine_projection_state, t.engine_latest_history_id, t.engine_last_projected_history_id, t.engine_projection_updated_at, t.engine_instance_key, t.engine_run_status, t.engine_custom_status, t.engine_wait_state, t.engine_pending_activity_tasks, t.engine_pending_inbox_items, s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
 WHERE t.project_id = $1 AND t.session_id = $2
@@ -431,6 +625,19 @@ func (q *Queries) ListTracesBySession(ctx context.Context, arg ListTracesBySessi
 			&i.Trace.SearchVector,
 			&i.Trace.TotalTokensIn,
 			&i.Trace.TotalTokensOut,
+			&i.Trace.EngineRunID,
+			&i.Trace.EngineDefinitionName,
+			&i.Trace.EngineDefinitionVersion,
+			&i.Trace.EngineProjectionState,
+			&i.Trace.EngineLatestHistoryID,
+			&i.Trace.EngineLastProjectedHistoryID,
+			&i.Trace.EngineProjectionUpdatedAt,
+			&i.Trace.EngineInstanceKey,
+			&i.Trace.EngineRunStatus,
+			&i.Trace.EngineCustomStatus,
+			&i.Trace.EngineWaitState,
+			&i.Trace.EnginePendingActivityTasks,
+			&i.Trace.EnginePendingInboxItems,
 			&i.SessionExternalID,
 		); err != nil {
 			return nil, err
@@ -444,7 +651,7 @@ func (q *Queries) ListTracesBySession(ctx context.Context, arg ListTracesBySessi
 }
 
 const listTracesBySessionAsc = `-- name: ListTracesBySessionAsc :many
-SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, s.external_id AS session_external_id
+SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, t.engine_run_id, t.engine_definition_name, t.engine_definition_version, t.engine_projection_state, t.engine_latest_history_id, t.engine_last_projected_history_id, t.engine_projection_updated_at, t.engine_instance_key, t.engine_run_status, t.engine_custom_status, t.engine_wait_state, t.engine_pending_activity_tasks, t.engine_pending_inbox_items, s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
 WHERE t.project_id = $1 AND t.session_id = $2
@@ -505,6 +712,19 @@ func (q *Queries) ListTracesBySessionAsc(ctx context.Context, arg ListTracesBySe
 			&i.Trace.SearchVector,
 			&i.Trace.TotalTokensIn,
 			&i.Trace.TotalTokensOut,
+			&i.Trace.EngineRunID,
+			&i.Trace.EngineDefinitionName,
+			&i.Trace.EngineDefinitionVersion,
+			&i.Trace.EngineProjectionState,
+			&i.Trace.EngineLatestHistoryID,
+			&i.Trace.EngineLastProjectedHistoryID,
+			&i.Trace.EngineProjectionUpdatedAt,
+			&i.Trace.EngineInstanceKey,
+			&i.Trace.EngineRunStatus,
+			&i.Trace.EngineCustomStatus,
+			&i.Trace.EngineWaitState,
+			&i.Trace.EnginePendingActivityTasks,
+			&i.Trace.EnginePendingInboxItems,
 			&i.SessionExternalID,
 		); err != nil {
 			return nil, err
@@ -515,6 +735,82 @@ func (q *Queries) ListTracesBySessionAsc(ctx context.Context, arg ListTracesBySe
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateEngineTraceSummary = `-- name: UpdateEngineTraceSummary :one
+UPDATE traces
+SET engine_run_status = $2,
+    engine_custom_status = $3,
+    engine_wait_state = $4,
+    engine_pending_activity_tasks = $5,
+    engine_pending_inbox_items = $6,
+    updated_at = NOW(),
+    version = COALESCE(version, 1) + 1
+WHERE engine_run_id = $1
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out, engine_run_id, engine_definition_name, engine_definition_version, engine_projection_state, engine_latest_history_id, engine_last_projected_history_id, engine_projection_updated_at, engine_instance_key, engine_run_status, engine_custom_status, engine_wait_state, engine_pending_activity_tasks, engine_pending_inbox_items
+`
+
+type UpdateEngineTraceSummaryParams struct {
+	EngineRunID                pgtype.UUID `json:"engine_run_id"`
+	EngineRunStatus            *string     `json:"engine_run_status"`
+	EngineCustomStatus         []byte      `json:"engine_custom_status"`
+	EngineWaitState            []byte      `json:"engine_wait_state"`
+	EnginePendingActivityTasks *int64      `json:"engine_pending_activity_tasks"`
+	EnginePendingInboxItems    *int64      `json:"engine_pending_inbox_items"`
+}
+
+func (q *Queries) UpdateEngineTraceSummary(ctx context.Context, arg UpdateEngineTraceSummaryParams) (Trace, error) {
+	row := q.db.QueryRow(ctx, updateEngineTraceSummary,
+		arg.EngineRunID,
+		arg.EngineRunStatus,
+		arg.EngineCustomStatus,
+		arg.EngineWaitState,
+		arg.EnginePendingActivityTasks,
+		arg.EnginePendingInboxItems,
+	)
+	var i Trace
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.SessionID,
+		&i.TraceID,
+		&i.Name,
+		&i.UserID,
+		&i.Tags,
+		&i.Environment,
+		&i.Release,
+		&i.Metadata,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.TotalSpans,
+		&i.TotalCost,
+		&i.ErrorCount,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SearchVector,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
+		&i.EngineRunID,
+		&i.EngineDefinitionName,
+		&i.EngineDefinitionVersion,
+		&i.EngineProjectionState,
+		&i.EngineLatestHistoryID,
+		&i.EngineLastProjectedHistoryID,
+		&i.EngineProjectionUpdatedAt,
+		&i.EngineInstanceKey,
+		&i.EngineRunStatus,
+		&i.EngineCustomStatus,
+		&i.EngineWaitState,
+		&i.EnginePendingActivityTasks,
+		&i.EnginePendingInboxItems,
+	)
+	return i, err
 }
 
 const updateTraceRollups = `-- name: UpdateTraceRollups :exec
@@ -559,7 +855,7 @@ const updateTraceStatus = `-- name: UpdateTraceStatus :one
 UPDATE traces
 SET status = $2, end_time = $3, updated_at = NOW(), version = version + 1
 WHERE id = $1
-RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out, engine_run_id, engine_definition_name, engine_definition_version, engine_projection_state, engine_latest_history_id, engine_last_projected_history_id, engine_projection_updated_at, engine_instance_key, engine_run_status, engine_custom_status, engine_wait_state, engine_pending_activity_tasks, engine_pending_inbox_items
 `
 
 type UpdateTraceStatusParams struct {
@@ -598,6 +894,19 @@ func (q *Queries) UpdateTraceStatus(ctx context.Context, arg UpdateTraceStatusPa
 		&i.SearchVector,
 		&i.TotalTokensIn,
 		&i.TotalTokensOut,
+		&i.EngineRunID,
+		&i.EngineDefinitionName,
+		&i.EngineDefinitionVersion,
+		&i.EngineProjectionState,
+		&i.EngineLatestHistoryID,
+		&i.EngineLastProjectedHistoryID,
+		&i.EngineProjectionUpdatedAt,
+		&i.EngineInstanceKey,
+		&i.EngineRunStatus,
+		&i.EngineCustomStatus,
+		&i.EngineWaitState,
+		&i.EnginePendingActivityTasks,
+		&i.EnginePendingInboxItems,
 	)
 	return i, err
 }
@@ -639,7 +948,7 @@ ON CONFLICT (project_id, trace_id) DO UPDATE SET
     ),
     updated_at = NOW(),
     version = traces.version + 1
-RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out
+RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out, engine_run_id, engine_definition_name, engine_definition_version, engine_projection_state, engine_latest_history_id, engine_last_projected_history_id, engine_projection_updated_at, engine_instance_key, engine_run_status, engine_custom_status, engine_wait_state, engine_pending_activity_tasks, engine_pending_inbox_items
 `
 
 type UpsertTraceParams struct {
@@ -706,6 +1015,19 @@ func (q *Queries) UpsertTrace(ctx context.Context, arg UpsertTraceParams) (Trace
 		&i.SearchVector,
 		&i.TotalTokensIn,
 		&i.TotalTokensOut,
+		&i.EngineRunID,
+		&i.EngineDefinitionName,
+		&i.EngineDefinitionVersion,
+		&i.EngineProjectionState,
+		&i.EngineLatestHistoryID,
+		&i.EngineLastProjectedHistoryID,
+		&i.EngineProjectionUpdatedAt,
+		&i.EngineInstanceKey,
+		&i.EngineRunStatus,
+		&i.EngineCustomStatus,
+		&i.EngineWaitState,
+		&i.EnginePendingActivityTasks,
+		&i.EnginePendingInboxItems,
 	)
 	return i, err
 }

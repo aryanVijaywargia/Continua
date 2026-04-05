@@ -14,6 +14,7 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	Ingest   IngestConfig
+	Engine   EngineConfig
 	Jobs     JobsConfig
 }
 
@@ -43,6 +44,11 @@ type JobsConfig struct {
 	DefaultWorkers     int
 }
 
+// EngineConfig holds public engine API rollout settings.
+type EngineConfig struct {
+	PublicAPIEnabled bool
+}
+
 // Address returns the server address in host:port format.
 func (s ServerConfig) Address() string {
 	return s.Host + ":" + s.Port
@@ -68,6 +74,10 @@ func Load() (*Config, error) {
 	}
 
 	trueAsyncDefault, err := loadBool("INGEST_TRUE_ASYNC_DEFAULT", false)
+	if err != nil {
+		return nil, err
+	}
+	enginePublicAPIEnabled, err := loadBool("ENGINE_PUBLIC_API_ENABLED", false)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +119,9 @@ func Load() (*Config, error) {
 			TrueAsyncDefault:       trueAsyncDefault,
 			DependencyRetryWindow:  dependencyRetryWindow,
 			FailedPayloadRetention: failedPayloadRetention,
+		},
+		Engine: EngineConfig{
+			PublicAPIEnabled: enginePublicAPIEnabled,
 		},
 		Jobs: JobsConfig{
 			IngestWorkers:      ingestWorkers,

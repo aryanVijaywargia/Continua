@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { fetchTraces, isAuthError, type Trace } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
+import { EngineBadge } from '../components/EngineBadge';
 import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -618,6 +619,9 @@ function TraceRow({ trace, returnTo }: TraceRowProps) {
           >
             {trace.name}
           </Link>
+          {trace.engine ? (
+            <EngineBadge projectionState={trace.engine.projection_state} />
+          ) : null}
           <StatusBadge status={trace.status} />
           {trace.error_count && trace.error_count > 0 ? (
             <span className="inline-flex rounded-full border border-red-300/60 bg-red-100/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-900 dark:border-red-400/25 dark:bg-red-400/10 dark:text-red-100">
