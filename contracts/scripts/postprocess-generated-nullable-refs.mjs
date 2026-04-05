@@ -45,6 +45,18 @@ function patchTypescript() {
     'candidate_event: components["schemas"]["CompareSemanticSummary"] | null;',
     "typescript candidate_event",
   );
+  source = replaceOrThrow(
+    source,
+    'current_wait: components["schemas"]["EngineWaitState"];',
+    'current_wait: components["schemas"]["EngineWaitState"] | null;',
+    "typescript current_wait",
+  );
+  source = replaceOrThrow(
+    source,
+    'result: unknown;',
+    'result: unknown | null;',
+    "typescript engine run result",
+  );
 
   writeFileSync(targetPath, source);
 }
@@ -76,6 +88,12 @@ function patchGo() {
     /(CandidateSpan\s+)(CompareSpanSummary)(\s+`json:"candidate_span"`)/,
     "$1*$2$3",
     "go candidate_span",
+  );
+  source = replaceOrThrow(
+    source,
+    /(CurrentWait\s+)(EngineWaitState)(\s+`json:"current_wait"`)/,
+    "$1*$2$3",
+    "go current_wait",
   );
 
   writeFileSync(targetPath, source);

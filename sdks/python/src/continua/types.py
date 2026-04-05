@@ -39,6 +39,7 @@ class EngineRunStatus(Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    TERMINATED = "TERMINATED"
 
 
 class EngineTraceInfo(BaseModel):
@@ -61,6 +62,41 @@ class EngineWaitState(BaseModel):
 
 
 class EnginePendingWork(BaseModel):
+    pending_activity_tasks: int
+    pending_inbox_items: int
+
+
+class EnginePendingActivityItem(BaseModel):
+    task_id: UUID
+    activity_key: str
+    activity_type: str
+    status: str
+    available_at: AwareDatetime
+    attempt_count: int
+
+
+class EnginePendingTimerItem(BaseModel):
+    inbox_id: UUID
+    timer_key: str
+    status: str
+    available_at: AwareDatetime
+
+
+class EnginePendingSignalItem(BaseModel):
+    inbox_id: UUID
+    signal_name: str
+    status: str
+    available_at: AwareDatetime
+
+
+class EnginePendingWorkResponse(BaseModel):
+    run_id: UUID
+    current_wait: EngineWaitState | None = Field(
+        ..., description="Current synthesized wait state from the run row when present."
+    )
+    activities: list[EnginePendingActivityItem]
+    timers: list[EnginePendingTimerItem]
+    signals: list[EnginePendingSignalItem]
     pending_activity_tasks: int
     pending_inbox_items: int
 
@@ -171,8 +207,8 @@ class EngineRunResponse(EngineRunSummary):
 class EngineRunResultResponse(BaseModel):
     run_id: UUID
     status: EngineRunStatus
-    result: Any | None = Field(
-        None, description="Terminal workflow result payload when available."
+    result: Any = Field(
+        ..., description="Terminal workflow result payload when available."
     )
     failure: EngineFailureSummary | None = None
 

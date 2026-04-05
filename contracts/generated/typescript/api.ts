@@ -105,8 +105,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the terminal result for an engine run */
+        /**
+         * Get the terminal result for an engine run
+         * @description Returns the terminal result shape for the run.
+         *     `COMPLETED` returns the workflow result payload.
+         *     `CANCELLED` and `TERMINATED` return `result=null` with a populated `failure` object.
+         *
+         */
         get: operations["getEngineRunResult"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}/pending-work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the durable pending work held by an engine run */
+        get: operations["getEngineRunPendingWork"];
         put?: never;
         post?: never;
         delete?: never;
@@ -158,8 +181,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request cancellation of an engine run */
+        /**
+         * Request cancellation of an engine run
+         * @description Cooperative cancellation request. Success only enqueues durable cancel intent and may wake the run;
+         *     it does not guarantee the final outcome becomes `CANCELLED`.
+         *     Workflow code decides between `COMPLETED` and `CANCELLED` by returning `workflow.ErrCancelled`.
+         *
+         */
         post: operations["cancelEngineRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}/terminate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forcefully terminate an engine run */
+        post: operations["terminateEngineRun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -318,7 +364,7 @@ export interface components {
         /** @enum {string} */
         EngineProjectionState: "up_to_date" | "catching_up" | "summary_only" | "journal_expired";
         /** @enum {string} */
-        EngineRunStatus: "QUEUED" | "RUNNING" | "WAITING" | "COMPLETED" | "FAILED" | "CANCELLED";
+        EngineRunStatus: "QUEUED" | "RUNNING" | "WAITING" | "COMPLETED" | "FAILED" | "CANCELLED" | "TERMINATED";
         EngineTraceInfo: {
             /** Format: uuid */
             run_id: string;
@@ -338,6 +384,46 @@ export interface components {
             [key: string]: unknown;
         };
         EnginePendingWork: {
+            /** Format: int64 */
+            pending_activity_tasks: number;
+            /** Format: int64 */
+            pending_inbox_items: number;
+        };
+        EnginePendingActivityItem: {
+            /** Format: uuid */
+            task_id: string;
+            activity_key: string;
+            activity_type: string;
+            status: string;
+            /** Format: date-time */
+            available_at: string;
+            /** Format: int32 */
+            attempt_count: number;
+        };
+        EnginePendingTimerItem: {
+            /** Format: uuid */
+            inbox_id: string;
+            timer_key: string;
+            status: string;
+            /** Format: date-time */
+            available_at: string;
+        };
+        EnginePendingSignalItem: {
+            /** Format: uuid */
+            inbox_id: string;
+            signal_name: string;
+            status: string;
+            /** Format: date-time */
+            available_at: string;
+        };
+        EnginePendingWorkResponse: {
+            /** Format: uuid */
+            run_id: string;
+            /** @description Current synthesized wait state from the run row when present. */
+            current_wait: components["schemas"]["EngineWaitState"] | null;
+            activities: components["schemas"]["EnginePendingActivityItem"][];
+            timers: components["schemas"]["EnginePendingTimerItem"][];
+            signals: components["schemas"]["EnginePendingSignalItem"][];
             /** Format: int64 */
             pending_activity_tasks: number;
             /** Format: int64 */
@@ -443,7 +529,7 @@ export interface components {
             run_id: string;
             status: components["schemas"]["EngineRunStatus"];
             /** @description Terminal workflow result payload when available. */
-            result?: unknown;
+            result: unknown | null;
             failure?: components["schemas"]["EngineFailureSummary"];
         };
         EngineHistoryEvent: {
@@ -1059,9 +1145,9 @@ export interface operations {
     startEngineRun: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview"?: string;
+                "X-Continua-Engine-Preview": string;
             };
             path?: never;
             cookie?: never;
@@ -1248,6 +1334,46 @@ export interface operations {
             };
         };
     };
+    getEngineRunPendingWork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending work snapshot for the run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnginePendingWorkResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getEngineRunHistory: {
         parameters: {
             query?: {
@@ -1294,9 +1420,9 @@ export interface operations {
     signalEngineRun: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview"?: string;
+                "X-Continua-Engine-Preview": string;
             };
             path: {
                 run_id: string;
@@ -1359,9 +1485,9 @@ export interface operations {
     cancelEngineRun: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview"?: string;
+                "X-Continua-Engine-Preview": string;
             };
             path: {
                 run_id: string;
@@ -1408,6 +1534,58 @@ export interface operations {
             };
             /** @description Run terminal */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    terminateEngineRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview": string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Run terminated or already terminal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineRunResultResponse"];
+                };
+            };
+            /** @description Missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -44,9 +44,15 @@ func engineRunResponseToAPI(summary *engineRunSummary) EngineRunResponse {
 }
 
 func engineRunResultResponseToAPI(summary *engineRunSummary) EngineRunResultResponse {
+	result := parseOptionalJSONValueRaw(summary.Result)
+	if summary.Status == enginedb.EngineRunLifecycleStatusCancelled ||
+		summary.Status == enginedb.EngineRunLifecycleStatusTerminated {
+		result = nil
+	}
+
 	return EngineRunResultResponse{
 		Failure: engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
-		Result:  parseOptionalJSONValueRaw(summary.Result),
+		Result:  result,
 		RunId:   summary.RunID,
 		Status:  engineRunStatusToAPI(summary.Status),
 	}
@@ -103,6 +109,55 @@ func engineControlResponseToAPI(result *engineControlResult) EngineControlRespon
 	}
 }
 
+func enginePendingWorkResponseToAPI(result *enginePendingWorkResult) EnginePendingWorkResponse {
+	response := EnginePendingWorkResponse{
+		Activities:           make([]EnginePendingActivityItem, 0, len(result.Activities)),
+		PendingActivityTasks: int64(len(result.Activities)),
+		PendingInboxItems:    int64(len(result.Timers) + len(result.Signals)),
+		RunId:                result.RunID,
+		Signals:              make([]EnginePendingSignalItem, 0, len(result.Signals)),
+		Timers:               make([]EnginePendingTimerItem, 0, len(result.Timers)),
+	}
+
+	if waitState := parseOptionalWaitState(result.CurrentWait); waitState != nil {
+		response.CurrentWait = waitState
+	}
+
+	for i := range result.Activities {
+		item := result.Activities[i]
+		response.Activities = append(response.Activities, EnginePendingActivityItem{
+			ActivityKey:  item.ActivityKey,
+			ActivityType: item.ActivityType,
+			AttemptCount: item.AttemptCount,
+			AvailableAt:  item.AvailableAt,
+			Status:       item.Status,
+			TaskId:       item.TaskID,
+		})
+	}
+
+	for i := range result.Timers {
+		item := result.Timers[i]
+		response.Timers = append(response.Timers, EnginePendingTimerItem{
+			AvailableAt: item.AvailableAt,
+			InboxId:     item.InboxID,
+			Status:      item.Status,
+			TimerKey:    item.TimerKey,
+		})
+	}
+
+	for i := range result.Signals {
+		item := result.Signals[i]
+		response.Signals = append(response.Signals, EnginePendingSignalItem{
+			AvailableAt: item.AvailableAt,
+			InboxId:     item.InboxID,
+			SignalName:  item.SignalName,
+			Status:      item.Status,
+		})
+	}
+
+	return response
+}
+
 func projectedEngineRunSummaryFromTrace(trace *store.TraceRead) *EngineRunSummary {
 	info := engineTraceInfoFromTrace(trace)
 	if info == nil {
@@ -133,7 +188,7 @@ func projectedEngineRunSummaryFromTrace(trace *store.TraceRead) *EngineRunSummar
 	switch summary.Status {
 	case EngineRunStatusCOMPLETED:
 		summary.Result = parseOptionalJSONValueRaw(trace.Output)
-	case EngineRunStatusFAILED, EngineRunStatusCANCELLED:
+	case EngineRunStatusFAILED, EngineRunStatusCANCELLED, EngineRunStatusTERMINATED:
 		summary.Failure = projectedEngineFailureSummary(trace.Status, trace.Output)
 	}
 
@@ -184,6 +239,8 @@ func projectedEngineRunStatusFromTrace(trace *store.TraceRead) EngineRunStatus {
 		return EngineRunStatusFAILED
 	case string(enginedb.EngineRunLifecycleStatusCancelled):
 		return EngineRunStatusCANCELLED
+	case string(enginedb.EngineRunLifecycleStatusTerminated):
+		return EngineRunStatusTERMINATED
 	case string(enginedb.EngineRunLifecycleStatusRunning):
 		return EngineRunStatusRUNNING
 	default:
@@ -258,7 +315,9 @@ func engineFailureSummaryToAPI(
 	errorMessage *string,
 ) *EngineFailureSummary {
 	if strings.TrimSpace(derefString(errorCode)) == "" && strings.TrimSpace(derefString(errorMessage)) == "" &&
-		status != enginedb.EngineRunLifecycleStatusFailed && status != enginedb.EngineRunLifecycleStatusCancelled {
+		status != enginedb.EngineRunLifecycleStatusFailed &&
+		status != enginedb.EngineRunLifecycleStatusCancelled &&
+		status != enginedb.EngineRunLifecycleStatusTerminated {
 		return nil
 	}
 
@@ -337,6 +396,8 @@ func engineRunStatusToAPI(status enginedb.EngineRunLifecycleStatus) EngineRunSta
 		return EngineRunStatusFAILED
 	case enginedb.EngineRunLifecycleStatusCancelled:
 		return EngineRunStatusCANCELLED
+	case enginedb.EngineRunLifecycleStatusTerminated:
+		return EngineRunStatusTERMINATED
 	case enginedb.EngineRunLifecycleStatusWaiting:
 		return EngineRunStatusWAITING
 	default:

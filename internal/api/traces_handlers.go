@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -58,6 +59,11 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 		}
 	}
 
+	if err := s.normalizeTraceProjectionStates(r.Context(), traces); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
+		return
+	}
+
 	apiTraces := make([]Trace, len(traces))
 	for i := range traces {
 		apiTraces[i] = traceToAPI(&traces[i])
@@ -83,7 +89,17 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 	}
 
 	var engineSummary *EngineRunSummary
-	if shouldReadLiveEngineSummary(&trace) {
+	readLiveEngineSummary := shouldReadLiveEngineSummary(&trace)
+	if !readLiveEngineSummary && s.engineControl != nil {
+		needsLiveSummary, err := s.engineControl.shouldReadLiveTraceSummary(r.Context(), &trace)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to read engine summary")
+			return
+		}
+		readLiveEngineSummary = needsLiveSummary
+	}
+
+	if readLiveEngineSummary {
 		if s.engineControl == nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to read engine summary")
 			return
@@ -143,6 +159,11 @@ func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id opena
 		return
 	}
 
+	if err := s.normalizeTraceProjectionState(r.Context(), &trace); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list timeline events")
+		return
+	}
+
 	explicitEvents, err := s.store.ListSpanEventsByTrace(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list timeline events")
@@ -183,4 +204,29 @@ func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id opena
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) normalizeTraceProjectionStates(ctx context.Context, traces []store.TraceRead) error {
+	if s.engineControl == nil {
+		return nil
+	}
+	for i := range traces {
+		if err := s.normalizeTraceProjectionState(ctx, &traces[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) normalizeTraceProjectionState(ctx context.Context, trace *store.TraceRead) error {
+	if s.engineControl == nil || trace == nil || !trace.EngineRunID.Valid {
+		return nil
+	}
+
+	projectionState, err := s.engineControl.projectionStateForTrace(ctx, trace)
+	if err != nil {
+		return err
+	}
+	trace.EngineProjectionState = &projectionState
+	return nil
 }
