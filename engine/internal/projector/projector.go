@@ -161,7 +161,7 @@ func WriteTerminalSummary(
 	commandTag, err := tx.Exec(ctx, `
 		UPDATE public.traces
 		SET status = $2,
-		    end_time = $3,
+		    end_time = $3::timestamptz,
 		    output = $4::jsonb,
 		    error_count = CASE
 		        WHEN $2 IN ('failed', 'cancelled') THEN GREATEST(COALESCE(error_count, 0), 1)
@@ -188,11 +188,11 @@ func WriteTerminalSummary(
 	commandTag, err = tx.Exec(ctx, `
 		UPDATE public.spans
 		SET status = $3,
-		    end_time = $4,
+		    end_time = $4::timestamptz,
 		    output = $5::jsonb,
 		    status_message = $6,
 		    duration_ms = CASE
-		        WHEN $4 IS NOT NULL THEN EXTRACT(EPOCH FROM ($4 - start_time)) * 1000
+		        WHEN $4::timestamptz IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
 		        ELSE duration_ms
 		    END,
 		    updated_at = NOW(),
