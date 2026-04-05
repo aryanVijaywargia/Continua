@@ -1,6 +1,7 @@
 package projector
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -217,7 +218,7 @@ func TestProjectorPollOnce_DoesNotOverwriteTerminalTraceSummary(t *testing.T) {
 	if !traceEndTime.Equal(completedAt) {
 		t.Fatalf("expected completed end_time %s, got %s", completedAt, traceEndTime)
 	}
-	if string(traceOutput) != string(result) {
+	if !jsonEqual(traceOutput, result) {
 		t.Fatalf("expected terminal trace output %s, got %s", result, traceOutput)
 	}
 	if runStatus != string(enginedb.EngineRunLifecycleStatusCompleted) {
@@ -243,9 +244,23 @@ func TestProjectorPollOnce_DoesNotOverwriteTerminalTraceSummary(t *testing.T) {
 	if !rootSpanEndTime.Equal(completedAt) {
 		t.Fatalf("expected completed root span end_time %s, got %s", completedAt, rootSpanEndTime)
 	}
-	if string(rootSpanOutput) != string(result) {
+	if !jsonEqual(rootSpanOutput, result) {
 		t.Fatalf("expected terminal root span output %s, got %s", result, rootSpanOutput)
 	}
+}
+
+func jsonEqual(left, right []byte) bool {
+	var leftCompact bytes.Buffer
+	if err := json.Compact(&leftCompact, left); err != nil {
+		return false
+	}
+
+	var rightCompact bytes.Buffer
+	if err := json.Compact(&rightCompact, right); err != nil {
+		return false
+	}
+
+	return leftCompact.String() == rightCompact.String()
 }
 
 func TestAdvanceProjectionCheckpoint_IsMonotonicForStaleUpdates(t *testing.T) {
