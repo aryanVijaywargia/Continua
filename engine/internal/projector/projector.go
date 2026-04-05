@@ -162,7 +162,7 @@ func WriteTerminalSummary(
 		UPDATE public.traces
 		SET status = $2,
 		    end_time = $3,
-		    output = $4,
+		    output = $4::jsonb,
 		    error_count = CASE
 		        WHEN $2 IN ('failed', 'cancelled') THEN GREATEST(COALESCE(error_count, 0), 1)
 		        ELSE error_count
@@ -189,7 +189,7 @@ func WriteTerminalSummary(
 		UPDATE public.spans
 		SET status = $3,
 		    end_time = $4,
-		    output = $5,
+		    output = $5::jsonb,
 		    status_message = $6,
 		    duration_ms = CASE
 		        WHEN $4 IS NOT NULL THEN EXTRACT(EPOCH FROM ($4 - start_time)) * 1000
@@ -642,7 +642,7 @@ func emitProjectedEvent(ctx context.Context, tx pgx.Tx, event *projectedEvent) e
 		    idempotency_key
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10)
-		ON CONFLICT (project_id, idempotency_key) DO NOTHING
+		ON CONFLICT (project_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
 	`, event.ProjectID, event.TraceID, event.SpanID, event.EventType, defaultProjectedEventLevel, event.EventTS, event.Sequence, event.Message, event.Payload, idempotencyKey)
 	if err != nil {
 		return err
