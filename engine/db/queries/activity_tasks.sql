@@ -35,6 +35,20 @@ FROM engine.activity_tasks
 WHERE run_id = $1
   AND status IN ('queued', 'claimed');
 
+-- name: ListOpenActivityTasksByRun :many
+SELECT *
+FROM engine.activity_tasks
+WHERE run_id = $1
+  AND status IN ('queued', 'claimed')
+ORDER BY available_at ASC, id ASC;
+
+-- name: ListCancelledActivityTasksByRun :many
+SELECT *
+FROM engine.activity_tasks
+WHERE run_id = $1
+  AND status = 'cancelled'
+ORDER BY available_at ASC, id ASC;
+
 -- name: ClaimNextActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'claimed',
@@ -81,4 +95,16 @@ SET status = 'failed',
 WHERE id = $1
   AND status = 'claimed'
   AND claimed_by = $2
+RETURNING *;
+
+-- name: CancelOpenActivityTasksByRun :many
+UPDATE engine.activity_tasks
+SET status = 'cancelled',
+    completed_at = NOW(),
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE run_id = $1
+  AND status IN ('queued', 'claimed')
 RETURNING *;

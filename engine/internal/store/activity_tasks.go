@@ -37,6 +37,20 @@ func (o *storeOps) ListActivityTasksByRun(
 	return o.q.ListActivityTasksByRun(ctx, runID)
 }
 
+func (o *storeOps) ListOpenActivityTasksByRun(
+	ctx context.Context,
+	runID uuid.UUID,
+) ([]enginedb.EngineActivityTask, error) {
+	return o.q.ListOpenActivityTasksByRun(ctx, runID)
+}
+
+func (o *storeOps) ListCancelledActivityTasksByRun(
+	ctx context.Context,
+	runID uuid.UUID,
+) ([]enginedb.EngineActivityTask, error) {
+	return o.q.ListCancelledActivityTasksByRun(ctx, runID)
+}
+
 func (o *storeOps) ClaimNextActivityTask(
 	ctx context.Context,
 	workerID string,
@@ -82,6 +96,13 @@ func (o *storeOps) FailActivityTask(
 		return task, nil
 	}
 	return enginedb.EngineActivityTask{}, o.classifyActivityTaskCASMiss(ctx, id, err)
+}
+
+func (o *storeOps) CancelOpenActivityTasksByRun(
+	ctx context.Context,
+	runID uuid.UUID,
+) ([]enginedb.EngineActivityTask, error) {
+	return o.q.CancelOpenActivityTasksByRun(ctx, runID)
 }
 
 func (o *storeOps) classifyActivityTaskCASMiss(ctx context.Context, id uuid.UUID, err error) error {

@@ -356,37 +356,27 @@ const transitionRunToCancelled = `-- name: TransitionRunToCancelled :one
 UPDATE engine.runs
 SET status = 'cancelled',
     result = NULL,
-    custom_status = $3,
+    custom_status = $2,
     waiting_for = NULL,
     completed_at = NOW(),
-    last_error_code = $4,
-    last_error_message = $5,
+    last_error_code = 'cancelled',
+    last_error_message = 'workflow cancelled',
     claimed_by = NULL,
     claimed_at = NULL,
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
   AND status = 'running'
-  AND claimed_by = $2
 RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
 `
 
 type TransitionRunToCancelledParams struct {
-	ID               uuid.UUID `json:"id"`
-	ClaimedBy        *string   `json:"claimed_by"`
-	CustomStatus     []byte    `json:"custom_status"`
-	LastErrorCode    *string   `json:"last_error_code"`
-	LastErrorMessage *string   `json:"last_error_message"`
+	ID           uuid.UUID `json:"id"`
+	CustomStatus []byte    `json:"custom_status"`
 }
 
 func (q *Queries) TransitionRunToCancelled(ctx context.Context, arg TransitionRunToCancelledParams) (EngineRun, error) {
-	row := q.db.QueryRow(ctx, transitionRunToCancelled,
-		arg.ID,
-		arg.ClaimedBy,
-		arg.CustomStatus,
-		arg.LastErrorCode,
-		arg.LastErrorMessage,
-	)
+	row := q.db.QueryRow(ctx, transitionRunToCancelled, arg.ID, arg.CustomStatus)
 	var i EngineRun
 	err := row.Scan(
 		&i.ID,
@@ -505,6 +495,50 @@ func (q *Queries) TransitionRunToFailed(ctx context.Context, arg TransitionRunTo
 		arg.LastErrorCode,
 		arg.LastErrorMessage,
 	)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const transitionRunToTerminated = `-- name: TransitionRunToTerminated :one
+UPDATE engine.runs
+SET status = 'terminated',
+    result = NULL,
+    waiting_for = NULL,
+    completed_at = NOW(),
+    last_error_code = 'terminated',
+    last_error_message = 'run terminated by operator',
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status IN ('queued', 'running', 'waiting')
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
+`
+
+func (q *Queries) TransitionRunToTerminated(ctx context.Context, id uuid.UUID) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, transitionRunToTerminated, id)
 	var i EngineRun
 	err := row.Scan(
 		&i.ID,

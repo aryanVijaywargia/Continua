@@ -1,0 +1,1 @@
+-- No-op: the instance status backfill is advisory and idempotent.

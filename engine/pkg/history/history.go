@@ -10,6 +10,8 @@ const (
 	EventWorkflowStarted        = "workflow.started"
 	EventWorkflowCompleted      = "workflow.completed"
 	EventWorkflowFailed         = "workflow.failed"
+	EventWorkflowCancelled      = "workflow.cancelled"
+	EventWorkflowTerminated     = "workflow.terminated"
 	EventWorkflowReplayMismatch = "workflow.replay_mismatch"
 	EventActivityScheduled      = "activity.scheduled"
 	EventActivityCompleted      = "activity.completed"
@@ -39,6 +41,13 @@ type WorkflowCompletedPayload struct {
 }
 
 type WorkflowFailedPayload struct {
+	ErrorCode    string `json:"error_code"`
+	ErrorMessage string `json:"error_message"`
+}
+
+type WorkflowCancelledPayload struct{}
+
+type WorkflowTerminatedPayload struct {
 	ErrorCode    string `json:"error_code"`
 	ErrorMessage string `json:"error_message"`
 }
@@ -131,6 +140,9 @@ func DecodePayload(eventType string, raw []byte) (any, error) {
 		if eventType == EventCancelRequested {
 			return CancelRequestedPayload{}, nil
 		}
+		if eventType == EventWorkflowCancelled {
+			return WorkflowCancelledPayload{}, nil
+		}
 		return nil, nil
 	}
 
@@ -183,6 +195,10 @@ func payloadTarget(eventType string) (any, error) {
 		return &WorkflowCompletedPayload{}, nil
 	case EventWorkflowFailed:
 		return &WorkflowFailedPayload{}, nil
+	case EventWorkflowCancelled:
+		return &WorkflowCancelledPayload{}, nil
+	case EventWorkflowTerminated:
+		return &WorkflowTerminatedPayload{}, nil
 	case EventWorkflowReplayMismatch:
 		return &WorkflowReplayMismatchPayload{}, nil
 	case EventActivityScheduled:

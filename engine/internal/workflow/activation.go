@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -109,7 +110,13 @@ func (a *Activator) commitDecision(
 	sequence := decision.NextSequence
 	var activityHistoryID *int64
 	var timerHistoryID *int64
-	var lastHistoryID int64
+	var latestHistoryID *int64
+
+	for _, inboxID := range decision.ConsumedInboxIDs {
+		if _, err := tx.MarkInboxProcessed(ctx, inboxID); err != nil && err != store.ErrNotFound {
+			return err
+		}
+	}
 
 	for i := range decision.Events {
 		event := decision.Events[i]
@@ -131,8 +138,18 @@ func (a *Activator) commitDecision(
 		case enginehistory.EventTimerScheduled:
 			timerHistoryID = &appended.ID
 		}
-		lastHistoryID = appended.ID
+		latestHistoryID = &appended.ID
 		sequence++
+	}
+
+	// Non-cancel activation paths still maintain the stored per-trace freshness
+	// checkpoint so projected shells can move into catching_up before the
+	// projector catches up. decisionCancelled remains engine-only per the
+	// operational hardening change.
+	if latestHistoryID != nil && decision.Kind != decisionCancelled {
+		if err := engineprojector.UpdateLatestHistory(ctx, tx.Tx(), run.ProjectID, run.ID, *latestHistoryID); err != nil {
+			return err
+		}
 	}
 
 	if decision.NewActivity != nil {
@@ -174,15 +191,9 @@ func (a *Activator) commitDecision(
 		}
 	}
 
-	for _, inboxID := range decision.ConsumedInboxIDs {
-		if _, err := tx.MarkInboxProcessed(ctx, inboxID); err != nil && err != store.ErrNotFound {
-			return err
-		}
-	}
-
 	switch decision.Kind {
 	case decisionWaiting:
-		updatedRun, err := tx.TransitionRunToWaiting(ctx, enginedb.TransitionRunToWaitingParams{
+		_, err := tx.TransitionRunToWaiting(ctx, enginedb.TransitionRunToWaitingParams{
 			ID:           run.ID,
 			ClaimedBy:    workerClaimedBy,
 			WaitingFor:   decision.WaitingFor,
@@ -191,96 +202,58 @@ func (a *Activator) commitDecision(
 		if err != nil {
 			return err
 		}
-		if lastHistoryID > 0 {
-			if err := engineprojector.UpdateLatestHistory(ctx, tx.Tx(), run.ProjectID, run.ID, lastHistoryID); err != nil {
-				return err
-			}
-		}
-		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
+		return nil
 	case decisionCompleted:
-		updatedRun, err := tx.TransitionRunToCompleted(ctx, enginedb.TransitionRunToCompletedParams{
+		if _, err := tx.TransitionRunToCompleted(ctx, enginedb.TransitionRunToCompletedParams{
 			ID:           run.ID,
 			ClaimedBy:    workerClaimedBy,
 			Result:       decision.Result,
 			CustomStatus: decision.CustomStatus,
-		})
-		if err != nil {
+		}); err != nil {
 			return err
 		}
-		if err := engineprojector.WriteTerminalSummary(
-			ctx,
-			tx.Tx(),
-			run.ProjectID,
-			run.ID,
-			updatedRun.Status,
-			updatedRun.CompletedAt.Time,
-			decision.Result,
-			nil,
-			nil,
-			lastHistoryID,
-		); err != nil {
-			return err
-		}
-		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
+		return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusCompleted)
 	case decisionFailed:
-		errorCode := decision.FailureCode
-		errorMessage := decision.FailureMessage
-		updatedRun, err := tx.TransitionRunToFailed(ctx, enginedb.TransitionRunToFailedParams{
+		if _, err := tx.TransitionRunToFailed(ctx, enginedb.TransitionRunToFailedParams{
 			ID:               run.ID,
 			ClaimedBy:        workerClaimedBy,
 			CustomStatus:     decision.CustomStatus,
-			LastErrorCode:    &errorCode,
-			LastErrorMessage: &errorMessage,
-		})
-		if err != nil {
+			LastErrorCode:    &decision.FailureCode,
+			LastErrorMessage: &decision.FailureMessage,
+		}); err != nil {
 			return err
 		}
-		if err := engineprojector.WriteTerminalSummary(
-			ctx,
-			tx.Tx(),
-			run.ProjectID,
-			run.ID,
-			updatedRun.Status,
-			updatedRun.CompletedAt.Time,
-			nil,
-			&errorCode,
-			&errorMessage,
-			lastHistoryID,
-		); err != nil {
-			return err
-		}
-		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
+		return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusFailed)
 	case decisionCancelled:
-		errorCode := decision.FailureCode
-		errorMessage := decision.FailureMessage
-		updatedRun, err := tx.TransitionRunToCancelled(ctx, enginedb.TransitionRunToCancelledParams{
-			ID:               run.ID,
-			ClaimedBy:        workerClaimedBy,
-			CustomStatus:     decision.CustomStatus,
-			LastErrorCode:    &errorCode,
-			LastErrorMessage: &errorMessage,
-		})
-		if err != nil {
+		if _, err := tx.TransitionRunToCancelled(ctx, enginedb.TransitionRunToCancelledParams{
+			ID:           run.ID,
+			CustomStatus: decision.CustomStatus,
+		}); err != nil {
 			return err
 		}
-		if err := engineprojector.WriteTerminalSummary(
-			ctx,
-			tx.Tx(),
-			run.ProjectID,
-			run.ID,
-			updatedRun.Status,
-			updatedRun.CompletedAt.Time,
-			nil,
-			&errorCode,
-			&errorMessage,
-			lastHistoryID,
-		); err != nil {
+		if _, err := tx.CancelOpenActivityTasksByRun(ctx, run.ID); err != nil {
 			return err
 		}
-		return engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &updatedRun)
+		if _, err := tx.DiscardOpenInboxItemsByRun(ctx, run.ID); err != nil {
+			return err
+		}
+		return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusCancelled)
 	default:
 		return fmt.Errorf("unsupported activation decision kind %q", decision.Kind)
 	}
+}
+
+func updateRunInstanceStatus(
+	ctx context.Context,
+	tx *store.Tx,
+	instanceID uuid.UUID,
+	status enginedb.EngineInstanceLifecycleStatus,
+) error {
+	_, err := tx.UpdateInstanceStatus(ctx, enginedb.UpdateInstanceStatusParams{
+		ID:     instanceID,
+		Status: status,
+	})
+	return err
 }
 
 func sameClaimedBy(left, right *string) bool {

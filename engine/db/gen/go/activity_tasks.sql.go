@@ -12,6 +12,60 @@ import (
 	"github.com/google/uuid"
 )
 
+const cancelOpenActivityTasksByRun = `-- name: CancelOpenActivityTasksByRun :many
+UPDATE engine.activity_tasks
+SET status = 'cancelled',
+    completed_at = NOW(),
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE run_id = $1
+  AND status IN ('queued', 'claimed')
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at
+`
+
+func (q *Queries) CancelOpenActivityTasksByRun(ctx context.Context, runID uuid.UUID) ([]EngineActivityTask, error) {
+	rows, err := q.db.Query(ctx, cancelOpenActivityTasksByRun, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineActivityTask{}
+	for rows.Next() {
+		var i EngineActivityTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.ActivityKey,
+			&i.ActivityType,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.AvailableAt,
+			&i.AttemptCount,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimNextActivityTask = `-- name: ClaimNextActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'claimed',
@@ -330,6 +384,104 @@ ORDER BY created_at ASC, id ASC
 
 func (q *Queries) ListActivityTasksByRun(ctx context.Context, runID uuid.UUID) ([]EngineActivityTask, error) {
 	rows, err := q.db.Query(ctx, listActivityTasksByRun, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineActivityTask{}
+	for rows.Next() {
+		var i EngineActivityTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.ActivityKey,
+			&i.ActivityType,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.AvailableAt,
+			&i.AttemptCount,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCancelledActivityTasksByRun = `-- name: ListCancelledActivityTasksByRun :many
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at
+FROM engine.activity_tasks
+WHERE run_id = $1
+  AND status = 'cancelled'
+ORDER BY available_at ASC, id ASC
+`
+
+func (q *Queries) ListCancelledActivityTasksByRun(ctx context.Context, runID uuid.UUID) ([]EngineActivityTask, error) {
+	rows, err := q.db.Query(ctx, listCancelledActivityTasksByRun, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineActivityTask{}
+	for rows.Next() {
+		var i EngineActivityTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.ActivityKey,
+			&i.ActivityType,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.AvailableAt,
+			&i.AttemptCount,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenActivityTasksByRun = `-- name: ListOpenActivityTasksByRun :many
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at
+FROM engine.activity_tasks
+WHERE run_id = $1
+  AND status IN ('queued', 'claimed')
+ORDER BY available_at ASC, id ASC
+`
+
+func (q *Queries) ListOpenActivityTasksByRun(ctx context.Context, runID uuid.UUID) ([]EngineActivityTask, error) {
+	rows, err := q.db.Query(ctx, listOpenActivityTasksByRun, runID)
 	if err != nil {
 		return nil, err
 	}

@@ -254,23 +254,19 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 
 	if runErr != nil {
 		if errors.Is(runErr, publicworkflow.ErrCancelled) {
-			failure := enginehistory.WorkflowFailedPayload{
-				ErrorCode:    "cancelled",
-				ErrorMessage: "workflow cancelled",
-			}
+			cancelled := enginehistory.WorkflowCancelledPayload{}
 			if next, ok := r.peek(); ok {
-				recorded, ok := next.Payload.(*enginehistory.WorkflowFailedPayload)
-				if !ok || recorded.ErrorCode != failure.ErrorCode || recorded.ErrorMessage != failure.ErrorMessage {
-					r.replayMismatch(enginehistory.EventWorkflowFailed, "", next, "workflow cancellation did not match recorded history")
+				if _, ok := next.Payload.(*enginehistory.WorkflowCancelledPayload); !ok {
+					r.replayMismatch(enginehistory.EventWorkflowCancelled, "", next, "workflow cancellation did not match recorded history")
 				}
 				r.cursor++
 			} else {
-				r.queueEvent(enginehistory.EventWorkflowFailed, failure)
+				r.queueEvent(enginehistory.EventWorkflowCancelled, cancelled)
 			}
 			if next, ok := r.peek(); ok {
 				r.replayMismatch("", "", next, "recorded history contains events after workflow cancellation")
 			}
-			return r.cancelledDecision(failure), nil
+			return r.cancelledDecision(), nil
 		}
 
 		code := "workflow_failed"
@@ -650,15 +646,15 @@ func (r *workflowRunner) failedDecision(failure enginehistory.WorkflowFailedPayl
 	}
 }
 
-func (r *workflowRunner) cancelledDecision(failure enginehistory.WorkflowFailedPayload) activationDecision {
+func (r *workflowRunner) cancelledDecision() activationDecision {
 	return activationDecision{
 		Kind:             decisionCancelled,
 		Events:           append([]queuedHistoryEvent(nil), r.queuedEvents...),
 		NextSequence:     r.nextSequence,
 		CustomStatus:     cloneRaw(r.customStatus),
 		ConsumedInboxIDs: append([]uuid.UUID(nil), r.consumedInboxIDs...),
-		FailureCode:      failure.ErrorCode,
-		FailureMessage:   failure.ErrorMessage,
+		FailureCode:      "cancelled",
+		FailureMessage:   "workflow cancelled",
 	}
 }
 

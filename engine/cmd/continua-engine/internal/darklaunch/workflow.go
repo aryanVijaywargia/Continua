@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	DemoDefinitionName    = "darklaunch.demo"
-	DemoDefinitionVersion = "v1"
+	DemoDefinitionName               = "darklaunch.demo"
+	DemoDefinitionVersion            = "v1"
+	CancelCompletesDefinitionName    = "darklaunch.cancel-completes"
+	CancelCompletesDefinitionVersion = "v1"
 )
 
 type WorkflowInput struct {
@@ -32,10 +34,23 @@ func Definitions() []workflow.Definition {
 			Version: DemoDefinitionVersion,
 			Run:     runDemoWorkflow,
 		},
+		{
+			Name:    CancelCompletesDefinitionName,
+			Version: CancelCompletesDefinitionVersion,
+			Run:     runCancelCompletesWorkflow,
+		},
 	}
 }
 
 func runDemoWorkflow(ctx workflow.Context) error {
+	return runDemoLikeWorkflow(ctx, true)
+}
+
+func runCancelCompletesWorkflow(ctx workflow.Context) error {
+	return runDemoLikeWorkflow(ctx, false)
+}
+
+func runDemoLikeWorkflow(ctx workflow.Context, cancelReturnsCancelled bool) error {
 	var input WorkflowInput
 	if err := ctx.Input(&input); err != nil {
 		return err
@@ -48,7 +63,7 @@ func runDemoWorkflow(ctx workflow.Context) error {
 		return err
 	}
 	if ctx.CancellationRequested() {
-		return workflow.ErrCancelled
+		return cancelOutcome(cancelReturnsCancelled)
 	}
 
 	var activityOutput ActivityOutput
@@ -60,7 +75,7 @@ func runDemoWorkflow(ctx workflow.Context) error {
 		return err
 	}
 	if ctx.CancellationRequested() {
-		return workflow.ErrCancelled
+		return cancelOutcome(cancelReturnsCancelled)
 	}
 	if err := ctx.SleepUntil("demo-timer", timerDeadline(input)); err != nil {
 		return err
@@ -70,7 +85,7 @@ func runDemoWorkflow(ctx workflow.Context) error {
 		return err
 	}
 	if ctx.CancellationRequested() {
-		return workflow.ErrCancelled
+		return cancelOutcome(cancelReturnsCancelled)
 	}
 
 	var signal SignalPayload
@@ -87,6 +102,13 @@ func runDemoWorkflow(ctx workflow.Context) error {
 	}
 	if err := ctx.SetResult(result); err != nil {
 		return err
+	}
+	return nil
+}
+
+func cancelOutcome(cancelReturnsCancelled bool) error {
+	if cancelReturnsCancelled {
+		return workflow.ErrCancelled
 	}
 	return nil
 }

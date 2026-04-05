@@ -66,6 +66,7 @@ SELECT COUNT(*)
 FROM engine.inbox
 WHERE run_id = $1
   AND status IN ('pending', 'claimed')
+  AND kind <> 'cancel'
 `
 
 func (q *Queries) CountOpenInboxByRun(ctx context.Context, runID pgtype.UUID) (int64, error) {
@@ -134,6 +135,102 @@ func (q *Queries) CreateInboxItem(ctx context.Context, arg CreateInboxItemParams
 	return i, err
 }
 
+const discardOpenInboxItemsByRun = `-- name: DiscardOpenInboxItemsByRun :many
+UPDATE engine.inbox
+SET status = 'discarded',
+    resolved_at = NOW(),
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE run_id = $1
+  AND status IN ('pending', 'claimed')
+RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+`
+
+func (q *Queries) DiscardOpenInboxItemsByRun(ctx context.Context, runID pgtype.UUID) ([]EngineInbox, error) {
+	rows, err := q.db.Query(ctx, discardOpenInboxItemsByRun, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineInbox{}
+	for rows.Next() {
+		var i EngineInbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.Kind,
+			&i.Payload,
+			&i.Status,
+			&i.AvailableAt,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.DedupeKey,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDiscardedTimerInboxItemsByRun = `-- name: ListDiscardedTimerInboxItemsByRun :many
+SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+FROM engine.inbox
+WHERE run_id = $1
+  AND kind = 'timer'
+  AND status = 'discarded'
+ORDER BY available_at ASC, id ASC
+`
+
+func (q *Queries) ListDiscardedTimerInboxItemsByRun(ctx context.Context, runID pgtype.UUID) ([]EngineInbox, error) {
+	rows, err := q.db.Query(ctx, listDiscardedTimerInboxItemsByRun, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineInbox{}
+	for rows.Next() {
+		var i EngineInbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.Kind,
+			&i.Payload,
+			&i.Status,
+			&i.AvailableAt,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.DedupeKey,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDueTimerRunIDs = `-- name: ListDueTimerRunIDs :many
 SELECT DISTINCT run_id
 FROM engine.inbox
@@ -157,6 +254,57 @@ func (q *Queries) ListDueTimerRunIDs(ctx context.Context) ([]pgtype.UUID, error)
 			return nil, err
 		}
 		items = append(items, run_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenInboxItemsByRunAndKind = `-- name: ListOpenInboxItemsByRunAndKind :many
+SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+FROM engine.inbox
+WHERE run_id = $1
+  AND kind = $2
+  AND status IN ('pending', 'claimed')
+ORDER BY available_at ASC, id ASC
+`
+
+type ListOpenInboxItemsByRunAndKindParams struct {
+	RunID pgtype.UUID `json:"run_id"`
+	Kind  string      `json:"kind"`
+}
+
+func (q *Queries) ListOpenInboxItemsByRunAndKind(ctx context.Context, arg ListOpenInboxItemsByRunAndKindParams) ([]EngineInbox, error) {
+	rows, err := q.db.Query(ctx, listOpenInboxItemsByRunAndKind, arg.RunID, arg.Kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineInbox{}
+	for rows.Next() {
+		var i EngineInbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.Kind,
+			&i.Payload,
+			&i.Status,
+			&i.AvailableAt,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.DedupeKey,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -114,18 +114,33 @@ RETURNING *;
 UPDATE engine.runs
 SET status = 'cancelled',
     result = NULL,
-    custom_status = $3,
+    custom_status = $2,
     waiting_for = NULL,
     completed_at = NOW(),
-    last_error_code = $4,
-    last_error_message = $5,
+    last_error_code = 'cancelled',
+    last_error_message = 'workflow cancelled',
     claimed_by = NULL,
     claimed_at = NULL,
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
   AND status = 'running'
-  AND claimed_by = $2
+RETURNING *;
+
+-- name: TransitionRunToTerminated :one
+UPDATE engine.runs
+SET status = 'terminated',
+    result = NULL,
+    waiting_for = NULL,
+    completed_at = NOW(),
+    last_error_code = 'terminated',
+    last_error_message = 'run terminated by operator',
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status IN ('queued', 'running', 'waiting')
 RETURNING *;
 
 -- name: WakeWaitingRun :one
