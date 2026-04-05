@@ -236,8 +236,8 @@ func SyncProjectedRunSummary(
 	commandTag, err := tx.Exec(ctx, `
 		UPDATE public.traces
 		SET engine_run_status = $2,
-		    engine_custom_status = $3,
-		    engine_wait_state = $4,
+		    engine_custom_status = $3::jsonb,
+		    engine_wait_state = $4::jsonb,
 		    engine_pending_activity_tasks = $5,
 		    engine_pending_inbox_items = $6,
 		    updated_at = NOW(),
