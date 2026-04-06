@@ -6,6 +6,11 @@ import (
 )
 
 var ErrEmptyKey = errors.New("workflow: stable key is required")
+
+// ErrCancelled is the explicit replay-aware cancellation sentinel.
+// Returning it records a terminal workflow.cancelled event and transitions the
+// run to CANCELLED; returning nil after observing cancellation still produces
+// COMPLETED. Replay consults this sentinel through errors.Is.
 var ErrCancelled = errors.New("workflow: cancelled")
 
 type Context interface {

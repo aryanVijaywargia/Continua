@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/internal/store"
@@ -153,5 +155,41 @@ func (s *Server) GetSessionCompare(w http.ResponseWriter, r *http.Request, id op
 		return
 	}
 
+	if err := s.normalizeComparisonProjectionState(r.Context(), projectID, &comparison); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session comparison")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, sessionCompareToAPI(&comparison))
+}
+
+func (s *Server) normalizeComparisonProjectionState(
+	ctx context.Context,
+	projectID uuid.UUID,
+	comparison *store.SessionComparison,
+) error {
+	if s.engineControl == nil || comparison == nil {
+		return nil
+	}
+	if err := s.normalizeCompareTraceProjectionState(ctx, projectID, &comparison.Baseline); err != nil {
+		return err
+	}
+	return s.normalizeCompareTraceProjectionState(ctx, projectID, &comparison.Candidate)
+}
+
+func (s *Server) normalizeCompareTraceProjectionState(
+	ctx context.Context,
+	projectID uuid.UUID,
+	header *store.SessionCompareTraceHeader,
+) error {
+	if s.engineControl == nil || header == nil || header.EngineRunID == nil {
+		return nil
+	}
+
+	projectionState, err := s.engineControl.projectionStateForRun(ctx, projectID, *header.EngineRunID)
+	if err != nil {
+		return err
+	}
+	header.EngineProjectionState = &projectionState
+	return nil
 }

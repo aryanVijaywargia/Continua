@@ -1,5 +1,7 @@
 // Package projector owns all cross-schema writes from engine history into the
-// platform debugger tables.
+// platform debugger tables, including terminal debugger cleanup when
+// workflow.cancelled or workflow.terminated history rows are projected. No
+// other code path writes projection tables for terminal cleanup.
 //
 // Authoritative platform dependencies:
 // - db/platform/migrations/postgres/000001_initial_schema.up.sql
@@ -36,6 +38,7 @@ const (
 	defaultProjectedSpanLevel    = "default"
 	defaultProjectedSpanTypeRoot = "chain"
 	defaultProjectedSpanTypeTool = "tool"
+	terminalHistoryMetadataKey   = "__continua_terminal_history_id"
 )
 
 var darkLaunchProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
@@ -53,6 +56,14 @@ type projectionTarget struct {
 	LastProjectedHistoryID int64
 	ProjectionState        string
 	ProjectionUpdatedAt    *time.Time
+}
+
+type terminalProjection struct {
+	RunStatus     enginedb.EngineRunLifecycleStatus
+	Result        json.RawMessage
+	ErrorCode     string
+	ErrorMessage  string
+	CleanupReason string
 }
 
 func New(store *enginestore.Store) *Projector {
@@ -91,7 +102,7 @@ func (p *Projector) PollOnce(ctx context.Context, _ string) error {
 		return tx.Commit(ctx)
 	}
 
-	lastProjectedID, err := p.projectHistoryRows(ctx, tx.Tx(), &target, historyRows)
+	lastProjectedID, err := p.projectHistoryRows(ctx, tx, &target, historyRows)
 	if err != nil {
 		return err
 	}
@@ -190,7 +201,7 @@ func WriteTerminalSummary(
 		SET status = $3,
 		    end_time = $4::timestamptz,
 		    output = $5::jsonb,
-		    status_message = $6,
+		    status_message = $6::text,
 		    duration_ms = CASE
 		        WHEN $4::timestamptz IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
 		        ELSE duration_ms
@@ -203,7 +214,7 @@ func WriteTerminalSummary(
 		        WHERE engine_run_id = $1
 		    )
 		  AND span_id = $2
-	`, runID, rootSpanID, spanStatus, completedAt, outputPayload, errorMessage)
+	`, runID, rootSpanID, spanStatus, completedAt, outputPayload, nullableText(errorMessage))
 	if err != nil {
 		return err
 	}
@@ -228,6 +239,8 @@ func SyncProjectedRunSummary(
 		return err
 	}
 
+	// CountOpenInboxByRun excludes cancel rows so projected counts mirror the
+	// public pending-work surface instead of internal control intents.
 	pendingInboxItems, err := queries.CountOpenInboxByRun(ctx, pgtype.UUID{Bytes: run.ID, Valid: true})
 	if err != nil {
 		return err
@@ -255,7 +268,7 @@ func SyncProjectedRunSummary(
 
 func (p *Projector) projectHistoryRows(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx *enginestore.Tx,
 	target *projectionTarget,
 	rows []enginedb.EngineHistory,
 ) (int64, error) {
@@ -275,7 +288,7 @@ func (p *Projector) projectHistoryRows(
 
 func projectHistoryRow(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx *enginestore.Tx,
 	target *projectionTarget,
 	row *enginedb.EngineHistory,
 ) error {
@@ -288,14 +301,39 @@ func projectHistoryRow(
 	}
 
 	switch typed := payload.(type) {
+	case *publichistory.WorkflowCompletedPayload:
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
+			RunStatus: enginedb.EngineRunLifecycleStatusCompleted,
+			Result:    cloneRaw(typed.Result),
+		})
+	case *publichistory.WorkflowFailedPayload:
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
+			RunStatus:    enginedb.EngineRunLifecycleStatusFailed,
+			ErrorCode:    typed.ErrorCode,
+			ErrorMessage: typed.ErrorMessage,
+		})
+	case *publichistory.WorkflowCancelledPayload:
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
+			RunStatus:     enginedb.EngineRunLifecycleStatusCancelled,
+			ErrorCode:     "cancelled",
+			ErrorMessage:  "workflow cancelled",
+			CleanupReason: "cancelled",
+		})
+	case *publichistory.WorkflowTerminatedPayload:
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
+			RunStatus:     enginedb.EngineRunLifecycleStatusTerminated,
+			ErrorCode:     typed.ErrorCode,
+			ErrorMessage:  typed.ErrorMessage,
+			CleanupReason: "terminated",
+		})
 	case *publichistory.ActivityScheduledPayload:
-		return projectActivityScheduled(ctx, tx, target, row, typed)
+		return projectActivityScheduled(ctx, tx.Tx(), target, row, typed)
 	case *publichistory.ActivityCompletedPayload:
-		return projectActivityCompleted(ctx, tx, target, row, typed)
+		return projectActivityCompleted(ctx, tx.Tx(), target, row, typed)
 	case *publichistory.ActivityFailedPayload:
-		return projectActivityFailed(ctx, tx, target, row, typed)
+		return projectActivityFailed(ctx, tx.Tx(), target, row, typed)
 	case *publichistory.TimerScheduledPayload:
-		return emitProjectedEvent(ctx, tx, &projectedEvent{
+		return emitProjectedEvent(ctx, tx.Tx(), &projectedEvent{
 			ProjectID:  target.ProjectID,
 			TraceID:    target.TraceID,
 			SpanID:     rootSpanExternalID(target.RunID),
@@ -309,7 +347,7 @@ func projectHistoryRow(
 			VariantKey: "timer_wait_entered",
 		})
 	case *publichistory.TimerFiredPayload:
-		return emitProjectedEvent(ctx, tx, &projectedEvent{
+		return emitProjectedEvent(ctx, tx.Tx(), &projectedEvent{
 			ProjectID: target.ProjectID,
 			TraceID:   target.TraceID,
 			SpanID:    rootSpanExternalID(target.RunID),
@@ -327,8 +365,216 @@ func projectHistoryRow(
 			VariantKey: "timer_wait_resolved",
 		})
 	default:
-		return projectCustomHistoryEvent(ctx, tx, target, row)
+		return projectCustomHistoryEvent(ctx, tx.Tx(), target, row)
 	}
+}
+
+func projectTerminalHistoryRow(
+	ctx context.Context,
+	tx *enginestore.Tx,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
+	projection *terminalProjection,
+) error {
+	if err := projectCustomHistoryEvent(ctx, tx.Tx(), target, row); err != nil {
+		return err
+	}
+
+	if err := writeTerminalProjection(ctx, tx.Tx(), target, row.CreatedAt, projection); err != nil {
+		return err
+	}
+
+	if projection.CleanupReason != "" {
+		if err := projectTerminalCleanup(ctx, tx, target, row, projection); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func writeTerminalProjection(
+	ctx context.Context,
+	tx pgx.Tx,
+	target *projectionTarget,
+	completedAt time.Time,
+	projection *terminalProjection,
+) error {
+	if target == nil || projection == nil {
+		return errors.New("projection target is required")
+	}
+
+	traceStatus, spanStatus := terminalStatuses(projection.RunStatus)
+	outputPayload, err := terminalOutputPayload(
+		projection.RunStatus,
+		projection.Result,
+		stringPtr(projection.ErrorCode),
+		stringPtr(projection.ErrorMessage),
+	)
+	if err != nil {
+		return err
+	}
+
+	commandTag, err := tx.Exec(ctx, `
+		UPDATE public.traces
+		SET status = $2,
+		    end_time = $3::timestamptz,
+		    output = $4::jsonb,
+		    updated_at = NOW(),
+		    version = COALESCE(version, 1) + 1
+		WHERE id = $1
+	`, target.TraceID, traceStatus, completedAt, outputPayload)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 && target.ProjectID != darkLaunchProjectID {
+		return fmt.Errorf("projected trace not found for run %s", target.RunID)
+	}
+
+	commandTag, err = tx.Exec(ctx, `
+		UPDATE public.spans
+		SET status = $3,
+		    end_time = $4::timestamptz,
+		    output = $5::jsonb,
+		    status_message = $6::text,
+		    duration_ms = CASE
+		        WHEN $4::timestamptz IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
+		        ELSE duration_ms
+		    END,
+		    updated_at = NOW(),
+		    version = COALESCE(version, 1) + 1
+		WHERE trace_id = $1
+		  AND span_id = $2
+	`, target.TraceID, rootSpanExternalID(target.RunID), spanStatus, completedAt, outputPayload, nullableText(stringPtr(projection.ErrorMessage)))
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 && target.ProjectID != darkLaunchProjectID {
+		return fmt.Errorf("projected root span not found for run %s", target.RunID)
+	}
+
+	return nil
+}
+
+func projectTerminalCleanup(
+	ctx context.Context,
+	tx *enginestore.Tx,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
+	projection *terminalProjection,
+) error {
+	if projection == nil {
+		return errors.New("terminal projection is required")
+	}
+	cancelledActivities, err := tx.ListCancelledActivityTasksByRun(ctx, target.RunID)
+	if err != nil {
+		return err
+	}
+
+	discardedTimers, err := tx.ListDiscardedTimerInboxItemsByRun(ctx, target.RunID)
+	if err != nil {
+		return err
+	}
+
+	sequence := row.SequenceNo*10 + 1
+	for i := range cancelledActivities {
+		task := cancelledActivities[i]
+		if err := closeTerminalActivitySpan(ctx, tx.Tx(), target, row, &task, projection); err != nil {
+			return err
+		}
+		if err := emitProjectedEvent(ctx, tx.Tx(), &projectedEvent{
+			ProjectID: target.ProjectID,
+			TraceID:   target.TraceID,
+			SpanID:    rootSpanExternalID(target.RunID),
+			EventType: "wait",
+			EventTS:   row.CreatedAt,
+			Sequence:  sequence,
+			Payload: mustMarshalMap(map[string]any{
+				"wait_kind":  "activity",
+				"phase":      "resolved",
+				"wait_id":    "activity:" + task.ActivityKey,
+				"resolution": projection.CleanupReason,
+			}),
+			HistoryID:  row.ID,
+			RunID:      target.RunID,
+			VariantKey: projection.CleanupReason + ":activity:" + task.ActivityKey,
+		}); err != nil {
+			return err
+		}
+		sequence++
+	}
+
+	for i := range discardedTimers {
+		inboxRow := discardedTimers[i]
+		timerPayload := publichistory.TimerScheduledPayload{}
+		if err := publichistory.UnmarshalPayload(inboxRow.Payload, &timerPayload); err != nil {
+			return fmt.Errorf("decode discarded timer inbox payload: %w", err)
+		}
+
+		if err := emitProjectedEvent(ctx, tx.Tx(), &projectedEvent{
+			ProjectID: target.ProjectID,
+			TraceID:   target.TraceID,
+			SpanID:    rootSpanExternalID(target.RunID),
+			EventType: "wait",
+			EventTS:   row.CreatedAt,
+			Sequence:  sequence,
+			Payload: mustMarshalMap(map[string]any{
+				"wait_kind":  "timer",
+				"phase":      "resolved",
+				"wait_id":    "timer:" + timerPayload.TimerKey,
+				"resolution": projection.CleanupReason,
+			}),
+			HistoryID:  row.ID,
+			RunID:      target.RunID,
+			VariantKey: projection.CleanupReason + ":timer:" + timerPayload.TimerKey,
+		}); err != nil {
+			return err
+		}
+		sequence++
+	}
+
+	return nil
+}
+
+func closeTerminalActivitySpan(
+	ctx context.Context,
+	tx pgx.Tx,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
+	task *enginedb.EngineActivityTask,
+	projection *terminalProjection,
+) error {
+	if target == nil || row == nil || task == nil || projection == nil {
+		return errors.New("projection target, history row, and activity task are required")
+	}
+
+	commandTag, err := tx.Exec(ctx, `
+		UPDATE public.spans
+		SET status = 'failed',
+		    status_message = $3,
+		    end_time = $4::timestamptz,
+		    output = $5::jsonb,
+		    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object($6::text, to_jsonb($7::bigint)),
+		    duration_ms = CASE
+		        WHEN start_time IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
+		        ELSE duration_ms
+		    END,
+		    updated_at = NOW(),
+		    version = COALESCE(version, 1) + 1
+		WHERE trace_id = $1
+		  AND span_id = $2
+		  AND end_time IS NULL
+	`, target.TraceID, activitySpanExternalID(target.RunID, task.ActivityKey), projection.ErrorMessage, row.CreatedAt, mustMarshalMap(map[string]any{
+		"error_code":    projection.ErrorCode,
+		"error_message": projection.ErrorMessage,
+	}), terminalHistoryMetadataKey, row.ID)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return nil
+	}
+	return nil
 }
 
 func projectActivityScheduled(
@@ -657,17 +903,33 @@ func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, e
 	var target projectionTarget
 	var projectionUpdatedAt pgtypeTimestamptz
 	err := tx.QueryRow(ctx, `
+		WITH targets AS (
+		    SELECT t.id,
+		           t.project_id,
+		           COALESCE(t.name, t.trace_id) AS trace_name,
+		           t.engine_run_id,
+		           COALESCE((
+		               SELECT MAX(h.id)
+		               FROM engine.history AS h
+		               WHERE h.run_id = t.engine_run_id
+		           ), COALESCE(t.engine_latest_history_id, 0), 0) AS latest_history_id,
+		           COALESCE(t.engine_last_projected_history_id, 0) AS last_projected_history_id,
+		           COALESCE(t.engine_projection_state, '') AS projection_state,
+		           t.engine_projection_updated_at,
+		           t.updated_at
+		    FROM public.traces AS t
+		    WHERE t.engine_run_id IS NOT NULL
+		)
 		SELECT id,
 		       project_id,
-		       COALESCE(name, trace_id),
+		       trace_name,
 		       engine_run_id,
-		       COALESCE(engine_latest_history_id, 0),
-		       COALESCE(engine_last_projected_history_id, 0),
-		       COALESCE(engine_projection_state, ''),
+		       latest_history_id,
+		       last_projected_history_id,
+		       projection_state,
 		       engine_projection_updated_at
-		FROM public.traces
-		WHERE engine_run_id IS NOT NULL
-		  AND COALESCE(engine_last_projected_history_id, 0) < COALESCE(engine_latest_history_id, 0)
+		FROM targets
+		WHERE last_projected_history_id < latest_history_id
 		ORDER BY engine_projection_updated_at ASC NULLS FIRST, updated_at ASC, id ASC
 		LIMIT 1
 	`).Scan(
@@ -697,19 +959,26 @@ func advanceProjectionCheckpoint(
 	lastProjectedHistoryID int64,
 ) error {
 	commandTag, err := tx.Exec(ctx, `
+		WITH latest AS (
+		    SELECT COALESCE(MAX(id), 0) AS latest_history_id
+		    FROM engine.history
+		    WHERE run_id = $2
+		)
 		UPDATE public.traces
-		SET engine_last_projected_history_id = CASE
-		        WHEN COALESCE(engine_last_projected_history_id, 0) < $3 THEN $3
-		        ELSE engine_last_projected_history_id
+		SET engine_latest_history_id = GREATEST(COALESCE(public.traces.engine_latest_history_id, 0), latest.latest_history_id),
+		    engine_last_projected_history_id = CASE
+		        WHEN COALESCE(public.traces.engine_last_projected_history_id, 0) < $3 THEN $3
+		        ELSE public.traces.engine_last_projected_history_id
 		    END,
 		    engine_projection_state = CASE
-		        WHEN COALESCE(engine_latest_history_id, 0) <= GREATEST(COALESCE(engine_last_projected_history_id, 0), $3) THEN $4
+		        WHEN latest.latest_history_id <= GREATEST(COALESCE(public.traces.engine_last_projected_history_id, 0), $3) THEN $4
 		        ELSE $5
 		    END,
 		    engine_projection_updated_at = NOW(),
 		    updated_at = NOW()
-		WHERE id = $1
-		  AND engine_run_id = $2
+		FROM latest
+		WHERE public.traces.id = $1
+		  AND public.traces.engine_run_id = $2
 	`, traceID, runID, lastProjectedHistoryID, publicprojection.StateUpToDate.String(), publicprojection.StateCatchingUp.String())
 	if err != nil {
 		return err
@@ -744,6 +1013,8 @@ func terminalStatuses(status enginedb.EngineRunLifecycleStatus) (traceStatus, sp
 		return "completed", "completed"
 	case enginedb.EngineRunLifecycleStatusCancelled:
 		return "cancelled", "failed"
+	case enginedb.EngineRunLifecycleStatusTerminated:
+		return "failed", "failed"
 	default:
 		return "failed", "failed"
 	}
@@ -815,6 +1086,13 @@ func cloneRaw(raw json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), raw...)
+}
+
+func nullableText(value *string) pgtype.Text {
+	if value == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *value, Valid: true}
 }
 
 func derefString(value *string) string {

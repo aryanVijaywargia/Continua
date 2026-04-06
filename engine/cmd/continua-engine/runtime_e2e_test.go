@@ -266,15 +266,114 @@ func TestEngineRuntimeCancelTransitionsRunToCancelled(t *testing.T) {
 		t.Fatalf("expected cancel.requested + terminal history, got %+v", state.History)
 	}
 	lastEvent := state.History[len(state.History)-1]
-	if lastEvent.EventType != enginehistory.EventWorkflowFailed {
-		t.Fatalf("expected terminal cancellation history row to use workflow.failed, got %+v", lastEvent)
+	if lastEvent.EventType != enginehistory.EventWorkflowCancelled {
+		t.Fatalf("expected terminal cancellation history row to use workflow.cancelled, got %+v", lastEvent)
 	}
-	var failurePayload map[string]any
-	if err := json.Unmarshal(lastEvent.Payload, &failurePayload); err != nil {
-		t.Fatalf("Unmarshal(cancel terminal payload) error = %v", err)
+	decodedPayload, err := enginehistory.DecodePayload(lastEvent.EventType, lastEvent.Payload)
+	if err != nil {
+		t.Fatalf("DecodePayload(cancel terminal payload) error = %v", err)
 	}
-	if failurePayload["error_code"] != "cancelled" {
-		t.Fatalf("expected cancelled failure payload, got %+v", failurePayload)
+	if _, ok := decodedPayload.(*enginehistory.WorkflowCancelledPayload); !ok {
+		t.Fatalf("expected workflow.cancelled payload, got %+v", decodedPayload)
+	}
+
+	instance, err := enginedb.New(db.Pool).GetInstanceByProjectAndKey(context.Background(), enginedb.GetInstanceByProjectAndKeyParams{
+		ProjectID:   darkLaunchProjectID,
+		InstanceKey: instanceKey,
+	})
+	if err != nil {
+		t.Fatalf("GetInstanceByProjectAndKey() error = %v", err)
+	}
+	if instance.Status != enginedb.EngineInstanceLifecycleStatusCancelled {
+		t.Fatalf("expected cancelled instance status, got %+v", instance)
+	}
+
+	projectedStatus, projectedWaitState := waitForProjectedEngineSummary(t, db, state.RunID, func(status string, waitState []byte) bool {
+		return status == string(enginedb.EngineRunLifecycleStatusCancelled) && len(waitState) == 0
+	})
+	if projectedStatus != string(enginedb.EngineRunLifecycleStatusCancelled) {
+		t.Fatalf("expected projected engine status cancelled, got %q", projectedStatus)
+	}
+	if len(projectedWaitState) != 0 {
+		t.Fatalf("expected projected engine_wait_state to be cleared, got %s", projectedWaitState)
+	}
+}
+
+func TestEngineRuntimeCancelCanStillCompleteWhenWorkflowReturnsNil(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	configureRuntimeEnv(t, db.DatabaseURL)
+
+	serve := startServe(t)
+	defer serve.stop(t)
+
+	instanceKey := "runtime-cancel-completed"
+	input := map[string]any{
+		"name":     "CancelCompletes",
+		"timer_at": time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339Nano),
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("Marshal(input) error = %v", err)
+	}
+
+	if _, _, err := executeCommand(t,
+		"start",
+		"--instance-key", instanceKey,
+		"--definition", darklaunch.CancelCompletesDefinitionName,
+		"--version", darklaunch.CancelCompletesDefinitionVersion,
+		"--request-key", "req-cancel-completed",
+		"--input", string(inputJSON),
+	); err != nil {
+		t.Fatalf("start command error = %v", err)
+	}
+
+	waitForInspect(t, instanceKey, func(state inspectResponse) bool {
+		return state.Status == string(enginedb.EngineRunLifecycleStatusWaiting) &&
+			jsonContainsKind(state.WaitingFor, "timer")
+	})
+
+	stdout, stderr, err := executeCommand(t, "cancel", "--instance-key", instanceKey)
+	if err != nil {
+		t.Fatalf("cancel command error = %v", err)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var cancelled controlResponse
+	if err := json.Unmarshal([]byte(stdout), &cancelled); err != nil {
+		t.Fatalf("Unmarshal(cancel stdout) error = %v", err)
+	}
+	if !cancelled.Accepted || !cancelled.WakeApplied {
+		t.Fatalf("expected cancel accepted with wake, got %+v", cancelled)
+	}
+
+	state := waitForInspect(t, instanceKey, func(state inspectResponse) bool {
+		return state.Status == string(enginedb.EngineRunLifecycleStatusCompleted)
+	})
+	if len(state.Result) != 0 {
+		t.Fatalf("expected nil-after-cancel workflow to complete without result, got %s", state.Result)
+	}
+
+	eventTypes := filterEventTypes(state.History)
+	if eventTypes[len(eventTypes)-1] != enginehistory.EventWorkflowCompleted {
+		t.Fatalf("expected workflow.completed terminal event, got %v", eventTypes)
+	}
+	for _, eventType := range eventTypes {
+		if eventType == enginehistory.EventWorkflowCancelled {
+			t.Fatalf("expected nil-after-cancel workflow to avoid workflow.cancelled, got %v", eventTypes)
+		}
+	}
+
+	instance, err := enginedb.New(db.Pool).GetInstanceByProjectAndKey(context.Background(), enginedb.GetInstanceByProjectAndKeyParams{
+		ProjectID:   darkLaunchProjectID,
+		InstanceKey: instanceKey,
+	})
+	if err != nil {
+		t.Fatalf("GetInstanceByProjectAndKey() error = %v", err)
+	}
+	if instance.Status != enginedb.EngineInstanceLifecycleStatusCompleted {
+		t.Fatalf("expected completed instance status, got %+v", instance)
 	}
 }
 
@@ -728,6 +827,35 @@ func waitForInspect(t *testing.T, instanceKey string, predicate func(inspectResp
 	}
 	t.Fatalf("timed out waiting for inspect predicate, last state = %+v", last)
 	return inspectResponse{}
+}
+
+func waitForProjectedEngineSummary(
+	t *testing.T,
+	db *enginetest.TestDatabase,
+	runID string,
+	predicate func(status string, waitState []byte) bool,
+) (string, []byte) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	var lastStatus string
+	var lastWaitState []byte
+	for time.Now().Before(deadline) {
+		err := db.Pool.QueryRow(context.Background(), `
+			SELECT engine_run_status, engine_wait_state
+			FROM public.traces
+			WHERE engine_run_id = $1::uuid
+		`, runID).Scan(&lastStatus, &lastWaitState)
+		if err != nil {
+			t.Fatalf("query projected engine summary: %v", err)
+		}
+		if predicate(lastStatus, lastWaitState) {
+			return lastStatus, lastWaitState
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for projected engine summary, last status=%q wait_state=%s", lastStatus, string(lastWaitState))
+	return "", nil
 }
 
 func assertConcurrentTerminalizationRejectsControlCommand(

@@ -21,6 +21,7 @@ var (
 	ErrAlreadyExists   = errors.New("engine store: record already exists")
 	ErrStaleClaim      = errors.New("engine store: stale claim")
 	ErrStaleCheckpoint = errors.New("engine store: stale checkpoint")
+	ErrInvariant       = errors.New("engine store: invariant violation")
 )
 
 type storeOps struct {

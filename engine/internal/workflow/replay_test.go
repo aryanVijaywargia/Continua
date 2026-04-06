@@ -240,13 +240,13 @@ func TestReplayDefinitionCancelledWorkflowReturnsCancelledDecision(t *testing.T)
 		t.Fatalf("expected cancelled decision, got %+v", decision)
 	}
 	if len(decision.Events) != 2 {
-		t.Fatalf("expected cancel.requested + workflow.failed events, got %+v", decision.Events)
+		t.Fatalf("expected cancel.requested + workflow.cancelled events, got %+v", decision.Events)
 	}
 	if decision.Events[0].EventType != enginehistory.EventCancelRequested {
 		t.Fatalf("expected first event to be cancel.requested, got %+v", decision.Events)
 	}
-	if decision.Events[1].EventType != enginehistory.EventWorkflowFailed {
-		t.Fatalf("expected second event to be workflow.failed, got %+v", decision.Events)
+	if decision.Events[1].EventType != enginehistory.EventWorkflowCancelled {
+		t.Fatalf("expected second event to be workflow.cancelled, got %+v", decision.Events)
 	}
 	if decision.FailureCode != "cancelled" || decision.FailureMessage != "workflow cancelled" {
 		t.Fatalf("expected cancelled failure summary, got %+v", decision)

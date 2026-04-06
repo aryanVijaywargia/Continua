@@ -44,14 +44,14 @@ func TestMigrateCommandsRoundTrip(t *testing.T) {
 	t.Setenv("ENGINE_DATABASE_URL", db.DatabaseURL)
 	t.Setenv("DATABASE_URL", "")
 
-	stdout, stderr, err := executeCommand(t, "migrate", "down", "2")
+	stdout, stderr, err := executeCommand(t, "migrate", "down", "4")
 	if err != nil {
-		t.Fatalf("execute migrate down 1: %v", err)
+		t.Fatalf("execute migrate down 4: %v", err)
 	}
 	if stderr != "" {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
-	if !strings.Contains(stdout, "Rolled back 2 engine migration step(s)") {
+	if !strings.Contains(stdout, "Rolled back 4 engine migration step(s)") {
 		t.Fatalf("unexpected migrate down output: %q", stdout)
 	}
 
@@ -60,11 +60,11 @@ func TestMigrateCommandsRoundTrip(t *testing.T) {
 	}
 	for _, column := range []string{"result", "custom_status", "waiting_for", "completed_at"} {
 		if columnExists(t, db.DatabaseURL, "engine", "runs", column) {
-			t.Fatalf("expected engine.runs.%s to be removed after migrate down 1", column)
+			t.Fatalf("expected engine.runs.%s to be removed after migrate down 4", column)
 		}
 	}
 	if enumLabelExists(t, db.DatabaseURL, "engine", "run_lifecycle_status", "waiting") {
-		t.Fatal("expected waiting enum label to be removed after migrate down 1")
+		t.Fatal("expected waiting enum label to be removed after migrate down 4")
 	}
 
 	stdout, stderr, err = executeCommand(t, "migrate", "up")
@@ -143,9 +143,9 @@ func TestMigrateDownRejectsWaitingRuns(t *testing.T) {
 		t.Fatalf("TransitionRunToWaiting() error = %v", err)
 	}
 
-	stdout, stderr, err := executeCommand(t, "migrate", "down", "2")
+	stdout, stderr, err := executeCommand(t, "migrate", "down", "4")
 	if err == nil {
-		t.Fatal("expected migrate down 2 to fail when waiting rows exist")
+		t.Fatal("expected migrate down 4 to fail when waiting rows exist")
 	}
 	if stdout != "" {
 		t.Fatalf("expected empty stdout on failed rollback, got %q", stdout)
@@ -168,6 +168,120 @@ func TestMigrateDownRejectsWaitingRuns(t *testing.T) {
 	}
 	if updatedRun.Status != enginedb.EngineRunLifecycleStatusWaiting {
 		t.Fatalf("expected waiting run to remain unchanged after failed rollback, got %+v", updatedRun)
+	}
+}
+
+func TestBackfillMigrationRecomputesInstanceStatusesFromLatestRun(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+
+	t.Setenv("ENGINE_DATABASE_URL", db.DatabaseURL)
+	t.Setenv("DATABASE_URL", "")
+
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+	projectID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+
+	latestQueuedInstance, err := store.CreateInstance(ctx, enginedb.CreateInstanceParams{
+		ProjectID:      projectID,
+		InstanceKey:    "migration-backfill-active",
+		DefinitionName: "demo",
+	})
+	if err != nil {
+		t.Fatalf("CreateInstance(active) error = %v", err)
+	}
+	oldCompletedRun, err := store.CreateRun(ctx, enginedb.CreateRunParams{
+		ProjectID:         projectID,
+		InstanceID:        latestQueuedInstance.ID,
+		RunNumber:         1,
+		DefinitionVersion: "v1",
+		ReadyAt:           time.Now().Add(-2 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateRun(old completed) error = %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'completed',
+		    completed_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1
+	`, oldCompletedRun.ID); err != nil {
+		t.Fatalf("mark old run completed: %v", err)
+	}
+	if _, err := store.CreateRun(ctx, enginedb.CreateRunParams{
+		ProjectID:         projectID,
+		InstanceID:        latestQueuedInstance.ID,
+		RunNumber:         2,
+		DefinitionVersion: "v1",
+		ReadyAt:           time.Now().Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateRun(latest queued) error = %v", err)
+	}
+
+	latestFailedInstance, err := store.CreateInstance(ctx, enginedb.CreateInstanceParams{
+		ProjectID:      projectID,
+		InstanceKey:    "migration-backfill-failed",
+		DefinitionName: "demo",
+	})
+	if err != nil {
+		t.Fatalf("CreateInstance(failed) error = %v", err)
+	}
+	latestFailedRun, err := store.CreateRun(ctx, enginedb.CreateRunParams{
+		ProjectID:         projectID,
+		InstanceID:        latestFailedInstance.ID,
+		RunNumber:         1,
+		DefinitionVersion: "v1",
+		ReadyAt:           time.Now().Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateRun(failed) error = %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'failed',
+		    completed_at = NOW(),
+		    last_error_code = 'boom',
+		    last_error_message = 'workflow failed',
+		    updated_at = NOW()
+		WHERE id = $1
+	`, latestFailedRun.ID); err != nil {
+		t.Fatalf("mark latest run failed: %v", err)
+	}
+
+	if _, err := db.Pool.Exec(ctx, `
+		UPDATE engine.instances
+		SET status = CASE
+		        WHEN id = $1 THEN 'failed'::engine.instance_lifecycle_status
+		        WHEN id = $2 THEN 'active'::engine.instance_lifecycle_status
+		        ELSE status
+		    END,
+		    updated_at = NOW()
+		WHERE id IN ($1, $2)
+	`, latestQueuedInstance.ID, latestFailedInstance.ID); err != nil {
+		t.Fatalf("corrupt instance statuses: %v", err)
+	}
+
+	if stdout, stderr, err := executeCommand(t, "migrate", "down", "1"); err != nil {
+		t.Fatalf("execute migrate down 1: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	}
+	if stdout, stderr, err := executeCommand(t, "migrate", "up"); err != nil {
+		t.Fatalf("execute migrate up after backfill rollback: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	}
+
+	reloadedQueuedInstance, err := store.GetInstance(ctx, latestQueuedInstance.ID)
+	if err != nil {
+		t.Fatalf("GetInstance(active) error = %v", err)
+	}
+	if reloadedQueuedInstance.Status != enginedb.EngineInstanceLifecycleStatusActive {
+		t.Fatalf("expected latest queued instance to backfill as active, got %+v", reloadedQueuedInstance)
+	}
+
+	reloadedFailedInstance, err := store.GetInstance(ctx, latestFailedInstance.ID)
+	if err != nil {
+		t.Fatalf("GetInstance(failed) error = %v", err)
+	}
+	if reloadedFailedInstance.Status != enginedb.EngineInstanceLifecycleStatusFailed {
+		t.Fatalf("expected latest failed instance to backfill as failed, got %+v", reloadedFailedInstance)
 	}
 }
 

@@ -105,10 +105,11 @@ func (ns NullEngineInboxStatus) Value() (driver.Value, error) {
 type EngineInstanceLifecycleStatus string
 
 const (
-	EngineInstanceLifecycleStatusActive    EngineInstanceLifecycleStatus = "active"
-	EngineInstanceLifecycleStatusCompleted EngineInstanceLifecycleStatus = "completed"
-	EngineInstanceLifecycleStatusFailed    EngineInstanceLifecycleStatus = "failed"
-	EngineInstanceLifecycleStatusCancelled EngineInstanceLifecycleStatus = "cancelled"
+	EngineInstanceLifecycleStatusActive     EngineInstanceLifecycleStatus = "active"
+	EngineInstanceLifecycleStatusCompleted  EngineInstanceLifecycleStatus = "completed"
+	EngineInstanceLifecycleStatusFailed     EngineInstanceLifecycleStatus = "failed"
+	EngineInstanceLifecycleStatusCancelled  EngineInstanceLifecycleStatus = "cancelled"
+	EngineInstanceLifecycleStatusTerminated EngineInstanceLifecycleStatus = "terminated"
 )
 
 func (e *EngineInstanceLifecycleStatus) Scan(src interface{}) error {
@@ -193,12 +194,13 @@ func (ns NullEngineRequestDedupeStatus) Value() (driver.Value, error) {
 type EngineRunLifecycleStatus string
 
 const (
-	EngineRunLifecycleStatusQueued    EngineRunLifecycleStatus = "queued"
-	EngineRunLifecycleStatusRunning   EngineRunLifecycleStatus = "running"
-	EngineRunLifecycleStatusCompleted EngineRunLifecycleStatus = "completed"
-	EngineRunLifecycleStatusFailed    EngineRunLifecycleStatus = "failed"
-	EngineRunLifecycleStatusCancelled EngineRunLifecycleStatus = "cancelled"
-	EngineRunLifecycleStatusWaiting   EngineRunLifecycleStatus = "waiting"
+	EngineRunLifecycleStatusQueued     EngineRunLifecycleStatus = "queued"
+	EngineRunLifecycleStatusRunning    EngineRunLifecycleStatus = "running"
+	EngineRunLifecycleStatusCompleted  EngineRunLifecycleStatus = "completed"
+	EngineRunLifecycleStatusFailed     EngineRunLifecycleStatus = "failed"
+	EngineRunLifecycleStatusCancelled  EngineRunLifecycleStatus = "cancelled"
+	EngineRunLifecycleStatusWaiting    EngineRunLifecycleStatus = "waiting"
+	EngineRunLifecycleStatusTerminated EngineRunLifecycleStatus = "terminated"
 )
 
 func (e *EngineRunLifecycleStatus) Scan(src interface{}) error {

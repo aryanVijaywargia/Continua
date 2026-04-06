@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	publichistory "github.com/continua-ai/continua/engine/pkg/history"
 	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/store"
 	"github.com/continua-ai/continua/internal/testutil"
@@ -274,6 +276,81 @@ func TestGetSessionCompare_EmptyComparisonReturns200(t *testing.T) {
 	assert.Equal(t, 0, resp.Summary.TotalSpansCandidate)
 	assert.Equal(t, 0, resp.Summary.TotalSemanticBaseline)
 	assert.Equal(t, 0, resp.Summary.TotalSemanticCandidate)
+}
+
+func TestGetSessionCompare_ReportsCatchingUpProjectionStateWhenHistoryCheckpointIsStale(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	sessionKey := "compare-engine-stale-" + uuid.NewString()[:8]
+	baselineStart := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "compare-baseline-" + uuid.NewString()[:8],
+		RequestKey:        "req-compare-baseline-" + uuid.NewString()[:8],
+		Session: &EngineStartSession{
+			Key: testutil.StrPtr(sessionKey),
+		},
+	}))
+	candidateStart := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "compare-candidate-" + uuid.NewString()[:8],
+		RequestKey:        "req-compare-candidate-" + uuid.NewString()[:8],
+		Session: &EngineStartSession{
+			Key: testutil.StrPtr(sessionKey),
+		},
+	}))
+
+	baselineTrace, err := platformStore.Queries().GetTraceByExternalID(ctx, platform.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   baselineStart.TraceId,
+	})
+	require.NoError(t, err)
+	candidateTrace, err := platformStore.Queries().GetTraceByExternalID(ctx, platform.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   candidateStart.TraceId,
+	})
+	require.NoError(t, err)
+	require.True(t, baselineTrace.SessionID.Valid)
+	require.Equal(t, baselineTrace.SessionID.Bytes, candidateTrace.SessionID.Bytes)
+
+	baselineRun, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        baselineStart.RunId,
+	})
+	require.NoError(t, err)
+	candidateRun, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        candidateStart.RunId,
+	})
+	require.NoError(t, err)
+
+	appendEngineHistoryEvent(t, ctx, engineQueries, projectID, baselineRun.InstanceID, baselineRun.ID, 2, publichistory.EventCustomStatusUpdated, publichistory.CustomStatusUpdatedPayload{
+		Status: []byte(`{"step":"baseline-stale"}`),
+	})
+	appendEngineHistoryEvent(t, ctx, engineQueries, projectID, candidateRun.InstanceID, candidateRun.ID, 2, publichistory.EventCustomStatusUpdated, publichistory.CustomStatusUpdatedPayload{
+		Status: []byte(`{"step":"candidate-stale"}`),
+	})
+
+	endedAt := time.Now().UTC()
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE traces
+		SET status = 'completed',
+		    end_time = $2,
+		    updated_at = NOW()
+		WHERE id IN ($1, $3)
+	`, baselineTrace.ID, endedAt, candidateTrace.ID)
+	require.NoError(t, err)
+
+	rec := invokeGetSessionCompare(t, server, projectID, baselineTrace.SessionID.Bytes, baselineTrace.ID, candidateTrace.ID)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[SessionCompareResponse](t, rec)
+	require.NotNil(t, resp.Baseline.Engine)
+	require.NotNil(t, resp.Candidate.Engine)
+	assert.Equal(t, CatchingUp, resp.Baseline.Engine.ProjectionState)
+	assert.Equal(t, CatchingUp, resp.Candidate.Engine.ProjectionState)
 }
 
 func invokeGetSessionCompare(

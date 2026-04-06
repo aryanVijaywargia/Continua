@@ -98,6 +98,25 @@ func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runID o
 	writeJSON(w, http.StatusOK, engineControlResponseToAPI(&result))
 }
 
+func (s *Server) TerminateEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ TerminateEngineRunParams) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+	if s.engineControl == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	result, err := s.engineControl.TerminateRun(r.Context(), projectID, runID)
+	if err != nil {
+		writeEngineError(w, err, "Failed to terminate engine run")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, engineRunResultResponseToAPI(&result))
+}
+
 func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, params GetEngineRunHistoryParams) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {
@@ -143,6 +162,25 @@ func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runI
 	}
 
 	writeJSON(w, http.StatusOK, engineRunResultResponseToAPI(&result))
+}
+
+func (s *Server) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+	if s.engineControl == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	result, err := s.engineControl.GetRunPendingWork(r.Context(), projectID, runID)
+	if err != nil {
+		writeEngineError(w, err, "Failed to get engine pending work")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, enginePendingWorkResponseToAPI(&result))
 }
 
 func (s *Server) SignalEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ SignalEngineRunParams) {

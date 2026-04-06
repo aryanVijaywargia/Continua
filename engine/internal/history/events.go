@@ -10,6 +10,8 @@ const (
 	EventWorkflowStarted        = publichistory.EventWorkflowStarted
 	EventWorkflowCompleted      = publichistory.EventWorkflowCompleted
 	EventWorkflowFailed         = publichistory.EventWorkflowFailed
+	EventWorkflowCancelled      = publichistory.EventWorkflowCancelled
+	EventWorkflowTerminated     = publichistory.EventWorkflowTerminated
 	EventWorkflowReplayMismatch = publichistory.EventWorkflowReplayMismatch
 	EventActivityScheduled      = publichistory.EventActivityScheduled
 	EventActivityCompleted      = publichistory.EventActivityCompleted
@@ -30,6 +32,8 @@ const (
 type WorkflowStartedPayload = publichistory.WorkflowStartedPayload
 type WorkflowCompletedPayload = publichistory.WorkflowCompletedPayload
 type WorkflowFailedPayload = publichistory.WorkflowFailedPayload
+type WorkflowCancelledPayload = publichistory.WorkflowCancelledPayload
+type WorkflowTerminatedPayload = publichistory.WorkflowTerminatedPayload
 type WorkflowReplayMismatchPayload = publichistory.WorkflowReplayMismatchPayload
 type ActivityScheduledPayload = publichistory.ActivityScheduledPayload
 type ActivityCompletedPayload = publichistory.ActivityCompletedPayload

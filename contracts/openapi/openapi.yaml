@@ -121,6 +121,7 @@ paths:
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
+          required: true
           description: Required preview header for mutating engine routes.
           schema:
             type: string
@@ -229,6 +230,10 @@ paths:
     get:
       operationId: getEngineRunResult
       summary: Get the terminal result for an engine run
+      description: |
+        Returns the terminal result shape for the run.
+        `COMPLETED` returns the workflow result payload.
+        `CANCELLED` and `TERMINATED` return `result=null` with a populated `failure` object.
       tags: [Engine]
       parameters:
         - name: run_id
@@ -258,6 +263,38 @@ paths:
                 $ref: '#/components/schemas/Error'
         '409':
           description: Run not terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/engine/runs/{run_id}/pending-work:
+    get:
+      operationId: getEngineRunPendingWork
+      summary: Get the durable pending work held by an engine run
+      tags: [Engine]
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Pending work snapshot for the run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnginePendingWorkResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
           content:
             application/json:
               schema:
@@ -320,6 +357,7 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
+          required: true
           description: Required preview header for mutating engine routes.
           schema:
             type: string
@@ -365,6 +403,10 @@ paths:
     post:
       operationId: cancelEngineRun
       summary: Request cancellation of an engine run
+      description: |
+        Cooperative cancellation request. Success only enqueues durable cancel intent and may wake the run;
+        it does not guarantee the final outcome becomes `CANCELLED`.
+        Workflow code decides between `COMPLETED` and `CANCELLED` by returning `workflow.ErrCancelled`.
       tags: [Engine]
       parameters:
         - name: run_id
@@ -375,6 +417,7 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
+          required: true
           description: Required preview header for mutating engine routes.
           schema:
             type: string
@@ -405,6 +448,50 @@ paths:
                 $ref: '#/components/schemas/Error'
         '409':
           description: Run terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/engine/runs/{run_id}/terminate:
+    post:
+      operationId: terminateEngineRun
+      summary: Forcefully terminate an engine run
+      tags: [Engine]
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run terminated or already terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResultResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
           content:
             application/json:
               schema:
@@ -816,7 +903,7 @@ components:
 
     EngineRunStatus:
       type: string
-      enum: [QUEUED, RUNNING, WAITING, COMPLETED, FAILED, CANCELLED]
+      enum: [QUEUED, RUNNING, WAITING, COMPLETED, FAILED, CANCELLED, TERMINATED]
 
     EngineTraceInfo:
       type: object
@@ -854,6 +941,87 @@ components:
       type: object
       required: [pending_activity_tasks, pending_inbox_items]
       properties:
+        pending_activity_tasks:
+          type: integer
+          format: int64
+        pending_inbox_items:
+          type: integer
+          format: int64
+
+    EnginePendingActivityItem:
+      type: object
+      required: [task_id, activity_key, activity_type, status, available_at, attempt_count]
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        activity_key:
+          type: string
+        activity_type:
+          type: string
+        status:
+          type: string
+        available_at:
+          type: string
+          format: date-time
+        attempt_count:
+          type: integer
+          format: int32
+
+    EnginePendingTimerItem:
+      type: object
+      required: [inbox_id, timer_key, status, available_at]
+      properties:
+        inbox_id:
+          type: string
+          format: uuid
+        timer_key:
+          type: string
+        status:
+          type: string
+        available_at:
+          type: string
+          format: date-time
+
+    EnginePendingSignalItem:
+      type: object
+      required: [inbox_id, signal_name, status, available_at]
+      properties:
+        inbox_id:
+          type: string
+          format: uuid
+        signal_name:
+          type: string
+        status:
+          type: string
+        available_at:
+          type: string
+          format: date-time
+
+    EnginePendingWorkResponse:
+      type: object
+      required: [run_id, current_wait, activities, timers, signals, pending_activity_tasks, pending_inbox_items]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        current_wait:
+          description: Current synthesized wait state from the run row when present.
+          allOf:
+            - $ref: '#/components/schemas/EngineWaitState'
+          x-nullable: true
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnginePendingActivityItem'
+        timers:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnginePendingTimerItem'
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnginePendingSignalItem'
         pending_activity_tasks:
           type: integer
           format: int64
@@ -1050,7 +1218,7 @@ components:
 
     EngineRunResultResponse:
       type: object
-      required: [run_id, status]
+      required: [run_id, status, result]
       properties:
         run_id:
           type: string
@@ -1059,6 +1227,7 @@ components:
           $ref: '#/components/schemas/EngineRunStatus'
         result:
           description: Terminal workflow result payload when available.
+          x-nullable: true
         failure:
           $ref: '#/components/schemas/EngineFailureSummary'
 

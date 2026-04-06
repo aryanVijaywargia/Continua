@@ -23,6 +23,8 @@ const (
 	engineTracePrefix       = "engine:"
 	engineRootSpanPrefix    = "engine:root:"
 	engineCancelDedupeKey   = "cancel:"
+	engineTerminateCode     = "terminated"
+	engineTerminateMessage  = "run terminated by operator"
 )
 
 type engineControlService struct {
@@ -102,6 +104,37 @@ type engineControlResult struct {
 	InstanceKey string
 	Accepted    bool
 	WakeApplied bool
+}
+
+type enginePendingWorkResult struct {
+	RunID       uuid.UUID
+	CurrentWait json.RawMessage
+	Activities  []enginePendingActivityItem
+	Timers      []enginePendingTimerItem
+	Signals     []enginePendingSignalItem
+}
+
+type enginePendingActivityItem struct {
+	TaskID       uuid.UUID
+	ActivityKey  string
+	ActivityType string
+	Status       string
+	AvailableAt  time.Time
+	AttemptCount int32
+}
+
+type enginePendingTimerItem struct {
+	InboxID     uuid.UUID
+	TimerKey    string
+	Status      string
+	AvailableAt time.Time
+}
+
+type enginePendingSignalItem struct {
+	InboxID     uuid.UUID
+	SignalName  string
+	Status      string
+	AvailableAt time.Time
 }
 
 type engineAPIError struct {
@@ -438,7 +471,102 @@ func (s *engineControlService) GetRunResult(
 		}
 	}
 
+	if summary.Status == enginedb.EngineRunLifecycleStatusCancelled ||
+		summary.Status == enginedb.EngineRunLifecycleStatusTerminated {
+		summary.Result = nil
+	}
+
 	return summary, nil
+}
+
+func (s *engineControlService) GetRunPendingWork(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) (enginePendingWorkResult, error) {
+	run, err := s.engine.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return enginePendingWorkResult{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return enginePendingWorkResult{}, err
+	}
+
+	activities, err := s.engine.ListOpenActivityTasksByRun(ctx, run.ID)
+	if err != nil {
+		return enginePendingWorkResult{}, err
+	}
+	timers, err := s.engine.ListOpenInboxItemsByRunAndKind(ctx, enginedb.ListOpenInboxItemsByRunAndKindParams{
+		RunID: pgtype.UUID{Bytes: run.ID, Valid: true},
+		Kind:  "timer",
+	})
+	if err != nil {
+		return enginePendingWorkResult{}, err
+	}
+	signals, err := s.engine.ListOpenInboxItemsByRunAndKind(ctx, enginedb.ListOpenInboxItemsByRunAndKindParams{
+		RunID: pgtype.UUID{Bytes: run.ID, Valid: true},
+		Kind:  "signal",
+	})
+	if err != nil {
+		return enginePendingWorkResult{}, err
+	}
+
+	result := enginePendingWorkResult{
+		RunID:       run.ID,
+		CurrentWait: cloneRaw(run.WaitingFor),
+		Activities:  make([]enginePendingActivityItem, 0, len(activities)),
+		Timers:      make([]enginePendingTimerItem, 0, len(timers)),
+		Signals:     make([]enginePendingSignalItem, 0, len(signals)),
+	}
+
+	for i := range activities {
+		task := activities[i]
+		result.Activities = append(result.Activities, enginePendingActivityItem{
+			TaskID:       task.ID,
+			ActivityKey:  task.ActivityKey,
+			ActivityType: task.ActivityType,
+			Status:       string(task.Status),
+			AvailableAt:  task.AvailableAt,
+			AttemptCount: task.AttemptCount,
+		})
+	}
+
+	for i := range timers {
+		inboxRow := timers[i]
+		timerKey, err := decodePendingTimerKey(inboxRow.Payload)
+		if err != nil {
+			return enginePendingWorkResult{}, err
+		}
+		result.Timers = append(result.Timers, enginePendingTimerItem{
+			InboxID:     inboxRow.ID,
+			TimerKey:    timerKey,
+			Status:      string(inboxRow.Status),
+			AvailableAt: inboxRow.AvailableAt,
+		})
+	}
+
+	for i := range signals {
+		inboxRow := signals[i]
+		signalName, err := decodePendingSignalName(inboxRow.Payload)
+		if err != nil {
+			return enginePendingWorkResult{}, err
+		}
+		result.Signals = append(result.Signals, enginePendingSignalItem{
+			InboxID:     inboxRow.ID,
+			SignalName:  signalName,
+			Status:      string(inboxRow.Status),
+			AvailableAt: inboxRow.AvailableAt,
+		})
+	}
+
+	return result, nil
 }
 
 func (s *engineControlService) GetRunHistory(
@@ -584,6 +712,99 @@ func (s *engineControlService) SignalRun(
 	}, nil
 }
 
+func (s *engineControlService) TerminateRun(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) (engineRunSummary, error) {
+	tx, err := s.platform.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	engineTx := enginedb.New(tx.Tx())
+	run, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineRunSummary{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineRunSummary{}, err
+	}
+
+	if isTerminalEngineRun(run.Status) {
+		if err := tx.Commit(ctx); err != nil {
+			return engineRunSummary{}, err
+		}
+		return terminalRunSummaryFromRun(&run), nil
+	}
+
+	historyRows, err := engineTx.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
+	nextSequence := int32(1)
+	if len(historyRows) > 0 {
+		nextSequence = historyRows[len(historyRows)-1].SequenceNo + 1
+	}
+
+	payload, err := publichistory.MarshalPayload(publichistory.WorkflowTerminatedPayload{
+		ErrorCode:    engineTerminateCode,
+		ErrorMessage: engineTerminateMessage,
+	})
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	if _, err := engineTx.AppendHistory(ctx, enginedb.AppendHistoryParams{
+		ProjectID:  run.ProjectID,
+		InstanceID: run.InstanceID,
+		RunID:      run.ID,
+		SequenceNo: nextSequence,
+		EventType:  publichistory.EventWorkflowTerminated,
+		Payload:    payload,
+	}); err != nil {
+		return engineRunSummary{}, err
+	}
+
+	updatedRun, err := engineTx.TransitionRunToTerminated(ctx, run.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineRunSummary{}, fmt.Errorf("terminate transition invariant failed for run %s", run.ID)
+		}
+		return engineRunSummary{}, err
+	}
+	if _, err := engineTx.CancelOpenActivityTasksByRun(ctx, run.ID); err != nil {
+		return engineRunSummary{}, err
+	}
+	if _, err := engineTx.DiscardOpenInboxItemsByRun(ctx, pgtype.UUID{Bytes: run.ID, Valid: true}); err != nil {
+		return engineRunSummary{}, err
+	}
+	if _, err := engineTx.UpdateInstanceStatus(ctx, enginedb.UpdateInstanceStatusParams{
+		ID:     run.InstanceID,
+		Status: enginedb.EngineInstanceLifecycleStatusTerminated,
+	}); err != nil {
+		return engineRunSummary{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return engineRunSummary{}, err
+	}
+	return terminalRunSummaryFromRun(&updatedRun), nil
+}
+
+// CancelRun is cooperative only: success enqueues cancel intent and may wake the
+// run, but the workflow decides between COMPLETED and CANCELLED by returning
+// workflow.ErrCancelled on a later activation.
 func (s *engineControlService) CancelRun(
 	ctx context.Context,
 	projectID uuid.UUID,
@@ -696,6 +917,8 @@ func (s *engineControlService) buildRunSummary(
 		return engineRunSummary{}, err
 	}
 
+	// CountOpenInboxByRun intentionally excludes cancel inbox rows so read APIs
+	// reflect only operator-visible pending work: timers plus signals.
 	pendingInboxItems, err := s.engine.CountOpenInboxByRun(ctx, pgtype.UUID{Bytes: run.ID, Valid: true})
 	if err != nil {
 		return engineRunSummary{}, err
@@ -745,10 +968,63 @@ func (s *engineControlService) projectionStateForRun(ctx context.Context, projec
 		}
 		return "", err
 	}
-	if stringsTrimSpaceEmpty(derefString(trace.EngineProjectionState)) {
+	return s.effectiveProjectionState(ctx, runID, normalizedProjectionState(trace.EngineProjectionState), trace.EngineLastProjectedHistoryID)
+}
+
+func (s *engineControlService) shouldReadLiveTraceSummary(
+	ctx context.Context,
+	trace *store.TraceRead,
+) (bool, error) {
+	if shouldReadLiveEngineSummary(trace) {
+		return true, nil
+	}
+	if trace == nil || !trace.EngineRunID.Valid {
+		return false, nil
+	}
+	if normalizedProjectionState(trace.EngineProjectionState) == publicprojection.StateJournalExpired.String() {
+		return false, nil
+	}
+	return s.traceProjectionCheckpointStale(ctx, uuid.UUID(trace.EngineRunID.Bytes), trace.EngineLastProjectedHistoryID)
+}
+
+func (s *engineControlService) projectionStateForTrace(ctx context.Context, trace *store.TraceRead) (string, error) {
+	if trace == nil || !trace.EngineRunID.Valid {
 		return publicprojection.StateUpToDate.String(), nil
 	}
-	return *trace.EngineProjectionState, nil
+	return s.effectiveProjectionState(
+		ctx,
+		uuid.UUID(trace.EngineRunID.Bytes),
+		normalizedProjectionState(trace.EngineProjectionState),
+		trace.EngineLastProjectedHistoryID,
+	)
+}
+
+func (s *engineControlService) effectiveProjectionState(
+	ctx context.Context,
+	runID uuid.UUID,
+	state string,
+	lastProjectedHistoryID *int64,
+) (string, error) {
+	stale, err := s.traceProjectionCheckpointStale(ctx, runID, lastProjectedHistoryID)
+	if err != nil {
+		return "", err
+	}
+	if stale && state == publicprojection.StateUpToDate.String() {
+		return publicprojection.StateCatchingUp.String(), nil
+	}
+	return state, nil
+}
+
+func (s *engineControlService) traceProjectionCheckpointStale(
+	ctx context.Context,
+	runID uuid.UUID,
+	lastProjectedHistoryID *int64,
+) (bool, error) {
+	latestHistoryID, err := s.engine.GetLatestHistoryIDByRun(ctx, runID)
+	if err != nil {
+		return false, err
+	}
+	return latestHistoryID > derefInt64(lastProjectedHistoryID), nil
 }
 
 func (req *engineStartRunRequest) TraceUserID() string {
@@ -888,6 +1164,8 @@ func syncProjectedTraceSummary(
 		return err
 	}
 
+	// Projected pending inbox counts intentionally exclude cancel rows to match
+	// GET /pending-work and the live engine run summary.
 	pendingInboxItems, err := engineTx.CountOpenInboxByRun(ctx, pgtype.UUID{Bytes: run.ID, Valid: true})
 	if err != nil {
 		return err
@@ -908,11 +1186,44 @@ func isTerminalEngineRun(status enginedb.EngineRunLifecycleStatus) bool {
 	switch status {
 	case enginedb.EngineRunLifecycleStatusCompleted,
 		enginedb.EngineRunLifecycleStatusFailed,
-		enginedb.EngineRunLifecycleStatusCancelled:
+		enginedb.EngineRunLifecycleStatusCancelled,
+		enginedb.EngineRunLifecycleStatusTerminated:
 		return true
 	default:
 		return false
 	}
+}
+
+func terminalRunSummaryFromRun(run *enginedb.EngineRun) engineRunSummary {
+	if run == nil {
+		return engineRunSummary{}
+	}
+
+	return engineRunSummary{
+		RunID:                run.ID,
+		Status:               run.Status,
+		Result:               cloneRaw(run.Result),
+		LastErrorCode:        run.LastErrorCode,
+		LastErrorMessage:     run.LastErrorMessage,
+		PendingActivityTasks: 0,
+		PendingInboxItems:    0,
+	}
+}
+
+func decodePendingTimerKey(raw json.RawMessage) (string, error) {
+	var payload publichistory.TimerScheduledPayload
+	if err := publichistory.UnmarshalPayload(raw, &payload); err != nil {
+		return "", fmt.Errorf("decode timer payload: %w", err)
+	}
+	return payload.TimerKey, nil
+}
+
+func decodePendingSignalName(raw json.RawMessage) (string, error) {
+	var payload publichistory.SignalReceivedPayload
+	if err := publichistory.UnmarshalPayload(raw, &payload); err != nil {
+		return "", fmt.Errorf("decode signal payload: %w", err)
+	}
+	return payload.SignalName, nil
 }
 
 func pgTimePtr(value pgtype.Timestamptz) *time.Time {

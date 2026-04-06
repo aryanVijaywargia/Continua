@@ -16,6 +16,11 @@ FROM engine.history
 WHERE run_id = $1
 ORDER BY sequence_no ASC, id ASC;
 
+-- name: GetLatestHistoryIDByRun :one
+SELECT COALESCE(MAX(id), 0)::bigint
+FROM engine.history
+WHERE run_id = $1;
+
 -- name: ListHistoryByRunAfterID :many
 SELECT *
 FROM engine.history

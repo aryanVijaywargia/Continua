@@ -42,7 +42,24 @@ ORDER BY available_at ASC, id ASC;
 SELECT COUNT(*)
 FROM engine.inbox
 WHERE run_id = $1
-  AND status IN ('pending', 'claimed');
+  AND status IN ('pending', 'claimed')
+  AND kind <> 'cancel';
+
+-- name: ListOpenInboxItemsByRunAndKind :many
+SELECT *
+FROM engine.inbox
+WHERE run_id = $1
+  AND kind = $2
+  AND status IN ('pending', 'claimed')
+ORDER BY available_at ASC, id ASC;
+
+-- name: ListDiscardedTimerInboxItemsByRun :many
+SELECT *
+FROM engine.inbox
+WHERE run_id = $1
+  AND kind = 'timer'
+  AND status = 'discarded'
+ORDER BY available_at ASC, id ASC;
 
 -- name: ListDueTimerRunIDs :many
 SELECT DISTINCT run_id
@@ -74,4 +91,16 @@ SET status = 'discarded',
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
+RETURNING *;
+
+-- name: DiscardOpenInboxItemsByRun :many
+UPDATE engine.inbox
+SET status = 'discarded',
+    resolved_at = NOW(),
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE run_id = $1
+  AND status IN ('pending', 'claimed')
 RETURNING *;

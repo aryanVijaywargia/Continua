@@ -82,12 +82,13 @@ const (
 
 // Defines values for EngineRunStatus.
 const (
-	EngineRunStatusCANCELLED EngineRunStatus = "CANCELLED"
-	EngineRunStatusCOMPLETED EngineRunStatus = "COMPLETED"
-	EngineRunStatusFAILED    EngineRunStatus = "FAILED"
-	EngineRunStatusQUEUED    EngineRunStatus = "QUEUED"
-	EngineRunStatusRUNNING   EngineRunStatus = "RUNNING"
-	EngineRunStatusWAITING   EngineRunStatus = "WAITING"
+	EngineRunStatusCANCELLED  EngineRunStatus = "CANCELLED"
+	EngineRunStatusCOMPLETED  EngineRunStatus = "COMPLETED"
+	EngineRunStatusFAILED     EngineRunStatus = "FAILED"
+	EngineRunStatusQUEUED     EngineRunStatus = "QUEUED"
+	EngineRunStatusRUNNING    EngineRunStatus = "RUNNING"
+	EngineRunStatusTERMINATED EngineRunStatus = "TERMINATED"
+	EngineRunStatusWAITING    EngineRunStatus = "WAITING"
 )
 
 // Defines values for IngestEventLevel.
@@ -427,10 +428,49 @@ type EngineInstanceResponse struct {
 	Status         string             `json:"status"`
 }
 
+// EnginePendingActivityItem defines model for EnginePendingActivityItem.
+type EnginePendingActivityItem struct {
+	ActivityKey  string             `json:"activity_key"`
+	ActivityType string             `json:"activity_type"`
+	AttemptCount int32              `json:"attempt_count"`
+	AvailableAt  time.Time          `json:"available_at"`
+	Status       string             `json:"status"`
+	TaskId       openapi_types.UUID `json:"task_id"`
+}
+
+// EnginePendingSignalItem defines model for EnginePendingSignalItem.
+type EnginePendingSignalItem struct {
+	AvailableAt time.Time          `json:"available_at"`
+	InboxId     openapi_types.UUID `json:"inbox_id"`
+	SignalName  string             `json:"signal_name"`
+	Status      string             `json:"status"`
+}
+
+// EnginePendingTimerItem defines model for EnginePendingTimerItem.
+type EnginePendingTimerItem struct {
+	AvailableAt time.Time          `json:"available_at"`
+	InboxId     openapi_types.UUID `json:"inbox_id"`
+	Status      string             `json:"status"`
+	TimerKey    string             `json:"timer_key"`
+}
+
 // EnginePendingWork defines model for EnginePendingWork.
 type EnginePendingWork struct {
 	PendingActivityTasks int64 `json:"pending_activity_tasks"`
 	PendingInboxItems    int64 `json:"pending_inbox_items"`
+}
+
+// EnginePendingWorkResponse defines model for EnginePendingWorkResponse.
+type EnginePendingWorkResponse struct {
+	Activities []EnginePendingActivityItem `json:"activities"`
+
+	// CurrentWait Current synthesized wait state from the run row when present.
+	CurrentWait          *EngineWaitState           `json:"current_wait"`
+	PendingActivityTasks int64                     `json:"pending_activity_tasks"`
+	PendingInboxItems    int64                     `json:"pending_inbox_items"`
+	RunId                openapi_types.UUID        `json:"run_id"`
+	Signals              []EnginePendingSignalItem `json:"signals"`
+	Timers               []EnginePendingTimerItem  `json:"timers"`
 }
 
 // EngineProjectionState defines model for EngineProjectionState.
@@ -469,7 +509,7 @@ type EngineRunResultResponse struct {
 	Failure *EngineFailureSummary `json:"failure,omitempty"`
 
 	// Result Terminal workflow result payload when available.
-	Result interface{}        `json:"result,omitempty"`
+	Result interface{}        `json:"result"`
 	RunId  openapi_types.UUID `json:"run_id"`
 	Status EngineRunStatus    `json:"status"`
 }
@@ -1088,13 +1128,13 @@ type GetTraceEventsParams struct {
 // StartEngineRunParams defines parameters for StartEngineRun.
 type StartEngineRunParams struct {
 	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
 }
 
 // CancelEngineRunParams defines parameters for CancelEngineRun.
 type CancelEngineRunParams struct {
 	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
 }
 
 // GetEngineRunHistoryParams defines parameters for GetEngineRunHistory.
@@ -1106,7 +1146,13 @@ type GetEngineRunHistoryParams struct {
 // SignalEngineRunParams defines parameters for SignalEngineRun.
 type SignalEngineRunParams struct {
 	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+}
+
+// TerminateEngineRunParams defines parameters for TerminateEngineRun.
+type TerminateEngineRunParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
 }
 
 // IngestParams defines parameters for Ingest.
@@ -1313,12 +1359,18 @@ type ServerInterface interface {
 	// Get engine run history
 	// (GET /v1/engine/runs/{run_id}/history)
 	GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params GetEngineRunHistoryParams)
+	// Get the durable pending work held by an engine run
+	// (GET /v1/engine/runs/{run_id}/pending-work)
+	GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
 	// Get the terminal result for an engine run
 	// (GET /v1/engine/runs/{run_id}/result)
 	GetEngineRunResult(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
 	// Deliver a signal to an engine run
 	// (POST /v1/engine/runs/{run_id}/signal)
 	SignalEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params SignalEngineRunParams)
+	// Forcefully terminate an engine run
+	// (POST /v1/engine/runs/{run_id}/terminate)
+	TerminateEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params TerminateEngineRunParams)
 	// Ingest traces, spans, and events
 	// (POST /v1/ingest)
 	Ingest(w http.ResponseWriter, r *http.Request, params IngestParams)
@@ -1409,6 +1461,12 @@ func (_ Unimplemented) GetEngineRunHistory(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get the durable pending work held by an engine run
+// (GET /v1/engine/runs/{run_id}/pending-work)
+func (_ Unimplemented) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Get the terminal result for an engine run
 // (GET /v1/engine/runs/{run_id}/result)
 func (_ Unimplemented) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
@@ -1418,6 +1476,12 @@ func (_ Unimplemented) GetEngineRunResult(w http.ResponseWriter, r *http.Request
 // Deliver a signal to an engine run
 // (POST /v1/engine/runs/{run_id}/signal)
 func (_ Unimplemented) SignalEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params SignalEngineRunParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Forcefully terminate an engine run
+// (POST /v1/engine/runs/{run_id}/terminate)
+func (_ Unimplemented) TerminateEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params TerminateEngineRunParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1921,7 +1985,7 @@ func (siw *ServerInterfaceWrapper) StartEngineRun(w http.ResponseWriter, r *http
 
 	headers := r.Header
 
-	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -1930,14 +1994,18 @@ func (siw *ServerInterfaceWrapper) StartEngineRun(w http.ResponseWriter, r *http
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = &XContinuaEnginePreview
+		params.XContinuaEnginePreview = XContinuaEnginePreview
 
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2007,7 +2075,7 @@ func (siw *ServerInterfaceWrapper) CancelEngineRun(w http.ResponseWriter, r *htt
 
 	headers := r.Header
 
-	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -2016,14 +2084,18 @@ func (siw *ServerInterfaceWrapper) CancelEngineRun(w http.ResponseWriter, r *htt
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = &XContinuaEnginePreview
+		params.XContinuaEnginePreview = XContinuaEnginePreview
 
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2078,6 +2150,37 @@ func (siw *ServerInterfaceWrapper) GetEngineRunHistory(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetEngineRunHistory(w, r, runId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEngineRunPendingWork operation middleware
+func (siw *ServerInterfaceWrapper) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEngineRunPendingWork(w, r, runId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2143,7 +2246,7 @@ func (siw *ServerInterfaceWrapper) SignalEngineRun(w http.ResponseWriter, r *htt
 
 	headers := r.Header
 
-	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -2152,18 +2255,81 @@ func (siw *ServerInterfaceWrapper) SignalEngineRun(w http.ResponseWriter, r *htt
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = &XContinuaEnginePreview
+		params.XContinuaEnginePreview = XContinuaEnginePreview
 
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SignalEngineRun(w, r, runId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TerminateEngineRun operation middleware
+func (siw *ServerInterfaceWrapper) TerminateEngineRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params TerminateEngineRunParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = XContinuaEnginePreview
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TerminateEngineRun(w, r, runId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2411,10 +2577,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/v1/engine/runs/{run_id}/history", wrapper.GetEngineRunHistory)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/engine/runs/{run_id}/pending-work", wrapper.GetEngineRunPendingWork)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/engine/runs/{run_id}/result", wrapper.GetEngineRunResult)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/engine/runs/{run_id}/signal", wrapper.SignalEngineRun)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/runs/{run_id}/terminate", wrapper.TerminateEngineRun)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/ingest", wrapper.Ingest)

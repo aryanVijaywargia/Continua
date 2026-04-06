@@ -33,6 +33,24 @@ func (o *storeOps) ListPendingInboxByRun(
 	return o.q.ListPendingInboxByRun(ctx, pgtype.UUID{Bytes: runID, Valid: true})
 }
 
+func (o *storeOps) ListOpenInboxItemsByRunAndKind(
+	ctx context.Context,
+	runID uuid.UUID,
+	kind string,
+) ([]enginedb.EngineInbox, error) {
+	return o.q.ListOpenInboxItemsByRunAndKind(ctx, enginedb.ListOpenInboxItemsByRunAndKindParams{
+		RunID: pgtype.UUID{Bytes: runID, Valid: true},
+		Kind:  kind,
+	})
+}
+
+func (o *storeOps) ListDiscardedTimerInboxItemsByRun(
+	ctx context.Context,
+	runID uuid.UUID,
+) ([]enginedb.EngineInbox, error) {
+	return o.q.ListDiscardedTimerInboxItemsByRun(ctx, pgtype.UUID{Bytes: runID, Valid: true})
+}
+
 func (o *storeOps) ListDueTimerRunIDs(ctx context.Context) ([]uuid.UUID, error) {
 	rawIDs, err := o.q.ListDueTimerRunIDs(ctx)
 	if err != nil {
@@ -56,4 +74,11 @@ func (o *storeOps) MarkInboxProcessed(ctx context.Context, id uuid.UUID) (engine
 
 func (o *storeOps) MarkInboxDiscarded(ctx context.Context, id uuid.UUID) (enginedb.EngineInbox, error) {
 	return mapResult(o.q.MarkInboxDiscarded(ctx, id))
+}
+
+func (o *storeOps) DiscardOpenInboxItemsByRun(
+	ctx context.Context,
+	runID uuid.UUID,
+) ([]enginedb.EngineInbox, error) {
+	return o.q.DiscardOpenInboxItemsByRun(ctx, pgtype.UUID{Bytes: runID, Valid: true})
 }

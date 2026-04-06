@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -84,7 +85,18 @@ func (o *storeOps) TransitionRunToCancelled(
 	if err == nil {
 		return run, nil
 	}
-	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
+	return enginedb.EngineRun{}, o.classifyRunInvariantMiss(ctx, arg.ID, "cancel", err)
+}
+
+func (o *storeOps) TransitionRunToTerminated(
+	ctx context.Context,
+	id uuid.UUID,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToTerminated(ctx, id)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunInvariantMiss(ctx, id, "terminate", err)
 }
 
 func (o *storeOps) WakeWaitingRun(ctx context.Context, id uuid.UUID) (WakeWaitingRunResult, error) {
@@ -123,4 +135,16 @@ func (o *storeOps) classifyRunCASMiss(ctx context.Context, id uuid.UUID, err err
 		return lookupErr
 	}
 	return ErrStaleClaim
+}
+
+func (o *storeOps) classifyRunInvariantMiss(ctx context.Context, id uuid.UUID, operation string, err error) error {
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return normalizeError(err)
+	}
+
+	current, err := o.GetRun(ctx, id)
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: run %s transition %s returned zero rows with current status %s", ErrInvariant, id, operation, current.Status)
 }
