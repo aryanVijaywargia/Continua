@@ -232,11 +232,11 @@ func (p *Projector) projectHistoryRows(
 	tx *enginestore.Tx,
 	target *projectionTarget,
 	rows []enginedb.EngineHistory,
-) (int64, bool, error) {
+) (lastProjectedID int64, blocked bool, err error) {
 	if target == nil {
 		return 0, false, errors.New("projection target is required")
 	}
-	lastProjectedID := target.LastProjectedHistoryID
+	lastProjectedID = target.LastProjectedHistoryID
 	for i := range rows {
 		row := &rows[i]
 		applied, err := withProjectionBarrier(ctx, tx.Tx(), target, func() error {
@@ -1152,13 +1152,6 @@ func nullableText(value *string) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: *value, Valid: true}
-}
-
-func derefString(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }
 
 type pgtypeTimestamptz struct {
