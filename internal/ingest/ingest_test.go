@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/jobs"
 	"github.com/continua-ai/continua/internal/store"
@@ -25,7 +26,7 @@ func newTestService(s *store.Store) *ingest.Service {
 func newAsyncTestService(t *testing.T, s *store.Store) *ingest.Service {
 	t.Helper()
 
-	client, err := jobs.NewClient(testutil.TestDB(t), s, ingest.NewProcessor(s, nil), nil)
+	client, err := jobs.NewClient(testutil.TestDB(t), s, ingest.NewProcessor(s, nil), enginecontrol.NewService(s), nil)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

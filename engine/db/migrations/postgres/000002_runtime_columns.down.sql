@@ -35,6 +35,11 @@ ALTER TABLE engine.runs
     DROP COLUMN custom_status,
     DROP COLUMN result;
 
-CREATE INDEX idx_engine_runs_claim
-    ON engine.runs(status, ready_at, lease_expires_at)
-    WHERE status IN ('queued', 'running');
+DO $$
+BEGIN
+    EXECUTE $sql$
+        CREATE INDEX idx_engine_runs_claim
+            ON engine.runs(status, ready_at, lease_expires_at)
+            WHERE status IN ('queued', 'running')
+    $sql$;
+END $$;

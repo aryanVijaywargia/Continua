@@ -67,9 +67,14 @@ DROP TYPE engine.instance_lifecycle_status_old;
 ALTER TABLE engine.instances
     ALTER COLUMN status SET DEFAULT 'active';
 
-CREATE INDEX idx_engine_runs_claim
-    ON engine.runs(status, ready_at, lease_expires_at)
-    WHERE status IN ('queued', 'running');
+DO $$
+BEGIN
+    EXECUTE $sql$
+        CREATE INDEX idx_engine_runs_claim
+            ON engine.runs(status, ready_at, lease_expires_at)
+            WHERE status IN ('queued', 'running')
+    $sql$;
+END $$;
 
 CREATE INDEX idx_engine_instances_status_updated
     ON engine.instances(project_id, status, updated_at DESC);

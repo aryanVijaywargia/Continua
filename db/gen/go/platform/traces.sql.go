@@ -257,6 +257,60 @@ func (q *Queries) CreateTrace(ctx context.Context, arg CreateTraceParams) (Trace
 	return i, err
 }
 
+const flipProjectionStateToCatchingUp = `-- name: FlipProjectionStateToCatchingUp :execrows
+UPDATE traces
+SET engine_projection_state = 'catching_up',
+    engine_projection_updated_at = NOW(),
+    updated_at = NOW(),
+    version = COALESCE(version, 1) + 1
+WHERE engine_run_id = $1
+  AND COALESCE(engine_projection_state, 'up_to_date') = 'summary_only'
+`
+
+func (q *Queries) FlipProjectionStateToCatchingUp(ctx context.Context, engineRunID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, flipProjectionStateToCatchingUp, engineRunID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const flipProjectionStateToJournalExpired = `-- name: FlipProjectionStateToJournalExpired :execrows
+UPDATE traces
+SET engine_projection_state = 'journal_expired',
+    engine_projection_updated_at = NOW(),
+    updated_at = NOW(),
+    version = COALESCE(version, 1) + 1
+WHERE engine_run_id = $1
+  AND COALESCE(engine_projection_state, 'up_to_date') IN ('up_to_date', 'catching_up', 'summary_only')
+`
+
+func (q *Queries) FlipProjectionStateToJournalExpired(ctx context.Context, engineRunID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, flipProjectionStateToJournalExpired, engineRunID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const flipProjectionStateToSummaryOnly = `-- name: FlipProjectionStateToSummaryOnly :execrows
+UPDATE traces
+SET engine_projection_state = 'summary_only',
+    engine_projection_updated_at = NOW(),
+    updated_at = NOW(),
+    version = COALESCE(version, 1) + 1
+WHERE engine_run_id = $1
+  AND COALESCE(engine_projection_state, 'up_to_date') IN ('up_to_date', 'catching_up')
+`
+
+func (q *Queries) FlipProjectionStateToSummaryOnly(ctx context.Context, engineRunID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, flipProjectionStateToSummaryOnly, engineRunID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getTrace = `-- name: GetTrace :one
 SELECT t.id, t.project_id, t.session_id, t.trace_id, t.name, t.user_id, t.tags, t.environment, t.release, t.metadata, t.input, t.output, t.status, t.start_time, t.end_time, t.server_received_at, t.duration_ms, t.total_spans, t.total_cost, t.error_count, t.version, t.created_at, t.updated_at, t.search_vector, t.total_tokens_in, t.total_tokens_out, t.engine_run_id, t.engine_definition_name, t.engine_definition_version, t.engine_projection_state, t.engine_latest_history_id, t.engine_last_projected_history_id, t.engine_projection_updated_at, t.engine_instance_key, t.engine_run_status, t.engine_custom_status, t.engine_wait_state, t.engine_pending_activity_tasks, t.engine_pending_inbox_items, s.external_id AS session_external_id
 FROM traces t
@@ -328,6 +382,66 @@ type GetTraceByExternalIDParams struct {
 
 func (q *Queries) GetTraceByExternalID(ctx context.Context, arg GetTraceByExternalIDParams) (Trace, error) {
 	row := q.db.QueryRow(ctx, getTraceByExternalID, arg.ProjectID, arg.TraceID)
+	var i Trace
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.SessionID,
+		&i.TraceID,
+		&i.Name,
+		&i.UserID,
+		&i.Tags,
+		&i.Environment,
+		&i.Release,
+		&i.Metadata,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.StartTime,
+		&i.EndTime,
+		&i.ServerReceivedAt,
+		&i.DurationMs,
+		&i.TotalSpans,
+		&i.TotalCost,
+		&i.ErrorCount,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SearchVector,
+		&i.TotalTokensIn,
+		&i.TotalTokensOut,
+		&i.EngineRunID,
+		&i.EngineDefinitionName,
+		&i.EngineDefinitionVersion,
+		&i.EngineProjectionState,
+		&i.EngineLatestHistoryID,
+		&i.EngineLastProjectedHistoryID,
+		&i.EngineProjectionUpdatedAt,
+		&i.EngineInstanceKey,
+		&i.EngineRunStatus,
+		&i.EngineCustomStatus,
+		&i.EngineWaitState,
+		&i.EnginePendingActivityTasks,
+		&i.EnginePendingInboxItems,
+	)
+	return i, err
+}
+
+const getTraceByProjectAndEngineRunIDForUpdate = `-- name: GetTraceByProjectAndEngineRunIDForUpdate :one
+SELECT id, project_id, session_id, trace_id, name, user_id, tags, environment, release, metadata, input, output, status, start_time, end_time, server_received_at, duration_ms, total_spans, total_cost, error_count, version, created_at, updated_at, search_vector, total_tokens_in, total_tokens_out, engine_run_id, engine_definition_name, engine_definition_version, engine_projection_state, engine_latest_history_id, engine_last_projected_history_id, engine_projection_updated_at, engine_instance_key, engine_run_status, engine_custom_status, engine_wait_state, engine_pending_activity_tasks, engine_pending_inbox_items
+FROM traces
+WHERE project_id = $1
+  AND engine_run_id = $2
+FOR UPDATE
+`
+
+type GetTraceByProjectAndEngineRunIDForUpdateParams struct {
+	ProjectID   uuid.UUID   `json:"project_id"`
+	EngineRunID pgtype.UUID `json:"engine_run_id"`
+}
+
+func (q *Queries) GetTraceByProjectAndEngineRunIDForUpdate(ctx context.Context, arg GetTraceByProjectAndEngineRunIDForUpdateParams) (Trace, error) {
+	row := q.db.QueryRow(ctx, getTraceByProjectAndEngineRunIDForUpdate, arg.ProjectID, arg.EngineRunID)
 	var i Trace
 	err := row.Scan(
 		&i.ID,

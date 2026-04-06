@@ -149,6 +149,27 @@ func (q *Queries) CreateSpan(ctx context.Context, arg CreateSpanParams) (Span, e
 	return i, err
 }
 
+const deleteNonRootSpansByTrace = `-- name: DeleteNonRootSpansByTrace :exec
+DELETE FROM spans
+WHERE trace_id = $1
+  AND parent_span_id IS NOT NULL
+`
+
+func (q *Queries) DeleteNonRootSpansByTrace(ctx context.Context, traceID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteNonRootSpansByTrace, traceID)
+	return err
+}
+
+const deleteSpanEventsByTrace = `-- name: DeleteSpanEventsByTrace :exec
+DELETE FROM span_events
+WHERE trace_id = $1
+`
+
+func (q *Queries) DeleteSpanEventsByTrace(ctx context.Context, traceID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSpanEventsByTrace, traceID)
+	return err
+}
+
 const getSpan = `-- name: GetSpan :one
 SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at, search_vector FROM spans WHERE id = $1
 `

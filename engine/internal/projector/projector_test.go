@@ -297,6 +297,134 @@ func TestAdvanceProjectionCheckpoint_IsMonotonicForStaleUpdates(t *testing.T) {
 	}
 }
 
+func TestProjectorBarrier_ConcurrentPurgeToSummaryOnlySkipsDetailWrites(t *testing.T) {
+	fixture := newProjectorFixture(t)
+
+	activityHistory := fixture.appendHistoryEvent(2, publichistory.EventActivityScheduled, publichistory.ActivityScheduledPayload{
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
+	})
+	fixture.setTraceProjection(activityHistory.ID, fixture.startedHistory.ID, publicprojection.StateCatchingUp.String())
+
+	tx, err := fixture.store.BeginTx(fixture.ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer func() { _ = tx.Rollback(fixture.ctx) }()
+
+	target, err := selectProjectionTarget(fixture.ctx, tx.Tx())
+	if err != nil {
+		t.Fatalf("selectProjectionTarget() error = %v", err)
+	}
+	rows, err := tx.ListHistoryByRunAfterID(fixture.ctx, enginedb.ListHistoryByRunAfterIDParams{
+		RunID: fixture.run.ID,
+		ID:    fixture.startedHistory.ID,
+		Limit: 1,
+	})
+	if err != nil {
+		t.Fatalf("ListHistoryByRunAfterID() error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected one pending history row, got %d", len(rows))
+	}
+
+	fixture.setTraceProjection(activityHistory.ID, fixture.startedHistory.ID, publicprojection.StateSummaryOnly.String())
+
+	lastProjectedID, blocked, err := fixture.projector.projectHistoryRows(fixture.ctx, tx, &target, rows)
+	if err != nil {
+		t.Fatalf("projectHistoryRows() error = %v", err)
+	}
+	if !blocked {
+		t.Fatal("expected projection barrier to block detail writes after purge flips state to summary_only")
+	}
+	if lastProjectedID != fixture.startedHistory.ID {
+		t.Fatalf("expected checkpoint to remain at %d, got %d", fixture.startedHistory.ID, lastProjectedID)
+	}
+	if err := tx.Commit(fixture.ctx); err != nil {
+		t.Fatalf("tx.Commit() error = %v", err)
+	}
+
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-summary-only-barrier"); err != nil {
+		t.Fatalf("PollOnce() error = %v", err)
+	}
+
+	assertProjectedDetailState(t, fixture, publicprojection.StateSummaryOnly.String(), fixture.startedHistory.ID, 0, 0)
+}
+
+func TestProjectorBarrier_JournalExpiredSkipsReprojection(t *testing.T) {
+	fixture := newProjectorFixture(t)
+
+	activityHistory := fixture.appendHistoryEvent(2, publichistory.EventActivityScheduled, publichistory.ActivityScheduledPayload{
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
+	})
+	fixture.setTraceProjection(activityHistory.ID, fixture.startedHistory.ID, publicprojection.StateJournalExpired.String())
+
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-journal-expired-noop"); err != nil {
+		t.Fatalf("PollOnce() error = %v", err)
+	}
+
+	assertProjectedDetailState(t, fixture, publicprojection.StateJournalExpired.String(), fixture.startedHistory.ID, 0, 0)
+}
+
+func TestProjectorBarrier_ConcurrentFullPurgeBlocksCheckpointWithoutHistoryRows(t *testing.T) {
+	fixture := newProjectorFixture(t)
+
+	activityHistory := fixture.appendHistoryEvent(2, publichistory.EventActivityScheduled, publichistory.ActivityScheduledPayload{
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
+	})
+	fixture.setTraceProjection(activityHistory.ID, fixture.startedHistory.ID, publicprojection.StateCatchingUp.String())
+
+	tx, err := fixture.store.BeginTx(fixture.ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer func() { _ = tx.Rollback(fixture.ctx) }()
+
+	target, err := selectProjectionTarget(fixture.ctx, tx.Tx())
+	if err != nil {
+		t.Fatalf("selectProjectionTarget() error = %v", err)
+	}
+
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		DELETE FROM engine.history
+		WHERE run_id = $1
+		  AND id = $2
+	`, fixture.run.ID, activityHistory.ID); err != nil {
+		t.Fatalf("delete projected history during concurrent purge: %v", err)
+	}
+	fixture.setTraceProjection(activityHistory.ID, fixture.startedHistory.ID, publicprojection.StateJournalExpired.String())
+
+	rows, err := tx.ListHistoryByRunAfterID(fixture.ctx, enginedb.ListHistoryByRunAfterIDParams{
+		RunID: fixture.run.ID,
+		ID:    fixture.startedHistory.ID,
+		Limit: 1,
+	})
+	if err != nil {
+		t.Fatalf("ListHistoryByRunAfterID() error = %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected zero remaining history rows after purge, got %d", len(rows))
+	}
+
+	applied, err := advanceProjectionCheckpointWithBarrier(fixture.ctx, tx.Tx(), &target, target.LastProjectedHistoryID)
+	if err != nil {
+		t.Fatalf("advanceProjectionCheckpointWithBarrier() error = %v", err)
+	}
+	if applied {
+		t.Fatal("expected checkpoint advance to be blocked by journal_expired barrier")
+	}
+	if err := tx.Commit(fixture.ctx); err != nil {
+		t.Fatalf("tx.Commit() error = %v", err)
+	}
+
+	assertProjectedDetailState(t, fixture, publicprojection.StateJournalExpired.String(), fixture.startedHistory.ID, 0, 0)
+}
+
 func TestProjectionStateAdvancesAcrossStartActivationAndProjector(t *testing.T) {
 	fixture := newProjectorFixture(t)
 
@@ -374,6 +502,41 @@ func TestProjectionStateAdvancesAcrossStartActivationAndProjector(t *testing.T) 
 	}
 	if traceState != publicprojection.StateUpToDate.String() {
 		t.Fatalf("expected projector to restore up_to_date, got %q", traceState)
+	}
+}
+
+func TestProjectorPollOnce_RepairFromSummaryOnlyRebuildsDetailFromCheckpoint(t *testing.T) {
+	fixture := newProjectorFixture(t)
+
+	activityHistory := fixture.appendHistoryEvent(2, publichistory.EventActivityScheduled, publichistory.ActivityScheduledPayload{
+		ActivityKey:  "ship-order",
+		ActivityType: "demo.ship",
+		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
+	})
+
+	// Simulate a purged shell that still has retained history after an operator-triggered repair
+	// flips the trace back to catching_up.
+	fixture.setTraceProjection(activityHistory.ID, fixture.startedHistory.ID, publicprojection.StateSummaryOnly.String())
+	assertProjectedDetailState(t, fixture, publicprojection.StateSummaryOnly.String(), fixture.startedHistory.ID, 0, 0)
+	fixture.setTraceProjection(activityHistory.ID, fixture.startedHistory.ID, publicprojection.StateCatchingUp.String())
+
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-repair-catch-up"); err != nil {
+		t.Fatalf("PollOnce() error = %v", err)
+	}
+
+	assertProjectedDetailState(t, fixture, publicprojection.StateUpToDate.String(), activityHistory.ID, 1, 2)
+
+	var activitySpanCount int
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT COUNT(*)
+		FROM public.spans
+		WHERE trace_id = $1
+		  AND span_id = $2
+	`, fixture.traceID, activitySpanExternalID(fixture.run.ID, "ship-order")).Scan(&activitySpanCount); err != nil {
+		t.Fatalf("count activity spans: %v", err)
+	}
+	if activitySpanCount != 1 {
+		t.Fatalf("expected exactly one repaired activity span, got %d", activitySpanCount)
 	}
 }
 
@@ -1180,4 +1343,57 @@ func queryResolvedWaitEvents(t *testing.T, fixture *projectorFixture, resolution
 	}
 
 	return resolved
+}
+
+func assertProjectedDetailState(
+	t *testing.T,
+	fixture *projectorFixture,
+	wantProjectionState string,
+	wantLastProjectedHistoryID int64,
+	wantActivitySpans int,
+	wantSpanEvents int,
+) {
+	t.Helper()
+
+	var projectionState string
+	var lastProjectedHistoryID int64
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT engine_projection_state,
+		       engine_last_projected_history_id
+		FROM public.traces
+		WHERE id = $1
+	`, fixture.traceID).Scan(&projectionState, &lastProjectedHistoryID); err != nil {
+		t.Fatalf("query trace projection state: %v", err)
+	}
+	if projectionState != wantProjectionState {
+		t.Fatalf("expected projection state %q, got %q", wantProjectionState, projectionState)
+	}
+	if lastProjectedHistoryID != wantLastProjectedHistoryID {
+		t.Fatalf("expected last projected history id %d, got %d", wantLastProjectedHistoryID, lastProjectedHistoryID)
+	}
+
+	var activitySpanCount int
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT COUNT(*)
+		FROM public.spans
+		WHERE trace_id = $1
+		  AND span_id LIKE 'engine:activity:%'
+	`, fixture.traceID).Scan(&activitySpanCount); err != nil {
+		t.Fatalf("count activity spans: %v", err)
+	}
+	if activitySpanCount != wantActivitySpans {
+		t.Fatalf("expected %d activity spans, got %d", wantActivitySpans, activitySpanCount)
+	}
+
+	var spanEventCount int
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT COUNT(*)
+		FROM public.span_events
+		WHERE trace_id = $1
+	`, fixture.traceID).Scan(&spanEventCount); err != nil {
+		t.Fatalf("count span events: %v", err)
+	}
+	if spanEventCount != wantSpanEvents {
+		t.Fatalf("expected %d span events, got %d", wantSpanEvents, spanEventCount)
+	}
 }

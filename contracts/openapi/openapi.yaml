@@ -234,6 +234,8 @@ paths:
         Returns the terminal result shape for the run.
         `COMPLETED` returns the workflow result payload.
         `CANCELLED` and `TERMINATED` return `result=null` with a populated `failure` object.
+        Purged runs in `summary_only` and `journal_expired` continue to return the
+        retained terminal shell instead of becoming `404`.
       tags: [Engine]
       parameters:
         - name: run_id
@@ -304,6 +306,10 @@ paths:
     get:
       operationId: getEngineRunHistory
       summary: Get engine run history
+      description: |
+        Returns the durable engine history page for the run.
+        Purged runs continue to return `200`; `journal_expired` runs include
+        `expired=true` so clients can distinguish purged-empty from never-had-events.
       tags: [Engine]
       parameters:
         - name: run_id
@@ -330,6 +336,110 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EngineRunHistoryResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/engine/runs/{run_id}/purge:
+    post:
+      operationId: purgeEngineRun
+      summary: Purge projected detail and optionally retained history for an engine run
+      tags: [Engine]
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnginePurgeRequest'
+      responses:
+        '200':
+          description: Purge applied or already satisfied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnginePurgeResponse'
+        '400':
+          description: Invalid request body or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run not terminal (`run_not_terminal`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/engine/runs/{run_id}/repair:
+    post:
+      operationId: repairEngineRun
+      summary: Request projection repair for an engine run
+      description: |
+        Repair is asynchronous. Accepted repair requests only reopen projection by
+        returning the run to `catching_up`; the separate `continua-engine`
+        projector loop performs the rebuild later.
+      tags: [Engine]
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Repair accepted or current state reported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRepairResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized - missing or invalid API key
           content:
@@ -558,6 +668,27 @@ paths:
           description: Filter by user ID
           schema:
             type: string
+        - name: engine_instance_key
+          in: query
+          description: Filter by engine instance key
+          schema:
+            type: string
+        - name: engine_definition_name
+          in: query
+          description: Filter by engine definition name
+          schema:
+            type: string
+        - name: engine_run_status
+          in: query
+          description: Filter by engine run lifecycle status
+          schema:
+            type: string
+            enum: [queued, running, waiting, completed, failed, cancelled, terminated]
+        - name: engine_projection_state
+          in: query
+          description: Filter by engine projection state
+          schema:
+            $ref: '#/components/schemas/EngineProjectionState'
         - name: has_errors
           in: query
           description: Filter traces with errors (error_count > 0)
@@ -901,6 +1032,19 @@ components:
       type: string
       enum: [up_to_date, catching_up, summary_only, journal_expired]
 
+    EnginePurgeMode:
+      type: string
+      enum: [projection_only, full]
+
+    EngineRepairReason:
+      type: string
+      enum:
+        - already_up_to_date
+        - history_expired
+        - no_events_to_project
+        - repair_requested
+        - already_catching_up
+
     EngineRunStatus:
       type: string
       enum: [QUEUED, RUNNING, WAITING, COMPLETED, FAILED, CANCELLED, TERMINATED]
@@ -1207,6 +1351,10 @@ components:
           $ref: '#/components/schemas/EngineRunSummary'
 
     EngineRunResponse:
+      description: |
+        Engine run detail. Clients can identify `definition_version_mismatch`
+        from the existing `definition_name`, `definition_version`, and
+        `failure.error_code` fields without a dedicated mismatch endpoint.
       allOf:
         - $ref: '#/components/schemas/EngineRunSummary'
         - type: object
@@ -1226,7 +1374,9 @@ components:
         status:
           $ref: '#/components/schemas/EngineRunStatus'
         result:
-          description: Terminal workflow result payload when available.
+          description: |
+            Terminal workflow result payload when available. `summary_only` and
+            `journal_expired` runs continue to return the retained terminal shell.
           x-nullable: true
         failure:
           $ref: '#/components/schemas/EngineFailureSummary'
@@ -1261,6 +1411,45 @@ components:
           type: boolean
         next_after:
           type: integer
+        expired:
+          type: boolean
+          description: True when retained engine history for the run has been purged.
+
+    EnginePurgeRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          $ref: '#/components/schemas/EnginePurgeMode'
+
+    EnginePurgeResponse:
+      type: object
+      required: [run_id, mode, projection_state, deleted]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        mode:
+          $ref: '#/components/schemas/EnginePurgeMode'
+        projection_state:
+          $ref: '#/components/schemas/EngineProjectionState'
+        deleted:
+          type: boolean
+          description: True when purge deleted projection detail and/or history rows.
+
+    EngineRepairResponse:
+      type: object
+      required: [run_id, accepted, reason, projection_state]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        accepted:
+          type: boolean
+        reason:
+          $ref: '#/components/schemas/EngineRepairReason'
+        projection_state:
+          $ref: '#/components/schemas/EngineProjectionState'
 
     EngineSignalRunRequest:
       type: object

@@ -46,7 +46,9 @@ type JobsConfig struct {
 
 // EngineConfig holds public engine API rollout settings.
 type EngineConfig struct {
-	PublicAPIEnabled bool
+	PublicAPIEnabled             bool
+	ProjectionRetentionAfter     time.Duration
+	HistoryRetentionAfter        time.Duration
 }
 
 // Address returns the server address in host:port format.
@@ -80,6 +82,20 @@ func Load() (*Config, error) {
 	enginePublicAPIEnabled, err := loadBool("ENGINE_PUBLIC_API_ENABLED", false)
 	if err != nil {
 		return nil, err
+	}
+	engineProjectionRetentionAfter, err := loadOptionalDuration("ENGINE_PROJECTION_RETENTION_AFTER")
+	if err != nil {
+		return nil, err
+	}
+	engineHistoryRetentionAfter, err := loadOptionalDuration("ENGINE_HISTORY_RETENTION_AFTER")
+	if err != nil {
+		return nil, err
+	}
+	if engineHistoryRetentionAfter > 0 && engineProjectionRetentionAfter <= 0 {
+		return nil, errors.New("ENGINE_HISTORY_RETENTION_AFTER requires ENGINE_PROJECTION_RETENTION_AFTER to be set and greater than zero")
+	}
+	if engineHistoryRetentionAfter > 0 && engineHistoryRetentionAfter <= engineProjectionRetentionAfter {
+		return nil, errors.New("ENGINE_HISTORY_RETENTION_AFTER must be greater than ENGINE_PROJECTION_RETENTION_AFTER")
 	}
 	dependencyRetryWindow, err := loadDuration("INGEST_DEPENDENCY_RETRY_WINDOW", 15*time.Minute)
 	if err != nil {
@@ -121,7 +137,9 @@ func Load() (*Config, error) {
 			FailedPayloadRetention: failedPayloadRetention,
 		},
 		Engine: EngineConfig{
-			PublicAPIEnabled: enginePublicAPIEnabled,
+			PublicAPIEnabled:         enginePublicAPIEnabled,
+			ProjectionRetentionAfter: engineProjectionRetentionAfter,
+			HistoryRetentionAfter:    engineHistoryRetentionAfter,
 		},
 		Jobs: JobsConfig{
 			IngestWorkers:      ingestWorkers,
@@ -173,6 +191,25 @@ func loadDuration(key string, defaultValue time.Duration) (time.Duration, error)
 	}
 	if value < 0 {
 		return 0, errors.New(key + " must be non-negative")
+	}
+	return value, nil
+}
+
+func loadOptionalDuration(key string) (time.Duration, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return 0, nil
+	}
+
+	value, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, errors.New(key + " must be a valid duration")
+	}
+	if value < 0 {
+		return 0, errors.New(key + " must be non-negative")
+	}
+	if value == 0 {
+		return 0, nil
 	}
 	return value, nil
 }

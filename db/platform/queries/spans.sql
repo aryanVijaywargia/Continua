@@ -198,3 +198,12 @@ SET prompt_tokens = $2, completion_tokens = $3, total_tokens = $4,
     total_cost = $5, updated_at = NOW(), version = version + 1
 WHERE id = $1
 RETURNING *;
+
+-- name: DeleteSpanEventsByTrace :exec
+DELETE FROM span_events
+WHERE trace_id = $1;
+
+-- name: DeleteNonRootSpansByTrace :exec
+DELETE FROM spans
+WHERE trace_id = $1
+  AND parent_span_id IS NOT NULL;
