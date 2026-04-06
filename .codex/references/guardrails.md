@@ -17,8 +17,10 @@ These rules are adapted from the project's Claude hooks so Codex sessions keep t
 - Do not treat `config.example.yaml` as the live config contract; runtime config is env-only in `internal/config/config.go`.
 
 ## Migration safety
-- Existing SQL migrations under `db/platform/migrations/` and `engine/db/migrations/` are treated as immutable.
-- Create a new migration with `make migrate-create name=<description>` instead of modifying an old one.
+- This repo is still pre-production. Until the first production release, SQL migrations under `db/platform/migrations/` and `engine/db/migrations/` may be rewritten, renumbered, or squashed when that keeps the pre-release schema history cleaner.
+- After the first production release, treat existing SQL migrations under `db/platform/migrations/` and `engine/db/migrations/` as immutable.
+- If a pre-production migration is rewritten, also update any dependent down migrations, migration smoke tests, generated code, and docs that reference the old numbering or behavior.
+- When a new step is clearer than rewriting history, still prefer `make migrate-create name=<description>`.
 
 ## Command safety
 - Avoid destructive shell commands unless the user explicitly asks:

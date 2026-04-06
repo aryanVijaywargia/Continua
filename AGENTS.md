@@ -90,7 +90,9 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Database And Migration Rules
 - Postgres is the real platform runtime database.
 - SQLite exists only as an early bootstrap scaffold under `db/platform/migrations/sqlite/`; do not assume full parity with Postgres behavior.
-- Existing migrations under `db/platform/migrations/` and `engine/db/migrations/` are immutable.
+- This repo is still pre-production. Until the first production release, migrations under `db/platform/migrations/` and `engine/db/migrations/` may be rewritten, renumbered, or squashed if that keeps the pre-release schema history cleaner.
+- After the first production release, treat existing migrations under `db/platform/migrations/` and `engine/db/migrations/` as immutable.
+- If you rewrite a pre-production migration, update any dependent down migrations, migration smoke tests, generated code, and docs that reference the old numbering or behavior.
 - Create new migrations with `make migrate-create name=<description>`.
 - Current important platform tables include `projects`, `ingest_batches`, `ingest_batch_payloads`, `sessions`, `traces`, `spans`, and `span_events`.
 
@@ -155,7 +157,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ### Codex guardrails
 - Do not edit generated files directly; change the source inputs and run `make generate`.
-- Treat migrations as immutable.
+- Follow the repo's pre-production migration policy: migration rewrites are allowed until the first production release, but become immutable after that point.
 - Avoid direct `.env*` reads or writes.
 - Avoid broad staging commands like `git add .`, `git add -A`, or wildcard staging.
 - Format edited Go files with `gofmt` and `goimports` when available.
