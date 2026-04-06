@@ -201,7 +201,7 @@ func WriteTerminalSummary(
 		SET status = $3,
 		    end_time = $4::timestamptz,
 		    output = $5::jsonb,
-		    status_message = $6,
+		    status_message = $6::text,
 		    duration_ms = CASE
 		        WHEN $4::timestamptz IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
 		        ELSE duration_ms
@@ -214,7 +214,7 @@ func WriteTerminalSummary(
 		        WHERE engine_run_id = $1
 		    )
 		  AND span_id = $2
-	`, runID, rootSpanID, spanStatus, completedAt, outputPayload, errorMessage)
+	`, runID, rootSpanID, spanStatus, completedAt, outputPayload, nullableText(errorMessage))
 	if err != nil {
 		return err
 	}
@@ -302,25 +302,25 @@ func projectHistoryRow(
 
 	switch typed := payload.(type) {
 	case *publichistory.WorkflowCompletedPayload:
-		return projectTerminalHistoryRow(ctx, tx, target, row, terminalProjection{
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
 			RunStatus: enginedb.EngineRunLifecycleStatusCompleted,
 			Result:    cloneRaw(typed.Result),
 		})
 	case *publichistory.WorkflowFailedPayload:
-		return projectTerminalHistoryRow(ctx, tx, target, row, terminalProjection{
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
 			RunStatus:    enginedb.EngineRunLifecycleStatusFailed,
 			ErrorCode:    typed.ErrorCode,
 			ErrorMessage: typed.ErrorMessage,
 		})
 	case *publichistory.WorkflowCancelledPayload:
-		return projectTerminalHistoryRow(ctx, tx, target, row, terminalProjection{
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
 			RunStatus:     enginedb.EngineRunLifecycleStatusCancelled,
 			ErrorCode:     "cancelled",
 			ErrorMessage:  "workflow cancelled",
 			CleanupReason: "cancelled",
 		})
 	case *publichistory.WorkflowTerminatedPayload:
-		return projectTerminalHistoryRow(ctx, tx, target, row, terminalProjection{
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
 			RunStatus:     enginedb.EngineRunLifecycleStatusTerminated,
 			ErrorCode:     typed.ErrorCode,
 			ErrorMessage:  typed.ErrorMessage,
@@ -374,7 +374,7 @@ func projectTerminalHistoryRow(
 	tx *enginestore.Tx,
 	target *projectionTarget,
 	row *enginedb.EngineHistory,
-	projection terminalProjection,
+	projection *terminalProjection,
 ) error {
 	if err := projectCustomHistoryEvent(ctx, tx.Tx(), target, row); err != nil {
 		return err
@@ -398,9 +398,9 @@ func writeTerminalProjection(
 	tx pgx.Tx,
 	target *projectionTarget,
 	completedAt time.Time,
-	projection terminalProjection,
+	projection *terminalProjection,
 ) error {
-	if target == nil {
+	if target == nil || projection == nil {
 		return errors.New("projection target is required")
 	}
 
@@ -436,7 +436,7 @@ func writeTerminalProjection(
 		SET status = $3,
 		    end_time = $4::timestamptz,
 		    output = $5::jsonb,
-		    status_message = $6,
+		    status_message = $6::text,
 		    duration_ms = CASE
 		        WHEN $4::timestamptz IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
 		        ELSE duration_ms
@@ -445,7 +445,7 @@ func writeTerminalProjection(
 		    version = COALESCE(version, 1) + 1
 		WHERE trace_id = $1
 		  AND span_id = $2
-	`, target.TraceID, rootSpanExternalID(target.RunID), spanStatus, completedAt, outputPayload, stringPtr(projection.ErrorMessage))
+	`, target.TraceID, rootSpanExternalID(target.RunID), spanStatus, completedAt, outputPayload, nullableText(stringPtr(projection.ErrorMessage)))
 	if err != nil {
 		return err
 	}
@@ -461,8 +461,11 @@ func projectTerminalCleanup(
 	tx *enginestore.Tx,
 	target *projectionTarget,
 	row *enginedb.EngineHistory,
-	projection terminalProjection,
+	projection *terminalProjection,
 ) error {
+	if projection == nil {
+		return errors.New("terminal projection is required")
+	}
 	cancelledActivities, err := tx.ListCancelledActivityTasksByRun(ctx, target.RunID)
 	if err != nil {
 		return err
@@ -539,9 +542,9 @@ func closeTerminalActivitySpan(
 	target *projectionTarget,
 	row *enginedb.EngineHistory,
 	task *enginedb.EngineActivityTask,
-	projection terminalProjection,
+	projection *terminalProjection,
 ) error {
-	if target == nil || row == nil || task == nil {
+	if target == nil || row == nil || task == nil || projection == nil {
 		return errors.New("projection target, history row, and activity task are required")
 	}
 
@@ -551,7 +554,7 @@ func closeTerminalActivitySpan(
 		    status_message = $3,
 		    end_time = $4::timestamptz,
 		    output = $5::jsonb,
-		    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object($6, to_jsonb($7::bigint)),
+		    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object($6::text, to_jsonb($7::bigint)),
 		    duration_ms = CASE
 		        WHEN start_time IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
 		        ELSE duration_ms
@@ -1083,6 +1086,13 @@ func cloneRaw(raw json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), raw...)
+}
+
+func nullableText(value *string) pgtype.Text {
+	if value == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *value, Valid: true}
 }
 
 func derefString(value *string) string {

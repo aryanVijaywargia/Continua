@@ -5,7 +5,7 @@ BEGIN
     IF EXISTS (
         SELECT 1
         FROM engine.runs
-        WHERE status = 'terminated'
+        WHERE status::text = 'terminated'
     ) THEN
         offending_tables := array_append(offending_tables, 'engine.runs');
     END IF;
@@ -13,7 +13,7 @@ BEGIN
     IF EXISTS (
         SELECT 1
         FROM engine.instances
-        WHERE status = 'terminated'
+        WHERE status::text = 'terminated'
     ) THEN
         offending_tables := array_append(offending_tables, 'engine.instances');
     END IF;
@@ -23,6 +23,9 @@ BEGIN
             array_to_string(offending_tables, ', ');
     END IF;
 END $$;
+
+DROP INDEX IF EXISTS engine.idx_engine_runs_claim;
+DROP INDEX IF EXISTS engine.idx_engine_instances_status_updated;
 
 ALTER TYPE engine.run_lifecycle_status RENAME TO run_lifecycle_status_old;
 
@@ -63,3 +66,10 @@ DROP TYPE engine.instance_lifecycle_status_old;
 
 ALTER TABLE engine.instances
     ALTER COLUMN status SET DEFAULT 'active';
+
+CREATE INDEX idx_engine_runs_claim
+    ON engine.runs(status, ready_at, lease_expires_at)
+    WHERE status IN ('queued', 'running');
+
+CREATE INDEX idx_engine_instances_status_updated
+    ON engine.instances(project_id, status, updated_at DESC);
