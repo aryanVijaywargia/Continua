@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -627,7 +629,6 @@ func TestTerminateEngineRun_ReturnsTerminatedSummaryAndIsIdempotent(t *testing.T
 		ID:        runID,
 	})
 	require.NoError(t, err)
-	setEngineRunWaiting(t, ctx, platformStore, runID, "approval", map[string]any{"step": "waiting"})
 	assert.Equal(t, enginedb.EngineRunLifecycleStatusTerminated, run.Status)
 
 	instance, err := engineQueries.GetInstance(ctx, run.InstanceID)
@@ -799,7 +800,7 @@ func TestTerminateEngineRun_ProjectorEventuallyProjectsTerminalCleanup(t *testin
 	})
 	require.NoError(t, err)
 
-	setEngineRunWaiting(t, ctx, platformStore, start.RunId, "approval", map[string]any{"step": "waiting"})
+	setEngineRunWaiting(t, ctx, platformStore, start.RunId, map[string]any{"step": "waiting"})
 	setProjectedEngineSummary(t, ctx, platformStore, trace.ID, projectedEngineSummaryUpdate{
 		RunStatus:            string(enginedb.EngineRunLifecycleStatusWaiting),
 		CustomStatus:         []byte(`{"step":"projected"}`),
@@ -1016,7 +1017,7 @@ func TestGetEngineRunPendingWork_ReturnsPureSignalWaitWithoutPreviewHeader(t *te
 		RequestKey:        "req-pending-wait",
 	}))
 
-	setEngineRunWaiting(t, ctx, platformStore, start.RunId, "approval", map[string]any{"step": "waiting"})
+	setEngineRunWaiting(t, ctx, platformStore, start.RunId, map[string]any{"step": "waiting"})
 
 	rec := invokeGetEngineRunPendingWork(t, server, projectID, start.RunId)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -1254,7 +1255,7 @@ func TestGetTrace_UsesLiveFallbackForNonCurrentProjectionStatesAndStaleCheckpoin
 			})
 			require.NoError(t, err)
 
-			setEngineRunWaiting(t, ctx, platformStore, runID, "approval", map[string]any{"step": "live"})
+			setEngineRunWaiting(t, ctx, platformStore, runID, map[string]any{"step": "live"})
 			createPendingWorkForRun(t, ctx, engineQueries, projectID, runID)
 			if tc.seedStaleHistory {
 				appendEngineHistoryEvent(t, ctx, engineQueries, projectID, run.InstanceID, runID, 2, publichistory.EventCustomStatusUpdated, publichistory.CustomStatusUpdatedPayload{
@@ -1360,6 +1361,15 @@ func TestGetTrace_LiveFallbackFailureReturns500(t *testing.T) {
 		TraceID:   start.TraceId,
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, restoreErr := platformStore.Pool().Exec(ctx, `
+			UPDATE traces
+			SET engine_run_id = $2,
+			    updated_at = NOW()
+			WHERE id = $1
+		`, trace.ID, start.RunId)
+		require.NoError(t, restoreErr)
+	})
 
 	setTraceProjectionState(t, ctx, platformStore, trace.ID, publicprojection.StateCatchingUp.String())
 	_, err = platformStore.Pool().Exec(ctx, `
@@ -1529,6 +1539,7 @@ func assertJSONFieldNull(t *testing.T, body []byte, field string) {
 	assert.Equal(t, "null", string(bytes.TrimSpace(value)))
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func appendEngineHistoryEvent(
 	t *testing.T,
 	ctx context.Context,
@@ -1561,12 +1572,11 @@ func setEngineRunWaiting(
 	ctx context.Context,
 	platformStore *store.Store,
 	runID uuid.UUID,
-	signalName string,
 	customStatus map[string]any,
 ) {
 	t.Helper()
 
-	waitingFor, err := json.Marshal(map[string]any{"kind": "signal", "signal_name": signalName})
+	waitingFor, err := json.Marshal(map[string]any{"kind": "signal", "signal_name": "approval"})
 	require.NoError(t, err)
 	customStatusRaw, err := json.Marshal(customStatus)
 	require.NoError(t, err)
@@ -1699,8 +1709,25 @@ type externalEngineServeProcess struct {
 	cancel context.CancelFunc
 	cmd    *exec.Cmd
 	done   chan error
-	stdout bytes.Buffer
-	stderr bytes.Buffer
+	stdout lockedBuffer
+	stderr lockedBuffer
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func startExternalEngineServeProcess(t *testing.T) *externalEngineServeProcess {
@@ -1709,6 +1736,7 @@ func startExternalEngineServeProcess(t *testing.T) *externalEngineServeProcess {
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, "go", "run", "./cmd/continua-engine", "serve")
 	cmd.Dir = filepath.Join(apiTestRepoRoot(t), "engine")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Env = append(os.Environ(),
 		"ENGINE_DATABASE_URL="+apiTestDatabaseURL(),
 		"DATABASE_URL=",
@@ -1742,16 +1770,54 @@ func (p *externalEngineServeProcess) stop(t *testing.T) {
 		return
 	}
 
-	p.cancel()
 	select {
 	case err := <-p.done:
 		if err != nil && !errors.Is(err, context.Canceled) {
-			t.Fatalf("engine serve process exited with error: %v\nstdout=%s\nstderr=%s", err, p.stdout.String(), p.stderr.String())
+			t.Fatalf("engine serve process exited unexpectedly: %v\nstdout=%s\nstderr=%s", err, p.stdout.String(), p.stderr.String())
 		}
-	case <-time.After(10 * time.Second):
-		_ = p.cmd.Process.Kill()
+		return
+	default:
+	}
+
+	p.cancel()
+
+	stopped, err := waitExternalEngineServeProcess(p.done, 2*time.Second)
+	if !stopped {
+		_ = signalProcessGroup(p.cmd.Process.Pid, syscall.SIGTERM)
+		stopped, err = waitExternalEngineServeProcess(p.done, 2*time.Second)
+	}
+
+	if !stopped {
+		_ = signalProcessGroup(p.cmd.Process.Pid, syscall.SIGKILL)
+		stopped, err = waitExternalEngineServeProcess(p.done, 5*time.Second)
+	}
+
+	if !stopped {
 		t.Fatalf("engine serve process did not stop\nstdout=%s\nstderr=%s", p.stdout.String(), p.stderr.String())
 	}
+
+	if err != nil && !errors.Is(err, context.Canceled) {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("engine serve process exited with error: %v\nstdout=%s\nstderr=%s", err, p.stdout.String(), p.stderr.String())
+		}
+	}
+}
+
+func waitExternalEngineServeProcess(done <-chan error, timeout time.Duration) (bool, error) {
+	select {
+	case err := <-done:
+		return true, err
+	case <-time.After(timeout):
+		return false, nil
+	}
+}
+
+func signalProcessGroup(pid int, sig syscall.Signal) error {
+	if pid <= 0 {
+		return nil
+	}
+	return syscall.Kill(-pid, sig)
 }
 
 func waitForProjectedTraceTerminalSummary(t *testing.T, pool *pgxpool.Pool, traceID uuid.UUID) (string, string, []byte) {
@@ -1777,6 +1843,7 @@ func waitForProjectedTraceTerminalSummary(t *testing.T, pool *pgxpool.Pool, trac
 	return "", "", nil
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func waitForProjectedTracePendingInboxItems(
 	t *testing.T,
 	ctx context.Context,

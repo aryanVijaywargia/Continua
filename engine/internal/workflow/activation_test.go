@@ -900,6 +900,7 @@ func createStartedRun(
 	return instance, run
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func insertProjectedTraceShell(
 	t *testing.T,
 	ctx context.Context,
