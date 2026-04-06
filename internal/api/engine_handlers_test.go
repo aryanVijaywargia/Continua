@@ -2465,6 +2465,7 @@ func waitForProjectedTraceTerminalSummary(t *testing.T, pool *pgxpool.Pool, trac
 	return "", "", nil
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func waitForProjectedTraceCaughtUp(
 	t *testing.T,
 	ctx context.Context,

@@ -11,22 +11,22 @@ import (
 
 // TraceFilter defines filter options for trace search.
 type TraceFilter struct {
-	ProjectID            uuid.UUID
-	Query                string     // Full-text search query
-	Status               string     // running, completed, failed
-	StartTimeFrom        *time.Time // Filter traces starting at or after this time
-	StartTimeTo          *time.Time // Filter traces starting at or before this time
-	UserID               string     // Filter by user_id
-	SessionID            *uuid.UUID // Filter by session_id
-	EngineInstanceKey    string     // Filter by engine_instance_key
-	EngineDefinitionName string     // Filter by engine_definition_name
-	EngineRunStatus      string     // Filter by engine_run_status
-	EngineProjectionState string    // Filter by engine_projection_state
-	HasErrors            *bool      // Filter by error_count > 0
-	MinDurationMs        *int64     // Filter by duration in milliseconds
-	SortDir              SortDirection
-	Limit                int32
-	Offset               int32
+	ProjectID             uuid.UUID
+	Query                 string     // Full-text search query
+	Status                string     // running, completed, failed
+	StartTimeFrom         *time.Time // Filter traces starting at or after this time
+	StartTimeTo           *time.Time // Filter traces starting at or before this time
+	UserID                string     // Filter by user_id
+	SessionID             *uuid.UUID // Filter by session_id
+	EngineInstanceKey     string     // Filter by engine_instance_key
+	EngineDefinitionName  string     // Filter by engine_definition_name
+	EngineRunStatus       string     // Filter by engine_run_status
+	EngineProjectionState string     // Filter by engine_projection_state
+	HasErrors             *bool      // Filter by error_count > 0
+	MinDurationMs         *int64     // Filter by duration in milliseconds
+	SortDir               SortDirection
+	Limit                 int32
+	Offset                int32
 }
 
 // TraceSearchResult contains the results of a trace search.
@@ -51,7 +51,7 @@ func (e *TraceFilterValidationError) Error() string {
 //nolint:gocritic // Pass-by-value keeps this immutable and avoids accidental caller mutation.
 func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (TraceSearchResult, error) {
 	result := TraceSearchResult{}
-	if err := validateTraceFilter(filter); err != nil {
+	if err := validateTraceFilter(&filter); err != nil {
 		return result, err
 	}
 
@@ -275,7 +275,10 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	return result, nil
 }
 
-func validateTraceFilter(filter TraceFilter) error {
+func validateTraceFilter(filter *TraceFilter) error {
+	if filter == nil {
+		return nil
+	}
 	if filter.EngineRunStatus != "" {
 		value := strings.ToLower(strings.TrimSpace(filter.EngineRunStatus))
 		switch value {

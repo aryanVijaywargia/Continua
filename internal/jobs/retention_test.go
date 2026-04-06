@@ -120,11 +120,10 @@ func TestRetentionWorker_RestartAfterProjectionPurgePromotesToJournalExpiredOnce
 }
 
 type retentionFixture struct {
-	ctx         context.Context
-	store       *store.Store
-	engine      *enginedb.Queries
-	projectID   uuid.UUID
-	projectName string
+	ctx       context.Context
+	store     *store.Store
+	engine    *enginedb.Queries
+	projectID uuid.UUID
 }
 
 type retentionRecord struct {

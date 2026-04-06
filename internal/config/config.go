@@ -46,9 +46,9 @@ type JobsConfig struct {
 
 // EngineConfig holds public engine API rollout settings.
 type EngineConfig struct {
-	PublicAPIEnabled             bool
-	ProjectionRetentionAfter     time.Duration
-	HistoryRetentionAfter        time.Duration
+	PublicAPIEnabled         bool
+	ProjectionRetentionAfter time.Duration
+	HistoryRetentionAfter    time.Duration
 }
 
 // Address returns the server address in host:port format.

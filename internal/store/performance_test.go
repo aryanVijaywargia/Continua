@@ -514,6 +514,7 @@ func TestIndex_GINSearchIndex(t *testing.T) {
 	require.NoError(t, searchRows.Err())
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func explainPlan(
 	t *testing.T,
 	pool *pgxpool.Pool,

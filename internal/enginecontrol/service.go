@@ -107,7 +107,7 @@ func (s *Service) PurgeRun(
 			HTTPStatus: 409,
 		}
 	}
-	if err := ensureTerminalShell(ctx, tx, trace, run); err != nil {
+	if err := ensureTerminalShell(ctx, tx, &trace, &run); err != nil {
 		return PurgeResult{}, err
 	}
 
@@ -282,9 +282,12 @@ func isTerminalRun(status enginedb.EngineRunLifecycleStatus) bool {
 func ensureTerminalShell(
 	ctx context.Context,
 	tx *store.Tx,
-	trace platformdb.Trace,
-	run enginedb.EngineRun,
+	trace *platformdb.Trace,
+	run *enginedb.EngineRun,
 ) error {
+	if trace == nil || run == nil {
+		return errors.New("terminal shell requires trace and run")
+	}
 	completedAt := terminalCompletedAt(run)
 	traceStatus, spanStatus := publicprojection.TerminalStatuses(string(run.Status))
 	outputPayload, err := publicprojection.TerminalOutputPayload(
@@ -324,7 +327,10 @@ func ensureTerminalShell(
 	return nil
 }
 
-func terminalCompletedAt(run enginedb.EngineRun) time.Time {
+func terminalCompletedAt(run *enginedb.EngineRun) time.Time {
+	if run == nil {
+		return time.Time{}
+	}
 	if run.CompletedAt.Valid {
 		return run.CompletedAt.Time
 	}
