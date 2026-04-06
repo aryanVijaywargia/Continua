@@ -14,6 +14,7 @@ import (
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
 	"github.com/continua-ai/continua/internal/config"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/jobargs"
 	"github.com/continua-ai/continua/internal/store"
@@ -33,7 +34,7 @@ func newIngestBatchTestDepsWithConfig(
 	pool := testutil.TestDB(t)
 	s := store.New(pool)
 	processor := ingest.NewProcessor(s, cfg)
-	client, err := NewClient(pool, s, processor, cfg)
+	client, err := NewClient(pool, s, processor, enginecontrol.NewService(s), cfg)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

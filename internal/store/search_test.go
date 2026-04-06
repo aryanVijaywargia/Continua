@@ -753,5 +753,136 @@ func TestSearch_Pagination(t *testing.T) {
 	}
 }
 
+func TestSearch_FilterByEngineMetadata(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+
+	engineTrace, err := q.UpsertTrace(ctx, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "engine-trace",
+		Name:      testutil.StrPtr("engine trace"),
+	})
+	require.NoError(t, err)
+	otherEngineTrace, err := q.UpsertTrace(ctx, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "engine-trace-other",
+		Name:      testutil.StrPtr("other engine trace"),
+	})
+	require.NoError(t, err)
+	nonEngineTrace, err := q.UpsertTrace(ctx, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "non-engine-trace",
+		Name:      testutil.StrPtr("non engine trace"),
+	})
+	require.NoError(t, err)
+
+	_, err = pool.Exec(ctx, `
+		UPDATE traces
+		SET engine_run_id = $2,
+		    engine_instance_key = 'instance-checkout',
+		    engine_definition_name = 'checkout',
+		    engine_run_status = 'waiting',
+		    engine_projection_state = 'catching_up',
+		    engine_projection_updated_at = NOW()
+		WHERE id = $1
+	`, engineTrace.ID, uuid.New())
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `
+		UPDATE traces
+		SET engine_run_id = $2,
+		    engine_instance_key = 'instance-billing',
+		    engine_definition_name = 'billing',
+		    engine_run_status = 'completed',
+		    engine_projection_state = 'up_to_date',
+		    engine_projection_updated_at = NOW()
+		WHERE id = $1
+	`, otherEngineTrace.ID, uuid.New())
+	require.NoError(t, err)
+
+	byInstance, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:         projectID,
+		EngineInstanceKey: "instance-checkout",
+		Limit:             10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byInstance.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byInstance.Traces[0].ID)
+
+	byDefinition, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:            projectID,
+		EngineDefinitionName: "checkout",
+		Limit:                10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byDefinition.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byDefinition.Traces[0].ID)
+
+	byRunStatus, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:       projectID,
+		EngineRunStatus: "waiting",
+		Limit:           10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byRunStatus.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byRunStatus.Traces[0].ID)
+
+	byProjectionState, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:             projectID,
+		EngineProjectionState: "catching_up",
+		Limit:                 10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byProjectionState.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byProjectionState.Traces[0].ID)
+
+	combined, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:             projectID,
+		EngineDefinitionName:  "checkout",
+		EngineRunStatus:       "waiting",
+		EngineProjectionState: "catching_up",
+		Limit:                 10,
+	})
+	require.NoError(t, err)
+	require.Len(t, combined.Traces, 1)
+	assert.Equal(t, engineTrace.ID, combined.Traces[0].ID)
+
+	allTraces, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID: projectID,
+		Limit:     10,
+	})
+	require.NoError(t, err)
+	assert.Len(t, allTraces.Traces, 3)
+
+	engineFilteredIDs := []uuid.UUID{byInstance.Traces[0].ID, combined.Traces[0].ID}
+	assert.NotContains(t, engineFilteredIDs, nonEngineTrace.ID)
+}
+
+func TestSearch_RejectsInvalidEngineFilters(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	projectID := testutil.CreateTestProject(t, ctx, s.Queries())
+
+	_, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:       projectID,
+		EngineRunStatus: "not-a-status",
+		Limit:           10,
+	})
+	require.Error(t, err)
+	assert.ErrorAs(t, err, new(*store.TraceFilterValidationError))
+
+	_, err = s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:             projectID,
+		EngineProjectionState: "not-a-state",
+		Limit:                 10,
+	})
+	require.Error(t, err)
+	assert.ErrorAs(t, err, new(*store.TraceFilterValidationError))
+}
+
 // Helper functions
 // (moved to internal/testutil/testutil.go to avoid redeclaration)

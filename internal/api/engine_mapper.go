@@ -10,6 +10,7 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/store"
 )
 
@@ -83,11 +84,15 @@ func engineHistoryPageToAPI(page *engineHistoryPage) EngineRunHistoryResponse {
 		events[i] = engineHistoryEventToAPI(&page.Events[i])
 	}
 
-	return EngineRunHistoryResponse{
+	resp := EngineRunHistoryResponse{
 		Events:    events,
 		HasMore:   page.HasMore,
 		NextAfter: page.NextAfter,
 	}
+	if page.Expired {
+		resp.Expired = boolPtr(true)
+	}
+	return resp
 }
 
 func engineHistoryEventToAPI(event *enginedb.EngineHistory) EngineHistoryEvent {
@@ -106,6 +111,24 @@ func engineControlResponseToAPI(result *engineControlResult) EngineControlRespon
 		InstanceKey: result.InstanceKey,
 		RunId:       result.RunID,
 		WakeApplied: result.WakeApplied,
+	}
+}
+
+func enginePurgeResponseToAPI(result *enginecontrol.PurgeResult) EnginePurgeResponse {
+	return EnginePurgeResponse{
+		Deleted:         result.Deleted,
+		Mode:            EnginePurgeMode(result.Mode),
+		ProjectionState: engineProjectionStateFromString(result.ProjectionState),
+		RunId:           result.RunID,
+	}
+}
+
+func engineRepairResponseToAPI(result *enginecontrol.RepairResult) EngineRepairResponse {
+	return EngineRepairResponse{
+		Accepted:        result.Accepted,
+		ProjectionState: engineProjectionStateFromString(result.ProjectionState),
+		Reason:          EngineRepairReason(result.Reason),
+		RunId:           result.RunID,
 	}
 }
 
@@ -204,6 +227,10 @@ func cloneTraceJSON(raw []byte) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), raw...)
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func shouldReadLiveEngineSummary(trace *store.TraceRead) bool {

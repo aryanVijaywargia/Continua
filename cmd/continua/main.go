@@ -20,6 +20,7 @@ import (
 	pgmigrations "github.com/continua-ai/continua/db/platform/migrations/postgres"
 	"github.com/continua-ai/continua/internal/api"
 	"github.com/continua-ai/continua/internal/config"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/jobs"
 	"github.com/continua-ai/continua/internal/store"
@@ -59,12 +60,21 @@ func serveCmd() *cobra.Command {
 }
 
 func runServer() error {
-	app := fx.New(
+	app := newServerApp()
+	app.Run()
+	return nil
+}
+
+func newServerApp() *fx.App {
+	return fx.New(
 		// Provide configuration
 		config.Module,
 
 		// Provide database access
 		store.Module,
+
+		// Provide shared engine control orchestration
+		enginecontrol.Module,
 
 		// Provide async job processing (River)
 		jobs.Module,
@@ -78,9 +88,6 @@ func runServer() error {
 		// Start HTTP server
 		fx.Invoke(startHTTPServer),
 	)
-
-	app.Run()
-	return nil
 }
 
 func migrateCmd() *cobra.Command {

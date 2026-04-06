@@ -11,6 +11,13 @@ SELECT version FROM traces WHERE id = $1;
 -- name: GetTraceByExternalID :one
 SELECT * FROM traces WHERE project_id = $1 AND trace_id = $2;
 
+-- name: GetTraceByProjectAndEngineRunIDForUpdate :one
+SELECT *
+FROM traces
+WHERE project_id = $1
+  AND engine_run_id = $2
+FOR UPDATE;
+
 -- name: GetTraceUUID :one
 SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2;
 
@@ -95,6 +102,33 @@ SET engine_run_status = $2,
     version = COALESCE(version, 1) + 1
 WHERE engine_run_id = $1
 RETURNING *;
+
+-- name: FlipProjectionStateToSummaryOnly :execrows
+UPDATE traces
+SET engine_projection_state = 'summary_only',
+    engine_projection_updated_at = NOW(),
+    updated_at = NOW(),
+    version = COALESCE(version, 1) + 1
+WHERE engine_run_id = $1
+  AND COALESCE(engine_projection_state, 'up_to_date') IN ('up_to_date', 'catching_up');
+
+-- name: FlipProjectionStateToJournalExpired :execrows
+UPDATE traces
+SET engine_projection_state = 'journal_expired',
+    engine_projection_updated_at = NOW(),
+    updated_at = NOW(),
+    version = COALESCE(version, 1) + 1
+WHERE engine_run_id = $1
+  AND COALESCE(engine_projection_state, 'up_to_date') IN ('up_to_date', 'catching_up', 'summary_only');
+
+-- name: FlipProjectionStateToCatchingUp :execrows
+UPDATE traces
+SET engine_projection_state = 'catching_up',
+    engine_projection_updated_at = NOW(),
+    updated_at = NOW(),
+    version = COALESCE(version, 1) + 1
+WHERE engine_run_id = $1
+  AND COALESCE(engine_projection_state, 'up_to_date') = 'summary_only';
 
 -- name: UpsertTrace :one
 -- Upsert trace with patch semantics: NULL values don't overwrite existing.

@@ -41,3 +41,7 @@ func (o *storeOps) GetHistoryByInstance(
 ) ([]enginedb.EngineHistory, error) {
 	return o.q.GetHistoryByInstance(ctx, instanceID)
 }
+
+func (o *storeOps) DeleteHistoryByRun(ctx context.Context, runID uuid.UUID) error {
+	return o.q.DeleteHistoryByRun(ctx, runID)
+}

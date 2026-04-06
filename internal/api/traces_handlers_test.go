@@ -795,6 +795,29 @@ func TestListTraces_SearchOverridesSortParams(t *testing.T) {
 	assert.Equal(t, []uuid.UUID{nameMatch.ID, spanOnlyMatch.ID}, apiTraceIDs(resp.Traces))
 }
 
+func TestListTraces_InvalidEngineFiltersReturn400(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+
+	projectID := testutil.CreateTestProject(t, ctx, s.Queries())
+	invalidRunStatus := ListTracesParamsEngineRunStatus("not-a-status")
+	invalidProjectionState := EngineProjectionState("not-a-state")
+
+	runStatusRec := invokeListTraces(t, server, projectID, ListTracesParams{
+		EngineRunStatus: &invalidRunStatus,
+	})
+	require.Equal(t, http.StatusBadRequest, runStatusRec.Code)
+	assert.Equal(t, "invalid_request", decodeJSONBody[Error](t, runStatusRec).Code)
+
+	projectionStateRec := invokeListTraces(t, server, projectID, ListTracesParams{
+		EngineProjectionState: &invalidProjectionState,
+	})
+	require.Equal(t, http.StatusBadRequest, projectionStateRec.Code)
+	assert.Equal(t, "invalid_request", decodeJSONBody[Error](t, projectionStateRec).Code)
+}
+
 func TestGetTrace_ProjectScopingReturns404(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()

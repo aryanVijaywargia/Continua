@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/continua-ai/continua/internal/config"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/store"
 )
@@ -19,6 +20,7 @@ type Server struct {
 	store                  *store.Store
 	ingestService          *ingest.Service
 	engineControl          *engineControlService
+	engineSharedControl    *enginecontrol.Service
 	enginePublicAPIEnabled bool
 }
 
@@ -30,9 +32,15 @@ func NewServer(s *store.Store, ingestService *ingest.Service) *Server {
 	}
 }
 
-func newConfiguredServer(s *store.Store, ingestService *ingest.Service, cfg *config.Config) *Server {
+func newConfiguredServer(
+	s *store.Store,
+	ingestService *ingest.Service,
+	shared *enginecontrol.Service,
+	cfg *config.Config,
+) *Server {
 	server := NewServer(s, ingestService)
 	server.engineControl = newEngineControlService(s)
+	server.engineSharedControl = shared
 	if cfg != nil {
 		server.enginePublicAPIEnabled = cfg.Engine.PublicAPIEnabled
 	}

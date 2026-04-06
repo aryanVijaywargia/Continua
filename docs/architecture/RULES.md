@@ -36,6 +36,8 @@ Change the source inputs, not:
 
 `db/platform/migrations/postgres/` is the real platform schema. SQLite under `db/platform/migrations/sqlite/` is bootstrap-only scaffolding.
 
+This repo is still pre-production, so platform and engine migrations may be rewritten, renumbered, or squashed until the first production release. After the first production release, migration history becomes immutable.
+
 ### 6. Runtime config is env-only
 
 `internal/config/config.go` is the live config contract. `config.example.yaml` is future-state drift, not runtime truth.

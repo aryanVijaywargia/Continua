@@ -30,6 +30,7 @@ import (
 	publichistory "github.com/continua-ai/continua/engine/pkg/history"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	"github.com/continua-ai/continua/internal/api/middleware"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/store"
 	"github.com/continua-ai/continua/internal/testutil"
 )
@@ -600,6 +601,40 @@ func TestGetEngineRunResult_ReturnsCancelledFailureSummary(t *testing.T) {
 	assertJSONFieldNull(t, body, "result")
 }
 
+func TestGetEngineRun_IncludesDefinitionMismatchFailureContext(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-definition-mismatch",
+		RequestKey:        "req-definition-mismatch",
+	}))
+
+	_, err := platformStore.Pool().Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'failed',
+		    waiting_for = NULL,
+		    completed_at = NOW(),
+		    last_error_code = 'definition_version_mismatch',
+		    last_error_message = 'requested definition version is not registered',
+		    updated_at = NOW()
+		WHERE id = $1
+	`, start.RunId)
+	require.NoError(t, err)
+
+	rec := invokeGetEngineRun(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[EngineRunResponse](t, rec)
+	assert.Equal(t, "checkout", resp.DefinitionName)
+	assert.Equal(t, "v1", resp.DefinitionVersion)
+	require.NotNil(t, resp.Failure)
+	assert.Equal(t, "definition_version_mismatch", resp.Failure.ErrorCode)
+	assert.Equal(t, "requested definition version is not registered", resp.Failure.ErrorMessage)
+}
+
 func TestTerminateEngineRun_ReturnsTerminatedSummaryAndIsIdempotent(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
@@ -877,6 +912,452 @@ func TestTerminateEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testin
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestPurgeEngineRun_ProjectionOnlyThenFullPreservesShell(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-purge",
+		RequestKey:        "req-purge",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+	markEngineRunCompleted(t, ctx, platformStore, start.RunId, trace.ID)
+
+	now := time.Now().UTC()
+	_, err = platformStore.Queries().CreateSpan(ctx, platformdb.CreateSpanParams{
+		ProjectID:    projectID,
+		TraceID:      trace.ID,
+		SpanID:       "engine:activity:" + start.RunId.String() + ":ship-order",
+		ParentSpanID: testutil.StrPtr("engine:root:" + start.RunId.String()),
+		Name:         "ship-order",
+		Type:         "tool",
+		Status:       "completed",
+		Level:        "default",
+		StartTime:    now.Add(-time.Minute),
+		EndTime:      testutil.PgtypeTimestamptz(now),
+		Depth:        testutil.Int32Ptr(1),
+	})
+	require.NoError(t, err)
+	_, err = platformStore.Queries().InsertSpanEvent(ctx, platformdb.InsertSpanEventParams{
+		ProjectID: projectID,
+		TraceID:   trace.ID,
+		SpanID:    "engine:root:" + start.RunId.String(),
+		EventType: "custom",
+		Level:     "info",
+		EventTs:   testutil.PgtypeTimestamptz(now),
+		Message:   testutil.StrPtr("projected detail"),
+		Payload:   []byte(`{"detail":true}`),
+	})
+	require.NoError(t, err)
+
+	projectionOnly := decodeJSONBody[EnginePurgeResponse](t, invokePurgeEngineRun(
+		t,
+		server,
+		projectID,
+		start.RunId,
+		ProjectionOnly,
+	))
+	assert.True(t, projectionOnly.Deleted)
+	assert.Equal(t, SummaryOnly, projectionOnly.ProjectionState)
+
+	idempotentProjectionOnly := decodeJSONBody[EnginePurgeResponse](t, invokePurgeEngineRun(
+		t,
+		server,
+		projectID,
+		start.RunId,
+		ProjectionOnly,
+	))
+	assert.False(t, idempotentProjectionOnly.Deleted)
+	assert.Equal(t, SummaryOnly, idempotentProjectionOnly.ProjectionState)
+
+	remainingSpans, err := platformStore.ListSpansByTrace(ctx, trace.ID)
+	require.NoError(t, err)
+	require.Len(t, remainingSpans, 1)
+	assert.Equal(t, "engine:root:"+start.RunId.String(), remainingSpans[0].SpanID)
+
+	events, err := platformStore.ListSpanEventsByTrace(ctx, trace.ID)
+	require.NoError(t, err)
+	assert.Empty(t, events)
+
+	resultRec := invokeGetEngineRunResult(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusOK, resultRec.Code)
+	resultResp := decodeJSONBody[EngineRunResultResponse](t, resultRec)
+	assert.Equal(t, EngineRunStatusCOMPLETED, resultResp.Status)
+	require.NotNil(t, resultResp.Result)
+
+	full := decodeJSONBody[EnginePurgeResponse](t, invokePurgeEngineRun(
+		t,
+		server,
+		projectID,
+		start.RunId,
+		Full,
+	))
+	assert.True(t, full.Deleted)
+	assert.Equal(t, JournalExpired, full.ProjectionState)
+
+	historyRows, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	assert.Empty(t, historyRows)
+
+	historyRec := invokeGetEngineRunHistory(t, server, projectID, start.RunId, GetEngineRunHistoryParams{})
+	require.Equal(t, http.StatusOK, historyRec.Code)
+	historyResp := decodeJSONBody[EngineRunHistoryResponse](t, historyRec)
+	require.NotNil(t, historyResp.Expired)
+	assert.True(t, *historyResp.Expired)
+	assert.Empty(t, historyResp.Events)
+
+	journalExpiredResultRec := invokeGetEngineRunResult(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusOK, journalExpiredResultRec.Code)
+	journalExpiredResult := decodeJSONBody[EngineRunResultResponse](t, journalExpiredResultRec)
+	assert.Equal(t, EngineRunStatusCOMPLETED, journalExpiredResult.Status)
+	require.NotNil(t, journalExpiredResult.Result)
+
+	idempotentFull := decodeJSONBody[EnginePurgeResponse](t, invokePurgeEngineRun(
+		t,
+		server,
+		projectID,
+		start.RunId,
+		Full,
+	))
+	assert.False(t, idempotentFull.Deleted)
+	assert.Equal(t, JournalExpired, idempotentFull.ProjectionState)
+}
+
+func TestPurgeEngineRun_SynthesizesTerminalShellBeforeBarrier(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-purge-terminal-shell-race",
+		RequestKey:        "req-purge-terminal-shell-race",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+	run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        start.RunId,
+	})
+	require.NoError(t, err)
+
+	startHistory, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	require.Len(t, startHistory, 1)
+
+	terminalHistory := appendEngineHistoryEvent(
+		t,
+		ctx,
+		engineQueries,
+		projectID,
+		run.InstanceID,
+		start.RunId,
+		2,
+		publichistory.EventWorkflowCompleted,
+		publichistory.WorkflowCompletedPayload{Result: []byte(`{"ok":true}`)},
+	)
+	markEngineRunCompletedEngineOnly(t, ctx, platformStore, start.RunId)
+	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "catching_up", terminalHistory.ID, startHistory[0].ID)
+
+	purge := decodeJSONBody[EnginePurgeResponse](t, invokePurgeEngineRun(
+		t,
+		server,
+		projectID,
+		start.RunId,
+		ProjectionOnly,
+	))
+	assert.True(t, purge.Deleted)
+	assert.Equal(t, SummaryOnly, purge.ProjectionState)
+
+	var traceStatus string
+	var traceOutput []byte
+	var runStatus string
+	if err := platformStore.Pool().QueryRow(ctx, `
+		SELECT status, output, engine_run_status
+		FROM traces
+		WHERE id = $1
+	`, trace.ID).Scan(&traceStatus, &traceOutput, &runStatus); err != nil {
+		t.Fatalf("query synthesized terminal trace shell: %v", err)
+	}
+	assert.Equal(t, "completed", traceStatus)
+	assert.Equal(t, string(enginedb.EngineRunLifecycleStatusCompleted), runStatus)
+	assert.JSONEq(t, `{"ok":true}`, string(traceOutput))
+
+	var rootSpanStatus string
+	var rootSpanOutput []byte
+	if err := platformStore.Pool().QueryRow(ctx, `
+		SELECT status, output
+		FROM spans
+		WHERE trace_id = $1
+		  AND span_id = $2
+	`, trace.ID, "engine:root:"+start.RunId.String()).Scan(&rootSpanStatus, &rootSpanOutput); err != nil {
+		t.Fatalf("query synthesized terminal root span shell: %v", err)
+	}
+	assert.Equal(t, "completed", rootSpanStatus)
+	assert.JSONEq(t, `{"ok":true}`, string(rootSpanOutput))
+}
+
+func TestPurgeEngineRun_RejectsNonTerminalRun(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-purge-nonterminal",
+		RequestKey:        "req-purge-nonterminal",
+	}))
+
+	rec := invokePurgeEngineRun(t, server, projectID, start.RunId, ProjectionOnly)
+	require.Equal(t, http.StatusConflict, rec.Code)
+	assert.Equal(t, "run_not_terminal", decodeJSONBody[Error](t, rec).Code)
+}
+
+func TestPurgeEngineRun_ReturnsNotFoundForMissingRunAndCrossProject(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-purge-scope",
+		RequestKey:        "req-purge-scope",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+	markEngineRunCompleted(t, ctx, platformStore, start.RunId, trace.ID)
+
+	otherProjectID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
+	crossProject := invokePurgeEngineRun(t, server, otherProjectID, start.RunId, ProjectionOnly)
+	require.Equal(t, http.StatusNotFound, crossProject.Code)
+	assert.Equal(t, "not_found", decodeJSONBody[Error](t, crossProject).Code)
+
+	missing := invokePurgeEngineRun(t, server, projectID, uuid.New(), ProjectionOnly)
+	require.Equal(t, http.StatusNotFound, missing.Code)
+	assert.Equal(t, "not_found", decodeJSONBody[Error](t, missing).Code)
+}
+
+func TestRepairEngineRun_ReturnsExpectedReasons(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-repair",
+		RequestKey:        "req-repair",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	t.Run("up_to_date", func(t *testing.T) {
+		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "up_to_date", 5, 5)
+		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
+		assert.False(t, resp.Accepted)
+		assert.Equal(t, AlreadyUpToDate, resp.Reason)
+		assert.Equal(t, UpToDate, resp.ProjectionState)
+	})
+
+	t.Run("summary_only with retained history", func(t *testing.T) {
+		latestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, start.RunId)
+		require.NoError(t, err)
+		require.Greater(t, latestHistoryID, int64(0))
+		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID-1)
+		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
+		assert.True(t, resp.Accepted)
+		assert.Equal(t, RepairRequested, resp.Reason)
+		assert.Equal(t, CatchingUp, resp.ProjectionState)
+	})
+
+	t.Run("summary_only no events", func(t *testing.T) {
+		latestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, start.RunId)
+		require.NoError(t, err)
+		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID)
+		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
+		assert.False(t, resp.Accepted)
+		assert.Equal(t, NoEventsToProject, resp.Reason)
+		assert.Equal(t, SummaryOnly, resp.ProjectionState)
+	})
+
+	t.Run("summary_only uses retained history instead of stale trace latest id", func(t *testing.T) {
+		run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+			ProjectID: projectID,
+			ID:        start.RunId,
+		})
+		require.NoError(t, err)
+		retainedHistory := appendEngineHistoryEvent(
+			t,
+			ctx,
+			engineQueries,
+			projectID,
+			run.InstanceID,
+			start.RunId,
+			2,
+			publichistory.EventActivityScheduled,
+			publichistory.ActivityScheduledPayload{
+				ActivityKey:  "ship-order",
+				ActivityType: "demo.ship",
+				Input:        []byte(`{"order_id":"ord-123"}`),
+			},
+		)
+		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", 1, 1)
+
+		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
+		assert.True(t, resp.Accepted)
+		assert.Equal(t, RepairRequested, resp.Reason)
+		assert.Equal(t, CatchingUp, resp.ProjectionState)
+
+		var latestHistoryID int64
+		if err := platformStore.Pool().QueryRow(ctx, `
+			SELECT engine_latest_history_id
+			FROM traces
+			WHERE id = $1
+		`, trace.ID).Scan(&latestHistoryID); err != nil {
+			t.Fatalf("query trace latest history id: %v", err)
+		}
+		assert.NotEqual(t, retainedHistory.ID, latestHistoryID)
+	})
+
+	t.Run("journal_expired", func(t *testing.T) {
+		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "journal_expired", 9, 3)
+		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
+		assert.False(t, resp.Accepted)
+		assert.Equal(t, HistoryExpired, resp.Reason)
+		assert.Equal(t, JournalExpired, resp.ProjectionState)
+	})
+
+	t.Run("catching_up", func(t *testing.T) {
+		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "catching_up", 9, 3)
+		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
+		assert.True(t, resp.Accepted)
+		assert.Equal(t, AlreadyCatchingUp, resp.Reason)
+		assert.Equal(t, CatchingUp, resp.ProjectionState)
+	})
+}
+
+func TestRepairEngineRun_ReturnsNotFoundForMissingRunAndCrossProject(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-repair-scope",
+		RequestKey:        "req-repair-scope",
+	}))
+
+	otherProjectID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
+	crossProject := invokeRepairEngineRun(t, server, otherProjectID, start.RunId)
+	require.Equal(t, http.StatusNotFound, crossProject.Code)
+	assert.Equal(t, "not_found", decodeJSONBody[Error](t, crossProject).Code)
+
+	missing := invokeRepairEngineRun(t, server, projectID, uuid.New())
+	require.Equal(t, http.StatusNotFound, missing.Code)
+	assert.Equal(t, "not_found", decodeJSONBody[Error](t, missing).Code)
+}
+
+func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-repair-projector",
+		RequestKey:        "req-repair-projector",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        start.RunId,
+	})
+	require.NoError(t, err)
+
+	historyBefore, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	require.Len(t, historyBefore, 1)
+
+	activityHistory := appendEngineHistoryEvent(
+		t,
+		ctx,
+		engineQueries,
+		projectID,
+		run.InstanceID,
+		start.RunId,
+		2,
+		publichistory.EventActivityScheduled,
+		publichistory.ActivityScheduledPayload{
+			ActivityKey:  "ship-order",
+			ActivityType: "demo.ship",
+			Input:        []byte(`{"order_id":"ord-123"}`),
+		},
+	)
+
+	markEngineRunCompleted(t, ctx, platformStore, start.RunId, trace.ID)
+	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", activityHistory.ID, historyBefore[0].ID)
+
+	spansBefore, err := platformStore.ListSpansByTrace(ctx, trace.ID)
+	require.NoError(t, err)
+	require.Len(t, spansBefore, 1)
+
+	eventsBefore, err := platformStore.ListSpanEventsByTrace(ctx, trace.ID)
+	require.NoError(t, err)
+	assert.Empty(t, eventsBefore)
+
+	repair := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
+	assert.True(t, repair.Accepted)
+	assert.Equal(t, RepairRequested, repair.Reason)
+	assert.Equal(t, CatchingUp, repair.ProjectionState)
+
+	engineServe := startExternalEngineServeProcess(t)
+	defer engineServe.stop(t)
+
+	waitForProjectedTraceCaughtUp(t, ctx, platformStore.Pool(), trace.ID, activityHistory.ID)
+
+	spansAfter, err := platformStore.ListSpansByTrace(ctx, trace.ID)
+	require.NoError(t, err)
+	require.Len(t, spansAfter, 2)
+
+	var activitySpanCount int
+	for _, span := range spansAfter {
+		if span.SpanID == "engine:activity:"+start.RunId.String()+":ship-order" {
+			activitySpanCount++
+		}
+	}
+	assert.Equal(t, 1, activitySpanCount)
+
+	eventsAfter, err := platformStore.ListSpanEventsByTrace(ctx, trace.ID)
+	require.NoError(t, err)
+	require.Len(t, eventsAfter, 2)
+	assert.Equal(t, "effect", eventsAfter[0].EventType)
+	assert.Equal(t, "wait", eventsAfter[1].EventType)
 }
 
 func TestGetEngineRunPendingWork_ReturnsTypedOpenWorkAndExcludesCancelRows(t *testing.T) {
@@ -1395,6 +1876,7 @@ func setupEngineHandlerTest(t *testing.T) (context.Context, *store.Store, *engin
 	platformStore := store.New(pool)
 	server := NewServer(platformStore, nil)
 	server.engineControl = newEngineControlService(platformStore)
+	server.engineSharedControl = enginecontrol.NewService(platformStore)
 	server.enginePublicAPIEnabled = true
 
 	projectID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
@@ -1470,6 +1952,38 @@ func invokeGetEngineRunResult(t *testing.T, server *Server, projectID, runID uui
 	rec := httptest.NewRecorder()
 
 	server.GetEngineRunResult(rec, req, runID)
+	return rec
+}
+
+func invokePurgeEngineRun(
+	t *testing.T,
+	server *Server,
+	projectID, runID uuid.UUID,
+	mode EnginePurgeMode,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	body, err := json.Marshal(EnginePurgeRequest{Mode: mode})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+runID.String()+"/purge", bytes.NewReader(body))
+	req.Header.Set(enginePreviewHeader, "1")
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
+	rec := httptest.NewRecorder()
+
+	server.PurgeEngineRun(rec, req, runID, PurgeEngineRunParams{XContinuaEnginePreview: "1"})
+	return rec
+}
+
+func invokeRepairEngineRun(t *testing.T, server *Server, projectID, runID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+runID.String()+"/repair", nil)
+	req.Header.Set(enginePreviewHeader, "1")
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
+	rec := httptest.NewRecorder()
+
+	server.RepairEngineRun(rec, req, runID, RepairEngineRunParams{XContinuaEnginePreview: "1"})
 	return rec
 }
 
@@ -1624,6 +2138,90 @@ func setProjectedEngineSummary(
 }
 
 //nolint:revive // Keep testing.T first in test helper signatures.
+func markEngineRunCompleted(
+	t *testing.T,
+	ctx context.Context,
+	platformStore *store.Store,
+	runID uuid.UUID,
+	traceID uuid.UUID,
+) {
+	t.Helper()
+
+	completedAt := time.Now().UTC().Round(time.Microsecond)
+	result := []byte(`{"ok":true}`)
+
+	_, err := platformStore.Pool().Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'completed',
+		    waiting_for = NULL,
+		    result = $2,
+		    completed_at = $3,
+		    updated_at = $3
+		WHERE id = $1
+	`, runID, result, completedAt)
+	require.NoError(t, err)
+
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE engine.instances
+		SET status = 'completed',
+		    updated_at = $2
+		WHERE id = (
+		    SELECT instance_id
+		    FROM engine.runs
+		    WHERE id = $1
+		)
+	`, runID, completedAt)
+	require.NoError(t, err)
+
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE traces
+		SET status = 'completed',
+		    end_time = $2,
+		    output = $3::jsonb,
+		    engine_run_status = 'completed',
+		    updated_at = $2
+		WHERE id = $1
+	`, traceID, completedAt, result)
+	require.NoError(t, err)
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func markEngineRunCompletedEngineOnly(
+	t *testing.T,
+	ctx context.Context,
+	platformStore *store.Store,
+	runID uuid.UUID,
+) {
+	t.Helper()
+
+	completedAt := time.Now().UTC().Round(time.Microsecond)
+	result := []byte(`{"ok":true}`)
+
+	_, err := platformStore.Pool().Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'completed',
+		    waiting_for = NULL,
+		    result = $2,
+		    completed_at = $3,
+		    updated_at = $3
+		WHERE id = $1
+	`, runID, result, completedAt)
+	require.NoError(t, err)
+
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE engine.instances
+		SET status = 'completed',
+		    updated_at = $2
+		WHERE id = (
+		    SELECT instance_id
+		    FROM engine.runs
+		    WHERE id = $1
+		)
+	`, runID, completedAt)
+	require.NoError(t, err)
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
 func createPendingWorkForRun(
 	t *testing.T,
 	ctx context.Context,
@@ -1662,6 +2260,30 @@ func createPendingWorkForRun(
 		Payload:     []byte(`{"signal_name":"approval"}`),
 		AvailableAt: history[0].CreatedAt,
 	})
+	require.NoError(t, err)
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func setEngineProjectionCheckpoint(
+	t *testing.T,
+	ctx context.Context,
+	platformStore *store.Store,
+	traceID uuid.UUID,
+	projectionState string,
+	latestHistoryID int64,
+	lastProjectedHistoryID int64,
+) {
+	t.Helper()
+
+	_, err := platformStore.Pool().Exec(ctx, `
+		UPDATE traces
+		SET engine_projection_state = $2,
+		    engine_latest_history_id = $3,
+		    engine_last_projected_history_id = $4,
+		    engine_projection_updated_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1
+	`, traceID, projectionState, latestHistoryID, lastProjectedHistoryID)
 	require.NoError(t, err)
 }
 
@@ -1841,6 +2463,46 @@ func waitForProjectedTraceTerminalSummary(t *testing.T, pool *pgxpool.Pool, trac
 	}
 	t.Fatalf("timed out waiting for projected terminated trace summary, last trace=%q run=%q wait_state=%s", lastTraceStatus, lastRunStatus, string(lastWaitState))
 	return "", "", nil
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func waitForProjectedTraceCaughtUp(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	traceID uuid.UUID,
+	expectedHistoryID int64,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(20 * time.Second)
+	var lastProjectionState string
+	var lastLatestHistoryID int64
+	var lastProjectedHistoryID int64
+	for time.Now().Before(deadline) {
+		err := pool.QueryRow(ctx, `
+			SELECT engine_projection_state,
+			       engine_latest_history_id,
+			       engine_last_projected_history_id
+			FROM public.traces
+			WHERE id = $1
+		`, traceID).Scan(&lastProjectionState, &lastLatestHistoryID, &lastProjectedHistoryID)
+		require.NoError(t, err)
+		if lastProjectionState == publicprojection.StateUpToDate.String() &&
+			lastLatestHistoryID >= expectedHistoryID &&
+			lastProjectedHistoryID >= expectedHistoryID {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	t.Fatalf(
+		"timed out waiting for projected trace to catch up to history id %d, last state=%q latest=%d projected=%d",
+		expectedHistoryID,
+		lastProjectionState,
+		lastLatestHistoryID,
+		lastProjectedHistoryID,
+	)
 }
 
 //nolint:revive // Keep testing.T first in test helper signatures.

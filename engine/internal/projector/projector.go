@@ -1,7 +1,8 @@
 // Package projector owns all cross-schema writes from engine history into the
 // platform debugger tables, including terminal debugger cleanup when
-// workflow.cancelled or workflow.terminated history rows are projected. No
-// other code path writes projection tables for terminal cleanup.
+// workflow.cancelled or workflow.terminated history rows are projected. Purge
+// is the only coordinated co-writer for engine projection state, and it must
+// go through the platform-side CAS helpers before deleting detail rows.
 //
 // Authoritative platform dependencies:
 // - db/platform/migrations/postgres/000001_initial_schema.up.sql
@@ -71,56 +72,16 @@ func New(store *enginestore.Store) *Projector {
 }
 
 func (p *Projector) PollOnce(ctx context.Context, _ string) error {
-	tx, err := p.store.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	target, err := selectProjectionTarget(ctx, tx.Tx())
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		return err
-	}
-
-	historyRows, err := tx.ListHistoryByRunAfterID(ctx, enginedb.ListHistoryByRunAfterIDParams{
-		RunID: target.RunID,
-		ID:    target.LastProjectedHistoryID,
-		Limit: defaultProjectorBatchSize,
-	})
-	if err != nil {
-		return err
-	}
-	if len(historyRows) == 0 {
-		if err := advanceProjectionCheckpoint(ctx, tx.Tx(), target.TraceID, target.RunID, target.LastProjectedHistoryID); err != nil {
+	for processed := 0; processed < int(defaultProjectorBatchSize); processed++ {
+		more, err := p.pollSingleHistoryRow(ctx)
+		if err != nil {
 			return err
 		}
-		return tx.Commit(ctx)
+		if !more {
+			return nil
+		}
 	}
-
-	lastProjectedID, err := p.projectHistoryRows(ctx, tx, &target, historyRows)
-	if err != nil {
-		return err
-	}
-	if err := refreshTraceCounters(ctx, tx.Tx(), target.TraceID); err != nil {
-		return err
-	}
-	if err := advanceProjectionCheckpoint(ctx, tx.Tx(), target.TraceID, target.RunID, lastProjectedID); err != nil {
-		return err
-	}
-	run, err := tx.GetRun(ctx, target.RunID)
-	if err != nil {
-		return err
-	}
-	if err := SyncProjectedRunSummary(ctx, tx.Tx(), &run); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+	return nil
 }
 
 func UpdateLatestHistory(
@@ -163,8 +124,8 @@ func WriteTerminalSummary(
 	errorMessage *string,
 	latestHistoryID int64,
 ) error {
-	traceStatus, spanStatus := terminalStatuses(runStatus)
-	outputPayload, err := terminalOutputPayload(runStatus, result, errorCode, errorMessage)
+	traceStatus, spanStatus := publicprojection.TerminalStatuses(string(runStatus))
+	outputPayload, err := publicprojection.TerminalOutputPayload(string(runStatus), result, errorCode, errorMessage)
 	if err != nil {
 		return err
 	}
@@ -271,19 +232,25 @@ func (p *Projector) projectHistoryRows(
 	tx *enginestore.Tx,
 	target *projectionTarget,
 	rows []enginedb.EngineHistory,
-) (int64, error) {
+) (lastProjectedID int64, blocked bool, err error) {
 	if target == nil {
-		return 0, errors.New("projection target is required")
+		return 0, false, errors.New("projection target is required")
 	}
-	lastProjectedID := target.LastProjectedHistoryID
+	lastProjectedID = target.LastProjectedHistoryID
 	for i := range rows {
 		row := &rows[i]
-		if err := projectHistoryRow(ctx, tx, target, row); err != nil {
-			return lastProjectedID, err
+		applied, err := withProjectionBarrier(ctx, tx.Tx(), target, func() error {
+			return projectHistoryRow(ctx, tx, target, row)
+		})
+		if err != nil {
+			return lastProjectedID, false, err
+		}
+		if !applied {
+			return lastProjectedID, true, nil
 		}
 		lastProjectedID = row.ID
 	}
-	return lastProjectedID, nil
+	return lastProjectedID, false, nil
 }
 
 func projectHistoryRow(
@@ -404,9 +371,9 @@ func writeTerminalProjection(
 		return errors.New("projection target is required")
 	}
 
-	traceStatus, spanStatus := terminalStatuses(projection.RunStatus)
-	outputPayload, err := terminalOutputPayload(
-		projection.RunStatus,
+	traceStatus, spanStatus := publicprojection.TerminalStatuses(string(projection.RunStatus))
+	outputPayload, err := publicprojection.TerminalOutputPayload(
+		string(projection.RunStatus),
 		projection.Result,
 		stringPtr(projection.ErrorCode),
 		stringPtr(projection.ErrorMessage),
@@ -918,7 +885,8 @@ func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, e
 		           t.engine_projection_updated_at,
 		           t.updated_at
 		    FROM public.traces AS t
-		    WHERE t.engine_run_id IS NOT NULL
+		WHERE t.engine_run_id IS NOT NULL
+		  AND COALESCE(t.engine_projection_state, '') NOT IN ('summary_only', 'journal_expired')
 		)
 		SELECT id,
 		       project_id,
@@ -989,6 +957,126 @@ func advanceProjectionCheckpoint(
 	return nil
 }
 
+func advanceProjectionCheckpointWithBarrier(
+	ctx context.Context,
+	tx pgx.Tx,
+	target *projectionTarget,
+	lastProjectedHistoryID int64,
+) (bool, error) {
+	if target == nil {
+		return false, errors.New("projection target is required")
+	}
+	return withProjectionBarrier(ctx, tx, target, func() error {
+		return advanceProjectionCheckpoint(ctx, tx, target.TraceID, target.RunID, lastProjectedHistoryID)
+	})
+}
+
+func (p *Projector) pollSingleHistoryRow(ctx context.Context) (bool, error) {
+	tx, err := p.store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	target, err := selectProjectionTarget(ctx, tx.Tx())
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	historyRows, err := tx.ListHistoryByRunAfterID(ctx, enginedb.ListHistoryByRunAfterIDParams{
+		RunID: target.RunID,
+		ID:    target.LastProjectedHistoryID,
+		Limit: 1,
+	})
+	if err != nil {
+		return false, err
+	}
+	if len(historyRows) == 0 {
+		if _, err := advanceProjectionCheckpointWithBarrier(ctx, tx.Tx(), &target, target.LastProjectedHistoryID); err != nil {
+			return false, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	lastProjectedID, blocked, err := p.projectHistoryRows(ctx, tx, &target, historyRows)
+	if err != nil {
+		return false, err
+	}
+	if blocked {
+		if err := tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if err := refreshTraceCounters(ctx, tx.Tx(), target.TraceID); err != nil {
+		return false, err
+	}
+	applied, err := advanceProjectionCheckpointWithBarrier(ctx, tx.Tx(), &target, lastProjectedID)
+	if err != nil {
+		return false, err
+	}
+	if !applied {
+		if err := tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	run, err := tx.GetRun(ctx, target.RunID)
+	if err != nil {
+		return false, err
+	}
+	if err := SyncProjectedRunSummary(ctx, tx.Tx(), &run); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func withProjectionBarrier(
+	ctx context.Context,
+	tx pgx.Tx,
+	target *projectionTarget,
+	write func() error,
+) (bool, error) {
+	if target == nil {
+		return false, errors.New("projection target is required")
+	}
+	if write == nil {
+		return false, errors.New("projection write is required")
+	}
+
+	var projectionState string
+	err := tx.QueryRow(ctx, `
+		SELECT COALESCE(engine_projection_state, $3)
+		FROM public.traces
+		WHERE id = $1
+		  AND engine_run_id = $2
+		FOR UPDATE
+	`, target.TraceID, target.RunID, publicprojection.StateUpToDate.String()).Scan(&projectionState)
+	if err != nil {
+		return false, err
+	}
+	if projectionState == publicprojection.StateSummaryOnly.String() ||
+		projectionState == publicprojection.StateJournalExpired.String() {
+		return false, nil
+	}
+
+	if err := write(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func refreshTraceCounters(ctx context.Context, tx pgx.Tx, traceID uuid.UUID) error {
 	_, err := tx.Exec(ctx, `
 		WITH counts AS (
@@ -1005,35 +1093,6 @@ func refreshTraceCounters(ctx context.Context, tx pgx.Tx, traceID uuid.UUID) err
 		WHERE public.traces.id = $1
 	`, traceID)
 	return err
-}
-
-func terminalStatuses(status enginedb.EngineRunLifecycleStatus) (traceStatus, spanStatus string) {
-	switch status {
-	case enginedb.EngineRunLifecycleStatusCompleted:
-		return "completed", "completed"
-	case enginedb.EngineRunLifecycleStatusCancelled:
-		return "cancelled", "failed"
-	case enginedb.EngineRunLifecycleStatusTerminated:
-		return "failed", "failed"
-	default:
-		return "failed", "failed"
-	}
-}
-
-func terminalOutputPayload(
-	status enginedb.EngineRunLifecycleStatus,
-	result json.RawMessage,
-	errorCode *string,
-	errorMessage *string,
-) (json.RawMessage, error) {
-	if status == enginedb.EngineRunLifecycleStatusCompleted {
-		return cloneRaw(result), nil
-	}
-	return json.Marshal(map[string]any{
-		"error_code":    derefString(errorCode),
-		"error_message": derefString(errorMessage),
-		"status":        string(status),
-	})
 }
 
 func mergeOriginalEventType(raw json.RawMessage, originalEventType string) (json.RawMessage, error) {
@@ -1093,13 +1152,6 @@ func nullableText(value *string) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: *value, Valid: true}
-}
-
-func derefString(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }
 
 type pgtypeTimestamptz struct {

@@ -12,6 +12,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/continua-ai/continua/internal/config"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/jobargs"
 	"github.com/continua-ai/continua/internal/store"
@@ -43,6 +44,7 @@ func NewClient(
 	pool *pgxpool.Pool,
 	s *store.Store,
 	processor *ingest.Processor,
+	sharedControl *enginecontrol.Service,
 	cfg *config.Config,
 ) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
@@ -71,6 +73,28 @@ func NewClient(
 				RunOnStart: true,
 			},
 		),
+	}
+
+	if retentionEnabled(cfg) {
+		retentionWorker := NewRetentionWorker(
+			s,
+			sharedControl,
+			projectionRetention(cfg),
+			historyRetention(cfg),
+		)
+		river.AddWorker(workers, retentionWorker)
+		periodicJobs = append(periodicJobs, river.NewPeriodicJob(
+			river.PeriodicInterval(jobargs.RetentionInterval),
+			func() (river.JobArgs, *river.InsertOpts) {
+				args := jobargs.RetentionArgs{}
+				opts := args.InsertOpts()
+				return args, &opts
+			},
+			&river.PeriodicJobOpts{
+				ID:         "engine-retention-maintenance",
+				RunOnStart: false,
+			},
+		))
 	}
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
@@ -108,4 +132,22 @@ func failedPayloadRetention(cfg *config.Config) time.Duration {
 		return 7 * 24 * time.Hour
 	}
 	return cfg.Ingest.FailedPayloadRetention
+}
+
+func retentionEnabled(cfg *config.Config) bool {
+	return projectionRetention(cfg) > 0 || historyRetention(cfg) > 0
+}
+
+func projectionRetention(cfg *config.Config) time.Duration {
+	if cfg == nil {
+		return 0
+	}
+	return cfg.Engine.ProjectionRetentionAfter
+}
+
+func historyRetention(cfg *config.Config) time.Duration {
+	if cfg == nil {
+		return 0
+	}
+	return cfg.Engine.HistoryRetentionAfter
 }

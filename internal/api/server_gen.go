@@ -80,6 +80,21 @@ const (
 	UpToDate       EngineProjectionState = "up_to_date"
 )
 
+// Defines values for EnginePurgeMode.
+const (
+	Full           EnginePurgeMode = "full"
+	ProjectionOnly EnginePurgeMode = "projection_only"
+)
+
+// Defines values for EngineRepairReason.
+const (
+	AlreadyCatchingUp EngineRepairReason = "already_catching_up"
+	AlreadyUpToDate   EngineRepairReason = "already_up_to_date"
+	HistoryExpired    EngineRepairReason = "history_expired"
+	NoEventsToProject EngineRepairReason = "no_events_to_project"
+	RepairRequested   EngineRepairReason = "repair_requested"
+)
+
 // Defines values for EngineRunStatus.
 const (
 	EngineRunStatusCANCELLED  EngineRunStatus = "CANCELLED"
@@ -265,9 +280,20 @@ const (
 
 // Defines values for ListTracesParamsStatus.
 const (
-	Completed ListTracesParamsStatus = "completed"
-	Failed    ListTracesParamsStatus = "failed"
-	Running   ListTracesParamsStatus = "running"
+	ListTracesParamsStatusCompleted ListTracesParamsStatus = "completed"
+	ListTracesParamsStatusFailed    ListTracesParamsStatus = "failed"
+	ListTracesParamsStatusRunning   ListTracesParamsStatus = "running"
+)
+
+// Defines values for ListTracesParamsEngineRunStatus.
+const (
+	ListTracesParamsEngineRunStatusCancelled  ListTracesParamsEngineRunStatus = "cancelled"
+	ListTracesParamsEngineRunStatusCompleted  ListTracesParamsEngineRunStatus = "completed"
+	ListTracesParamsEngineRunStatusFailed     ListTracesParamsEngineRunStatus = "failed"
+	ListTracesParamsEngineRunStatusQueued     ListTracesParamsEngineRunStatus = "queued"
+	ListTracesParamsEngineRunStatusRunning    ListTracesParamsEngineRunStatus = "running"
+	ListTracesParamsEngineRunStatusTerminated ListTracesParamsEngineRunStatus = "terminated"
+	ListTracesParamsEngineRunStatusWaiting    ListTracesParamsEngineRunStatus = "waiting"
 )
 
 // BatchStatusResponse defines model for BatchStatusResponse.
@@ -476,11 +502,42 @@ type EnginePendingWorkResponse struct {
 // EngineProjectionState defines model for EngineProjectionState.
 type EngineProjectionState string
 
+// EnginePurgeMode defines model for EnginePurgeMode.
+type EnginePurgeMode string
+
+// EnginePurgeRequest defines model for EnginePurgeRequest.
+type EnginePurgeRequest struct {
+	Mode EnginePurgeMode `json:"mode"`
+}
+
+// EnginePurgeResponse defines model for EnginePurgeResponse.
+type EnginePurgeResponse struct {
+	// Deleted True when purge deleted projection detail and/or history rows.
+	Deleted         bool                  `json:"deleted"`
+	Mode            EnginePurgeMode       `json:"mode"`
+	ProjectionState EngineProjectionState `json:"projection_state"`
+	RunId           openapi_types.UUID    `json:"run_id"`
+}
+
+// EngineRepairReason defines model for EngineRepairReason.
+type EngineRepairReason string
+
+// EngineRepairResponse defines model for EngineRepairResponse.
+type EngineRepairResponse struct {
+	Accepted        bool                  `json:"accepted"`
+	ProjectionState EngineProjectionState `json:"projection_state"`
+	Reason          EngineRepairReason    `json:"reason"`
+	RunId           openapi_types.UUID    `json:"run_id"`
+}
+
 // EngineRunHistoryResponse defines model for EngineRunHistoryResponse.
 type EngineRunHistoryResponse struct {
-	Events    []EngineHistoryEvent `json:"events"`
-	HasMore   bool                 `json:"has_more"`
-	NextAfter *int                 `json:"next_after,omitempty"`
+	Events []EngineHistoryEvent `json:"events"`
+
+	// Expired True when retained engine history for the run has been purged.
+	Expired   *bool `json:"expired,omitempty"`
+	HasMore   bool  `json:"has_more"`
+	NextAfter *int  `json:"next_after,omitempty"`
 }
 
 // EngineRunResponse defines model for EngineRunResponse.
@@ -508,7 +565,8 @@ type EngineRunResponse struct {
 type EngineRunResultResponse struct {
 	Failure *EngineFailureSummary `json:"failure,omitempty"`
 
-	// Result Terminal workflow result payload when available.
+	// Result Terminal workflow result payload when available. `summary_only` and
+	// `journal_expired` runs continue to return the retained terminal shell.
 	Result interface{}        `json:"result"`
 	RunId  openapi_types.UUID `json:"run_id"`
 	Status EngineRunStatus    `json:"status"`
@@ -1100,6 +1158,18 @@ type ListTracesParams struct {
 	// UserId Filter by user ID
 	UserId *string `form:"user_id,omitempty" json:"user_id,omitempty"`
 
+	// EngineInstanceKey Filter by engine instance key
+	EngineInstanceKey *string `form:"engine_instance_key,omitempty" json:"engine_instance_key,omitempty"`
+
+	// EngineDefinitionName Filter by engine definition name
+	EngineDefinitionName *string `form:"engine_definition_name,omitempty" json:"engine_definition_name,omitempty"`
+
+	// EngineRunStatus Filter by engine run lifecycle status
+	EngineRunStatus *ListTracesParamsEngineRunStatus `form:"engine_run_status,omitempty" json:"engine_run_status,omitempty"`
+
+	// EngineProjectionState Filter by engine projection state
+	EngineProjectionState *EngineProjectionState `form:"engine_projection_state,omitempty" json:"engine_projection_state,omitempty"`
+
 	// HasErrors Filter traces with errors (error_count > 0)
 	HasErrors *bool `form:"has_errors,omitempty" json:"has_errors,omitempty"`
 
@@ -1115,6 +1185,9 @@ type ListTracesParamsSortDir string
 
 // ListTracesParamsStatus defines parameters for ListTraces.
 type ListTracesParamsStatus string
+
+// ListTracesParamsEngineRunStatus defines parameters for ListTraces.
+type ListTracesParamsEngineRunStatus string
 
 // GetTraceEventsParams defines parameters for GetTraceEvents.
 type GetTraceEventsParams struct {
@@ -1143,6 +1216,18 @@ type GetEngineRunHistoryParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// PurgeEngineRunParams defines parameters for PurgeEngineRun.
+type PurgeEngineRunParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+}
+
+// RepairEngineRunParams defines parameters for RepairEngineRun.
+type RepairEngineRunParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+}
+
 // SignalEngineRunParams defines parameters for SignalEngineRun.
 type SignalEngineRunParams struct {
 	// XContinuaEnginePreview Required preview header for mutating engine routes.
@@ -1168,6 +1253,9 @@ type IngestParams struct {
 
 // StartEngineRunJSONRequestBody defines body for StartEngineRun for application/json ContentType.
 type StartEngineRunJSONRequestBody = EngineStartRunRequest
+
+// PurgeEngineRunJSONRequestBody defines body for PurgeEngineRun for application/json ContentType.
+type PurgeEngineRunJSONRequestBody = EnginePurgeRequest
 
 // SignalEngineRunJSONRequestBody defines body for SignalEngineRun for application/json ContentType.
 type SignalEngineRunJSONRequestBody = EngineSignalRunRequest
@@ -1362,6 +1450,12 @@ type ServerInterface interface {
 	// Get the durable pending work held by an engine run
 	// (GET /v1/engine/runs/{run_id}/pending-work)
 	GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
+	// Purge projected detail and optionally retained history for an engine run
+	// (POST /v1/engine/runs/{run_id}/purge)
+	PurgeEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params PurgeEngineRunParams)
+	// Request projection repair for an engine run
+	// (POST /v1/engine/runs/{run_id}/repair)
+	RepairEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params RepairEngineRunParams)
 	// Get the terminal result for an engine run
 	// (GET /v1/engine/runs/{run_id}/result)
 	GetEngineRunResult(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
@@ -1464,6 +1558,18 @@ func (_ Unimplemented) GetEngineRunHistory(w http.ResponseWriter, r *http.Reques
 // Get the durable pending work held by an engine run
 // (GET /v1/engine/runs/{run_id}/pending-work)
 func (_ Unimplemented) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Purge projected detail and optionally retained history for an engine run
+// (POST /v1/engine/runs/{run_id}/purge)
+func (_ Unimplemented) PurgeEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params PurgeEngineRunParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Request projection repair for an engine run
+// (POST /v1/engine/runs/{run_id}/repair)
+func (_ Unimplemented) RepairEngineRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID, params RepairEngineRunParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1796,6 +1902,38 @@ func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Req
 	err = runtime.BindQueryParameter("form", true, false, "user_id", r.URL.Query(), &params.UserId)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "engine_instance_key" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_instance_key", r.URL.Query(), &params.EngineInstanceKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_instance_key", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "engine_definition_name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_definition_name", r.URL.Query(), &params.EngineDefinitionName)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_definition_name", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "engine_run_status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_run_status", r.URL.Query(), &params.EngineRunStatus)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_run_status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "engine_projection_state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_projection_state", r.URL.Query(), &params.EngineProjectionState)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_projection_state", Err: err})
 		return
 	}
 
@@ -2181,6 +2319,124 @@ func (siw *ServerInterfaceWrapper) GetEngineRunPendingWork(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetEngineRunPendingWork(w, r, runId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PurgeEngineRun operation middleware
+func (siw *ServerInterfaceWrapper) PurgeEngineRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PurgeEngineRunParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = XContinuaEnginePreview
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PurgeEngineRun(w, r, runId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RepairEngineRun operation middleware
+func (siw *ServerInterfaceWrapper) RepairEngineRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "run_id" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "run_id", chi.URLParam(r, "run_id"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "run_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RepairEngineRunParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = XContinuaEnginePreview
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RepairEngineRun(w, r, runId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2578,6 +2834,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/engine/runs/{run_id}/pending-work", wrapper.GetEngineRunPendingWork)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/runs/{run_id}/purge", wrapper.PurgeEngineRun)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/runs/{run_id}/repair", wrapper.RepairEngineRun)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/engine/runs/{run_id}/result", wrapper.GetEngineRunResult)

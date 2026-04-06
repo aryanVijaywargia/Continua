@@ -86,3 +86,25 @@ func (CleanupArgs) InsertOpts() river.InsertOpts {
 
 // CleanupInterval is the cadence for payload cleanup jobs.
 const CleanupInterval = 24 * time.Hour
+
+// RetentionArgs contains the arguments for the engine retention maintenance job.
+type RetentionArgs struct{}
+
+// Kind returns the River job kind.
+func (RetentionArgs) Kind() string {
+	return "engine_retention_maintenance"
+}
+
+// InsertOpts routes retention jobs to the maintenance queue with active-state uniqueness.
+func (RetentionArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: QueueMaintenance,
+		UniqueOpts: river.UniqueOpts{
+			ByArgs:  true,
+			ByState: ActiveUniqueStates(),
+		},
+	}
+}
+
+// RetentionInterval is the cadence for engine retention jobs.
+const RetentionInterval = 24 * time.Hour

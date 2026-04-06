@@ -14,6 +14,7 @@ import (
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
 	"github.com/continua-ai/continua/internal/api/middleware"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/jobs"
 	"github.com/continua-ai/continua/internal/store"
@@ -25,7 +26,7 @@ func newAsyncIngestServer(t *testing.T) (*Server, *store.Store, *platform.Querie
 
 	pool := testutil.TestDB(t)
 	s := store.New(pool)
-	client, err := jobs.NewClient(pool, s, ingest.NewProcessor(s, nil), nil)
+	client, err := jobs.NewClient(pool, s, ingest.NewProcessor(s, nil), enginecontrol.NewService(s), nil)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

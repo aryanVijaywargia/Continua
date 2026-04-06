@@ -81,6 +81,7 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
 - Engine foundation state lives in the dedicated Postgres `engine` schema.
 - Engine migrations use their own migration bookkeeping table so they can coexist with platform migrations in the same physical database.
 - Engine foundation does not add cross-schema foreign keys to `public.projects`.
+- The repo is still pre-production, so platform and engine migrations may be rewritten or squashed until the first production release. After the first production release, migration history becomes immutable.
 
 ## Config reality
 - Runtime config is env-only via `internal/config/config.go`.

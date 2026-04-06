@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
+
+	"github.com/continua-ai/continua/internal/enginecontrol"
 )
 
 func (s *Server) GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string) {
@@ -162,6 +164,49 @@ func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runI
 	}
 
 	writeJSON(w, http.StatusOK, engineRunResultResponseToAPI(&result))
+}
+
+func (s *Server) PurgeEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ PurgeEngineRunParams) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+	if s.engineSharedControl == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	var req EnginePurgeRequest
+	if !decodeJSONRequest(w, r, &req) {
+		return
+	}
+
+	result, err := s.engineSharedControl.PurgeRun(r.Context(), projectID, runID, enginecontrol.PurgeMode(req.Mode))
+	if err != nil {
+		writeEngineError(w, err, "Failed to purge engine run")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, enginePurgeResponseToAPI(&result))
+}
+
+func (s *Server) RepairEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ RepairEngineRunParams) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+	if s.engineSharedControl == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	result, err := s.engineSharedControl.RepairRun(r.Context(), projectID, runID)
+	if err != nil {
+		writeEngineError(w, err, "Failed to repair engine run")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, engineRepairResponseToAPI(&result))
 }
 
 func (s *Server) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {

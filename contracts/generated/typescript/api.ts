@@ -110,6 +110,8 @@ export interface paths {
          * @description Returns the terminal result shape for the run.
          *     `COMPLETED` returns the workflow result payload.
          *     `CANCELLED` and `TERMINATED` return `result=null` with a populated `failure` object.
+         *     Purged runs in `summary_only` and `journal_expired` continue to return the
+         *     retained terminal shell instead of becoming `404`.
          *
          */
         get: operations["getEngineRunResult"];
@@ -145,10 +147,56 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get engine run history */
+        /**
+         * Get engine run history
+         * @description Returns the durable engine history page for the run.
+         *     Purged runs continue to return `200`; `journal_expired` runs include
+         *     `expired=true` so clients can distinguish purged-empty from never-had-events.
+         *
+         */
         get: operations["getEngineRunHistory"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Purge projected detail and optionally retained history for an engine run */
+        post: operations["purgeEngineRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/runs/{run_id}/repair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request projection repair for an engine run
+         * @description Repair is asynchronous. Accepted repair requests only reopen projection by
+         *     returning the run to `catching_up`; the separate `continua-engine`
+         *     projector loop performs the rebuild later.
+         *
+         */
+        post: operations["repairEngineRun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -364,6 +412,10 @@ export interface components {
         /** @enum {string} */
         EngineProjectionState: "up_to_date" | "catching_up" | "summary_only" | "journal_expired";
         /** @enum {string} */
+        EnginePurgeMode: "projection_only" | "full";
+        /** @enum {string} */
+        EngineRepairReason: "already_up_to_date" | "history_expired" | "no_events_to_project" | "repair_requested" | "already_catching_up";
+        /** @enum {string} */
         EngineRunStatus: "QUEUED" | "RUNNING" | "WAITING" | "COMPLETED" | "FAILED" | "CANCELLED" | "TERMINATED";
         EngineTraceInfo: {
             /** Format: uuid */
@@ -520,6 +572,10 @@ export interface components {
             status: string;
             current_run: components["schemas"]["EngineRunSummary"];
         };
+        /** @description Engine run detail. Clients can identify `definition_version_mismatch`
+         *     from the existing `definition_name`, `definition_version`, and
+         *     `failure.error_code` fields without a dedicated mismatch endpoint.
+         *      */
         EngineRunResponse: components["schemas"]["EngineRunSummary"] & {
             /** Format: uuid */
             instance_id: string;
@@ -528,7 +584,9 @@ export interface components {
             /** Format: uuid */
             run_id: string;
             status: components["schemas"]["EngineRunStatus"];
-            /** @description Terminal workflow result payload when available. */
+            /** @description Terminal workflow result payload when available. `summary_only` and
+             *     `journal_expired` runs continue to return the retained terminal shell.
+             *      */
             result: unknown | null;
             failure?: components["schemas"]["EngineFailureSummary"];
         };
@@ -546,6 +604,26 @@ export interface components {
             events: components["schemas"]["EngineHistoryEvent"][];
             has_more: boolean;
             next_after?: number;
+            /** @description True when retained engine history for the run has been purged. */
+            expired?: boolean;
+        };
+        EnginePurgeRequest: {
+            mode: components["schemas"]["EnginePurgeMode"];
+        };
+        EnginePurgeResponse: {
+            /** Format: uuid */
+            run_id: string;
+            mode: components["schemas"]["EnginePurgeMode"];
+            projection_state: components["schemas"]["EngineProjectionState"];
+            /** @description True when purge deleted projection detail and/or history rows. */
+            deleted: boolean;
+        };
+        EngineRepairResponse: {
+            /** Format: uuid */
+            run_id: string;
+            accepted: boolean;
+            reason: components["schemas"]["EngineRepairReason"];
+            projection_state: components["schemas"]["EngineProjectionState"];
         };
         EngineSignalRunRequest: {
             signal_name: string;
@@ -1417,6 +1495,123 @@ export interface operations {
             };
         };
     };
+    purgeEngineRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview": string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnginePurgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Purge applied or already satisfied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnginePurgeResponse"];
+                };
+            };
+            /** @description Invalid request body or missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not terminal (`run_not_terminal`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    repairEngineRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview": string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repair accepted or current state reported */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineRepairResponse"];
+                };
+            };
+            /** @description Missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     signalEngineRun: {
         parameters: {
             query?: never;
@@ -1615,6 +1810,14 @@ export interface operations {
                 start_time_to?: string;
                 /** @description Filter by user ID */
                 user_id?: string;
+                /** @description Filter by engine instance key */
+                engine_instance_key?: string;
+                /** @description Filter by engine definition name */
+                engine_definition_name?: string;
+                /** @description Filter by engine run lifecycle status */
+                engine_run_status?: "queued" | "running" | "waiting" | "completed" | "failed" | "cancelled" | "terminated";
+                /** @description Filter by engine projection state */
+                engine_projection_state?: components["schemas"]["EngineProjectionState"];
                 /** @description Filter traces with errors (error_count > 0) */
                 has_errors?: boolean;
                 /** @description Filter traces with duration >= this value in milliseconds */

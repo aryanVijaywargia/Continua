@@ -42,3 +42,7 @@ SELECT *
 FROM engine.history
 WHERE instance_id = $1
 ORDER BY id ASC;
+
+-- name: DeleteHistoryByRun :exec
+DELETE FROM engine.history
+WHERE run_id = $1;

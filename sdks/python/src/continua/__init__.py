@@ -22,9 +22,13 @@ Example:
 __version__ = "0.0.1"
 
 from .client import Continua
+from .engine_control import EngineControlClient
 from .exceptions import (
     AuthenticationError,
     ContinuaError,
+    EngineRunNotFoundError,
+    EngineRunNotTerminalError,
+    EngineRunWaitTimeoutError,
     NetworkError,
     RateLimitError,
     ValidationError,
@@ -36,6 +40,7 @@ from .trace import TraceContext, get_current_trace, trace
 __all__ = [
     # Core client
     "Continua",
+    "EngineControlClient",
     # Decorators and context managers
     "trace",
     "span",
@@ -51,6 +56,9 @@ __all__ = [
     # Exceptions
     "ContinuaError",
     "AuthenticationError",
+    "EngineRunNotFoundError",
+    "EngineRunNotTerminalError",
+    "EngineRunWaitTimeoutError",
     "RateLimitError",
     "ValidationError",
     "NetworkError",

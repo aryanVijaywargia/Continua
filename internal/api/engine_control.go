@@ -90,6 +90,7 @@ type engineRunSummary struct {
 
 type engineHistoryPage struct {
 	Events    []enginedb.EngineHistory
+	Expired   bool
 	HasMore   bool
 	NextAfter *int
 }
@@ -612,6 +613,11 @@ func (s *engineControlService) GetRunHistory(
 	page := engineHistoryPage{
 		Events: rows,
 	}
+	projectionState, err := s.projectionStateForRun(ctx, projectID, runID)
+	if err != nil {
+		return engineHistoryPage{}, err
+	}
+	page.Expired = projectionState == publicprojection.StateJournalExpired.String()
 	if len(rows) > limit {
 		page.HasMore = true
 		page.Events = rows[:limit]

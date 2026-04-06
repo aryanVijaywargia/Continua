@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -348,6 +349,102 @@ func TestIndex_QueryPerformanceWithProjectFilter(t *testing.T) {
 	assert.NotContains(t, plan, "rows=55", "Should not scan all rows from both projects")
 }
 
+func TestIndex_TraceEngineFiltersUseTargetedIndexes(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	q := store.New(pool).Queries()
+	projectID := testutil.CreateTestProject(t, ctx, q)
+
+	engineTrace, err := q.UpsertTrace(ctx, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "engine-index-trace",
+		Name:      testutil.StrPtr("Engine Indexed Trace"),
+	})
+	require.NoError(t, err)
+
+	_, err = pool.Exec(ctx, `
+		UPDATE traces
+		SET engine_run_id = $2,
+		    engine_instance_key = 'instance-checkout',
+		    engine_definition_name = 'checkout',
+		    engine_run_status = 'waiting',
+		    engine_projection_state = 'catching_up',
+		    engine_projection_updated_at = NOW()
+		WHERE id = $1
+	`, engineTrace.ID, uuid.New())
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name  string
+		query string
+		arg   any
+	}{
+		{
+			name: "engine_instance_key",
+			query: `
+				EXPLAIN (ANALYZE, FORMAT TEXT)
+				SELECT id
+				FROM traces
+				WHERE project_id = $1
+				  AND engine_instance_key = $2
+				ORDER BY COALESCE(start_time, server_received_at) DESC
+				LIMIT 10
+			`,
+			arg: "instance-checkout",
+		},
+		{
+			name: "engine_definition_name",
+			query: `
+				EXPLAIN (ANALYZE, FORMAT TEXT)
+				SELECT id
+				FROM traces
+				WHERE project_id = $1
+				  AND engine_definition_name = $2
+				ORDER BY COALESCE(start_time, server_received_at) DESC
+				LIMIT 10
+			`,
+			arg: "checkout",
+		},
+		{
+			name: "engine_run_status",
+			query: `
+				EXPLAIN (ANALYZE, FORMAT TEXT)
+				SELECT id
+				FROM traces
+				WHERE project_id = $1
+				  AND engine_run_status = $2
+				ORDER BY COALESCE(start_time, server_received_at) DESC
+				LIMIT 10
+			`,
+			arg: "waiting",
+		},
+		{
+			name: "engine_projection_state",
+			query: `
+				EXPLAIN (ANALYZE, FORMAT TEXT)
+				SELECT id
+				FROM traces
+				WHERE project_id = $1
+				  AND engine_projection_state = $2
+				ORDER BY COALESCE(start_time, server_received_at) DESC
+				LIMIT 10
+			`,
+			arg: "catching_up",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := explainPlan(t, pool, ctx, tc.query, projectID, tc.arg)
+			assert.True(t,
+				strings.Contains(plan, "Index Scan") || strings.Contains(plan, "Bitmap"),
+				"expected index-backed plan for %s:\n%s", tc.name, plan,
+			)
+			assert.NotContains(t, plan, "Seq Scan", "expected indexed plan for %s:\n%s", tc.name, plan)
+		})
+	}
+}
+
 func TestIndex_GINSearchIndex(t *testing.T) {
 	// Verify GIN index is used for full-text search
 
@@ -415,4 +512,39 @@ func TestIndex_GINSearchIndex(t *testing.T) {
 		// Consume EXPLAIN output and immediately discard it.
 	}
 	require.NoError(t, searchRows.Err())
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func explainPlan(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	ctx context.Context,
+	query string,
+	args ...any,
+) string {
+	t.Helper()
+
+	conn, err := pool.Acquire(ctx)
+	require.NoError(t, err)
+	defer conn.Release()
+
+	_, err = conn.Exec(ctx, "SET enable_seqscan = off")
+	require.NoError(t, err)
+	defer func() {
+		_, _ = conn.Exec(ctx, "SET enable_seqscan = on")
+	}()
+
+	rows, err := conn.Query(ctx, query, args...)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var explainOutput strings.Builder
+	for rows.Next() {
+		var line string
+		err := rows.Scan(&line)
+		require.NoError(t, err)
+		explainOutput.WriteString(line + "\n")
+	}
+	require.NoError(t, rows.Err())
+	return explainOutput.String()
 }

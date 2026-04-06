@@ -212,3 +212,7 @@ func (t *Tx) UpdateTraceRollups(ctx context.Context, params platform.UpdateTrace
 func (t *Tx) UpsertTrace(ctx context.Context, params *platform.UpsertTraceParams) (platform.Trace, error) {
 	return t.q.UpsertTrace(ctx, *params)
 }
+
+func pgUUID(value uuid.UUID) pgtype.UUID {
+	return pgtype.UUID{Bytes: value, Valid: true}
+}

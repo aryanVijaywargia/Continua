@@ -135,5 +135,5 @@ sdks/                → TypeScript and Python SDKs
 - Engine module cannot import from internal/ (Go enforced boundary)
 - Web UI must be static (no SSR) for Go binary embedding
 - All contract changes require `make generate` before commit
-- Existing migrations are immutable
+- This repo is still pre-production: migrations may be rewritten or squashed until the first production release. After the first production release, existing migrations are immutable.
 - Placeholder-heavy areas such as `internal/ws`, `internal/replay`, `internal/proxy`, and `engine/` should not be treated as implemented
