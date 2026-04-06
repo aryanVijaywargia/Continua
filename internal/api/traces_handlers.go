@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -30,6 +31,11 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 	case traceNeedsDynamicQuery(&filter):
 		result, err := s.store.ListTracesFiltered(r.Context(), filter)
 		if err != nil {
+			var filterErr *store.TraceFilterValidationError
+			if errors.As(err, &filterErr) {
+				writeError(w, http.StatusBadRequest, "invalid_request", filterErr.Error())
+				return
+			}
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to search traces")
 			return
 		}

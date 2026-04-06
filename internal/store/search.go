@@ -11,24 +11,37 @@ import (
 
 // TraceFilter defines filter options for trace search.
 type TraceFilter struct {
-	ProjectID     uuid.UUID
-	Query         string     // Full-text search query
-	Status        string     // running, completed, failed
-	StartTimeFrom *time.Time // Filter traces starting at or after this time
-	StartTimeTo   *time.Time // Filter traces starting at or before this time
-	UserID        string     // Filter by user_id
-	SessionID     *uuid.UUID // Filter by session_id
-	HasErrors     *bool      // Filter by error_count > 0
-	MinDurationMs *int64     // Filter by duration in milliseconds
-	SortDir       SortDirection
-	Limit         int32
-	Offset        int32
+	ProjectID            uuid.UUID
+	Query                string     // Full-text search query
+	Status               string     // running, completed, failed
+	StartTimeFrom        *time.Time // Filter traces starting at or after this time
+	StartTimeTo          *time.Time // Filter traces starting at or before this time
+	UserID               string     // Filter by user_id
+	SessionID            *uuid.UUID // Filter by session_id
+	EngineInstanceKey    string     // Filter by engine_instance_key
+	EngineDefinitionName string     // Filter by engine_definition_name
+	EngineRunStatus      string     // Filter by engine_run_status
+	EngineProjectionState string    // Filter by engine_projection_state
+	HasErrors            *bool      // Filter by error_count > 0
+	MinDurationMs        *int64     // Filter by duration in milliseconds
+	SortDir              SortDirection
+	Limit                int32
+	Offset               int32
 }
 
 // TraceSearchResult contains the results of a trace search.
 type TraceSearchResult struct {
 	Traces []TraceRead
 	Total  int64
+}
+
+type TraceFilterValidationError struct {
+	Field string
+	Value string
+}
+
+func (e *TraceFilterValidationError) Error() string {
+	return fmt.Sprintf("invalid %s %q", e.Field, e.Value)
 }
 
 // ListTracesFiltered returns traces matching the filter criteria.
@@ -38,6 +51,9 @@ type TraceSearchResult struct {
 //nolint:gocritic // Pass-by-value keeps this immutable and avoids accidental caller mutation.
 func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (TraceSearchResult, error) {
 	result := TraceSearchResult{}
+	if err := validateTraceFilter(filter); err != nil {
+		return result, err
+	}
 
 	// Build the base query
 	var whereClauses []string
@@ -110,6 +126,30 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	if filter.UserID != "" {
 		whereClauses = append(whereClauses, fmt.Sprintf("t.user_id = $%d", argNum))
 		args = append(args, filter.UserID)
+		argNum++
+	}
+
+	if filter.EngineInstanceKey != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_instance_key = $%d", argNum))
+		args = append(args, filter.EngineInstanceKey)
+		argNum++
+	}
+
+	if filter.EngineDefinitionName != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_definition_name = $%d", argNum))
+		args = append(args, filter.EngineDefinitionName)
+		argNum++
+	}
+
+	if filter.EngineRunStatus != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_run_status = $%d", argNum))
+		args = append(args, strings.ToLower(strings.TrimSpace(filter.EngineRunStatus)))
+		argNum++
+	}
+
+	if filter.EngineProjectionState != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_projection_state = $%d", argNum))
+		args = append(args, strings.TrimSpace(filter.EngineProjectionState))
 		argNum++
 	}
 
@@ -233,4 +273,26 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	}
 
 	return result, nil
+}
+
+func validateTraceFilter(filter TraceFilter) error {
+	if filter.EngineRunStatus != "" {
+		value := strings.ToLower(strings.TrimSpace(filter.EngineRunStatus))
+		switch value {
+		case "queued", "running", "waiting", "completed", "failed", "cancelled", "terminated":
+		default:
+			return &TraceFilterValidationError{Field: "engine_run_status", Value: filter.EngineRunStatus}
+		}
+	}
+
+	if filter.EngineProjectionState != "" {
+		value := strings.TrimSpace(filter.EngineProjectionState)
+		switch value {
+		case "up_to_date", "catching_up", "summary_only", "journal_expired":
+		default:
+			return &TraceFilterValidationError{Field: "engine_projection_state", Value: filter.EngineProjectionState}
+		}
+	}
+
+	return nil
 }

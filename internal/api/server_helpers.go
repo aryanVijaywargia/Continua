@@ -11,6 +11,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/internal/api/middleware"
+	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/ingest"
 	"github.com/continua-ai/continua/internal/store"
 )
@@ -33,6 +34,11 @@ func writeEngineError(w http.ResponseWriter, err error, fallbackMessage string) 
 	var apiErr *engineAPIError
 	if errors.As(err, &apiErr) {
 		writeError(w, apiErr.HTTPStatus, apiErr.Code, apiErr.Message)
+		return
+	}
+	var sharedErr *enginecontrol.APIError
+	if errors.As(err, &sharedErr) {
+		writeError(w, sharedErr.HTTPStatus, sharedErr.Code, sharedErr.Message)
 		return
 	}
 
@@ -140,6 +146,18 @@ func traceFilterFromParams(projectID uuid.UUID, params *ListTracesParams, limit,
 	if params.UserId != nil {
 		filter.UserID = *params.UserId
 	}
+	if params.EngineInstanceKey != nil {
+		filter.EngineInstanceKey = *params.EngineInstanceKey
+	}
+	if params.EngineDefinitionName != nil {
+		filter.EngineDefinitionName = *params.EngineDefinitionName
+	}
+	if params.EngineRunStatus != nil {
+		filter.EngineRunStatus = string(*params.EngineRunStatus)
+	}
+	if params.EngineProjectionState != nil {
+		filter.EngineProjectionState = string(*params.EngineProjectionState)
+	}
 	if params.SessionId != nil {
 		id := *params.SessionId
 		filter.SessionID = &id
@@ -164,6 +182,10 @@ func traceNeedsDynamicQuery(filter *store.TraceFilter) bool {
 		filter.StartTimeFrom != nil ||
 		filter.StartTimeTo != nil ||
 		filter.UserID != "" ||
+		filter.EngineInstanceKey != "" ||
+		filter.EngineDefinitionName != "" ||
+		filter.EngineRunStatus != "" ||
+		filter.EngineProjectionState != "" ||
 		filter.HasErrors != nil ||
 		filter.MinDurationMs != nil
 }

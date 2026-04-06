@@ -1,0 +1,4 @@
+DROP INDEX IF EXISTS idx_traces_engine_projection_state_project;
+DROP INDEX IF EXISTS idx_traces_engine_run_status_project;
+DROP INDEX IF EXISTS idx_traces_engine_definition_name_project;
+DROP INDEX IF EXISTS idx_traces_engine_instance_key_project;
