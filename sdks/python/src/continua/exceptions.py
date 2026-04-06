@@ -74,3 +74,24 @@ class NetworkError(ContinuaError):
         self.message = message
         self.retry_count = retry_count
         self.__cause__ = cause
+
+
+class EngineRunNotTerminalError(ContinuaError):
+    """Raised when an engine run has not yet reached a terminal state."""
+
+
+class EngineRunNotFoundError(ContinuaError):
+    """Raised when an engine run or related engine resource cannot be found."""
+
+
+class EngineRunWaitTimeoutError(ContinuaError):
+    """Raised when wait_for_terminal exceeds its timeout."""
+
+    def __init__(self, run_id: str, timeout: float | None) -> None:
+        if timeout is None:
+            message = f"Timed out waiting for engine run {run_id}"
+        else:
+            message = f"Timed out waiting for engine run {run_id} after {timeout} seconds"
+        super().__init__(message)
+        self.run_id = run_id
+        self.timeout = timeout

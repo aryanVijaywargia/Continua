@@ -32,6 +32,19 @@ class EngineProjectionState(Enum):
     journal_expired = "journal_expired"
 
 
+class EnginePurgeMode(Enum):
+    projection_only = "projection_only"
+    full = "full"
+
+
+class EngineRepairReason(Enum):
+    already_up_to_date = "already_up_to_date"
+    history_expired = "history_expired"
+    no_events_to_project = "no_events_to_project"
+    repair_requested = "repair_requested"
+    already_catching_up = "already_catching_up"
+
+
 class EngineRunStatus(Enum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
@@ -201,6 +214,13 @@ class EngineInstanceResponse(BaseModel):
 
 
 class EngineRunResponse(EngineRunSummary):
+    """
+    Engine run detail. Clients can identify `definition_version_mismatch`
+    from the existing `definition_name`, `definition_version`, and
+    `failure.error_code` fields without a dedicated mismatch endpoint.
+
+    """
+
     instance_id: UUID
 
 
@@ -208,7 +228,8 @@ class EngineRunResultResponse(BaseModel):
     run_id: UUID
     status: EngineRunStatus
     result: Any = Field(
-        ..., description="Terminal workflow result payload when available."
+        ...,
+        description="Terminal workflow result payload when available. `summary_only` and\n`journal_expired` runs continue to return the retained terminal shell.\n",
     )
     failure: EngineFailureSummary | None = None
 
@@ -225,6 +246,31 @@ class EngineRunHistoryResponse(BaseModel):
     events: list[EngineHistoryEvent]
     has_more: bool
     next_after: int | None = None
+    expired: bool | None = Field(
+        None,
+        description="True when retained engine history for the run has been purged.",
+    )
+
+
+class EnginePurgeRequest(BaseModel):
+    mode: EnginePurgeMode
+
+
+class EnginePurgeResponse(BaseModel):
+    run_id: UUID
+    mode: EnginePurgeMode
+    projection_state: EngineProjectionState
+    deleted: bool = Field(
+        ...,
+        description="True when purge deleted projection detail and/or history rows.",
+    )
+
+
+class EngineRepairResponse(BaseModel):
+    run_id: UUID
+    accepted: bool
+    reason: EngineRepairReason
+    projection_state: EngineProjectionState
 
 
 class EngineSignalRunRequest(BaseModel):
