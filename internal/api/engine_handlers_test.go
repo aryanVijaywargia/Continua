@@ -1337,7 +1337,7 @@ func TestSuspendResumeEngineRun_ActivityCompletesDuringSuspensionAndIsObservedAf
 	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
 	require.NoError(t, os.WriteFile(releaseFile, []byte("release"), 0o644))
 
-	waitForActivityTask(t, ctx, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
+	waitForActivityTask(ctx, t, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
 		return task.Status == enginedb.EngineActivityTaskStatusCompleted
 	})
 
@@ -1388,7 +1388,7 @@ func TestSuspendResumeEngineRun_RetryExhaustedDuringSuspensionFailsAfterResume(t
 
 	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
 
-	failedTask := waitForActivityTask(t, ctx, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
+	failedTask := waitForActivityTask(ctx, t, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
 		return task.Status == enginedb.EngineActivityTaskStatusFailed
 	})
 	assert.Equal(t, int32(2), failedTask.AttemptCount)
@@ -1447,7 +1447,7 @@ func TestSuspendResumeEngineRun_RetryScheduledDuringSuspensionCompletesAfterResu
 
 	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
 
-	retriedTask := waitForActivityTask(t, ctx, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
+	retriedTask := waitForActivityTask(ctx, t, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
 		return task.Status == enginedb.EngineActivityTaskStatusQueued && task.AttemptCount == 1
 	})
 	assert.Equal(t, int32(1), retriedTask.AttemptCount)
@@ -3009,8 +3009,8 @@ func waitForEngineRun(
 }
 
 func waitForActivityTask(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	engineQueries *enginedb.Queries,
 	runID uuid.UUID,
 	activityKey string,
