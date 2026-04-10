@@ -91,6 +91,22 @@ class EngineControlClient:
             headers=_PREVIEW_HEADERS,
         )
 
+    def suspend(self, run_id: UUID | str) -> EngineRunResponse:
+        return self._request_model(
+            "POST",
+            f"/v1/engine/runs/{run_id}/suspend",
+            EngineRunResponse,
+            headers=_PREVIEW_HEADERS,
+        )
+
+    def resume(self, run_id: UUID | str) -> EngineRunResponse:
+        return self._request_model(
+            "POST",
+            f"/v1/engine/runs/{run_id}/resume",
+            EngineRunResponse,
+            headers=_PREVIEW_HEADERS,
+        )
+
     def terminate(self, run_id: UUID | str) -> EngineRunResultResponse:
         return self._request_model(
             "POST",

@@ -754,16 +754,6 @@ func (s *engineControlService) TerminateRun(
 		return terminalRunSummaryFromRun(&run), nil
 	}
 
-	historyRows, err := engineTx.GetHistoryByRun(ctx, run.ID)
-	if err != nil {
-		return engineRunSummary{}, err
-	}
-
-	nextSequence := int32(1)
-	if len(historyRows) > 0 {
-		nextSequence = historyRows[len(historyRows)-1].SequenceNo + 1
-	}
-
 	payload, err := publichistory.MarshalPayload(publichistory.WorkflowTerminatedPayload{
 		ErrorCode:    engineTerminateCode,
 		ErrorMessage: engineTerminateMessage,
@@ -771,14 +761,11 @@ func (s *engineControlService) TerminateRun(
 	if err != nil {
 		return engineRunSummary{}, err
 	}
-	if _, err := engineTx.AppendHistory(ctx, enginedb.AppendHistoryParams{
-		ProjectID:  run.ProjectID,
-		InstanceID: run.InstanceID,
-		RunID:      run.ID,
-		SequenceNo: nextSequence,
-		EventType:  publichistory.EventWorkflowTerminated,
-		Payload:    payload,
-	}); err != nil {
+	appended, err := appendLockedRunHistoryEvent(ctx, engineTx, &run, publichistory.EventWorkflowTerminated, payload)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	if err := updateProjectedTraceLatestHistory(ctx, tx, run.ID, appended.ID); err != nil {
 		return engineRunSummary{}, err
 	}
 
@@ -806,6 +793,165 @@ func (s *engineControlService) TerminateRun(
 		return engineRunSummary{}, err
 	}
 	return terminalRunSummaryFromRun(&updatedRun), nil
+}
+
+func (s *engineControlService) SuspendRun(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) (engineRunSummary, error) {
+	tx, err := s.platform.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	engineTx := enginedb.New(tx.Tx())
+	run, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineRunSummary{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineRunSummary{}, err
+	}
+
+	instance, err := engineTx.GetInstance(ctx, run.InstanceID)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
+	switch run.Status {
+	case enginedb.EngineRunLifecycleStatusSuspended:
+		if err := tx.Commit(ctx); err != nil {
+			return engineRunSummary{}, err
+		}
+		return s.buildRunSummary(ctx, &instance, &run)
+	case enginedb.EngineRunLifecycleStatusRunning:
+		return engineRunSummary{}, &engineAPIError{
+			Code:       "run_not_suspendable",
+			Message:    "cannot suspend a running run; wait for the current activation to finish",
+			HTTPStatus: 409,
+		}
+	}
+	if isTerminalEngineRun(run.Status) {
+		return engineRunSummary{}, &engineAPIError{
+			Code:       "run_terminal",
+			Message:    "cannot suspend a terminal run",
+			HTTPStatus: 409,
+		}
+	}
+
+	updatedRun, err := engineTx.TransitionRunToSuspended(ctx, run.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineRunSummary{}, fmt.Errorf("suspend transition invariant failed for run %s", run.ID)
+		}
+		return engineRunSummary{}, err
+	}
+
+	payload, err := publichistory.MarshalPayload(publichistory.WorkflowSuspendedPayload{})
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	appended, err := appendLockedRunHistoryEvent(ctx, engineTx, &updatedRun, publichistory.EventWorkflowSuspended, payload)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	if err := updateProjectedTraceLatestHistory(ctx, tx, updatedRun.ID, appended.ID); err != nil {
+		return engineRunSummary{}, err
+	}
+	if err := syncProjectedTraceSummary(ctx, tx, engineTx, &updatedRun); err != nil {
+		return engineRunSummary{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return engineRunSummary{}, err
+	}
+	return s.buildRunSummary(ctx, &instance, &updatedRun)
+}
+
+func (s *engineControlService) ResumeRun(
+	ctx context.Context,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) (engineRunSummary, error) {
+	tx, err := s.platform.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	engineTx := enginedb.New(tx.Tx())
+	run, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineRunSummary{}, &engineAPIError{
+				Code:       "not_found",
+				Message:    "engine run not found",
+				HTTPStatus: 404,
+			}
+		}
+		return engineRunSummary{}, err
+	}
+
+	instance, err := engineTx.GetInstance(ctx, run.InstanceID)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
+	if isTerminalEngineRun(run.Status) {
+		return engineRunSummary{}, &engineAPIError{
+			Code:       "run_terminal",
+			Message:    "cannot resume a terminal run",
+			HTTPStatus: 409,
+		}
+	}
+	if run.Status != enginedb.EngineRunLifecycleStatusSuspended {
+		if err := tx.Commit(ctx); err != nil {
+			return engineRunSummary{}, err
+		}
+		return s.buildRunSummary(ctx, &instance, &run)
+	}
+
+	updatedRun, err := engineTx.TransitionRunToQueuedFromSuspended(ctx, run.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return engineRunSummary{}, fmt.Errorf("resume transition invariant failed for run %s", run.ID)
+		}
+		return engineRunSummary{}, err
+	}
+
+	payload, err := publichistory.MarshalPayload(publichistory.WorkflowResumedPayload{})
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	appended, err := appendLockedRunHistoryEvent(ctx, engineTx, &updatedRun, publichistory.EventWorkflowResumed, payload)
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+	if err := updateProjectedTraceLatestHistory(ctx, tx, updatedRun.ID, appended.ID); err != nil {
+		return engineRunSummary{}, err
+	}
+	if err := syncProjectedTraceSummary(ctx, tx, engineTx, &updatedRun); err != nil {
+		return engineRunSummary{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return engineRunSummary{}, err
+	}
+	return s.buildRunSummary(ctx, &instance, &updatedRun)
 }
 
 // CancelRun is cooperative only: success enqueues cancel intent and may wake the
