@@ -201,6 +201,7 @@ const (
 	EngineRunLifecycleStatusCancelled  EngineRunLifecycleStatus = "cancelled"
 	EngineRunLifecycleStatusWaiting    EngineRunLifecycleStatus = "waiting"
 	EngineRunLifecycleStatusTerminated EngineRunLifecycleStatus = "terminated"
+	EngineRunLifecycleStatusSuspended  EngineRunLifecycleStatus = "suspended"
 )
 
 func (e *EngineRunLifecycleStatus) Scan(src interface{}) error {
@@ -239,26 +240,30 @@ func (ns NullEngineRunLifecycleStatus) Value() (driver.Value, error) {
 }
 
 type EngineActivityTask struct {
-	ID               uuid.UUID                `json:"id"`
-	ProjectID        uuid.UUID                `json:"project_id"`
-	InstanceID       uuid.UUID                `json:"instance_id"`
-	RunID            uuid.UUID                `json:"run_id"`
-	HistoryID        *int64                   `json:"history_id"`
-	ActivityKey      string                   `json:"activity_key"`
-	ActivityType     string                   `json:"activity_type"`
-	Input            []byte                   `json:"input"`
-	Output           []byte                   `json:"output"`
-	Status           EngineActivityTaskStatus `json:"status"`
-	AvailableAt      time.Time                `json:"available_at"`
-	AttemptCount     int32                    `json:"attempt_count"`
-	ClaimedBy        *string                  `json:"claimed_by"`
-	ClaimedAt        pgtype.Timestamptz       `json:"claimed_at"`
-	LeaseExpiresAt   pgtype.Timestamptz       `json:"lease_expires_at"`
-	LastErrorCode    *string                  `json:"last_error_code"`
-	LastErrorMessage *string                  `json:"last_error_message"`
-	CompletedAt      pgtype.Timestamptz       `json:"completed_at"`
-	CreatedAt        time.Time                `json:"created_at"`
-	UpdatedAt        time.Time                `json:"updated_at"`
+	ID                uuid.UUID                `json:"id"`
+	ProjectID         uuid.UUID                `json:"project_id"`
+	InstanceID        uuid.UUID                `json:"instance_id"`
+	RunID             uuid.UUID                `json:"run_id"`
+	HistoryID         *int64                   `json:"history_id"`
+	ActivityKey       string                   `json:"activity_key"`
+	ActivityType      string                   `json:"activity_type"`
+	Input             []byte                   `json:"input"`
+	Output            []byte                   `json:"output"`
+	Status            EngineActivityTaskStatus `json:"status"`
+	AvailableAt       time.Time                `json:"available_at"`
+	AttemptCount      int32                    `json:"attempt_count"`
+	ClaimedBy         *string                  `json:"claimed_by"`
+	ClaimedAt         pgtype.Timestamptz       `json:"claimed_at"`
+	LeaseExpiresAt    pgtype.Timestamptz       `json:"lease_expires_at"`
+	LastErrorCode     *string                  `json:"last_error_code"`
+	LastErrorMessage  *string                  `json:"last_error_message"`
+	CompletedAt       pgtype.Timestamptz       `json:"completed_at"`
+	CreatedAt         time.Time                `json:"created_at"`
+	UpdatedAt         time.Time                `json:"updated_at"`
+	MaxAttempts       int32                    `json:"max_attempts"`
+	InitialBackoffMs  *int64                   `json:"initial_backoff_ms"`
+	MaxBackoffMs      *int64                   `json:"max_backoff_ms"`
+	BackoffMultiplier *float64                 `json:"backoff_multiplier"`
 }
 
 type EngineDefinitionCatalog struct {

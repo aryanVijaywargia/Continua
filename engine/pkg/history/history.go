@@ -11,11 +11,14 @@ const (
 	EventWorkflowCompleted      = "workflow.completed"
 	EventWorkflowFailed         = "workflow.failed"
 	EventWorkflowCancelled      = "workflow.cancelled"
+	EventWorkflowSuspended      = "workflow.suspended"
+	EventWorkflowResumed        = "workflow.resumed"
 	EventWorkflowTerminated     = "workflow.terminated"
 	EventWorkflowReplayMismatch = "workflow.replay_mismatch"
 	EventActivityScheduled      = "activity.scheduled"
 	EventActivityCompleted      = "activity.completed"
 	EventActivityFailed         = "activity.failed"
+	EventActivityRetryScheduled = "activity.retry_scheduled"
 	EventTimerScheduled         = "timer.scheduled"
 	EventTimerFired             = "timer.fired"
 	EventSignalReceived         = "signal.received"
@@ -47,6 +50,10 @@ type WorkflowFailedPayload struct {
 
 type WorkflowCancelledPayload struct{}
 
+type WorkflowSuspendedPayload struct{}
+
+type WorkflowResumedPayload struct{}
+
 type WorkflowTerminatedPayload struct {
 	ErrorCode    string `json:"error_code"`
 	ErrorMessage string `json:"error_message"`
@@ -77,6 +84,15 @@ type ActivityFailedPayload struct {
 	ActivityType string `json:"activity_type"`
 	ErrorCode    string `json:"error_code"`
 	ErrorMessage string `json:"error_message"`
+}
+
+type ActivityRetryScheduledPayload struct {
+	ActivityKey     string    `json:"activity_key"`
+	ActivityType    string    `json:"activity_type"`
+	FailedAttempt   int32     `json:"failed_attempt"`
+	NextAvailableAt time.Time `json:"next_available_at"`
+	ErrorCode       string    `json:"error_code"`
+	ErrorMessage    string    `json:"error_message"`
 }
 
 type TimerScheduledPayload struct {
@@ -143,6 +159,12 @@ func DecodePayload(eventType string, raw []byte) (any, error) {
 		if eventType == EventWorkflowCancelled {
 			return WorkflowCancelledPayload{}, nil
 		}
+		if eventType == EventWorkflowSuspended {
+			return WorkflowSuspendedPayload{}, nil
+		}
+		if eventType == EventWorkflowResumed {
+			return WorkflowResumedPayload{}, nil
+		}
 		return nil, nil
 	}
 
@@ -169,6 +191,10 @@ func EventKey(eventType string, payload any) string {
 	case ActivityFailedPayload:
 		return value.ActivityKey
 	case *ActivityFailedPayload:
+		return value.ActivityKey
+	case ActivityRetryScheduledPayload:
+		return value.ActivityKey
+	case *ActivityRetryScheduledPayload:
 		return value.ActivityKey
 	case TimerScheduledPayload:
 		return value.TimerKey
@@ -197,6 +223,10 @@ func payloadTarget(eventType string) (any, error) {
 		return &WorkflowFailedPayload{}, nil
 	case EventWorkflowCancelled:
 		return &WorkflowCancelledPayload{}, nil
+	case EventWorkflowSuspended:
+		return &WorkflowSuspendedPayload{}, nil
+	case EventWorkflowResumed:
+		return &WorkflowResumedPayload{}, nil
 	case EventWorkflowTerminated:
 		return &WorkflowTerminatedPayload{}, nil
 	case EventWorkflowReplayMismatch:
@@ -207,6 +237,8 @@ func payloadTarget(eventType string) (any, error) {
 		return &ActivityCompletedPayload{}, nil
 	case EventActivityFailed:
 		return &ActivityFailedPayload{}, nil
+	case EventActivityRetryScheduled:
+		return &ActivityRetryScheduledPayload{}, nil
 	case EventTimerScheduled:
 		return &TimerScheduledPayload{}, nil
 	case EventTimerFired:
