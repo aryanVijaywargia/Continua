@@ -1173,7 +1173,7 @@ func TestSuspendResumeEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *te
 
 func TestSuspendResumeEngineRun_SignalAccumulatedDuringSuspension(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo", "v1"))
+	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo"))
 
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
@@ -1222,7 +1222,7 @@ func TestSuspendResumeEngineRun_SignalAccumulatedDuringSuspension(t *testing.T) 
 
 func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo", "v1"))
+	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo"))
 
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
@@ -1269,7 +1269,7 @@ func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t
 
 func TestSuspendResumeEngineRun_CancelDuringSuspensionCancelsOnResume(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo", "v1"))
+	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo"))
 
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
@@ -1308,7 +1308,7 @@ func TestSuspendResumeEngineRun_CancelDuringSuspensionCancelsOnResume(t *testing
 
 func TestSuspendResumeEngineRun_ActivityCompletesDuringSuspensionAndIsObservedAfterResume(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo", "v1"))
+	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo"))
 
 	releaseFile := filepath.Join(t.TempDir(), "activity.release")
 	engineServe := startExternalEngineServeProcessWithEnv(
@@ -2506,17 +2506,17 @@ func setupEngineHandlerTest(t *testing.T) (context.Context, *store.Store, *engin
 }
 
 func publishCheckoutDefinition(ctx context.Context, queries *enginedb.Queries) error {
-	return publishEngineDefinition(ctx, queries, "checkout", "v1")
+	return publishEngineDefinition(ctx, queries, "checkout")
 }
 
 func publishRetryDemoDefinition(ctx context.Context, queries *enginedb.Queries) error {
-	return publishEngineDefinition(ctx, queries, "darklaunch.retry-demo", "v1")
+	return publishEngineDefinition(ctx, queries, "darklaunch.retry-demo")
 }
 
-func publishEngineDefinition(ctx context.Context, queries *enginedb.Queries, name string, version string) error {
+func publishEngineDefinition(ctx context.Context, queries *enginedb.Queries, name string) error {
 	_, err := queries.UpsertDefinitionCatalogEntry(ctx, enginedb.UpsertDefinitionCatalogEntryParams{
 		DefinitionName:    name,
-		DefinitionVersion: version,
+		DefinitionVersion: "v1",
 	})
 	return err
 }

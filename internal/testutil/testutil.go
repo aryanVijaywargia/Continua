@@ -23,7 +23,7 @@ import (
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib" // Register the pgx database/sql driver for migrate.
 )
 
 // DefaultTestDBURL is the default database URL for integration tests.
