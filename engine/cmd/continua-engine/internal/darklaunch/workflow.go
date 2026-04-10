@@ -11,6 +11,8 @@ const (
 	DemoDefinitionVersion            = "v1"
 	CancelCompletesDefinitionName    = "darklaunch.cancel-completes"
 	CancelCompletesDefinitionVersion = "v1"
+	RetryDemoDefinitionName          = "darklaunch.retry-demo"
+	RetryDemoDefinitionVersion       = "v1"
 )
 
 type WorkflowInput struct {
@@ -39,6 +41,11 @@ func Definitions() []workflow.Definition {
 			Version: CancelCompletesDefinitionVersion,
 			Run:     runCancelCompletesWorkflow,
 		},
+		{
+			Name:    RetryDemoDefinitionName,
+			Version: RetryDemoDefinitionVersion,
+			Run:     runRetryDemoWorkflow,
+		},
 	}
 }
 
@@ -48,6 +55,40 @@ func runDemoWorkflow(ctx workflow.Context) error {
 
 func runCancelCompletesWorkflow(ctx workflow.Context) error {
 	return runDemoLikeWorkflow(ctx, false)
+}
+
+func runRetryDemoWorkflow(ctx workflow.Context) error {
+	var input WorkflowInput
+	if err := ctx.Input(&input); err != nil {
+		return err
+	}
+	if input.Name == "" {
+		input.Name = "world"
+	}
+
+	if err := ctx.SetCustomStatus(map[string]string{"phase": "activity"}); err != nil {
+		return err
+	}
+
+	var activityOutput ActivityOutput
+	if err := ctx.ActivityWithOptions(
+		"compose-greeting",
+		DemoActivityType,
+		ActivityInput{Name: input.Name},
+		&activityOutput,
+		workflow.ActivityOptions{
+			RetryPolicy: &workflow.RetryPolicy{
+				MaxAttempts:       2,
+				InitialBackoff:    500 * time.Millisecond,
+				MaxBackoff:        500 * time.Millisecond,
+				BackoffMultiplier: 1,
+			},
+		},
+	); err != nil {
+		return err
+	}
+
+	return ctx.SetResult(activityOutput)
 }
 
 func runDemoLikeWorkflow(ctx workflow.Context, cancelReturnsCancelled bool) error {

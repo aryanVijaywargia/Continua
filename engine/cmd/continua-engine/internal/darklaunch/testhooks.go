@@ -2,8 +2,12 @@ package darklaunch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	enginetesthooks "github.com/continua-ai/continua/engine/internal/testhooks"
@@ -12,22 +16,37 @@ import (
 const (
 	TestActivityAttemptsFileEnv = "CONTINUA_ENGINE_TEST_ACTIVITY_ATTEMPTS_FILE"
 	TestActivityReleaseFileEnv  = "CONTINUA_ENGINE_TEST_ACTIVITY_RELEASE_FILE"
+	TestActivityFailCountEnv    = "CONTINUA_ENGINE_TEST_ACTIVITY_FAIL_COUNT"
 )
 
+var testActivityAttemptCounters sync.Map
+
 func applyTestActivityHooks(ctx context.Context, activityName string) error {
-	if err := appendTestActivityAttempt(activityName); err != nil {
+	attempt := nextTestActivityAttempt(activityName)
+	if err := appendTestActivityAttempt(activityName, attempt); err != nil {
 		return err
+	}
+	if shouldFailTestActivityAttempt(attempt) {
+		return fmt.Errorf("forced test activity failure on attempt %d: %w", attempt, errForcedTestActivityFailure)
 	}
 	return waitForTestActivityRelease(ctx)
 }
 
-func appendTestActivityAttempt(activityName string) error {
+var errForcedTestActivityFailure = errors.New("forced test activity failure")
+
+func nextTestActivityAttempt(activityName string) int32 {
+	counterAny, _ := testActivityAttemptCounters.LoadOrStore(activityName, &atomic.Int32{})
+	counter := counterAny.(*atomic.Int32)
+	return counter.Add(1)
+}
+
+func appendTestActivityAttempt(activityName string, attempt int32) error {
 	attemptsFile := os.Getenv(TestActivityAttemptsFileEnv)
 	if attemptsFile == "" {
 		return nil
 	}
 
-	line := []byte(fmt.Sprintf("%s %s\n", time.Now().UTC().Format(time.RFC3339Nano), activityName))
+	line := []byte(fmt.Sprintf("%s %s attempt=%d\n", time.Now().UTC().Format(time.RFC3339Nano), activityName, attempt))
 	file, err := os.OpenFile(attemptsFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
@@ -36,6 +55,19 @@ func appendTestActivityAttempt(activityName string) error {
 
 	_, err = file.Write(line)
 	return err
+}
+
+func shouldFailTestActivityAttempt(attempt int32) bool {
+	rawFailCount := os.Getenv(TestActivityFailCountEnv)
+	if rawFailCount == "" {
+		return false
+	}
+
+	failCount, err := strconv.Atoi(rawFailCount)
+	if err != nil || failCount <= 0 {
+		return false
+	}
+	return int(attempt) <= failCount
 }
 
 func waitForTestActivityRelease(ctx context.Context) error {

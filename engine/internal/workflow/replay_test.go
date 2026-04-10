@@ -102,6 +102,231 @@ func TestReplayDefinitionMismatchProducesFailureDecision(t *testing.T) {
 	}
 }
 
+func TestReplayDefinitionSkipsRecordedActivityRetryEvents(t *testing.T) {
+	input := mustRawJSON(t, map[string]string{"name": "Ada"})
+	output := mustRawJSON(t, map[string]string{"greeting": "hello, Ada"})
+
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "retry-demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-retry-demo",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventActivityScheduled, enginehistory.ActivityScheduledPayload{
+			ActivityKey:  "fetch",
+			ActivityType: "demo.activity",
+			Input:        input,
+		}),
+		historyRow(t, 3, enginehistory.EventActivityRetryScheduled, enginehistory.ActivityRetryScheduledPayload{
+			ActivityKey:     "fetch",
+			ActivityType:    "demo.activity",
+			FailedAttempt:   1,
+			NextAvailableAt: time.Unix(10, 0).UTC(),
+			ErrorCode:       "activity_failed",
+			ErrorMessage:    "first failure",
+		}),
+		historyRow(t, 4, enginehistory.EventActivityRetryScheduled, enginehistory.ActivityRetryScheduledPayload{
+			ActivityKey:     "fetch",
+			ActivityType:    "demo.activity",
+			FailedAttempt:   2,
+			NextAvailableAt: time.Unix(20, 0).UTC(),
+			ErrorCode:       "activity_failed",
+			ErrorMessage:    "second failure",
+		}),
+		historyRow(t, 5, enginehistory.EventActivityCompleted, enginehistory.ActivityCompletedPayload{
+			ActivityKey:  "fetch",
+			ActivityType: "demo.activity",
+			Output:       output,
+		}),
+		historyRow(t, 6, enginehistory.EventWorkflowCompleted, enginehistory.WorkflowCompletedPayload{
+			Result: output,
+		}),
+	}
+
+	decision, err := replayDefinition(retryDemoDefinition(), historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionCompleted {
+		t.Fatalf("expected completed decision, got %+v", decision)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected no new events while replaying recorded retries, got %+v", decision.Events)
+	}
+	if !equalJSON(decision.Result, output) {
+		t.Fatalf("expected replayed result %s, got %s", output, decision.Result)
+	}
+}
+
+func TestReplayDefinitionSkipsSingleRecordedActivityRetryEvent(t *testing.T) {
+	input := mustRawJSON(t, map[string]string{"name": "Ada"})
+	output := mustRawJSON(t, map[string]string{"greeting": "hello, Ada"})
+
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "retry-demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-retry-single",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventActivityScheduled, enginehistory.ActivityScheduledPayload{
+			ActivityKey:  "fetch",
+			ActivityType: "demo.activity",
+			Input:        input,
+		}),
+		historyRow(t, 3, enginehistory.EventActivityRetryScheduled, enginehistory.ActivityRetryScheduledPayload{
+			ActivityKey:     "fetch",
+			ActivityType:    "demo.activity",
+			FailedAttempt:   1,
+			NextAvailableAt: time.Unix(10, 0).UTC(),
+			ErrorCode:       "activity_failed",
+			ErrorMessage:    "first failure",
+		}),
+		historyRow(t, 4, enginehistory.EventActivityCompleted, enginehistory.ActivityCompletedPayload{
+			ActivityKey:  "fetch",
+			ActivityType: "demo.activity",
+			Output:       output,
+		}),
+		historyRow(t, 5, enginehistory.EventWorkflowCompleted, enginehistory.WorkflowCompletedPayload{
+			Result: output,
+		}),
+	}
+
+	decision, err := replayDefinition(retryDemoDefinition(), historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionCompleted {
+		t.Fatalf("expected completed decision, got %+v", decision)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected single recorded retry replay to avoid new events, got %+v", decision.Events)
+	}
+	if !equalJSON(decision.Result, output) {
+		t.Fatalf("expected replayed result %s, got %s", output, decision.Result)
+	}
+}
+
+func TestReplayDefinitionSkipsRecordedActivityRetryEventsBeforeFailure(t *testing.T) {
+	input := mustRawJSON(t, map[string]string{"name": "Ada"})
+
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "retry-demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-retry-failed",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventActivityScheduled, enginehistory.ActivityScheduledPayload{
+			ActivityKey:  "fetch",
+			ActivityType: "demo.activity",
+			Input:        input,
+		}),
+		historyRow(t, 3, enginehistory.EventActivityRetryScheduled, enginehistory.ActivityRetryScheduledPayload{
+			ActivityKey:     "fetch",
+			ActivityType:    "demo.activity",
+			FailedAttempt:   1,
+			NextAvailableAt: time.Unix(10, 0).UTC(),
+			ErrorCode:       "activity_failed",
+			ErrorMessage:    "first failure",
+		}),
+		historyRow(t, 4, enginehistory.EventActivityRetryScheduled, enginehistory.ActivityRetryScheduledPayload{
+			ActivityKey:     "fetch",
+			ActivityType:    "demo.activity",
+			FailedAttempt:   2,
+			NextAvailableAt: time.Unix(20, 0).UTC(),
+			ErrorCode:       "activity_failed",
+			ErrorMessage:    "second failure",
+		}),
+		historyRow(t, 5, enginehistory.EventActivityFailed, enginehistory.ActivityFailedPayload{
+			ActivityKey:  "fetch",
+			ActivityType: "demo.activity",
+			ErrorCode:    "activity_failed",
+			ErrorMessage: "final failure",
+		}),
+		historyRow(t, 6, enginehistory.EventWorkflowFailed, enginehistory.WorkflowFailedPayload{
+			ErrorCode:    "activity_failed",
+			ErrorMessage: "final failure",
+		}),
+	}
+
+	decision, err := replayDefinition(retryDemoDefinition(), historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionFailed {
+		t.Fatalf("expected failed decision, got %+v", decision)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected exhausted retry replay to avoid new events, got %+v", decision.Events)
+	}
+	if decision.FailureCode != "activity_failed" || decision.FailureMessage != "final failure" {
+		t.Fatalf("expected exhausted retry replay failure, got code=%q message=%q", decision.FailureCode, decision.FailureMessage)
+	}
+}
+
+func TestReplayDefinitionIgnoresSuspendResumeControlEvents(t *testing.T) {
+	input := mustRawJSON(t, map[string]string{"name": "Ada"})
+	output := mustRawJSON(t, map[string]string{"greeting": "hello, Ada"})
+
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "resume-demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-resume-demo",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventActivityScheduled, enginehistory.ActivityScheduledPayload{
+			ActivityKey:  "fetch",
+			ActivityType: "demo.activity",
+			Input:        input,
+		}),
+		historyRow(t, 3, enginehistory.EventActivityCompleted, enginehistory.ActivityCompletedPayload{
+			ActivityKey:  "fetch",
+			ActivityType: "demo.activity",
+			Output:       output,
+		}),
+		historyRow(t, 4, enginehistory.EventWorkflowSuspended, enginehistory.WorkflowSuspendedPayload{}),
+		historyRow(t, 5, enginehistory.EventWorkflowResumed, enginehistory.WorkflowResumedPayload{}),
+		historyRow(t, 6, enginehistory.EventWorkflowCompleted, enginehistory.WorkflowCompletedPayload{
+			Result: output,
+		}),
+	}
+
+	definition := publicworkflow.Definition{
+		Name:    "resume-demo",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var activityInput map[string]string
+			if err := ctx.Input(&activityInput); err != nil {
+				return err
+			}
+
+			var activityOutput map[string]string
+			if err := ctx.Activity("fetch", "demo.activity", activityInput, &activityOutput); err != nil {
+				return err
+			}
+
+			return ctx.SetResult(activityOutput)
+		},
+	}
+
+	decision, err := replayDefinition(definition, historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionCompleted {
+		t.Fatalf("expected completed decision, got %+v", decision)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected suspend/resume control events to be ignored during replay, got %+v", decision.Events)
+	}
+	if !equalJSON(decision.Result, output) {
+		t.Fatalf("expected replayed result %s, got %s", output, decision.Result)
+	}
+}
+
 func TestReplayDefinitionCancellationRequestedRespectsHistoryOrder(t *testing.T) {
 	result, _ := json.Marshal(map[string]bool{"early": false, "late": true})
 	historyRows := []enginedb.EngineHistory{
@@ -147,6 +372,33 @@ func TestReplayDefinitionCancellationRequestedRespectsHistoryOrder(t *testing.T)
 	}
 	if !equalJSON(decision.Result, result) {
 		t.Fatalf("expected replayed result %s, got %s", result, decision.Result)
+	}
+}
+
+func retryDemoDefinition() publicworkflow.Definition {
+	return publicworkflow.Definition{
+		Name:    "retry-demo",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var activityInput map[string]string
+			if err := ctx.Input(&activityInput); err != nil {
+				return err
+			}
+
+			var activityOutput map[string]string
+			if err := ctx.ActivityWithOptions("fetch", "demo.activity", activityInput, &activityOutput, publicworkflow.ActivityOptions{
+				RetryPolicy: &publicworkflow.RetryPolicy{
+					MaxAttempts:       3,
+					InitialBackoff:    time.Second,
+					MaxBackoff:        5 * time.Second,
+					BackoffMultiplier: 2,
+				},
+			}); err != nil {
+				return err
+			}
+
+			return ctx.SetResult(activityOutput)
+		},
 	}
 }
 

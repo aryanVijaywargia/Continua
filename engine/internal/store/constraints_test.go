@@ -46,6 +46,7 @@ func TestConstraintViolationsMapToErrAlreadyExists(t *testing.T) {
 		ActivityType: "email.send",
 		Input:        []byte(`{"to":"user@example.com"}`),
 		AvailableAt:  time.Now(),
+		MaxAttempts:  1,
 	})
 	if err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
@@ -60,6 +61,7 @@ func TestConstraintViolationsMapToErrAlreadyExists(t *testing.T) {
 		ActivityType: "email.send",
 		Input:        []byte(`{"to":"user@example.com"}`),
 		AvailableAt:  time.Now(),
+		MaxAttempts:  1,
 	})
 	if !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("expected activity uniqueness error, got %v", err)

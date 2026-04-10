@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -914,6 +915,571 @@ func TestTerminateEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testin
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
+func TestSuspendResumeEngineRun_QueuedLifecycleAndImmediateSummary(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-queued",
+		RequestKey:        "req-suspend-queued",
+	}))
+
+	runID := start.RunId
+	suspendRec := invokeSuspendEngineRun(t, server, projectID, runID)
+	require.Equal(t, http.StatusOK, suspendRec.Code)
+	suspended := decodeJSONBody[EngineRunResponse](t, suspendRec)
+	assert.Equal(t, EngineRunStatusSUSPENDED, suspended.Status)
+	assert.Nil(t, suspended.WaitState)
+
+	var projectedStatus string
+	var projectedWaitState []byte
+	err := platformStore.Pool().QueryRow(ctx, `
+		SELECT engine_run_status, engine_wait_state
+		FROM public.traces
+		WHERE engine_run_id = $1
+	`, runID).Scan(&projectedStatus, &projectedWaitState)
+	require.NoError(t, err)
+	assert.Equal(t, string(enginedb.EngineRunLifecycleStatusSuspended), projectedStatus)
+	assert.Len(t, projectedWaitState, 0)
+
+	historyRows, err := engineQueries.GetHistoryByRun(ctx, runID)
+	require.NoError(t, err)
+	require.Len(t, historyRows, 2)
+	assert.Equal(t, publichistory.EventWorkflowSuspended, historyRows[1].EventType)
+
+	suspendAgainRec := invokeSuspendEngineRun(t, server, projectID, runID)
+	require.Equal(t, http.StatusOK, suspendAgainRec.Code)
+	assert.Equal(t, EngineRunStatusSUSPENDED, decodeJSONBody[EngineRunResponse](t, suspendAgainRec).Status)
+	historyRows, err = engineQueries.GetHistoryByRun(ctx, runID)
+	require.NoError(t, err)
+	require.Len(t, historyRows, 2)
+
+	resumeRec := invokeResumeEngineRun(t, server, projectID, runID)
+	require.Equal(t, http.StatusOK, resumeRec.Code)
+	resumed := decodeJSONBody[EngineRunResponse](t, resumeRec)
+	assert.Equal(t, EngineRunStatusQUEUED, resumed.Status)
+
+	err = platformStore.Pool().QueryRow(ctx, `
+		SELECT engine_run_status, engine_wait_state
+		FROM public.traces
+		WHERE engine_run_id = $1
+	`, runID).Scan(&projectedStatus, &projectedWaitState)
+	require.NoError(t, err)
+	assert.Equal(t, string(enginedb.EngineRunLifecycleStatusQueued), projectedStatus)
+	assert.Len(t, projectedWaitState, 0)
+
+	historyRows, err = engineQueries.GetHistoryByRun(ctx, runID)
+	require.NoError(t, err)
+	require.Len(t, historyRows, 3)
+	assert.Equal(t, publichistory.EventWorkflowResumed, historyRows[2].EventType)
+
+	resumedRun, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineRunLifecycleStatusQueued, resumedRun.Status)
+	assert.WithinDuration(t, time.Now(), resumedRun.ReadyAt, 5*time.Second)
+
+	resumeAgainRec := invokeResumeEngineRun(t, server, projectID, runID)
+	require.Equal(t, http.StatusOK, resumeAgainRec.Code)
+	assert.Equal(t, EngineRunStatusQUEUED, decodeJSONBody[EngineRunResponse](t, resumeAgainRec).Status)
+}
+
+func TestSuspendEngineRun_WaitingAndErrorCases(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	waitingStart := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-waiting",
+		RequestKey:        "req-suspend-waiting",
+	}))
+	setEngineRunWaiting(t, ctx, platformStore, waitingStart.RunId, map[string]any{"phase": "waiting"})
+
+	waitingRec := invokeSuspendEngineRun(t, server, projectID, waitingStart.RunId)
+	require.Equal(t, http.StatusOK, waitingRec.Code)
+	waitingResp := decodeJSONBody[EngineRunResponse](t, waitingRec)
+	assert.Equal(t, EngineRunStatusSUSPENDED, waitingResp.Status)
+	require.NotNil(t, waitingResp.WaitState)
+	assert.Equal(t, "signal", derefString(waitingResp.WaitState.Kind))
+
+	runningStart := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-running",
+		RequestKey:        "req-suspend-running",
+	}))
+	_, err := platformStore.Pool().Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'running',
+		    claimed_by = 'worker-a',
+		    claimed_at = NOW(),
+		    lease_expires_at = NOW() + INTERVAL '1 minute',
+		    updated_at = NOW()
+		WHERE id = $1
+	`, runningStart.RunId)
+	require.NoError(t, err)
+
+	runningRec := invokeSuspendEngineRun(t, server, projectID, runningStart.RunId)
+	require.Equal(t, http.StatusConflict, runningRec.Code)
+	assert.Equal(t, "run_not_suspendable", decodeJSONBody[Error](t, runningRec).Code)
+
+	terminalStart := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-terminal",
+		RequestKey:        "req-suspend-terminal",
+	}))
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'completed',
+		    completed_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1
+	`, terminalStart.RunId)
+	require.NoError(t, err)
+
+	terminalRec := invokeSuspendEngineRun(t, server, projectID, terminalStart.RunId)
+	require.Equal(t, http.StatusConflict, terminalRec.Code)
+	assert.Equal(t, "run_terminal", decodeJSONBody[Error](t, terminalRec).Code)
+
+	missingRec := invokeSuspendEngineRun(t, server, projectID, uuid.New())
+	require.Equal(t, http.StatusNotFound, missingRec.Code)
+	assert.Equal(t, "not_found", decodeJSONBody[Error](t, missingRec).Code)
+
+	otherProjectID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
+	crossProjectRec := invokeSuspendEngineRun(t, server, otherProjectID, waitingStart.RunId)
+	require.Equal(t, http.StatusNotFound, crossProjectRec.Code)
+	assert.Equal(t, "not_found", decodeJSONBody[Error](t, crossProjectRec).Code)
+}
+
+func TestResumeEngineRun_TerminalAndCrossProjectErrors(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-resume-errors",
+		RequestKey:        "req-resume-errors",
+	}))
+	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
+
+	resumeRec := invokeResumeEngineRun(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusOK, resumeRec.Code)
+	assert.Equal(t, EngineRunStatusQUEUED, decodeJSONBody[EngineRunResponse](t, resumeRec).Status)
+
+	_, err := platformStore.Pool().Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'failed',
+		    completed_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1
+	`, start.RunId)
+	require.NoError(t, err)
+
+	terminalRec := invokeResumeEngineRun(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusConflict, terminalRec.Code)
+	assert.Equal(t, "run_terminal", decodeJSONBody[Error](t, terminalRec).Code)
+
+	otherProjectID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
+	crossProjectRec := invokeResumeEngineRun(t, server, otherProjectID, start.RunId)
+	require.Equal(t, http.StatusNotFound, crossProjectRec.Code)
+	assert.Equal(t, "not_found", decodeJSONBody[Error](t, crossProjectRec).Code)
+}
+
+func TestTerminateEngineRun_SuspendedRunSucceeds(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-terminate-suspended",
+		RequestKey:        "req-terminate-suspended",
+	}))
+
+	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
+
+	rec := invokeTerminateEngineRun(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusOK, rec.Code)
+	resp := decodeJSONBody[EngineRunResultResponse](t, rec)
+	assert.Equal(t, EngineRunStatusTERMINATED, resp.Status)
+	require.NotNil(t, resp.Failure)
+	assert.Equal(t, "terminated", resp.Failure.ErrorCode)
+
+	run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        start.RunId,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineRunLifecycleStatusTerminated, run.Status)
+
+	historyRows, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	require.Len(t, historyRows, 3)
+	assert.Equal(t, []string{
+		publichistory.EventWorkflowStarted,
+		publichistory.EventWorkflowSuspended,
+		publichistory.EventWorkflowTerminated,
+	}, historyEventTypes(historyRows))
+}
+
+func TestSuspendResumeEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testing.T) {
+	ctx := context.Background()
+	platformStore := store.New(testutil.TestDB(t))
+	engineQueries := enginedb.New(platformStore.Pool())
+
+	apiKey := "engine-suspend-" + uuid.NewString()
+	project, err := platformStore.Queries().CreateProject(ctx, platformdb.CreateProjectParams{
+		Name:       "suspend-router-" + uuid.NewString()[:8],
+		ApiKeyHash: hashTestAPIKey(apiKey),
+	})
+	require.NoError(t, err)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	server := NewServer(platformStore, nil)
+	server.engineControl = newEngineControlService(platformStore)
+	server.enginePublicAPIEnabled = true
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, project.ID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "suspend-router-instance",
+		RequestKey:        "suspend-router-request",
+	}))
+
+	router := NewRouter(server, platformStore)
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+start.RunId.String()+"/suspend", nil)
+	req.Header.Set("X-API-Key", apiKey)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, "preview_header_required", decodeJSONBody[Error](t, rec).Code)
+
+	server.enginePublicAPIEnabled = false
+	router = NewRouter(server, platformStore)
+	req = httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+start.RunId.String()+"/resume", nil)
+	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set(enginePreviewHeader, "1")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestSuspendResumeEngineRun_SignalAccumulatedDuringSuspension(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo", "v1"))
+
+	engineServe := startExternalEngineServeProcessWithEnv(
+		t,
+		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
+		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
+	)
+	defer engineServe.stop(t)
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "darklaunch.demo",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-signal",
+		RequestKey:        "req-suspend-signal",
+		Input: map[string]any{
+			"name":     "Signal",
+			"timer_at": "1970-01-01T00:00:00Z",
+		},
+	}))
+
+	run := waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusWAITING && run.WaitState != nil && derefString(run.WaitState.Kind) == "signal"
+	})
+	assert.Equal(t, EngineRunStatusWAITING, run.Status)
+
+	suspendRec := invokeSuspendEngineRun(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusOK, suspendRec.Code)
+	assert.Equal(t, EngineRunStatusSUSPENDED, decodeJSONBody[EngineRunResponse](t, suspendRec).Status)
+
+	signalRec := invokeSignalEngineRun(t, server, projectID, start.RunId, EngineSignalRunRequest{
+		SignalName: "approval",
+		Payload:    map[string]any{"approval": "yes"},
+	})
+	require.Equal(t, http.StatusOK, signalRec.Code)
+	assert.False(t, decodeJSONBody[EngineControlResponse](t, signalRec).WakeApplied)
+
+	resumeRec := invokeResumeEngineRun(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusOK, resumeRec.Code)
+
+	completed := waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusCOMPLETED
+	})
+	result, ok := completed.Result.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "yes", result["approval"])
+}
+
+func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo", "v1"))
+
+	engineServe := startExternalEngineServeProcessWithEnv(
+		t,
+		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
+		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
+	)
+	defer engineServe.stop(t)
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "darklaunch.demo",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-timer",
+		RequestKey:        "req-suspend-timer",
+		Input: map[string]any{
+			"name":     "Timer",
+			"timer_at": time.Now().Add(2 * time.Second).UTC().Format(time.RFC3339Nano),
+		},
+	}))
+
+	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusWAITING && run.WaitState != nil && derefString(run.WaitState.Kind) == "timer"
+	})
+
+	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
+	time.Sleep(2500 * time.Millisecond)
+	require.Equal(t, http.StatusOK, invokeResumeEngineRun(t, server, projectID, start.RunId).Code)
+
+	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusWAITING && run.WaitState != nil && derefString(run.WaitState.Kind) == "signal"
+	})
+
+	require.Equal(t, http.StatusOK, invokeSignalEngineRun(t, server, projectID, start.RunId, EngineSignalRunRequest{
+		SignalName: "approval",
+		Payload:    map[string]any{"approval": "timer-fired"},
+	}).Code)
+
+	completed := waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusCOMPLETED
+	})
+	result, ok := completed.Result.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "timer-fired", result["approval"])
+}
+
+func TestSuspendResumeEngineRun_CancelDuringSuspensionCancelsOnResume(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo", "v1"))
+
+	engineServe := startExternalEngineServeProcessWithEnv(
+		t,
+		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
+		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
+	)
+	defer engineServe.stop(t)
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "darklaunch.demo",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-cancel",
+		RequestKey:        "req-suspend-cancel",
+		Input: map[string]any{
+			"name":     "Cancel",
+			"timer_at": "1970-01-01T00:00:00Z",
+		},
+	}))
+
+	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusWAITING && run.WaitState != nil && derefString(run.WaitState.Kind) == "signal"
+	})
+
+	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
+	cancelRec := invokeCancelEngineRun(t, server, projectID, start.RunId)
+	require.Equal(t, http.StatusOK, cancelRec.Code)
+	assert.False(t, decodeJSONBody[EngineControlResponse](t, cancelRec).WakeApplied)
+	require.Equal(t, http.StatusOK, invokeResumeEngineRun(t, server, projectID, start.RunId).Code)
+
+	cancelled := waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusCANCELLED
+	})
+	require.NotNil(t, cancelled.Failure)
+	assert.Equal(t, "cancelled", cancelled.Failure.ErrorCode)
+}
+
+func TestSuspendResumeEngineRun_ActivityCompletesDuringSuspensionAndIsObservedAfterResume(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishEngineDefinition(ctx, engineQueries, "darklaunch.demo", "v1"))
+
+	releaseFile := filepath.Join(t.TempDir(), "activity.release")
+	engineServe := startExternalEngineServeProcessWithEnv(
+		t,
+		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
+		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
+		"CONTINUA_ENGINE_TEST_ACTIVITY_RELEASE_FILE="+releaseFile,
+	)
+	defer engineServe.stop(t)
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "darklaunch.demo",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-activity",
+		RequestKey:        "req-suspend-activity",
+		Input: map[string]any{
+			"name":     "Activity",
+			"timer_at": "1970-01-01T00:00:00Z",
+		},
+	}))
+
+	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusWAITING && run.WaitState != nil && derefString(run.WaitState.Kind) == "activity"
+	})
+
+	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
+	require.NoError(t, os.WriteFile(releaseFile, []byte("release"), 0o644))
+
+	waitForActivityTask(t, ctx, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
+		return task.Status == enginedb.EngineActivityTaskStatusCompleted
+	})
+
+	require.Equal(t, http.StatusOK, invokeResumeEngineRun(t, server, projectID, start.RunId).Code)
+	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusWAITING && run.WaitState != nil && derefString(run.WaitState.Kind) == "signal"
+	})
+
+	require.Equal(t, http.StatusOK, invokeSignalEngineRun(t, server, projectID, start.RunId, EngineSignalRunRequest{
+		SignalName: "approval",
+		Payload:    map[string]any{"approval": "after-activity"},
+	}).Code)
+
+	completed := waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusCOMPLETED
+	})
+	result, ok := completed.Result.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "after-activity", result["approval"])
+	assert.Equal(t, "hello, Activity", result["greeting"])
+}
+
+func TestSuspendResumeEngineRun_RetryExhaustedDuringSuspensionFailsAfterResume(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishRetryDemoDefinition(ctx, engineQueries))
+
+	engineServe := startExternalEngineServeProcessWithEnv(
+		t,
+		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
+		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
+		"CONTINUA_ENGINE_TEST_ACTIVITY_FAIL_COUNT=2",
+	)
+	defer engineServe.stop(t)
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "darklaunch.retry-demo",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-retry-exhausted",
+		RequestKey:        "req-suspend-retry-exhausted",
+		Input: map[string]any{
+			"name": "RetryFailure",
+		},
+	}))
+
+	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusWAITING && run.WaitState != nil && derefString(run.WaitState.Kind) == "activity"
+	})
+
+	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
+
+	failedTask := waitForActivityTask(t, ctx, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
+		return task.Status == enginedb.EngineActivityTaskStatusFailed
+	})
+	assert.Equal(t, int32(2), failedTask.AttemptCount)
+
+	suspendedRun := decodeJSONBody[EngineRunResponse](t, invokeGetEngineRun(t, server, projectID, start.RunId))
+	assert.Equal(t, EngineRunStatusSUSPENDED, suspendedRun.Status)
+
+	historyBeforeResume, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	assert.Equal(t, 1, countHistoryEventType(historyBeforeResume, publichistory.EventActivityRetryScheduled))
+	assert.NotContains(t, historyEventTypes(historyBeforeResume), publichistory.EventActivityFailed)
+
+	require.Equal(t, http.StatusOK, invokeResumeEngineRun(t, server, projectID, start.RunId).Code)
+
+	failedRun := waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusFAILED
+	})
+	require.NotNil(t, failedRun.Failure)
+	assert.Equal(t, "activity_failed", failedRun.Failure.ErrorCode)
+	assert.Contains(t, failedRun.Failure.ErrorMessage, "forced test activity failure")
+
+	historyAfterResume, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	retryIndex := historyEventIndex(historyAfterResume, publichistory.EventActivityRetryScheduled)
+	activityFailedIndex := historyEventIndex(historyAfterResume, publichistory.EventActivityFailed)
+	workflowFailedIndex := historyEventIndex(historyAfterResume, publichistory.EventWorkflowFailed)
+	assert.Greater(t, activityFailedIndex, retryIndex)
+	assert.Greater(t, workflowFailedIndex, activityFailedIndex)
+}
+
+func TestSuspendResumeEngineRun_RetryScheduledDuringSuspensionCompletesAfterResume(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishRetryDemoDefinition(ctx, engineQueries))
+
+	engineServe := startExternalEngineServeProcessWithEnv(
+		t,
+		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
+		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
+		"CONTINUA_ENGINE_TEST_ACTIVITY_FAIL_COUNT=1",
+	)
+	defer engineServe.stop(t)
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "darklaunch.retry-demo",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-suspend-retry-resume",
+		RequestKey:        "req-suspend-retry-resume",
+		Input: map[string]any{
+			"name": "RetryResume",
+		},
+	}))
+
+	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusWAITING && run.WaitState != nil && derefString(run.WaitState.Kind) == "activity"
+	})
+
+	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
+
+	retriedTask := waitForActivityTask(t, ctx, engineQueries, start.RunId, "compose-greeting", func(task enginedb.EngineActivityTask) bool {
+		return task.Status == enginedb.EngineActivityTaskStatusQueued && task.AttemptCount == 1
+	})
+	assert.Equal(t, int32(1), retriedTask.AttemptCount)
+
+	suspendedRun := decodeJSONBody[EngineRunResponse](t, invokeGetEngineRun(t, server, projectID, start.RunId))
+	assert.Equal(t, EngineRunStatusSUSPENDED, suspendedRun.Status)
+
+	historyBeforeResume, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	assert.Equal(t, 1, countHistoryEventType(historyBeforeResume, publichistory.EventActivityRetryScheduled))
+	eventTypesBeforeResume := historyEventTypes(historyBeforeResume)
+	assert.NotContains(t, eventTypesBeforeResume, publichistory.EventActivityCompleted)
+	assert.NotContains(t, eventTypesBeforeResume, publichistory.EventActivityFailed)
+
+	require.Equal(t, http.StatusOK, invokeResumeEngineRun(t, server, projectID, start.RunId).Code)
+
+	completed := waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
+		return run.Status == EngineRunStatusCOMPLETED
+	})
+	result, ok := completed.Result.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "hello, RetryResume", result["greeting"])
+
+	historyAfterResume, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	retryIndex := historyEventIndex(historyAfterResume, publichistory.EventActivityRetryScheduled)
+	activityCompletedIndex := historyEventIndex(historyAfterResume, publichistory.EventActivityCompleted)
+	workflowCompletedIndex := historyEventIndex(historyAfterResume, publichistory.EventWorkflowCompleted)
+	assert.Greater(t, activityCompletedIndex, retryIndex)
+	assert.Greater(t, workflowCompletedIndex, activityCompletedIndex)
+}
+
 func TestPurgeEngineRun_ProjectionOnlyThenFullPreservesShell(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
@@ -1030,6 +1596,60 @@ func TestPurgeEngineRun_ProjectionOnlyThenFullPreservesShell(t *testing.T) {
 	))
 	assert.False(t, idempotentFull.Deleted)
 	assert.Equal(t, JournalExpired, idempotentFull.ProjectionState)
+}
+
+func TestPurgeEngineRun_FullClearsHistoryLinksBeforeDeletingHistory(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-purge-history-links",
+		RequestKey:        "req-purge-history-links",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+	markEngineRunCompleted(t, ctx, platformStore, start.RunId, trace.ID)
+	createPendingWorkForRun(t, ctx, engineQueries, projectID, start.RunId)
+
+	activityTasks, err := engineQueries.ListActivityTasksByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	require.Len(t, activityTasks, 1)
+	require.NotNil(t, activityTasks[0].HistoryID)
+
+	inboxItems, err := engineQueries.ListPendingInboxByRun(ctx, pgtype.UUID{Bytes: start.RunId, Valid: true})
+	require.NoError(t, err)
+	require.Len(t, inboxItems, 1)
+	require.NotNil(t, inboxItems[0].HistoryID)
+
+	full := decodeJSONBody[EnginePurgeResponse](t, invokePurgeEngineRun(
+		t,
+		server,
+		projectID,
+		start.RunId,
+		Full,
+	))
+	assert.True(t, full.Deleted)
+	assert.Equal(t, JournalExpired, full.ProjectionState)
+
+	historyRows, err := engineQueries.GetHistoryByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	assert.Empty(t, historyRows)
+
+	activityTasks, err = engineQueries.ListActivityTasksByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	require.Len(t, activityTasks, 1)
+	assert.Nil(t, activityTasks[0].HistoryID)
+
+	inboxItems, err = engineQueries.ListPendingInboxByRun(ctx, pgtype.UUID{Bytes: start.RunId, Valid: true})
+	require.NoError(t, err)
+	require.Len(t, inboxItems, 1)
+	assert.Nil(t, inboxItems[0].HistoryID)
 }
 
 func TestPurgeEngineRun_SynthesizesTerminalShellBeforeBarrier(t *testing.T) {
@@ -1403,6 +2023,7 @@ func TestGetEngineRunPendingWork_ReturnsTypedOpenWorkAndExcludesCancelRows(t *te
 		ActivityType: "demo.activity",
 		Input:        []byte(`{"step":"b"}`),
 		AvailableAt:  baseTime.Add(2 * time.Minute),
+		MaxAttempts:  1,
 	})
 	require.NoError(t, err)
 	_, err = engineQueries.CreateActivityTask(ctx, enginedb.CreateActivityTaskParams{
@@ -1414,6 +2035,7 @@ func TestGetEngineRunPendingWork_ReturnsTypedOpenWorkAndExcludesCancelRows(t *te
 		ActivityType: "demo.activity",
 		Input:        []byte(`{"step":"a"}`),
 		AvailableAt:  baseTime.Add(1 * time.Minute),
+		MaxAttempts:  1,
 	})
 	require.NoError(t, err)
 
@@ -1884,9 +2506,17 @@ func setupEngineHandlerTest(t *testing.T) (context.Context, *store.Store, *engin
 }
 
 func publishCheckoutDefinition(ctx context.Context, queries *enginedb.Queries) error {
+	return publishEngineDefinition(ctx, queries, "checkout", "v1")
+}
+
+func publishRetryDemoDefinition(ctx context.Context, queries *enginedb.Queries) error {
+	return publishEngineDefinition(ctx, queries, "darklaunch.retry-demo", "v1")
+}
+
+func publishEngineDefinition(ctx context.Context, queries *enginedb.Queries, name string, version string) error {
 	_, err := queries.UpsertDefinitionCatalogEntry(ctx, enginedb.UpsertDefinitionCatalogEntryParams{
-		DefinitionName:    "checkout",
-		DefinitionVersion: "v1",
+		DefinitionName:    name,
+		DefinitionVersion: version,
 	})
 	return err
 }
@@ -2039,6 +2669,30 @@ func invokeTerminateEngineRun(t *testing.T, server *Server, projectID, runID uui
 	rec := httptest.NewRecorder()
 
 	server.TerminateEngineRun(rec, req, runID, TerminateEngineRunParams{XContinuaEnginePreview: "1"})
+	return rec
+}
+
+func invokeSuspendEngineRun(t *testing.T, server *Server, projectID, runID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+runID.String()+"/suspend", nil)
+	req.Header.Set(enginePreviewHeader, "1")
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
+	rec := httptest.NewRecorder()
+
+	server.SuspendEngineRun(rec, req, runID, SuspendEngineRunParams{XContinuaEnginePreview: "1"})
+	return rec
+}
+
+func invokeResumeEngineRun(t *testing.T, server *Server, projectID, runID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+runID.String()+"/resume", nil)
+	req.Header.Set(enginePreviewHeader, "1")
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
+	rec := httptest.NewRecorder()
+
+	server.ResumeEngineRun(rec, req, runID, ResumeEngineRunParams{XContinuaEnginePreview: "1"})
 	return rec
 }
 
@@ -2249,6 +2903,7 @@ func createPendingWorkForRun(
 		ActivityType: "demo.activity",
 		Input:        []byte(`{"ok":true}`),
 		AvailableAt:  history[0].CreatedAt,
+		MaxAttempts:  1,
 	})
 	require.NoError(t, err)
 
@@ -2256,6 +2911,7 @@ func createPendingWorkForRun(
 		ProjectID:   projectID,
 		InstanceID:  run.InstanceID,
 		RunID:       pgtype.UUID{Bytes: runID, Valid: true},
+		HistoryID:   &history[0].ID,
 		Kind:        "signal",
 		Payload:     []byte(`{"signal_name":"approval"}`),
 		AvailableAt: history[0].CreatedAt,
@@ -2327,6 +2983,87 @@ func waitForEngineRunLockWaiter(t *testing.T, pool interface {
 	t.Fatal("timed out waiting for terminate transaction to block on engine.runs row lock")
 }
 
+func waitForEngineRun(
+	t *testing.T,
+	server *Server,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+	predicate func(EngineRunResponse) bool,
+) EngineRunResponse {
+	t.Helper()
+
+	deadline := time.Now().Add(20 * time.Second)
+	var last EngineRunResponse
+	for time.Now().Before(deadline) {
+		rec := invokeGetEngineRun(t, server, projectID, runID)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected get run to succeed while polling, got status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		last = decodeJSONBody[EngineRunResponse](t, rec)
+		if predicate(last) {
+			return last
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for engine run predicate, last run = %+v", last)
+	return EngineRunResponse{}
+}
+
+func waitForActivityTask(
+	t *testing.T,
+	ctx context.Context,
+	engineQueries *enginedb.Queries,
+	runID uuid.UUID,
+	activityKey string,
+	predicate func(enginedb.EngineActivityTask) bool,
+) enginedb.EngineActivityTask {
+	t.Helper()
+
+	deadline := time.Now().Add(20 * time.Second)
+	var last enginedb.EngineActivityTask
+	for time.Now().Before(deadline) {
+		task, err := engineQueries.GetActivityTaskByRunAndKey(ctx, enginedb.GetActivityTaskByRunAndKeyParams{
+			RunID:       runID,
+			ActivityKey: activityKey,
+		})
+		require.NoError(t, err)
+		last = task
+		if predicate(task) {
+			return task
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for activity task predicate, last task = %+v", last)
+	return enginedb.EngineActivityTask{}
+}
+
+func historyEventTypes(rows []enginedb.EngineHistory) []string {
+	eventTypes := make([]string, 0, len(rows))
+	for _, row := range rows {
+		eventTypes = append(eventTypes, row.EventType)
+	}
+	return eventTypes
+}
+
+func historyEventIndex(rows []enginedb.EngineHistory, eventType string) int {
+	for i, row := range rows {
+		if row.EventType == eventType {
+			return i
+		}
+	}
+	return -1
+}
+
+func countHistoryEventType(rows []enginedb.EngineHistory, eventType string) int {
+	count := 0
+	for _, row := range rows {
+		if row.EventType == eventType {
+			count++
+		}
+	}
+	return count
+}
+
 type externalEngineServeProcess struct {
 	cancel context.CancelFunc
 	cmd    *exec.Cmd
@@ -2353,6 +3090,10 @@ func (b *lockedBuffer) String() string {
 }
 
 func startExternalEngineServeProcess(t *testing.T) *externalEngineServeProcess {
+	return startExternalEngineServeProcessWithEnv(t)
+}
+
+func startExternalEngineServeProcessWithEnv(t *testing.T, extraEnv ...string) *externalEngineServeProcess {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2369,6 +3110,7 @@ func startExternalEngineServeProcess(t *testing.T) *externalEngineServeProcess {
 		"ENGINE_ACTIVITY_LEASE_TTL=500ms",
 		"ENGINE_REQUEST_DEDUPE_TTL=2s",
 	)
+	cmd.Env = applyEnvOverrides(cmd.Env, extraEnv...)
 
 	process := &externalEngineServeProcess{
 		cancel: cancel,
@@ -2383,6 +3125,30 @@ func startExternalEngineServeProcess(t *testing.T) *externalEngineServeProcess {
 		process.done <- cmd.Wait()
 	}()
 	return process
+}
+
+func applyEnvOverrides(base []string, overrides ...string) []string {
+	result := append([]string(nil), base...)
+	for _, override := range overrides {
+		key, _, ok := strings.Cut(override, "=")
+		if !ok {
+			result = append(result, override)
+			continue
+		}
+
+		replaced := false
+		for i, entry := range result {
+			entryKey, _, entryOK := strings.Cut(entry, "=")
+			if entryOK && entryKey == key {
+				result[i] = override
+				replaced = true
+			}
+		}
+		if !replaced {
+			result = append(result, override)
+		}
+	}
+	return result
 }
 
 func (p *externalEngineServeProcess) stop(t *testing.T) {

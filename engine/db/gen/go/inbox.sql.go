@@ -61,6 +61,22 @@ func (q *Queries) ClaimNextInboxItem(ctx context.Context, arg ClaimNextInboxItem
 	return i, err
 }
 
+const clearInboxHistoryByRun = `-- name: ClearInboxHistoryByRun :execrows
+UPDATE engine.inbox
+SET history_id = NULL,
+    updated_at = NOW()
+WHERE run_id = $1
+  AND history_id IS NOT NULL
+`
+
+func (q *Queries) ClearInboxHistoryByRun(ctx context.Context, runID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, clearInboxHistoryByRun, runID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countOpenInboxByRun = `-- name: CountOpenInboxByRun :one
 SELECT COUNT(*)
 FROM engine.inbox

@@ -773,6 +773,12 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 		Name:      testutil.StrPtr("other engine trace"),
 	})
 	require.NoError(t, err)
+	completedEngineTrace, err := q.UpsertTrace(ctx, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "engine-trace-completed",
+		Name:      testutil.StrPtr("completed engine trace"),
+	})
+	require.NoError(t, err)
 	nonEngineTrace, err := q.UpsertTrace(ctx, platform.UpsertTraceParams{
 		ProjectID: projectID,
 		TraceID:   "non-engine-trace",
@@ -796,11 +802,22 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 		SET engine_run_id = $2,
 		    engine_instance_key = 'instance-billing',
 		    engine_definition_name = 'billing',
-		    engine_run_status = 'completed',
+		    engine_run_status = 'suspended',
 		    engine_projection_state = 'up_to_date',
 		    engine_projection_updated_at = NOW()
 		WHERE id = $1
 	`, otherEngineTrace.ID, uuid.New())
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `
+		UPDATE traces
+		SET engine_run_id = $2,
+		    engine_instance_key = 'instance-fulfillment',
+		    engine_definition_name = 'fulfillment',
+		    engine_run_status = 'completed',
+		    engine_projection_state = 'up_to_date',
+		    engine_projection_updated_at = NOW()
+		WHERE id = $1
+	`, completedEngineTrace.ID, uuid.New())
 	require.NoError(t, err)
 
 	byInstance, err := s.ListTracesFiltered(ctx, store.TraceFilter{
@@ -830,6 +847,15 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	require.Len(t, byRunStatus.Traces, 1)
 	assert.Equal(t, engineTrace.ID, byRunStatus.Traces[0].ID)
 
+	bySuspendedRunStatus, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:       projectID,
+		EngineRunStatus: "suspended",
+		Limit:           10,
+	})
+	require.NoError(t, err)
+	require.Len(t, bySuspendedRunStatus.Traces, 1)
+	assert.Equal(t, otherEngineTrace.ID, bySuspendedRunStatus.Traces[0].ID)
+
 	byProjectionState, err := s.ListTracesFiltered(ctx, store.TraceFilter{
 		ProjectID:             projectID,
 		EngineProjectionState: "catching_up",
@@ -855,7 +881,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 		Limit:     10,
 	})
 	require.NoError(t, err)
-	assert.Len(t, allTraces.Traces, 3)
+	assert.Len(t, allTraces.Traces, 4)
 
 	engineFilteredIDs := []uuid.UUID{byInstance.Traces[0].ID, combined.Traces[0].ID}
 	assert.NotContains(t, engineFilteredIDs, nonEngineTrace.ID)

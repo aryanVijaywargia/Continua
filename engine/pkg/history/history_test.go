@@ -2,6 +2,7 @@ package history
 
 import (
 	"testing"
+	"time"
 )
 
 func TestDecodePayloadRoundTripsCancelledAndTerminated(t *testing.T) {
@@ -18,6 +19,38 @@ func TestDecodePayloadRoundTripsCancelledAndTerminated(t *testing.T) {
 
 		if _, ok := payload.(*WorkflowCancelledPayload); !ok {
 			t.Fatalf("expected *WorkflowCancelledPayload, got %T", payload)
+		}
+	})
+
+	t.Run("workflow.suspended", func(t *testing.T) {
+		raw, err := MarshalPayload(WorkflowSuspendedPayload{})
+		if err != nil {
+			t.Fatalf("MarshalPayload() error = %v", err)
+		}
+
+		payload, err := DecodePayload(EventWorkflowSuspended, raw)
+		if err != nil {
+			t.Fatalf("DecodePayload() error = %v", err)
+		}
+
+		if _, ok := payload.(*WorkflowSuspendedPayload); !ok {
+			t.Fatalf("expected *WorkflowSuspendedPayload, got %T", payload)
+		}
+	})
+
+	t.Run("workflow.resumed", func(t *testing.T) {
+		raw, err := MarshalPayload(WorkflowResumedPayload{})
+		if err != nil {
+			t.Fatalf("MarshalPayload() error = %v", err)
+		}
+
+		payload, err := DecodePayload(EventWorkflowResumed, raw)
+		if err != nil {
+			t.Fatalf("DecodePayload() error = %v", err)
+		}
+
+		if _, ok := payload.(*WorkflowResumedPayload); !ok {
+			t.Fatalf("expected *WorkflowResumedPayload, got %T", payload)
 		}
 	})
 
@@ -42,6 +75,39 @@ func TestDecodePayloadRoundTripsCancelledAndTerminated(t *testing.T) {
 		}
 		if typed.ErrorCode != expected.ErrorCode || typed.ErrorMessage != expected.ErrorMessage {
 			t.Fatalf("unexpected terminated payload: %+v", typed)
+		}
+	})
+
+	t.Run("activity.retry_scheduled", func(t *testing.T) {
+		expected := ActivityRetryScheduledPayload{
+			ActivityKey:     "fetch",
+			ActivityType:    "demo.activity",
+			FailedAttempt:   2,
+			NextAvailableAt: time.Unix(1710000000, 0).UTC(),
+			ErrorCode:       "activity_failed",
+			ErrorMessage:    "boom",
+		}
+		raw, err := MarshalPayload(expected)
+		if err != nil {
+			t.Fatalf("MarshalPayload() error = %v", err)
+		}
+
+		payload, err := DecodePayload(EventActivityRetryScheduled, raw)
+		if err != nil {
+			t.Fatalf("DecodePayload() error = %v", err)
+		}
+
+		typed, ok := payload.(*ActivityRetryScheduledPayload)
+		if !ok {
+			t.Fatalf("expected *ActivityRetryScheduledPayload, got %T", payload)
+		}
+		if typed.ActivityKey != expected.ActivityKey ||
+			typed.ActivityType != expected.ActivityType ||
+			typed.FailedAttempt != expected.FailedAttempt ||
+			!typed.NextAvailableAt.Equal(expected.NextAvailableAt) ||
+			typed.ErrorCode != expected.ErrorCode ||
+			typed.ErrorMessage != expected.ErrorMessage {
+			t.Fatalf("unexpected retry scheduled payload: %+v", typed)
 		}
 	})
 }
