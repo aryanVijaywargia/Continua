@@ -2365,7 +2365,7 @@ func TestGetTrace_UsesLiveFallbackForNonCurrentProjectionStatesAndStaleCheckpoin
 					Status: []byte(`{"step":"live"}`),
 				})
 			}
-			setTraceProjectionState(t, ctx, platformStore, trace.ID, tc.projectionState)
+			setTraceProjectionState(ctx, t, platformStore, trace.ID, tc.projectionState)
 			setProjectedEngineSummary(t, ctx, platformStore, trace.ID, projectedEngineSummaryUpdate{
 				RunStatus:            string(enginedb.EngineRunLifecycleStatusWaiting),
 				CustomStatus:         []byte(`{"step":"projected"}`),
@@ -2474,7 +2474,7 @@ func TestGetTrace_LiveFallbackFailureReturns500(t *testing.T) {
 		require.NoError(t, restoreErr)
 	})
 
-	setTraceProjectionState(t, ctx, platformStore, trace.ID, publicprojection.StateCatchingUp.String())
+	setTraceProjectionState(ctx, t, platformStore, trace.ID, publicprojection.StateCatchingUp.String())
 	_, err = platformStore.Pool().Exec(ctx, `
 		UPDATE traces
 		SET engine_run_id = $2,
@@ -2943,8 +2943,7 @@ func setEngineProjectionCheckpoint(
 	require.NoError(t, err)
 }
 
-//nolint:revive // Keep testing.T first in test helper signatures.
-func setTraceProjectionState(t *testing.T, ctx context.Context, platformStore *store.Store, traceID uuid.UUID, projectionState string) {
+func setTraceProjectionState(ctx context.Context, t *testing.T, platformStore *store.Store, traceID uuid.UUID, projectionState string) {
 	t.Helper()
 
 	_, err := platformStore.Pool().Exec(ctx, `
