@@ -119,6 +119,44 @@ func (s *Server) TerminateEngineRun(w http.ResponseWriter, r *http.Request, runI
 	writeJSON(w, http.StatusOK, engineRunResultResponseToAPI(&result))
 }
 
+func (s *Server) SuspendEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ SuspendEngineRunParams) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+	if s.engineControl == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	result, err := s.engineControl.SuspendRun(r.Context(), projectID, runID)
+	if err != nil {
+		writeEngineError(w, err, "Failed to suspend engine run")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, engineRunResponseToAPI(&result))
+}
+
+func (s *Server) ResumeEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ ResumeEngineRunParams) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+	if s.engineControl == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	result, err := s.engineControl.ResumeRun(r.Context(), projectID, runID)
+	if err != nil {
+		writeEngineError(w, err, "Failed to resume engine run")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, engineRunResponseToAPI(&result))
+}
+
 func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, params GetEngineRunHistoryParams) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {

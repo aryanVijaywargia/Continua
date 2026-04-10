@@ -140,7 +140,31 @@ SET status = 'terminated',
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
-  AND status IN ('queued', 'running', 'waiting')
+  AND status IN ('queued', 'running', 'waiting', 'suspended')
+RETURNING *;
+
+-- name: TransitionRunToSuspended :one
+UPDATE engine.runs
+SET status = 'suspended',
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status IN ('queued', 'waiting')
+RETURNING *;
+
+-- name: TransitionRunToQueuedFromSuspended :one
+UPDATE engine.runs
+SET status = 'queued',
+    waiting_for = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    ready_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'suspended'
 RETURNING *;
 
 -- name: WakeWaitingRun :one

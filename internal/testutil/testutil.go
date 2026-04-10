@@ -3,17 +3,27 @@ package testutil
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+
+	_ "github.com/jackc/pgx/v5/stdlib" // Register the pgx database/sql driver for migrate.
 )
 
 // DefaultTestDBURL is the default database URL for integration tests.
@@ -44,6 +54,11 @@ func TestDB(t *testing.T) *pgxpool.Pool {
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		t.Skipf("Skipping test: could not ping test database: %v", err)
+	}
+
+	if err := applyRepoMigrations(dbURL); err != nil {
+		pool.Close()
+		t.Fatalf("apply test migrations: %v", err)
 	}
 
 	t.Cleanup(func() {
@@ -148,4 +163,83 @@ func PgtypeNumericFromFloat64(f float64) pgtype.Numeric {
 	var n pgtype.Numeric
 	_ = n.Scan(strconv.FormatFloat(f, 'f', -1, 64))
 	return n
+}
+
+func applyRepoMigrations(databaseURL string) error {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		return err
+	}
+
+	platformDir := filepath.Join(repoRoot, "db", "platform", "migrations", "postgres")
+	if err := applyMigrationsWithTable(databaseURL, os.DirFS(platformDir), ""); err != nil {
+		return err
+	}
+
+	engineDir := filepath.Join(repoRoot, "engine", "db", "migrations", "postgres")
+	return applyMigrationsWithTable(databaseURL, os.DirFS(engineDir), "engine_schema_migrations")
+}
+
+func applyMigrationsWithTable(databaseURL string, fsys fs.FS, migrationsTable string) error {
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return err
+	}
+
+	driverConfig := &postgres.Config{}
+	if migrationsTable != "" {
+		driverConfig.MigrationsTable = migrationsTable
+	}
+
+	driver, err := postgres.WithInstance(db, driverConfig)
+	if err != nil {
+		_ = db.Close()
+		return err
+	}
+
+	source, err := iofs.New(fsys, ".")
+	if err != nil {
+		_ = db.Close()
+		return err
+	}
+
+	migrator, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
+	if err != nil {
+		_ = db.Close()
+		return err
+	}
+	defer func() {
+		sourceErr, dbErr := migrator.Close()
+		_ = errors.Join(sourceErr, dbErr)
+	}()
+
+	if err := migrator.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return err
+	}
+	return nil
+}
+
+func findRepoRoot() (string, error) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", errors.New("runtime.Caller failed")
+	}
+
+	dir := filepath.Dir(file)
+	for {
+		if exists(filepath.Join(dir, "go.work")) || exists(filepath.Join(dir, "Makefile")) {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", errors.New("repo root not found")
+		}
+		dir = parent
+	}
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

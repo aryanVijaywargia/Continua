@@ -98,6 +98,11 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
 - Claimable engine tables use lease-based claiming with `claimed_by`, `claimed_at`, and `lease_expires_at`.
 - Engine schema/query DDL uses fully-qualified `engine.*` names throughout.
 
+## Engine maintenance ownership
+- Engine maintenance in `engine/internal/worker/maintenance.go` owns due-timer wakeups for non-suspended runs and request-dedupe expiry.
+- Activity retries use durable `available_at` scheduling on `engine.activity_tasks`; they do not introduce a separate maintenance loop.
+- Root-side maintenance in `internal/jobs/` owns retention and bulk backfill triggering.
+
 ## Useful reference docs
 - `docs/README.md`
 - `docs/DEBUGGER_PLATFORM_BASELINE.md`

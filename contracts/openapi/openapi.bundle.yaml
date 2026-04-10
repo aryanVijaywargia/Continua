@@ -503,6 +503,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/suspend:
+    post:
+      operationId: suspendEngineRun
+      summary: Suspend an engine run without terminating it
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run suspended or current state returned for an idempotent no-op
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run is mid-activation (`run_not_suspendable`) or terminal (`run_terminal`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/resume:
+    post:
+      operationId: resumeEngineRun
+      summary: Resume a suspended engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run resumed or current state returned for an idempotent no-op
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/engine/runs/{run_id}/cancel:
     post:
       operationId: cancelEngineRun
@@ -688,6 +788,7 @@ paths:
               - queued
               - running
               - waiting
+              - suspended
               - completed
               - failed
               - cancelled
@@ -1065,6 +1166,7 @@ components:
         - QUEUED
         - RUNNING
         - WAITING
+        - SUSPENDED
         - COMPLETED
         - FAILED
         - CANCELLED

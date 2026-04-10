@@ -16,6 +16,7 @@ var ErrCancelled = errors.New("workflow: cancelled")
 type Context interface {
 	Input(out any) error
 	Activity(key, activityType string, input any, out any) error
+	ActivityWithOptions(key, activityType string, input any, out any, opts ActivityOptions) error
 	SleepUntil(key string, at time.Time) error
 	ReceiveSignal(name string, out any) error
 	CancellationRequested() bool

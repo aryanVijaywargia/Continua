@@ -227,6 +227,131 @@ func TestActivatorRejectsStaleClaimBeforeAppendingHistory(t *testing.T) {
 	}
 }
 
+func TestActivatorPersistsActivityRetryOptions(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-activity-options",
+		definitionName:    "activity-options",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"name": "Ada"}),
+	}
+	_, run := createStartedRun(t, store, testCase)
+
+	registry, err := NewRegistry(publicworkflow.Definition{
+		Name:    "activity-options",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var input map[string]string
+			if err := ctx.Input(&input); err != nil {
+				return err
+			}
+
+			var output map[string]string
+			return ctx.ActivityWithOptions("fetch", "demo.activity", input, &output, publicworkflow.ActivityOptions{
+				RetryPolicy: &publicworkflow.RetryPolicy{
+					MaxAttempts:       3,
+					InitialBackoff:    1500 * time.Millisecond,
+					MaxBackoff:        5 * time.Second,
+					BackoffMultiplier: 2.5,
+				},
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	claimed, err := store.ClaimNextRun(ctx, "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() error = %v", err)
+	}
+
+	activator := NewActivator(store, registry)
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	task, err := store.GetActivityTaskByRunAndKey(ctx, enginedb.GetActivityTaskByRunAndKeyParams{
+		RunID:       run.ID,
+		ActivityKey: "fetch",
+	})
+	if err != nil {
+		t.Fatalf("GetActivityTaskByRunAndKey() error = %v", err)
+	}
+	if task.MaxAttempts != 3 {
+		t.Fatalf("expected max_attempts=3, got %+v", task)
+	}
+	if task.InitialBackoffMs == nil || *task.InitialBackoffMs != 1500 {
+		t.Fatalf("expected initial_backoff_ms=1500, got %+v", task)
+	}
+	if task.MaxBackoffMs == nil || *task.MaxBackoffMs != 5000 {
+		t.Fatalf("expected max_backoff_ms=5000, got %+v", task)
+	}
+	if task.BackoffMultiplier == nil || *task.BackoffMultiplier != 2.5 {
+		t.Fatalf("expected backoff_multiplier=2.5, got %+v", task)
+	}
+}
+
+func TestActivatorDefaultsActivityRetryOptionsToSingleAttempt(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-activity-default-options",
+		definitionName:    "activity-default-options",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"name": "Ada"}),
+	}
+	_, run := createStartedRun(t, store, testCase)
+
+	registry, err := NewRegistry(publicworkflow.Definition{
+		Name:    "activity-default-options",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var input map[string]string
+			if err := ctx.Input(&input); err != nil {
+				return err
+			}
+
+			var output map[string]string
+			return ctx.Activity("fetch", "demo.activity", input, &output)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	claimed, err := store.ClaimNextRun(ctx, "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() error = %v", err)
+	}
+
+	activator := NewActivator(store, registry)
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	task, err := store.GetActivityTaskByRunAndKey(ctx, enginedb.GetActivityTaskByRunAndKeyParams{
+		RunID:       run.ID,
+		ActivityKey: "fetch",
+	})
+	if err != nil {
+		t.Fatalf("GetActivityTaskByRunAndKey() error = %v", err)
+	}
+	if task.MaxAttempts != 1 {
+		t.Fatalf("expected max_attempts=1, got %+v", task)
+	}
+	if task.InitialBackoffMs != nil || task.MaxBackoffMs != nil || task.BackoffMultiplier != nil {
+		t.Fatalf("expected nil backoff columns for Activity(), got %+v", task)
+	}
+}
+
 func TestActivatorRejectsStaleClaimAfterTerminate(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	store := enginestore.New(db.Pool)

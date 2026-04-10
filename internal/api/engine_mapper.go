@@ -258,6 +258,8 @@ func projectedEngineRunStatusFromTrace(trace *store.TraceRead) EngineRunStatus {
 	switch strings.ToLower(strings.TrimSpace(derefString(trace.EngineRunStatus))) {
 	case string(enginedb.EngineRunLifecycleStatusQueued):
 		return EngineRunStatusQUEUED
+	case string(enginedb.EngineRunLifecycleStatusSuspended):
+		return EngineRunStatusSUSPENDED
 	case string(enginedb.EngineRunLifecycleStatusWaiting):
 		return EngineRunStatusWAITING
 	case string(enginedb.EngineRunLifecycleStatusCompleted):
@@ -417,6 +419,8 @@ func engineRunStatusToAPI(status enginedb.EngineRunLifecycleStatus) EngineRunSta
 	switch status {
 	case enginedb.EngineRunLifecycleStatusQueued:
 		return EngineRunStatusQUEUED
+	case enginedb.EngineRunLifecycleStatusSuspended:
+		return EngineRunStatusSUSPENDED
 	case enginedb.EngineRunLifecycleStatusCompleted:
 		return EngineRunStatusCOMPLETED
 	case enginedb.EngineRunLifecycleStatusFailed:

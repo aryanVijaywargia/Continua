@@ -104,3 +104,10 @@ SET status = 'discarded',
 WHERE run_id = $1
   AND status IN ('pending', 'claimed')
 RETURNING *;
+
+-- name: ClearInboxHistoryByRun :execrows
+UPDATE engine.inbox
+SET history_id = NULL,
+    updated_at = NOW()
+WHERE run_id = $1
+  AND history_id IS NOT NULL;

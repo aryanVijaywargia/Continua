@@ -157,14 +157,18 @@ func (a *Activator) commitDecision(
 			return fmt.Errorf("activity schedule event missing history id")
 		}
 		if _, err := tx.CreateActivityTask(ctx, enginedb.CreateActivityTaskParams{
-			ProjectID:    run.ProjectID,
-			InstanceID:   run.InstanceID,
-			RunID:        run.ID,
-			HistoryID:    activityHistoryID,
-			ActivityKey:  decision.NewActivity.ActivityKey,
-			ActivityType: decision.NewActivity.ActivityType,
-			Input:        decision.NewActivity.Input,
-			AvailableAt:  run.ReadyAt,
+			ProjectID:         run.ProjectID,
+			InstanceID:        run.InstanceID,
+			RunID:             run.ID,
+			HistoryID:         activityHistoryID,
+			ActivityKey:       decision.NewActivity.Scheduled.ActivityKey,
+			ActivityType:      decision.NewActivity.Scheduled.ActivityType,
+			Input:             decision.NewActivity.Scheduled.Input,
+			AvailableAt:       run.ReadyAt,
+			MaxAttempts:       decision.NewActivity.Options.MaxAttempts,
+			InitialBackoffMs:  decision.NewActivity.Options.InitialBackoffMS,
+			MaxBackoffMs:      decision.NewActivity.Options.MaxBackoffMS,
+			BackoffMultiplier: decision.NewActivity.Options.BackoffMultiplier,
 		}); err != nil {
 			return err
 		}

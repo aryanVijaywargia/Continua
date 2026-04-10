@@ -520,6 +520,86 @@ func (q *Queries) TransitionRunToFailed(ctx context.Context, arg TransitionRunTo
 	return i, err
 }
 
+const transitionRunToQueuedFromSuspended = `-- name: TransitionRunToQueuedFromSuspended :one
+UPDATE engine.runs
+SET status = 'queued',
+    waiting_for = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    ready_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'suspended'
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
+`
+
+func (q *Queries) TransitionRunToQueuedFromSuspended(ctx context.Context, id uuid.UUID) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, transitionRunToQueuedFromSuspended, id)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const transitionRunToSuspended = `-- name: TransitionRunToSuspended :one
+UPDATE engine.runs
+SET status = 'suspended',
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status IN ('queued', 'waiting')
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
+`
+
+func (q *Queries) TransitionRunToSuspended(ctx context.Context, id uuid.UUID) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, transitionRunToSuspended, id)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
 const transitionRunToTerminated = `-- name: TransitionRunToTerminated :one
 UPDATE engine.runs
 SET status = 'terminated',
@@ -533,7 +613,7 @@ SET status = 'terminated',
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
-  AND status IN ('queued', 'running', 'waiting')
+  AND status IN ('queued', 'running', 'waiting', 'suspended')
 RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at
 `
 

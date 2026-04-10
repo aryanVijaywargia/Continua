@@ -44,14 +44,14 @@ func TestMigrateCommandsRoundTrip(t *testing.T) {
 	t.Setenv("ENGINE_DATABASE_URL", db.DatabaseURL)
 	t.Setenv("DATABASE_URL", "")
 
-	stdout, stderr, err := executeCommand(t, "migrate", "down", "5")
+	stdout, stderr, err := executeCommand(t, "migrate", "down", "7")
 	if err != nil {
-		t.Fatalf("execute migrate down 5: %v", err)
+		t.Fatalf("execute migrate down 7: %v", err)
 	}
 	if stderr != "" {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
-	if !strings.Contains(stdout, "Rolled back 5 engine migration step(s)") {
+	if !strings.Contains(stdout, "Rolled back 7 engine migration step(s)") {
 		t.Fatalf("unexpected migrate down output: %q", stdout)
 	}
 
@@ -143,9 +143,9 @@ func TestMigrateDownRejectsWaitingRuns(t *testing.T) {
 		t.Fatalf("TransitionRunToWaiting() error = %v", err)
 	}
 
-	stdout, stderr, err := executeCommand(t, "migrate", "down", "5")
+	stdout, stderr, err := executeCommand(t, "migrate", "down", "7")
 	if err == nil {
-		t.Fatal("expected migrate down 5 to fail when waiting rows exist")
+		t.Fatal("expected migrate down 7 to fail when waiting rows exist")
 	}
 	if stdout != "" {
 		t.Fatalf("expected empty stdout on failed rollback, got %q", stdout)
@@ -261,8 +261,8 @@ func TestBackfillMigrationRecomputesInstanceStatusesFromLatestRun(t *testing.T) 
 		t.Fatalf("corrupt instance statuses: %v", err)
 	}
 
-	if stdout, stderr, err := executeCommand(t, "migrate", "down", "2"); err != nil {
-		t.Fatalf("execute migrate down 2: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	if stdout, stderr, err := executeCommand(t, "migrate", "down", "4"); err != nil {
+		t.Fatalf("execute migrate down 4: %v (stdout=%q stderr=%q)", err, stdout, stderr)
 	}
 	if stdout, stderr, err := executeCommand(t, "migrate", "up"); err != nil {
 		t.Fatalf("execute migrate up after backfill rollback: %v (stdout=%q stderr=%q)", err, stdout, stderr)

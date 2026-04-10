@@ -152,6 +152,12 @@ func (s *Service) PurgeRun(
 		if err := tx.DeleteNonRootSpansByTrace(ctx, trace.ID); err != nil {
 			return PurgeResult{}, err
 		}
+		if _, err := enginedb.New(tx.Tx()).ClearActivityTaskHistoryByRun(ctx, runID); err != nil {
+			return PurgeResult{}, err
+		}
+		if _, err := enginedb.New(tx.Tx()).ClearInboxHistoryByRun(ctx, pgtype.UUID{Bytes: runID, Valid: true}); err != nil {
+			return PurgeResult{}, err
+		}
 		if err := enginedb.New(tx.Tx()).DeleteHistoryByRun(ctx, runID); err != nil {
 			return PurgeResult{}, err
 		}

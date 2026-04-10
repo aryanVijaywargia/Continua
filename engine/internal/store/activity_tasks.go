@@ -98,6 +98,23 @@ func (o *storeOps) FailActivityTask(
 	return enginedb.EngineActivityTask{}, o.classifyActivityTaskCASMiss(ctx, id, err)
 }
 
+func (o *storeOps) RetryActivityTask(
+	ctx context.Context,
+	id uuid.UUID,
+	claimedBy string,
+	retryDelayMS int64,
+) (enginedb.EngineActivityTask, error) {
+	task, err := o.q.RetryActivityTask(ctx, enginedb.RetryActivityTaskParams{
+		ID:           id,
+		ClaimedBy:    nullableWorkerID(claimedBy),
+		RetryDelayMs: retryDelayMS,
+	})
+	if err == nil {
+		return task, nil
+	}
+	return enginedb.EngineActivityTask{}, o.classifyActivityTaskCASMiss(ctx, id, err)
+}
+
 func (o *storeOps) CancelOpenActivityTasksByRun(
 	ctx context.Context,
 	runID uuid.UUID,

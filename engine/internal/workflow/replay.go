@@ -36,11 +36,16 @@ type activationDecision struct {
 	WaitingFor       json.RawMessage
 	CustomStatus     json.RawMessage
 	Result           json.RawMessage
-	NewActivity      *enginehistory.ActivityScheduledPayload
+	NewActivity      *newActivityTask
 	NewTimer         *enginehistory.TimerScheduledPayload
 	ConsumedInboxIDs []uuid.UUID
 	FailureCode      string
 	FailureMessage   string
+}
+
+type newActivityTask struct {
+	Scheduled enginehistory.ActivityScheduledPayload
+	Options   publicworkflow.NormalizedActivityOptions
 }
 
 type decodedEvent struct {
@@ -98,7 +103,7 @@ type workflowRunner struct {
 
 	queuedEvents     []queuedHistoryEvent
 	waitingFor       json.RawMessage
-	newActivity      *enginehistory.ActivityScheduledPayload
+	newActivity      *newActivityTask
 	newTimer         *enginehistory.TimerScheduledPayload
 	consumedInboxIDs []uuid.UUID
 }
@@ -147,6 +152,10 @@ func newWorkflowRunner(
 		payload, err := enginehistory.DecodePayload(row.EventType, row.Payload)
 		if err != nil {
 			return nil, fmt.Errorf("decode history event %s: %w", row.EventType, err)
+		}
+		switch row.EventType {
+		case enginehistory.EventWorkflowSuspended, enginehistory.EventWorkflowResumed:
+			continue
 		}
 		if statusPayload, ok := payload.(*enginehistory.CustomStatusUpdatedPayload); ok {
 			runner.customStatus = cloneRaw(statusPayload.Status)
@@ -321,10 +330,23 @@ func (r *workflowRunner) Input(out any) error {
 }
 
 func (r *workflowRunner) Activity(key, activityType string, input, out any) error {
+	return r.ActivityWithOptions(key, activityType, input, out, publicworkflow.ActivityOptions{})
+}
+
+func (r *workflowRunner) ActivityWithOptions(
+	key, activityType string,
+	input, out any,
+	opts publicworkflow.ActivityOptions,
+) error {
 	if key == "" {
 		return publicworkflow.ErrEmptyKey
 	}
 	r.advanceState()
+
+	normalizedOpts, err := publicworkflow.NormalizeActivityOptions(opts)
+	if err != nil {
+		return err
+	}
 
 	inputRaw, err := enginehistory.MarshalPayload(input)
 	if err != nil {
@@ -338,6 +360,7 @@ func (r *workflowRunner) Activity(key, activityType string, input, out any) erro
 		}
 		r.cursor++
 		r.advanceState()
+		r.skipRecordedActivityRetryEvents(key)
 
 		if outcomeEvent, ok := r.peek(); ok {
 			switch payload := outcomeEvent.Payload.(type) {
@@ -389,7 +412,10 @@ func (r *workflowRunner) Activity(key, activityType string, input, out any) erro
 		ActivityType: activityType,
 		Input:        cloneRaw(inputRaw),
 	}
-	r.newActivity = &scheduled
+	r.newActivity = &newActivityTask{
+		Scheduled: scheduled,
+		Options:   normalizedOpts,
+	}
 	r.blockOnWait(
 		enginehistory.ActivityWait{
 			Kind:         enginehistory.WaitKindActivity,
@@ -400,6 +426,21 @@ func (r *workflowRunner) Activity(key, activityType string, input, out any) erro
 		nil,
 	)
 	return nil
+}
+
+func (r *workflowRunner) skipRecordedActivityRetryEvents(activityKey string) {
+	for {
+		next, ok := r.peek()
+		if !ok {
+			return
+		}
+
+		payload, ok := next.Payload.(*enginehistory.ActivityRetryScheduledPayload)
+		if !ok || payload.ActivityKey != activityKey {
+			return
+		}
+		r.cursor++
+	}
 }
 
 func (r *workflowRunner) SleepUntil(key string, at time.Time) error {

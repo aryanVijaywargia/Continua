@@ -63,6 +63,7 @@ func TestActivityTaskCASRejectsStaleClaim(t *testing.T) {
 		ActivityType: "demo.echo",
 		Input:        []byte(`{"name":"Ada"}`),
 		AvailableAt:  time.Now().Add(-time.Minute),
+		MaxAttempts:  1,
 	})
 	if err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)

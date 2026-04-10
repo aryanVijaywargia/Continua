@@ -250,6 +250,100 @@ func TestProjectorPollOnce_DoesNotOverwriteTerminalTraceSummary(t *testing.T) {
 	}
 }
 
+func TestProjectorPollOnce_SuspendResumeControlEventsPreserveRunningStatuses(t *testing.T) {
+	testCases := []struct {
+		name            string
+		eventType       string
+		payload         any
+		engineRunStatus string
+	}{
+		{
+			name:            "suspended",
+			eventType:       publichistory.EventWorkflowSuspended,
+			payload:         publichistory.WorkflowSuspendedPayload{},
+			engineRunStatus: string(enginedb.EngineRunLifecycleStatusSuspended),
+		},
+		{
+			name:            "resumed",
+			eventType:       publichistory.EventWorkflowResumed,
+			payload:         publichistory.WorkflowResumedPayload{},
+			engineRunStatus: string(enginedb.EngineRunLifecycleStatusQueued),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newProjectorFixture(t)
+			controlHistory := fixture.appendHistoryEvent(2, tc.eventType, tc.payload)
+			fixture.setTraceProjection(controlHistory.ID, fixture.startedHistory.ID, publicprojection.StateCatchingUp.String())
+
+			if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+				UPDATE public.traces
+				SET engine_run_status = $2,
+				    updated_at = NOW()
+				WHERE id = $1
+			`, fixture.traceID, tc.engineRunStatus); err != nil {
+				t.Fatalf("seed engine_run_status: %v", err)
+			}
+			if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+				UPDATE engine.runs
+				SET status = $2,
+				    claimed_by = NULL,
+				    claimed_at = NULL,
+				    lease_expires_at = NULL,
+				    updated_at = NOW()
+				WHERE id = $1
+			`, fixture.run.ID, tc.engineRunStatus); err != nil {
+				t.Fatalf("seed engine run status: %v", err)
+			}
+
+			if err := fixture.projector.PollOnce(fixture.ctx, "projector-"+tc.name); err != nil {
+				t.Fatalf("PollOnce() error = %v", err)
+			}
+
+			var traceStatus string
+			var engineRunStatus string
+			var projectionState string
+			var lastProjectedHistoryID int64
+			if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+				SELECT status,
+				       engine_run_status,
+				       engine_projection_state,
+				       engine_last_projected_history_id
+				FROM public.traces
+				WHERE id = $1
+			`, fixture.traceID).Scan(&traceStatus, &engineRunStatus, &projectionState, &lastProjectedHistoryID); err != nil {
+				t.Fatalf("query projected trace after control event: %v", err)
+			}
+			if traceStatus != "running" {
+				t.Fatalf("expected %s control event to keep trace running, got %q", tc.name, traceStatus)
+			}
+			if engineRunStatus != tc.engineRunStatus {
+				t.Fatalf("expected %s control event to preserve engine_run_status %q, got %q", tc.name, tc.engineRunStatus, engineRunStatus)
+			}
+			if projectionState != publicprojection.StateUpToDate.String() {
+				t.Fatalf("expected %s control event to advance projector checkpoint, got %q", tc.name, projectionState)
+			}
+			if lastProjectedHistoryID != controlHistory.ID {
+				t.Fatalf("expected %s control event to advance checkpoint to history id %d, got %d", tc.name, controlHistory.ID, lastProjectedHistoryID)
+			}
+
+			var rootSpanStatus string
+			if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+				SELECT status
+				FROM public.spans
+				WHERE trace_id = $1
+				  AND span_id = $2
+			`, fixture.traceID, rootSpanExternalID(fixture.run.ID)).Scan(&rootSpanStatus); err != nil {
+				t.Fatalf("query projected root span after control event: %v", err)
+			}
+			if rootSpanStatus != "running" {
+				t.Fatalf("expected %s control event to keep root span running, got %q", tc.name, rootSpanStatus)
+			}
+		})
+	}
+}
+
 func jsonEqual(left, right []byte) bool {
 	var leftCompact bytes.Buffer
 	if err := json.Compact(&leftCompact, left); err != nil {
@@ -563,6 +657,7 @@ func TestProjectorPollOnce_TerminatedHistoryProjectsFailureAndCleanup(t *testing
 		ActivityType: "demo.ship",
 		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
 		AvailableAt:  baseTime.Add(time.Minute),
+		MaxAttempts:  1,
 	}); err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
 	}
@@ -930,6 +1025,7 @@ func TestProjectorPollOnce_TerminatedCleanupSkipsAlreadyCompletedActivities(t *t
 		ActivityType: "demo.ship",
 		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
 		AvailableAt:  baseTime,
+		MaxAttempts:  1,
 	})
 	if err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)

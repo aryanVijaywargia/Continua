@@ -7,9 +7,13 @@ INSERT INTO engine.activity_tasks (
     activity_key,
     activity_type,
     input,
-    available_at
+    available_at,
+    max_attempts,
+    initial_backoff_ms,
+    max_backoff_ms,
+    backoff_multiplier
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- name: GetActivityTask :one
@@ -97,6 +101,19 @@ WHERE id = $1
   AND claimed_by = $2
 RETURNING *;
 
+-- name: RetryActivityTask :one
+UPDATE engine.activity_tasks
+SET status = 'queued',
+    available_at = NOW() + (sqlc.arg(retry_delay_ms)::bigint * INTERVAL '1 millisecond'),
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = sqlc.arg(id)
+  AND status = 'claimed'
+  AND claimed_by = sqlc.arg(claimed_by)
+RETURNING *;
+
 -- name: CancelOpenActivityTasksByRun :many
 UPDATE engine.activity_tasks
 SET status = 'cancelled',
@@ -108,3 +125,10 @@ SET status = 'cancelled',
 WHERE run_id = $1
   AND status IN ('queued', 'claimed')
 RETURNING *;
+
+-- name: ClearActivityTaskHistoryByRun :execrows
+UPDATE engine.activity_tasks
+SET history_id = NULL,
+    updated_at = NOW()
+WHERE run_id = $1
+  AND history_id IS NOT NULL;

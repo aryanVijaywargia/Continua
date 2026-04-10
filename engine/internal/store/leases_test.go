@@ -64,6 +64,7 @@ func TestClaimNextActivityTaskLeaseLifecycle(t *testing.T) {
 		ActivityType: "email.send",
 		Input:        []byte(`{"to":"user@example.com"}`),
 		AvailableAt:  time.Now().Add(-time.Minute),
+		MaxAttempts:  1,
 	})
 	if err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
