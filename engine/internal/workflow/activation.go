@@ -85,7 +85,7 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 	if !ok {
 		decision := activationDecision{
 			Kind:         decisionFailed,
-			NextSequence: historyRows[len(historyRows)-1].SequenceNo + 1,
+			NextSequence: nextHistorySequence(historyRows),
 			Events: []queuedHistoryEvent{{
 				EventType: enginehistory.EventWorkflowFailed,
 				Payload: mustMarshalPayload(enginehistory.WorkflowFailedPayload{
@@ -118,6 +118,13 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 	}
 
 	return tx.Commit(ctx)
+}
+
+func nextHistorySequence(historyRows []enginedb.EngineHistory) int32 {
+	if len(historyRows) == 0 {
+		return 1
+	}
+	return historyRows[len(historyRows)-1].SequenceNo + 1
 }
 
 func (a *Activator) commitDecision(

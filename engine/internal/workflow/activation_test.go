@@ -75,6 +75,61 @@ func TestActivatorFailsRunWhenDefinitionVersionIsMissing(t *testing.T) {
 	}
 }
 
+func TestActivatorFailsRunWhenDefinitionVersionIsMissingWithoutStartedHistory(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	instance, err := store.CreateInstance(ctx, enginedb.CreateInstanceParams{
+		ProjectID:      enginetest.DefaultPlatformProjectID,
+		InstanceKey:    "instance-version-mismatch-no-history",
+		DefinitionName: "demo",
+	})
+	if err != nil {
+		t.Fatalf("CreateInstance() error = %v", err)
+	}
+	run, err := store.CreateRun(ctx, enginedb.CreateRunParams{
+		ProjectID:         enginetest.DefaultPlatformProjectID,
+		InstanceID:        instance.ID,
+		RunNumber:         1,
+		DefinitionVersion: "v-missing",
+		ReadyAt:           time.Now().Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateRun() error = %v", err)
+	}
+
+	claimed, err := store.ClaimNextRun(ctx, "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() error = %v", err)
+	}
+
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	activator := NewActivator(store, registry)
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	updatedRun, err := store.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun() error = %v", err)
+	}
+	if updatedRun.Status != enginedb.EngineRunLifecycleStatusFailed {
+		t.Fatalf("expected failed run status, got %+v", updatedRun)
+	}
+
+	historyRows, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+	if len(historyRows) != 1 || historyRows[0].SequenceNo != 1 || historyRows[0].EventType != enginehistory.EventWorkflowFailed {
+		t.Fatalf("expected single workflow.failed event at sequence 1, got %+v", historyRows)
+	}
+}
+
 func TestActivatorPersistsReplayMismatchFailure(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	store := enginestore.New(db.Pool)
@@ -1580,6 +1635,7 @@ func mustStartedHistory(t *testing.T, store *enginestore.Store, runID uuid.UUID)
 	return historyRows[0]
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func insertSession(
 	t *testing.T,
 	ctx context.Context,
@@ -1602,6 +1658,7 @@ func insertSession(
 	return sessionID
 }
 
+//nolint:revive // Keep testing.T first in test helper signatures.
 func updateProjectedTraceShellFields(
 	t *testing.T,
 	ctx context.Context,

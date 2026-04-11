@@ -114,7 +114,7 @@ func TestReplayDefinitionContinueAsNewFirstExecution(t *testing.T) {
 		}),
 	}
 
-	decision, err := replayDefinition(continueAsNewDefinition(json.RawMessage(continuationInput)), historyRows, nil, nil)
+	decision, err := replayDefinition(continueAsNewDefinition(continuationInput), historyRows, nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() error = %v", err)
 	}
@@ -147,7 +147,7 @@ func TestReplayDefinitionContinueAsNewMatchesRecordedHistory(t *testing.T) {
 		}),
 	}
 
-	decision, err := replayDefinition(continueAsNewDefinition(json.RawMessage(continuationInput)), historyRows, nil, nil)
+	decision, err := replayDefinition(continueAsNewDefinition(continuationInput), historyRows, nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() error = %v", err)
 	}
