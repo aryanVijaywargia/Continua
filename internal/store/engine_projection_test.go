@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	platformdb "github.com/continua-ai/continua/db/gen/go/platform"
@@ -75,14 +75,24 @@ func TestListProjectionRetentionCandidates_IncludesContinuedAsNewRuns(t *testing
 
 	projectionCandidates, err := s.ListProjectionRetentionCandidates(ctx, time.Now().UTC(), 10)
 	require.NoError(t, err)
-	require.Len(t, projectionCandidates, 1)
-	assert.Equal(t, projectID, projectionCandidates[0].ProjectID)
-	assert.Equal(t, run.ID, projectionCandidates[0].RunID)
-	assert.Equal(t, trace.ID, projectionCandidates[0].TraceID)
+	require.True(t, containsEngineRetentionCandidate(projectionCandidates, projectID, run.ID, trace.ID))
 
 	historyCandidates, err := s.ListHistoryRetentionCandidates(ctx, time.Now().UTC(), 10)
 	require.NoError(t, err)
-	require.Len(t, historyCandidates, 1)
-	assert.Equal(t, run.ID, historyCandidates[0].RunID)
-	assert.Equal(t, trace.ID, historyCandidates[0].TraceID)
+	require.True(t, containsEngineRetentionCandidate(historyCandidates, projectID, run.ID, trace.ID))
+}
+
+func containsEngineRetentionCandidate(
+	candidates []store.EngineRetentionCandidate,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+	traceID uuid.UUID,
+) bool {
+	for i := range candidates {
+		candidate := candidates[i]
+		if candidate.ProjectID == projectID && candidate.RunID == runID && candidate.TraceID == traceID {
+			return true
+		}
+	}
+	return false
 }

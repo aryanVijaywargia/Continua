@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
@@ -500,7 +500,7 @@ func openapiUUIDPtr(value *uuid.UUID) *openapi_types.UUID {
 	if value == nil {
 		return nil
 	}
-	id := openapi_types.UUID(*value)
+	id := *value
 	return &id
 }
 
