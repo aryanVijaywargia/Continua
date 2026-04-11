@@ -2394,7 +2394,7 @@ describe('TraceDetailPage', () => {
         detail: () => jsonResponse(createRunningTraceDetail()),
         spans: () => jsonResponse({ spans: [] }),
         timeline: (url) => {
-          if (url.searchParams.get('after') === 'cursor-open-wait') {
+          if (url.searchParams.has('after')) {
             return createRunningTimelineResponse(currentPollEvents, currentPollCursor);
           }
 
