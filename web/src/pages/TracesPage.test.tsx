@@ -178,6 +178,45 @@ describe('TracesPage', () => {
     expect(screen.getByLabelText('Only show traces with errors')).toBeChecked();
   });
 
+  it('keeps engine filters collapsed by default and auto-expands them from the URL', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    const firstView = renderTraceRoutes(['/traces']);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show engine filters' })
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.queryByLabelText('Engine Instance Key')
+    ).not.toBeInTheDocument();
+    firstView.unmount();
+
+    renderTraceRoutes([
+      '/traces?engine_definition_name=checkout&engine_run_status=waiting&engine_projection_state=summary_only',
+    ]);
+
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    await waitForListFetch(
+      '?limit=20&engine_definition_name=checkout&engine_run_status=waiting&engine_projection_state=summary_only'
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Hide engine filters' })
+    ).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Engine Definition Name')).toHaveValue(
+      'checkout'
+    );
+    expect(screen.getByLabelText('Engine Status')).toHaveValue('waiting');
+    expect(screen.getByLabelText('Projection State')).toHaveValue(
+      'summary_only'
+    );
+    expect(
+      screen.getByText(
+        'Advanced operator filter for inspecting projection health across engine traces.'
+      )
+    ).toBeInTheDocument();
+  });
+
   it('commits text filters after debounce and immediately on Enter', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(buildFetchHandler());
@@ -199,6 +238,48 @@ describe('TracesPage', () => {
     await user.type(searchInput, 'errors');
     await user.keyboard('{Enter}');
     await waitForListFetch('?limit=20&q=errors');
+  });
+
+  it('commits engine filters with lowercase query values and removable chips', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes(['/traces']);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show engine filters' }));
+
+    fetchMock.mockClear();
+    const instanceKeyInput = screen.getByLabelText('Engine Instance Key');
+    await user.type(instanceKeyInput, 'order-123');
+    await waitForDebounce();
+    await waitForListFetch('?limit=20&engine_instance_key=order-123');
+
+    await user.selectOptions(screen.getByLabelText('Engine Status'), 'suspended');
+    await waitForListFetch(
+      '?limit=20&engine_instance_key=order-123&engine_run_status=suspended'
+    );
+
+    await user.selectOptions(
+      screen.getByLabelText('Projection State'),
+      'summary_only'
+    );
+    await waitForListFetch(
+      '?limit=20&engine_instance_key=order-123&engine_run_status=suspended&engine_projection_state=summary_only'
+    );
+
+    expect(screen.getByText('Engine status:')).toBeInTheDocument();
+    expect(screen.getAllByText('Suspended').length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole('button', { name: 'Clear Engine status filter' })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Clear Engine status filter' })
+    );
+    await waitForListFetch(
+      '?limit=20&engine_instance_key=order-123&engine_projection_state=summary_only'
+    );
   });
 
   it('does not commit text filters on blur before debounce elapses', async () => {
@@ -523,6 +604,9 @@ describe('TracesPage', () => {
     const userIdInput = screen.getByLabelText('User ID');
     const minDurationInput = screen.getByLabelText('Min Duration (ms)');
     const hasErrorsCheckbox = screen.getByLabelText('Only show traces with errors');
+    const toggleEngineFilters = screen.getByRole('button', {
+      name: 'Show engine filters',
+    });
     const clearSearch = screen.getByRole('button', { name: 'Clear Search filter' });
     const clearErrors = screen.getByRole('button', { name: 'Clear Errors filter' });
     const clearSession = screen.getByRole('button', { name: 'Clear Session filter' });
@@ -554,6 +638,8 @@ describe('TracesPage', () => {
     expect(minDurationInput).toHaveFocus();
     await user.tab();
     expect(hasErrorsCheckbox).toHaveFocus();
+    await user.tab();
+    expect(toggleEngineFilters).toHaveFocus();
     await user.tab();
     expect(clearSearch).toHaveFocus();
     await user.tab();

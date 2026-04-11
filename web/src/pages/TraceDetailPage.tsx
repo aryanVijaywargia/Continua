@@ -15,7 +15,6 @@ import {
   fetchSpans,
   fetchTrace,
   isAuthError,
-  type EngineWaitState,
   type Span,
   type TimelineEvent,
   type TraceDetail,
@@ -43,10 +42,14 @@ import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { useTraceDetailSearchParams } from '../hooks/useTraceDetailSearchParams';
 import { useWorkspaceState } from '../hooks/useWorkspaceState';
 import type { RetrySafetyAssessment } from '../utils/retrySafety';
+import { EngineControlBar } from './EngineControlBar';
+import { EnginePendingWorkPanel } from './EnginePendingWorkPanel';
+import { describeEngineWaitState } from './engineWaitState';
 import {
   TIMELINE_POLL_INTERVAL_MS,
   useTraceTimeline,
 } from './useTraceTimeline';
+import { useEnginePendingWork } from './useEnginePendingWork';
 import { useRetrySafetyAnalysis } from './useRetrySafetyAnalysis';
 import { useWaitStallAnalysis } from './useWaitStallAnalysis';
 import {
@@ -88,42 +91,6 @@ const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
 
 function queryErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
-}
-
-function describeEngineWaitState(waitState?: EngineWaitState): {
-  heading: string;
-  detail: string;
-} | null {
-  if (!waitState?.kind) {
-    return null;
-  }
-
-  switch (waitState.kind) {
-    case 'activity':
-      return {
-        heading: 'Waiting on activity',
-        detail: waitState.activity_type
-          ? `${waitState.activity_type}${waitState.activity_key ? ` · ${waitState.activity_key}` : ''}`
-          : (waitState.activity_key ?? 'Activity work'),
-      };
-    case 'timer':
-      return {
-        heading: 'Waiting on timer',
-        detail: waitState.due_at
-          ? `Scheduled for ${formatTimestamp(waitState.due_at)}`
-          : (waitState.timer_key ?? 'Timer wait'),
-      };
-    case 'signal':
-      return {
-        heading: 'Waiting on signal',
-        detail: waitState.signal_name ?? 'Signal receipt',
-      };
-    default:
-      return {
-        heading: 'Waiting on engine state',
-        detail: waitState.kind,
-      };
-  }
 }
 
 export function TraceDetailPage() {
@@ -173,6 +140,10 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     refetchOnReconnect: false,
   });
   const trace = traceQuery.data ?? null;
+  const pendingWorkQuery = useEnginePendingWork(
+    trace?.engine?.run_id,
+    trace?.engine?.status
+  );
   const spans = spansQuery.data?.spans ?? EMPTY_SPANS;
   const timelineAuthError = isAuthError(timeline.rawError);
   const timelineStatus = trace ? timeline.traceStatus ?? trace.status : timeline.traceStatus;
@@ -299,6 +270,16 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
 
   const detailsContent = (
     <TraceDetailsSurface
+      pendingWorkContent={
+        trace.engine ? (
+          <EnginePendingWorkPanel
+            data={pendingWorkQuery.data}
+            isError={pendingWorkQuery.isError}
+            isLoading={pendingWorkQuery.isLoading}
+            errorMessage={queryErrorMessage(pendingWorkQuery.error)}
+          />
+        ) : null
+      }
       runningStateAssessment={waitStallAssessment}
       timelineStatus={timelineStatus}
       failureAnalysis={failureAnalysis}
@@ -376,6 +357,30 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
               ) : null}
             </div>
 
+            {trace.engine?.continued_from_trace_id ||
+            trace.engine?.continued_to_trace_id ? (
+              <div className="mt-4 flex flex-wrap gap-2 text-sm">
+                {trace.engine.continued_from_trace_id ? (
+                  <Link
+                    to={`/traces/${trace.engine.continued_from_trace_id}`}
+                    state={{ returnTo }}
+                    className="inline-flex items-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-1.5 font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-accent)]"
+                  >
+                    ← Previous run
+                  </Link>
+                ) : null}
+                {trace.engine.continued_to_trace_id ? (
+                  <Link
+                    to={`/traces/${trace.engine.continued_to_trace_id}`}
+                    state={{ returnTo }}
+                    className="inline-flex items-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-1.5 font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-accent)]"
+                  >
+                    Next run →
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
+
             {trace.engine?.status === 'WAITING' ? (
               <EngineWaitStateSummary engine={trace.engine} />
             ) : null}
@@ -418,6 +423,15 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       ) : null}
 
       <EngineProjectionBanner projectionState={trace.engine?.projection_state} />
+      {trace.engine?.failure?.error_code === 'definition_version_mismatch' ? (
+        <DefinitionVersionMismatchBanner />
+      ) : null}
+      {trace.engine ? (
+        <EngineControlBar
+          engine={trace.engine}
+          traceId={traceId}
+        />
+      ) : null}
 
       <div className="min-h-[42rem] flex-1">
         <TraceWorkspace
@@ -493,6 +507,18 @@ function EngineWaitStateSummary({
         </span>
       </div>
       <p className="mt-1 text-sm leading-6">{summary.detail}</p>
+    </section>
+  );
+}
+
+function DefinitionVersionMismatchBanner() {
+  return (
+    <section className="rounded-[1.25rem] border border-amber-300/50 bg-amber-100/70 px-4 py-3 text-sm text-amber-950 shadow-[var(--continua-shadow-soft)] dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100">
+      <p className="font-semibold">Definition version mismatch</p>
+      <p className="mt-1">
+        This run failed because the engine definition version could not be
+        matched during activation.
+      </p>
     </section>
   );
 }
@@ -648,6 +674,7 @@ function getReturnToDestination(state: unknown): string {
 }
 
 function TraceDetailsSurface({
+  pendingWorkContent,
   runningStateAssessment,
   timelineStatus,
   failureAnalysis,
@@ -659,6 +686,7 @@ function TraceDetailsSurface({
   spanIndex,
   events,
 }: {
+  pendingWorkContent: ReactNode;
   runningStateAssessment: WaitStallAssessment | null;
   timelineStatus: 'RUNNING' | 'COMPLETED' | 'FAILED' | null;
   failureAnalysis: ReturnType<typeof buildFailureAnalysis>;
@@ -673,6 +701,8 @@ function TraceDetailsSurface({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-transparent p-4">
       <div className="space-y-4">
+        {pendingWorkContent}
+
         {timelineStatus === 'FAILED' ? (
           <FailureSummary
             summary={failureAnalysis.summary}

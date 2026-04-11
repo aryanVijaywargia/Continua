@@ -13,6 +13,10 @@ import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import {
   buildCanonicalQueryString,
   deriveActiveChips,
+  ENGINE_PROJECTION_STATE_FILTER_VALUES,
+  ENGINE_RUN_STATUS_FILTER_VALUES,
+  formatEngineProjectionStateLabel,
+  formatEngineRunStatusLabel,
   isoToLocalDateInputValue,
   localDateToISOEnd,
   localDateToISOStart,
@@ -125,11 +129,19 @@ function TracesContent() {
   const { filters, setFilters, clearAll, clearChip } = useTracesSearchParams();
   const [searchDraft, setSearchDraft] = useState(filters.q ?? '');
   const [userIdDraft, setUserIdDraft] = useState(filters.user_id ?? '');
+  const [engineInstanceKeyDraft, setEngineInstanceKeyDraft] = useState(
+    filters.engine_instance_key ?? ''
+  );
+  const [engineDefinitionNameDraft, setEngineDefinitionNameDraft] = useState(
+    filters.engine_definition_name ?? ''
+  );
   const [minDurationDraft, setMinDurationDraft] = useState(
     filters.min_duration_ms?.toString() ?? ''
   );
   const searchFocus = useDraftFocus();
   const userIdFocus = useDraftFocus();
+  const engineInstanceKeyFocus = useDraftFocus();
+  const engineDefinitionNameFocus = useDraftFocus();
   const minDurationFocus = useDraftFocus();
 
   useEffect(() => {
@@ -139,6 +151,14 @@ function TracesContent() {
   useEffect(() => {
     setUserIdDraft(filters.user_id ?? '');
   }, [filters.user_id]);
+
+  useEffect(() => {
+    setEngineInstanceKeyDraft(filters.engine_instance_key ?? '');
+  }, [filters.engine_instance_key]);
+
+  useEffect(() => {
+    setEngineDefinitionNameDraft(filters.engine_definition_name ?? '');
+  }, [filters.engine_definition_name]);
 
   useEffect(() => {
     setMinDurationDraft(filters.min_duration_ms?.toString() ?? '');
@@ -158,6 +178,27 @@ function TracesContent() {
       const normalizedValue = normalizeTrimmedDraft(value);
       setUserIdDraft(normalizedValue);
       setFilters({ user_id: normalizedValue || undefined }, 'push');
+    },
+    [setFilters]
+  );
+
+  const commitEngineInstanceKey = useCallback(
+    (value: string) => {
+      const normalizedValue = normalizeTrimmedDraft(value);
+      setEngineInstanceKeyDraft(normalizedValue);
+      setFilters({ engine_instance_key: normalizedValue || undefined }, 'push');
+    },
+    [setFilters]
+  );
+
+  const commitEngineDefinitionName = useCallback(
+    (value: string) => {
+      const normalizedValue = normalizeTrimmedDraft(value);
+      setEngineDefinitionNameDraft(normalizedValue);
+      setFilters(
+        { engine_definition_name: normalizedValue || undefined },
+        'push'
+      );
     },
     [setFilters]
   );
@@ -193,6 +234,22 @@ function TracesContent() {
   });
 
   useDebouncedDraftCommit({
+    draftValue: engineInstanceKeyDraft,
+    committedValue: filters.engine_instance_key ?? '',
+    onCommit: commitEngineInstanceKey,
+    isActive: engineInstanceKeyFocus.isFocused,
+    normalizeForComparison: normalizeTrimmedDraft,
+  });
+
+  useDebouncedDraftCommit({
+    draftValue: engineDefinitionNameDraft,
+    committedValue: filters.engine_definition_name ?? '',
+    onCommit: commitEngineDefinitionName,
+    isActive: engineDefinitionNameFocus.isFocused,
+    normalizeForComparison: normalizeTrimmedDraft,
+  });
+
+  useDebouncedDraftCommit({
     draftValue: minDurationDraft,
     committedValue: filters.min_duration_ms?.toString() ?? '',
     onCommit: commitMinDuration,
@@ -205,6 +262,15 @@ function TracesContent() {
   const dateRangeError = getDateRangeError(startDate, endDate);
   const activeChips = deriveActiveChips(filters);
   const hasActiveFilters = activeChips.length > 0;
+  const hasActiveEngineFilters = Boolean(
+    filters.engine_instance_key ||
+      filters.engine_definition_name ||
+      filters.engine_run_status ||
+      filters.engine_projection_state
+  );
+  const [areEngineFiltersExpanded, setAreEngineFiltersExpanded] = useState(
+    hasActiveEngineFilters
+  );
   const isSearchActive = Boolean(filters.q);
   const queryParams = { ...filters };
   const canonicalQueryString = buildCanonicalQueryString(queryParams);
@@ -218,6 +284,12 @@ function TracesContent() {
   const traces = tracesQuery.data?.traces ?? EMPTY_TRACES;
   const total = tracesQuery.data?.total ?? 0;
   const currentListUrl = `${location.pathname}${location.search}`;
+
+  useEffect(() => {
+    if (hasActiveEngineFilters) {
+      setAreEngineFiltersExpanded(true);
+    }
+  }, [hasActiveEngineFilters]);
 
   useEffect(() => {
     if (traces.length !== 0 || total === 0 || filters.offset === 0) {
@@ -477,6 +549,165 @@ function TracesContent() {
                 <span>Has errors</span>
               </label>
             </div>
+          </div>
+
+          <div className="mt-4 rounded-[1.25rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-secondary)]">
+                  Engine filters
+                </h2>
+                <p className="mt-1 text-sm text-[var(--continua-text-muted)]">
+                  Narrow engine-backed traces by instance, definition, run
+                  status, or projection health.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                aria-controls="trace-engine-filters"
+                aria-expanded={areEngineFiltersExpanded}
+                onClick={() =>
+                  setAreEngineFiltersExpanded((expanded) => !expanded)
+                }
+                className="app-button-secondary shrink-0"
+              >
+                {areEngineFiltersExpanded ? 'Hide engine filters' : 'Show engine filters'}
+              </button>
+            </div>
+
+            {areEngineFiltersExpanded ? (
+              <div
+                id="trace-engine-filters"
+                className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+              >
+                <div>
+                  <label
+                    htmlFor="trace-engine-instance-key"
+                    className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
+                  >
+                    Engine Instance Key
+                  </label>
+                  <input
+                    id="trace-engine-instance-key"
+                    type="text"
+                    value={engineInstanceKeyDraft}
+                    onChange={(event) =>
+                      setEngineInstanceKeyDraft(event.target.value)
+                    }
+                    onFocus={engineInstanceKeyFocus.onFocus}
+                    onBlur={engineInstanceKeyFocus.onBlur}
+                    onKeyDown={(event) =>
+                      handleEnterCommit(
+                        event,
+                        commitEngineInstanceKey,
+                        engineInstanceKeyDraft
+                      )
+                    }
+                    placeholder="Filter by instance key"
+                    className="app-input"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="trace-engine-definition-name"
+                    className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
+                  >
+                    Engine Definition Name
+                  </label>
+                  <input
+                    id="trace-engine-definition-name"
+                    type="text"
+                    value={engineDefinitionNameDraft}
+                    onChange={(event) =>
+                      setEngineDefinitionNameDraft(event.target.value)
+                    }
+                    onFocus={engineDefinitionNameFocus.onFocus}
+                    onBlur={engineDefinitionNameFocus.onBlur}
+                    onKeyDown={(event) =>
+                      handleEnterCommit(
+                        event,
+                        commitEngineDefinitionName,
+                        engineDefinitionNameDraft
+                      )
+                    }
+                    placeholder="Filter by definition name"
+                    className="app-input"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="trace-engine-run-status"
+                    className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
+                  >
+                    Engine Status
+                  </label>
+                  <select
+                    id="trace-engine-run-status"
+                    value={filters.engine_run_status ?? ''}
+                    onChange={(event) =>
+                      setFilters(
+                        {
+                          engine_run_status: event.target.value
+                            ? (event.target.value as (typeof ENGINE_RUN_STATUS_FILTER_VALUES)[number])
+                            : undefined,
+                        },
+                        'push'
+                      )
+                    }
+                    className="app-select"
+                  >
+                    <option value="">All engine statuses</option>
+                    {ENGINE_RUN_STATUS_FILTER_VALUES.map((value) => (
+                      <option key={value} value={value}>
+                        {formatEngineRunStatusLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="trace-engine-projection-state"
+                    className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
+                  >
+                    Projection State
+                  </label>
+                  <select
+                    id="trace-engine-projection-state"
+                    value={filters.engine_projection_state ?? ''}
+                    onChange={(event) =>
+                      setFilters(
+                        {
+                          engine_projection_state: event.target.value
+                            ? (event.target.value as (typeof ENGINE_PROJECTION_STATE_FILTER_VALUES)[number])
+                            : undefined,
+                        },
+                        'push'
+                      )
+                    }
+                    aria-describedby="trace-engine-projection-state-hint"
+                    className="app-select"
+                  >
+                    <option value="">All projection states</option>
+                    {ENGINE_PROJECTION_STATE_FILTER_VALUES.map((value) => (
+                      <option key={value} value={value}>
+                        {formatEngineProjectionStateLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                  <p
+                    id="trace-engine-projection-state-hint"
+                    className="mt-1 text-xs text-[var(--continua-text-muted)]"
+                  >
+                    Advanced operator filter for inspecting projection health
+                    across engine traces.
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {dateRangeError && (

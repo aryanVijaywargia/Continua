@@ -133,6 +133,81 @@ describe('tracesSearchParams', () => {
     });
   });
 
+  it('round-trips engine filter params with lowercase query values', () => {
+    const parsed = parseTracesParams(
+      new URLSearchParams({
+        engine_instance_key: '  order-123  ',
+        engine_definition_name: '  checkout  ',
+        engine_run_status: 'SUSPENDED',
+        engine_projection_state: 'SUMMARY_ONLY',
+      })
+    );
+
+    expect(parsed).toMatchObject({
+      limit: 20,
+      offset: 0,
+      engine_instance_key: 'order-123',
+      engine_definition_name: 'checkout',
+      engine_run_status: 'suspended',
+      engine_projection_state: 'summary_only',
+    });
+
+    expect(serializeTracesParams(parsed).toString()).toBe(
+      [
+        'engine_instance_key=order-123',
+        'engine_definition_name=checkout',
+        'engine_run_status=suspended',
+        'engine_projection_state=summary_only',
+      ].join('&')
+    );
+    expect(buildCanonicalQueryString(parsed)).toBe(
+      'limit=20&engine_instance_key=order-123&engine_definition_name=checkout&engine_run_status=suspended&engine_projection_state=summary_only'
+    );
+  });
+
+  it('derives human-readable engine filter chips and clears them individually', () => {
+    const state = parseTracesParams(
+      new URLSearchParams({
+        offset: '20',
+        engine_instance_key: 'order-123',
+        engine_definition_name: 'checkout',
+        engine_run_status: 'waiting',
+        engine_projection_state: 'summary_only',
+      })
+    );
+
+    expect(deriveActiveChips(state)).toEqual([
+      {
+        key: 'engine_instance_key',
+        label: 'Engine instance',
+        value: 'order-123',
+      },
+      {
+        key: 'engine_definition_name',
+        label: 'Engine definition',
+        value: 'checkout',
+      },
+      {
+        key: 'engine_run_status',
+        label: 'Engine status',
+        value: 'Waiting',
+      },
+      {
+        key: 'engine_projection_state',
+        label: 'Projection state',
+        value: 'Summary only',
+      },
+    ]);
+
+    expect(clearChip(state, 'engine_run_status')).toMatchObject({
+      limit: 20,
+      offset: 0,
+      engine_instance_key: 'order-123',
+      engine_definition_name: 'checkout',
+      engine_projection_state: 'summary_only',
+    });
+  });
+
   it('builds identical canonical strings for equivalent params', () => {
     const first = buildCanonicalQueryString(
       parseTracesParams(
