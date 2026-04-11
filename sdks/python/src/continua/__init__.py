@@ -26,6 +26,7 @@ from .engine_control import EngineControlClient
 from .exceptions import (
     AuthenticationError,
     ContinuaError,
+    EngineRunContinuationDepthError,
     EngineRunNotFoundError,
     EngineRunNotTerminalError,
     EngineRunWaitTimeoutError,
@@ -56,6 +57,7 @@ __all__ = [
     # Exceptions
     "ContinuaError",
     "AuthenticationError",
+    "EngineRunContinuationDepthError",
     "EngineRunNotFoundError",
     "EngineRunNotTerminalError",
     "EngineRunWaitTimeoutError",

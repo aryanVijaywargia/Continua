@@ -6,10 +6,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+RUN_ID = "8fb17dc9-6565-4f3e-b671-8fd437416534"
+NEXT_RUN_ID = "ca66395e-bcf5-4bab-83e1-84d4520f9463"
+FINAL_RUN_ID = "6ff13fd6-5025-46d7-aa8d-6b07fe8f5587"
 
-def _run_response(status: str = "QUEUED", projection_state: str = "up_to_date") -> dict[str, object]:
+
+def _run_response(
+    status: str = "QUEUED",
+    projection_state: str = "up_to_date",
+    *,
+    run_id: str = RUN_ID,
+) -> dict[str, object]:
     return {
-        "run_id": "8fb17dc9-6565-4f3e-b671-8fd437416534",
+        "run_id": run_id,
         "instance_id": "f8a5bcbf-fc93-42fa-a2fb-e99bf76ed910",
         "instance_key": "instance-1",
         "definition_name": "checkout",
@@ -23,22 +32,40 @@ def _run_response(status: str = "QUEUED", projection_state: str = "up_to_date") 
     }
 
 
-def _result_response(status: str = "COMPLETED") -> dict[str, object]:
-    return {
-        "run_id": "8fb17dc9-6565-4f3e-b671-8fd437416534",
-        "status": status,
-        "result": {"ok": True} if status == "COMPLETED" else None,
-        "failure": None if status == "COMPLETED" else {
+def _result_response(
+    status: str = "COMPLETED",
+    *,
+    run_id: str = RUN_ID,
+    continued_from_run_id: str | None = None,
+    continued_to_run_id: str | None = None,
+) -> dict[str, object]:
+    failure = None
+    if status not in {"COMPLETED", "CONTINUED_AS_NEW"}:
+        failure = {
             "error_code": "failed",
             "error_message": "boom",
             "status": status.lower(),
-        },
+        }
+
+    return {
+        "run_id": run_id,
+        "continued_from_run_id": continued_from_run_id,
+        "continued_to_run_id": continued_to_run_id,
+        "continued_from_trace_id": (
+            f"engine:{continued_from_run_id}" if continued_from_run_id is not None else None
+        ),
+        "continued_to_trace_id": (
+            f"engine:{continued_to_run_id}" if continued_to_run_id is not None else None
+        ),
+        "status": status,
+        "result": {"ok": True} if status == "COMPLETED" else None,
+        "failure": failure,
     }
 
 
 def _control_response(wake_applied: bool = True) -> dict[str, object]:
     return {
-        "run_id": "8fb17dc9-6565-4f3e-b671-8fd437416534",
+        "run_id": RUN_ID,
         "instance_key": "instance-1",
         "accepted": True,
         "wake_applied": wake_applied,
@@ -58,13 +85,13 @@ def test_get_run_decodes_typed_response():
         from continua.types import EngineRunStatus
 
         client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
-        response = client.get_run("8fb17dc9-6565-4f3e-b671-8fd437416534")
+        response = client.get_run(RUN_ID)
 
         assert response.instance_key == "instance-1"
         assert response.status == EngineRunStatus.QUEUED
         mock_client.request.assert_called_once_with(
             "GET",
-            "/v1/engine/runs/8fb17dc9-6565-4f3e-b671-8fd437416534",
+            f"/v1/engine/runs/{RUN_ID}",
             json=None,
             params=None,
             headers=None,
@@ -78,7 +105,7 @@ def test_start_sends_preview_header_and_decodes_response():
             status_code=200,
             json=MagicMock(
                 return_value={
-                    "run_id": "8fb17dc9-6565-4f3e-b671-8fd437416534",
+                    "run_id": RUN_ID,
                     "instance_id": "f8a5bcbf-fc93-42fa-a2fb-e99bf76ed910",
                     "instance_key": "instance-1",
                     "definition_name": "checkout",
@@ -122,12 +149,20 @@ def test_start_sends_preview_header_and_decodes_response():
 
 
 @pytest.mark.parametrize(
-    ("method_name", "args", "path", "response_body", "expected_headers", "expected_json", "expected_params"),
+    (
+        "method_name",
+        "args",
+        "path",
+        "response_body",
+        "expected_headers",
+        "expected_json",
+        "expected_params",
+    ),
     [
         (
             "signal",
-            ("8fb17dc9-6565-4f3e-b671-8fd437416534", {"signal_name": "approval", "payload": {"ok": True}}),
-            "/v1/engine/runs/8fb17dc9-6565-4f3e-b671-8fd437416534/signal",
+            (RUN_ID, {"signal_name": "approval", "payload": {"ok": True}}),
+            f"/v1/engine/runs/{RUN_ID}/signal",
             _control_response(True),
             {"X-Continua-Engine-Preview": "1"},
             {"signal_name": "approval", "payload": {"ok": True}},
@@ -135,8 +170,8 @@ def test_start_sends_preview_header_and_decodes_response():
         ),
         (
             "cancel",
-            ("8fb17dc9-6565-4f3e-b671-8fd437416534",),
-            "/v1/engine/runs/8fb17dc9-6565-4f3e-b671-8fd437416534/cancel",
+            (RUN_ID,),
+            f"/v1/engine/runs/{RUN_ID}/cancel",
             _control_response(False),
             {"X-Continua-Engine-Preview": "1"},
             None,
@@ -144,8 +179,8 @@ def test_start_sends_preview_header_and_decodes_response():
         ),
         (
             "suspend",
-            ("8fb17dc9-6565-4f3e-b671-8fd437416534",),
-            "/v1/engine/runs/8fb17dc9-6565-4f3e-b671-8fd437416534/suspend",
+            (RUN_ID,),
+            f"/v1/engine/runs/{RUN_ID}/suspend",
             _run_response("SUSPENDED"),
             {"X-Continua-Engine-Preview": "1"},
             None,
@@ -153,8 +188,8 @@ def test_start_sends_preview_header_and_decodes_response():
         ),
         (
             "resume",
-            ("8fb17dc9-6565-4f3e-b671-8fd437416534",),
-            "/v1/engine/runs/8fb17dc9-6565-4f3e-b671-8fd437416534/resume",
+            (RUN_ID,),
+            f"/v1/engine/runs/{RUN_ID}/resume",
             _run_response("QUEUED"),
             {"X-Continua-Engine-Preview": "1"},
             None,
@@ -162,8 +197,8 @@ def test_start_sends_preview_header_and_decodes_response():
         ),
         (
             "terminate",
-            ("8fb17dc9-6565-4f3e-b671-8fd437416534",),
-            "/v1/engine/runs/8fb17dc9-6565-4f3e-b671-8fd437416534/terminate",
+            (RUN_ID,),
+            f"/v1/engine/runs/{RUN_ID}/terminate",
             _result_response("TERMINATED"),
             {"X-Continua-Engine-Preview": "1"},
             None,
@@ -188,10 +223,10 @@ def test_start_sends_preview_header_and_decodes_response():
         ),
         (
             "get_pending_work",
-            ("8fb17dc9-6565-4f3e-b671-8fd437416534",),
-            "/v1/engine/runs/8fb17dc9-6565-4f3e-b671-8fd437416534/pending-work",
+            (RUN_ID,),
+            f"/v1/engine/runs/{RUN_ID}/pending-work",
             {
-                "run_id": "8fb17dc9-6565-4f3e-b671-8fd437416534",
+                "run_id": RUN_ID,
                 "current_wait": None,
                 "activities": [],
                 "timers": [],
@@ -244,7 +279,7 @@ def test_purge_sends_preview_header_and_body():
             status_code=200,
             json=MagicMock(
                 return_value={
-                    "run_id": "8fb17dc9-6565-4f3e-b671-8fd437416534",
+                    "run_id": RUN_ID,
                     "mode": "projection_only",
                     "projection_state": "summary_only",
                     "deleted": True,
@@ -257,7 +292,7 @@ def test_purge_sends_preview_header_and_body():
 
         client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
         response = client.purge(
-            "8fb17dc9-6565-4f3e-b671-8fd437416534",
+            RUN_ID,
             mode="projection_only",
         )
 
@@ -436,7 +471,7 @@ def test_get_result_maps_run_not_terminal_to_typed_error():
         client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
 
         with pytest.raises(EngineRunNotTerminalError, match="not yet"):
-            client.get_result("8fb17dc9-6565-4f3e-b671-8fd437416534")
+            client.get_result(RUN_ID)
 
 
 def test_get_run_maps_not_found_to_typed_error():
@@ -455,7 +490,7 @@ def test_get_run_maps_not_found_to_typed_error():
         client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
 
         with pytest.raises(EngineRunNotFoundError, match="missing"):
-            client.get_run("8fb17dc9-6565-4f3e-b671-8fd437416534")
+            client.get_run(RUN_ID)
 
 
 def test_wait_for_terminal_returns_terminal_result():
@@ -480,7 +515,7 @@ def test_wait_for_terminal_returns_terminal_result():
 
             client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
             response = client.wait_for_terminal(
-                "8fb17dc9-6565-4f3e-b671-8fd437416534",
+                RUN_ID,
                 timeout=5.0,
                 poll_interval=0.01,
             )
@@ -512,7 +547,7 @@ def test_wait_for_terminal_times_out():
 
                 with pytest.raises(EngineRunWaitTimeoutError, match="Timed out waiting"):
                     client.wait_for_terminal(
-                        "8fb17dc9-6565-4f3e-b671-8fd437416534",
+                        RUN_ID,
                         timeout=0.1,
                         poll_interval=0.01,
                     )
@@ -537,7 +572,7 @@ def test_wait_for_terminal_zero_timeout_raises_immediately():
 
                 with pytest.raises(EngineRunWaitTimeoutError):
                     client.wait_for_terminal(
-                        "8fb17dc9-6565-4f3e-b671-8fd437416534",
+                        RUN_ID,
                         timeout=0.0,
                         poll_interval=0.01,
                     )
@@ -559,6 +594,173 @@ def test_wait_for_terminal_returns_each_terminal_status(status: str):
         from continua.types import EngineRunStatus
 
         client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
-        response = client.wait_for_terminal("8fb17dc9-6565-4f3e-b671-8fd437416534")
+        response = client.wait_for_terminal(RUN_ID)
 
         assert response.status == EngineRunStatus(status)
+
+
+def test_wait_for_terminal_default_does_not_follow_continuations():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.request.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(
+                return_value=_result_response(
+                    "CONTINUED_AS_NEW",
+                    run_id=RUN_ID,
+                    continued_to_run_id=NEXT_RUN_ID,
+                )
+            ),
+        )
+        mock_client_class.return_value = mock_client
+
+        from continua import EngineControlClient
+        from continua.types import EngineRunStatus
+
+        client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+        response = client.wait_for_terminal(RUN_ID)
+
+        assert response.status == EngineRunStatus.CONTINUED_AS_NEW
+        assert str(response.continued_to_run_id) == NEXT_RUN_ID
+        assert mock_client.request.call_count == 1
+
+
+def test_wait_for_terminal_follows_single_continuation():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        with patch("continua.engine_control.time.sleep") as mock_sleep:
+            mock_client = MagicMock()
+            mock_client.request.side_effect = [
+                MagicMock(
+                    status_code=200,
+                    json=MagicMock(
+                        return_value=_result_response(
+                            "CONTINUED_AS_NEW",
+                            run_id=RUN_ID,
+                            continued_to_run_id=NEXT_RUN_ID,
+                        )
+                    ),
+                ),
+                MagicMock(
+                    status_code=409,
+                    json=MagicMock(return_value={"code": "run_not_terminal", "message": "pending"}),
+                    text="pending",
+                ),
+                MagicMock(
+                    status_code=200,
+                    json=MagicMock(return_value=_result_response("COMPLETED", run_id=NEXT_RUN_ID)),
+                ),
+            ]
+            mock_client_class.return_value = mock_client
+
+            from continua import EngineControlClient
+            from continua.types import EngineRunStatus
+
+            client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+            response = client.wait_for_terminal(
+                RUN_ID,
+                timeout=5.0,
+                poll_interval=0.01,
+                follow_continuations=True,
+            )
+
+            assert response.status == EngineRunStatus.COMPLETED
+            assert str(response.run_id) == NEXT_RUN_ID
+            assert [call.args[1] for call in mock_client.request.call_args_list] == [
+                f"/v1/engine/runs/{RUN_ID}/result",
+                f"/v1/engine/runs/{NEXT_RUN_ID}/result",
+                f"/v1/engine/runs/{NEXT_RUN_ID}/result",
+            ]
+            mock_sleep.assert_called_once_with(0.01)
+
+
+def test_wait_for_terminal_follows_multiple_continuations():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.request.side_effect = [
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_result_response(
+                        "CONTINUED_AS_NEW",
+                        run_id=RUN_ID,
+                        continued_to_run_id=NEXT_RUN_ID,
+                    )
+                ),
+            ),
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_result_response(
+                        "CONTINUED_AS_NEW",
+                        run_id=NEXT_RUN_ID,
+                        continued_from_run_id=RUN_ID,
+                        continued_to_run_id=FINAL_RUN_ID,
+                    )
+                ),
+            ),
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_result_response(
+                        "COMPLETED",
+                        run_id=FINAL_RUN_ID,
+                        continued_from_run_id=NEXT_RUN_ID,
+                    )
+                ),
+            ),
+        ]
+        mock_client_class.return_value = mock_client
+
+        from continua import EngineControlClient
+        from continua.types import EngineRunStatus
+
+        client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+        response = client.wait_for_terminal(RUN_ID, follow_continuations=True)
+
+        assert response.status == EngineRunStatus.COMPLETED
+        assert str(response.run_id) == FINAL_RUN_ID
+        assert str(response.continued_from_run_id) == NEXT_RUN_ID
+
+
+def test_wait_for_terminal_raises_when_continuation_depth_is_exceeded():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.request.side_effect = [
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_result_response(
+                        "CONTINUED_AS_NEW",
+                        run_id=RUN_ID,
+                        continued_to_run_id=NEXT_RUN_ID,
+                    )
+                ),
+            ),
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_result_response(
+                        "CONTINUED_AS_NEW",
+                        run_id=NEXT_RUN_ID,
+                        continued_from_run_id=RUN_ID,
+                        continued_to_run_id=FINAL_RUN_ID,
+                    )
+                ),
+            ),
+        ]
+        mock_client_class.return_value = mock_client
+
+        from continua import EngineControlClient
+        from continua.exceptions import EngineRunContinuationDepthError
+
+        client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+
+        with pytest.raises(
+            EngineRunContinuationDepthError,
+            match="max_continuations=1",
+        ):
+            client.wait_for_terminal(
+                RUN_ID,
+                follow_continuations=True,
+                max_continuations=1,
+            )

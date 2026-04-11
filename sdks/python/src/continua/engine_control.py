@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from .exceptions import (
     AuthenticationError,
+    EngineRunContinuationDepthError,
     EngineRunNotFoundError,
     EngineRunNotTerminalError,
     EngineRunWaitTimeoutError,
@@ -28,6 +29,7 @@ from .types import (
     EngineRunHistoryResponse,
     EngineRunResponse,
     EngineRunResultResponse,
+    EngineRunStatus,
     EngineSignalRunRequest,
     EngineStartRunRequest,
     EngineStartRunResponse,
@@ -187,16 +189,34 @@ class EngineControlClient:
         *,
         timeout: float | None = None,
         poll_interval: float = 1.0,
+        follow_continuations: bool = False,
+        max_continuations: int = 32,
     ) -> EngineRunResultResponse:
         deadline = None if timeout is None else time.monotonic() + timeout
+        current_run_id: UUID | str = run_id
+        continuations_followed = 0
 
         while True:
             try:
-                return self.get_result(run_id)
+                response = self.get_result(current_run_id)
             except EngineRunNotTerminalError:
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise EngineRunWaitTimeoutError(str(run_id), timeout)
+                    raise EngineRunWaitTimeoutError(str(current_run_id), timeout)
                 time.sleep(poll_interval)
+                continue
+
+            if (
+                follow_continuations
+                and response.status == EngineRunStatus.CONTINUED_AS_NEW
+                and response.continued_to_run_id is not None
+            ):
+                if continuations_followed >= max_continuations:
+                    raise EngineRunContinuationDepthError(str(run_id), max_continuations)
+                continuations_followed += 1
+                current_run_id = response.continued_to_run_id
+                continue
+
+            return response
 
     def _request_model(
         self,
