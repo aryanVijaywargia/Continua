@@ -1986,7 +1986,7 @@ func TestRepairEngineRun_ReturnsExpectedReasons(t *testing.T) {
 		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "up_to_date", 5, 5)
 		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
 		assert.False(t, resp.Accepted)
-		assert.Equal(t, AlreadyUpToDate, resp.Reason)
+		assert.Equal(t, EngineRepairReasonAlreadyUpToDate, resp.Reason)
 		assert.Equal(t, UpToDate, resp.ProjectionState)
 	})
 
@@ -1997,7 +1997,7 @@ func TestRepairEngineRun_ReturnsExpectedReasons(t *testing.T) {
 		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID-1)
 		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
 		assert.True(t, resp.Accepted)
-		assert.Equal(t, RepairRequested, resp.Reason)
+		assert.Equal(t, EngineRepairReasonRepairRequested, resp.Reason)
 		assert.Equal(t, CatchingUp, resp.ProjectionState)
 	})
 
@@ -2007,7 +2007,7 @@ func TestRepairEngineRun_ReturnsExpectedReasons(t *testing.T) {
 		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID)
 		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
 		assert.False(t, resp.Accepted)
-		assert.Equal(t, NoEventsToProject, resp.Reason)
+		assert.Equal(t, EngineRepairReasonNoEventsToProject, resp.Reason)
 		assert.Equal(t, SummaryOnly, resp.ProjectionState)
 	})
 
@@ -2036,7 +2036,7 @@ func TestRepairEngineRun_ReturnsExpectedReasons(t *testing.T) {
 
 		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
 		assert.True(t, resp.Accepted)
-		assert.Equal(t, RepairRequested, resp.Reason)
+		assert.Equal(t, EngineRepairReasonRepairRequested, resp.Reason)
 		assert.Equal(t, CatchingUp, resp.ProjectionState)
 
 		var latestHistoryID int64
@@ -2054,7 +2054,7 @@ func TestRepairEngineRun_ReturnsExpectedReasons(t *testing.T) {
 		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "journal_expired", 9, 3)
 		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
 		assert.False(t, resp.Accepted)
-		assert.Equal(t, HistoryExpired, resp.Reason)
+		assert.Equal(t, EngineRepairReasonHistoryExpired, resp.Reason)
 		assert.Equal(t, JournalExpired, resp.ProjectionState)
 	})
 
@@ -2062,7 +2062,7 @@ func TestRepairEngineRun_ReturnsExpectedReasons(t *testing.T) {
 		setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "catching_up", 9, 3)
 		resp := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
 		assert.True(t, resp.Accepted)
-		assert.Equal(t, AlreadyCatchingUp, resp.Reason)
+		assert.Equal(t, EngineRepairReasonAlreadyCatchingUp, resp.Reason)
 		assert.Equal(t, CatchingUp, resp.ProjectionState)
 	})
 }
@@ -2086,6 +2086,273 @@ func TestRepairEngineRun_ReturnsNotFoundForMissingRunAndCrossProject(t *testing.
 	missing := invokeRepairEngineRun(t, server, projectID, uuid.New())
 	require.Equal(t, http.StatusNotFound, missing.Code)
 	assert.Equal(t, "not_found", decodeJSONBody[Error](t, missing).Code)
+}
+
+func TestBackfillEngineProjections_DryRunReturnsWouldRepairWithoutMutation(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-backfill-dry-run",
+		RequestKey:        "req-backfill-dry-run",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	latestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID-1)
+
+	dryRun := true
+	resp := decodeJSONBody[EngineProjectionBackfillResponse](t, invokeBackfillEngineProjections(
+		t,
+		server,
+		projectID,
+		&EngineProjectionBackfillRequest{DryRun: &dryRun},
+	))
+
+	require.True(t, resp.DryRun)
+	assert.Equal(t, defaultEngineProjectionBackfillLimit, resp.Limit)
+	assert.Equal(t, 1, resp.EligibleCount)
+	assert.Equal(t, 0, resp.RepairRequestedCount)
+	assert.Equal(t, 0, resp.SkippedCount)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, start.RunId, resp.Results[0].RunId)
+	assert.Equal(t, start.TraceId, resp.Results[0].TraceId)
+	assert.Equal(t, SummaryOnly, resp.Results[0].ProjectionState)
+	assert.Equal(t, EngineProjectionBackfillActionWouldRepair, resp.Results[0].Action)
+	assert.Nil(t, resp.Results[0].Reason)
+
+	var projectionState string
+	err = platformStore.Pool().QueryRow(ctx, `
+		SELECT engine_projection_state
+		FROM traces
+		WHERE id = $1
+	`, trace.ID).Scan(&projectionState)
+	require.NoError(t, err)
+	assert.Equal(t, "summary_only", projectionState)
+}
+
+func TestBackfillEngineProjections_ApplyRequestsRepairAndFlipsState(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-backfill-apply",
+		RequestKey:        "req-backfill-apply",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	latestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID-1)
+
+	limit := 10
+	resp := decodeJSONBody[EngineProjectionBackfillResponse](t, invokeBackfillEngineProjections(
+		t,
+		server,
+		projectID,
+		&EngineProjectionBackfillRequest{Limit: &limit},
+	))
+
+	require.False(t, resp.DryRun)
+	assert.Equal(t, limit, resp.Limit)
+	assert.Equal(t, 1, resp.EligibleCount)
+	assert.Equal(t, 1, resp.RepairRequestedCount)
+	assert.Equal(t, 0, resp.SkippedCount)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, EngineProjectionBackfillActionRepairRequested, resp.Results[0].Action)
+	require.NotNil(t, resp.Results[0].Reason)
+	assert.Equal(t, EngineRepairReasonRepairRequested, *resp.Results[0].Reason)
+	assert.Equal(t, CatchingUp, resp.Results[0].ProjectionState)
+
+	var projectionState string
+	err = platformStore.Pool().QueryRow(ctx, `
+		SELECT engine_projection_state
+		FROM traces
+		WHERE id = $1
+	`, trace.ID).Scan(&projectionState)
+	require.NoError(t, err)
+	assert.Equal(t, "catching_up", projectionState)
+}
+
+func TestBackfillEngineProjections_LimitAboveMaxReturnsBadRequest(t *testing.T) {
+	_, _, _, server, projectID := setupEngineHandlerTest(t)
+
+	limit := 101
+	rec := invokeBackfillEngineProjections(
+		t,
+		server,
+		projectID,
+		&EngineProjectionBackfillRequest{Limit: &limit},
+	)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	resp := decodeJSONBody[Error](t, rec)
+	assert.Equal(t, "invalid_request", resp.Code)
+	assert.Equal(t, "limit must be 100 or less", resp.Message)
+}
+
+func TestBackfillEngineProjections_OlderThanFiltersByProjectionUpdatedAt(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	oldStart := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-backfill-old",
+		RequestKey:        "req-backfill-old",
+	}))
+	newStart := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-backfill-new",
+		RequestKey:        "req-backfill-new",
+	}))
+
+	oldTrace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   oldStart.TraceId,
+	})
+	require.NoError(t, err)
+	newTrace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   newStart.TraceId,
+	})
+	require.NoError(t, err)
+
+	oldLatestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, oldStart.RunId)
+	require.NoError(t, err)
+	newLatestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, newStart.RunId)
+	require.NoError(t, err)
+
+	oldUpdatedAt := time.Date(2026, time.January, 1, 10, 0, 0, 0, time.UTC)
+	newUpdatedAt := time.Date(2026, time.January, 3, 10, 0, 0, 0, time.UTC)
+	cutoff := time.Date(2026, time.January, 2, 10, 0, 0, 0, time.UTC)
+
+	setEngineProjectionCheckpointAt(
+		t,
+		ctx,
+		platformStore,
+		oldTrace.ID,
+		"summary_only",
+		oldLatestHistoryID,
+		oldLatestHistoryID-1,
+		oldUpdatedAt,
+	)
+	setEngineProjectionCheckpointAt(
+		t,
+		ctx,
+		platformStore,
+		newTrace.ID,
+		"summary_only",
+		newLatestHistoryID,
+		newLatestHistoryID-1,
+		newUpdatedAt,
+	)
+
+	dryRun := true
+	resp := decodeJSONBody[EngineProjectionBackfillResponse](t, invokeBackfillEngineProjections(
+		t,
+		server,
+		projectID,
+		&EngineProjectionBackfillRequest{
+			DryRun:    &dryRun,
+			OlderThan: &cutoff,
+		},
+	))
+
+	assert.Equal(t, 1, resp.EligibleCount)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, oldStart.RunId, resp.Results[0].RunId)
+	assert.Equal(t, oldStart.TraceId, resp.Results[0].TraceId)
+}
+
+func TestBackfillEngineProjections_RepeatedCallsConvergeToZeroEligible(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-backfill-converge",
+		RequestKey:        "req-backfill-converge",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	latestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID-1)
+
+	first := decodeJSONBody[EngineProjectionBackfillResponse](t, invokeBackfillEngineProjections(t, server, projectID, nil))
+	assert.Equal(t, 1, first.EligibleCount)
+	require.Len(t, first.Results, 1)
+	assert.Equal(t, EngineProjectionBackfillActionRepairRequested, first.Results[0].Action)
+
+	second := decodeJSONBody[EngineProjectionBackfillResponse](t, invokeBackfillEngineProjections(t, server, projectID, nil))
+	assert.Equal(t, 0, second.EligibleCount)
+	assert.Empty(t, second.Results)
+}
+
+func TestBackfillEngineProjections_IncompatibleProjectionStatesReturnEmptyResults(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-backfill-incompatible",
+		RequestKey:        "req-backfill-incompatible",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	latestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID-1)
+
+	for _, projectionState := range []EngineProjectionState{UpToDate, CatchingUp, JournalExpired} {
+		t.Run(string(projectionState), func(t *testing.T) {
+			dryRun := true
+			resp := decodeJSONBody[EngineProjectionBackfillResponse](t, invokeBackfillEngineProjections(
+				t,
+				server,
+				projectID,
+				&EngineProjectionBackfillRequest{
+					DryRun:                &dryRun,
+					EngineProjectionState: &projectionState,
+				},
+			))
+
+			assert.True(t, resp.DryRun)
+			assert.Equal(t, 0, resp.EligibleCount)
+			assert.Equal(t, 0, resp.RepairRequestedCount)
+			assert.Equal(t, 0, resp.SkippedCount)
+			assert.Empty(t, resp.Results)
+		})
+	}
 }
 
 func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
@@ -2144,7 +2411,7 @@ func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
 
 	repair := decodeJSONBody[EngineRepairResponse](t, invokeRepairEngineRun(t, server, projectID, start.RunId))
 	assert.True(t, repair.Accepted)
-	assert.Equal(t, RepairRequested, repair.Reason)
+	assert.Equal(t, EngineRepairReasonRepairRequested, repair.Reason)
 	assert.Equal(t, CatchingUp, repair.ProjectionState)
 
 	engineServe := startExternalEngineServeProcess(t, projectID)
@@ -2808,6 +3075,32 @@ func invokeRepairEngineRun(t *testing.T, server *Server, projectID, runID uuid.U
 	return rec
 }
 
+func invokeBackfillEngineProjections(
+	t *testing.T,
+	server *Server,
+	projectID uuid.UUID,
+	reqBody *EngineProjectionBackfillRequest,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var body *bytes.Reader
+	if reqBody != nil {
+		payload, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		body = bytes.NewReader(payload)
+	} else {
+		body = bytes.NewReader(nil)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/projections/backfill", body)
+	req.Header.Set(enginePreviewHeader, "1")
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
+	rec := httptest.NewRecorder()
+
+	server.BackfillEngineProjections(rec, req, BackfillEngineProjectionsParams{XContinuaEnginePreview: "1"})
+	return rec
+}
+
 func invokeSignalEngineRun(
 	t *testing.T,
 	server *Server,
@@ -3122,15 +3415,40 @@ func setEngineProjectionCheckpoint(
 ) {
 	t.Helper()
 
+	setEngineProjectionCheckpointAt(
+		t,
+		ctx,
+		platformStore,
+		traceID,
+		projectionState,
+		latestHistoryID,
+		lastProjectedHistoryID,
+		time.Now().UTC(),
+	)
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func setEngineProjectionCheckpointAt(
+	t *testing.T,
+	ctx context.Context,
+	platformStore *store.Store,
+	traceID uuid.UUID,
+	projectionState string,
+	latestHistoryID int64,
+	lastProjectedHistoryID int64,
+	updatedAt time.Time,
+) {
+	t.Helper()
+
 	_, err := platformStore.Pool().Exec(ctx, `
 		UPDATE traces
 		SET engine_projection_state = $2,
 		    engine_latest_history_id = $3,
 		    engine_last_projected_history_id = $4,
-		    engine_projection_updated_at = NOW(),
-		    updated_at = NOW()
+		    engine_projection_updated_at = $5,
+		    updated_at = $5
 		WHERE id = $1
-	`, traceID, projectionState, latestHistoryID, lastProjectedHistoryID)
+	`, traceID, projectionState, latestHistoryID, lastProjectedHistoryID, updatedAt)
 	require.NoError(t, err)
 }
 

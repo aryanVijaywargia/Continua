@@ -1,8 +1,62 @@
+import type { operations } from '@continua/contracts/generated/typescript/api';
+
 import { DEFAULT_PAGE_SIZE, normalizeUiPageSize } from './pagination';
 
 export type TraceStatusFilter = 'running' | 'completed' | 'failed';
 export type TraceSortBy = 'started_at';
 export type SortDirection = 'asc' | 'desc';
+
+type ListTracesQuery = NonNullable<
+  operations['listTraces']['parameters']['query']
+>;
+
+export type EngineRunStatusFilter = NonNullable<
+  ListTracesQuery['engine_run_status']
+>;
+export type EngineProjectionStateFilter = NonNullable<
+  ListTracesQuery['engine_projection_state']
+>;
+
+function objectKeys<T extends object>(value: T): Array<Extract<keyof T, string>> {
+  return Object.keys(value) as Array<Extract<keyof T, string>>;
+}
+
+// OpenAPI generation emits type unions, not runtime enum arrays. These maps are
+// the runtime option source, while `satisfies` keeps them exhaustive.
+const ENGINE_RUN_STATUS_LABELS = {
+  queued: 'Queued',
+  running: 'Running',
+  waiting: 'Waiting',
+  suspended: 'Suspended',
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  terminated: 'Terminated',
+  continued_as_new: 'Continued as new',
+} satisfies Record<EngineRunStatusFilter, string>;
+
+export const ENGINE_RUN_STATUS_FILTER_VALUES = objectKeys(ENGINE_RUN_STATUS_LABELS);
+
+const ENGINE_PROJECTION_STATE_LABELS = {
+  up_to_date: 'Up to date',
+  catching_up: 'Catching up',
+  summary_only: 'Summary only',
+  journal_expired: 'Journal expired',
+} satisfies Record<EngineProjectionStateFilter, string>;
+
+export const ENGINE_PROJECTION_STATE_FILTER_VALUES = objectKeys(
+  ENGINE_PROJECTION_STATE_LABELS
+);
+
+export function formatEngineRunStatusLabel(value: EngineRunStatusFilter): string {
+  return ENGINE_RUN_STATUS_LABELS[value];
+}
+
+export function formatEngineProjectionStateLabel(
+  value: EngineProjectionStateFilter
+): string {
+  return ENGINE_PROJECTION_STATE_LABELS[value];
+}
 
 export interface FetchTracesParams {
   limit?: number;
@@ -15,6 +69,10 @@ export interface FetchTracesParams {
   start_time_from?: string;
   start_time_to?: string;
   user_id?: string;
+  engine_instance_key?: string;
+  engine_definition_name?: string;
+  engine_run_status?: EngineRunStatusFilter;
+  engine_projection_state?: EngineProjectionStateFilter;
   has_errors?: boolean;
   min_duration_ms?: number;
 }
@@ -30,6 +88,10 @@ export interface TracesFilterState {
   start_time_from?: string;
   start_time_to?: string;
   user_id?: string;
+  engine_instance_key?: string;
+  engine_definition_name?: string;
+  engine_run_status?: EngineRunStatusFilter;
+  engine_projection_state?: EngineProjectionStateFilter;
   has_errors?: boolean;
   min_duration_ms?: number;
 }
@@ -53,6 +115,12 @@ type NormalizableTracesParams = {
 };
 
 const VALID_STATUSES = new Set<TraceStatusFilter>(['running', 'completed', 'failed']);
+const VALID_ENGINE_RUN_STATUSES = new Set<EngineRunStatusFilter>(
+  ENGINE_RUN_STATUS_FILTER_VALUES
+);
+const VALID_ENGINE_PROJECTION_STATES = new Set<EngineProjectionStateFilter>(
+  ENGINE_PROJECTION_STATE_FILTER_VALUES
+);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -70,6 +138,10 @@ const CANONICAL_PARAM_ORDER: Array<keyof FetchTracesParams> = [
   'start_time_from',
   'start_time_to',
   'user_id',
+  'engine_instance_key',
+  'engine_definition_name',
+  'engine_run_status',
+  'engine_projection_state',
   'has_errors',
   'min_duration_ms',
 ];
@@ -88,6 +160,34 @@ function normalizeStatus(value: string | null | undefined): TraceStatusFilter | 
   const normalized = candidate === 'error' ? 'failed' : candidate;
   return VALID_STATUSES.has(normalized as TraceStatusFilter)
     ? (normalized as TraceStatusFilter)
+    : undefined;
+}
+
+function normalizeEngineRunStatus(
+  value: string | null | undefined
+): EngineRunStatusFilter | undefined {
+  const candidate = value?.trim().toLowerCase();
+  if (!candidate) {
+    return undefined;
+  }
+
+  return VALID_ENGINE_RUN_STATUSES.has(candidate as EngineRunStatusFilter)
+    ? (candidate as EngineRunStatusFilter)
+    : undefined;
+}
+
+function normalizeEngineProjectionState(
+  value: string | null | undefined
+): EngineProjectionStateFilter | undefined {
+  const candidate = value?.trim().toLowerCase();
+  if (!candidate) {
+    return undefined;
+  }
+
+  return VALID_ENGINE_PROJECTION_STATES.has(
+    candidate as EngineProjectionStateFilter
+  )
+    ? (candidate as EngineProjectionStateFilter)
     : undefined;
 }
 
@@ -171,6 +271,12 @@ function normalizeTracesParams(
     start_time_from: normalizeISODateTime(params.start_time_from),
     start_time_to: normalizeISODateTime(params.start_time_to),
     user_id: normalizeOptionalText(params.user_id),
+    engine_instance_key: normalizeOptionalText(params.engine_instance_key),
+    engine_definition_name: normalizeOptionalText(params.engine_definition_name),
+    engine_run_status: normalizeEngineRunStatus(params.engine_run_status),
+    engine_projection_state: normalizeEngineProjectionState(
+      params.engine_projection_state
+    ),
     has_errors: normalizeBooleanTrue(params.has_errors),
     min_duration_ms: normalizePositiveInteger(params.min_duration_ms),
   };
@@ -214,6 +320,18 @@ function toQueryEntries(
   }
   if (params.user_id) {
     entries.push(['user_id', params.user_id]);
+  }
+  if (params.engine_instance_key) {
+    entries.push(['engine_instance_key', params.engine_instance_key]);
+  }
+  if (params.engine_definition_name) {
+    entries.push(['engine_definition_name', params.engine_definition_name]);
+  }
+  if (params.engine_run_status) {
+    entries.push(['engine_run_status', params.engine_run_status]);
+  }
+  if (params.engine_projection_state) {
+    entries.push(['engine_projection_state', params.engine_projection_state]);
   }
   if (params.has_errors) {
     entries.push(['has_errors', 'true']);
@@ -266,6 +384,12 @@ export function parseTracesParams(searchParams: URLSearchParams): TracesFilterSt
     start_time_from: searchParams.get('start_time_from') ?? undefined,
     start_time_to: searchParams.get('start_time_to') ?? undefined,
     user_id: searchParams.get('user_id') ?? undefined,
+    engine_instance_key: searchParams.get('engine_instance_key') ?? undefined,
+    engine_definition_name:
+      searchParams.get('engine_definition_name') ?? undefined,
+    engine_run_status: searchParams.get('engine_run_status') ?? undefined,
+    engine_projection_state:
+      searchParams.get('engine_projection_state') ?? undefined,
     has_errors: searchParams.get('has_errors') ?? undefined,
     min_duration_ms: searchParams.get('min_duration_ms') ?? undefined,
   });
@@ -281,6 +405,10 @@ export function parseTracesParams(searchParams: URLSearchParams): TracesFilterSt
     start_time_from: normalized.start_time_from,
     start_time_to: normalized.start_time_to,
     user_id: normalized.user_id,
+    engine_instance_key: normalized.engine_instance_key,
+    engine_definition_name: normalized.engine_definition_name,
+    engine_run_status: normalized.engine_run_status,
+    engine_projection_state: normalized.engine_projection_state,
     has_errors: normalized.has_errors,
     min_duration_ms: normalized.min_duration_ms,
   };
@@ -373,6 +501,36 @@ export function deriveActiveChips(state: TracesFilterState): Chip[] {
   if (normalized.user_id) {
     chips.push({ key: 'user_id', label: 'User', value: normalized.user_id });
   }
+  if (normalized.engine_instance_key) {
+    chips.push({
+      key: 'engine_instance_key',
+      label: 'Engine instance',
+      value: normalized.engine_instance_key,
+    });
+  }
+  if (normalized.engine_definition_name) {
+    chips.push({
+      key: 'engine_definition_name',
+      label: 'Engine definition',
+      value: normalized.engine_definition_name,
+    });
+  }
+  if (normalized.engine_run_status) {
+    chips.push({
+      key: 'engine_run_status',
+      label: 'Engine status',
+      value: formatEngineRunStatusLabel(normalized.engine_run_status),
+    });
+  }
+  if (normalized.engine_projection_state) {
+    chips.push({
+      key: 'engine_projection_state',
+      label: 'Projection state',
+      value: formatEngineProjectionStateLabel(
+        normalized.engine_projection_state
+      ),
+    });
+  }
   if (normalized.has_errors) {
     chips.push({ key: 'has_errors', label: 'Errors', value: 'Only traces with errors' });
   }
@@ -407,6 +565,17 @@ export function clearChip(
       return resetOffset({ ...normalized, start_time_to: undefined });
     case 'user_id':
       return resetOffset({ ...normalized, user_id: undefined });
+    case 'engine_instance_key':
+      return resetOffset({ ...normalized, engine_instance_key: undefined });
+    case 'engine_definition_name':
+      return resetOffset({ ...normalized, engine_definition_name: undefined });
+    case 'engine_run_status':
+      return resetOffset({ ...normalized, engine_run_status: undefined });
+    case 'engine_projection_state':
+      return resetOffset({
+        ...normalized,
+        engine_projection_state: undefined,
+      });
     case 'has_errors':
       return resetOffset({ ...normalized, has_errors: undefined });
     case 'min_duration_ms':

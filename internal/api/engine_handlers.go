@@ -3,10 +3,16 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/internal/enginecontrol"
+)
+
+const (
+	defaultEngineProjectionBackfillLimit = 50
+	maxEngineProjectionBackfillLimit     = 100
 )
 
 func (s *Server) GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string) {
@@ -247,6 +253,36 @@ func (s *Server) RepairEngineRun(w http.ResponseWriter, r *http.Request, runID o
 	writeJSON(w, http.StatusOK, engineRepairResponseToAPI(&result))
 }
 
+func (s *Server) BackfillEngineProjections(w http.ResponseWriter, r *http.Request, _ BackfillEngineProjectionsParams) {
+	projectID, ok := projectIDOrUnauthorized(w, r)
+	if !ok {
+		return
+	}
+	if s.engineSharedControl == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	var req EngineProjectionBackfillRequest
+	if !decodeOptionalJSONRequest(w, r, &req) {
+		return
+	}
+
+	backfillReq, err := engineProjectionBackfillRequestFromAPI(&req)
+	if err != nil {
+		writeEngineError(w, err, "Invalid engine projection backfill request")
+		return
+	}
+
+	result, err := s.engineSharedControl.BackfillProjections(r.Context(), projectID, &backfillReq)
+	if err != nil {
+		writeEngineError(w, err, "Failed to backfill engine projections")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, engineProjectionBackfillResponseToAPI(&result))
+}
+
 func (s *Server) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {
@@ -297,6 +333,102 @@ func (s *Server) SignalEngineRun(w http.ResponseWriter, r *http.Request, runID o
 	}
 
 	writeJSON(w, http.StatusOK, engineControlResponseToAPI(&result))
+}
+
+func engineProjectionBackfillRequestFromAPI(
+	req *EngineProjectionBackfillRequest,
+) (enginecontrol.ProjectionBackfillRequest, error) {
+	result := enginecontrol.ProjectionBackfillRequest{
+		Limit: defaultEngineProjectionBackfillLimit,
+	}
+	if req == nil {
+		return result, nil
+	}
+
+	if req.DryRun != nil {
+		result.DryRun = *req.DryRun
+	}
+	if req.Limit != nil {
+		if *req.Limit > maxEngineProjectionBackfillLimit {
+			return enginecontrol.ProjectionBackfillRequest{}, errInvalidEngineProjectionBackfillLimit(*req.Limit)
+		}
+		if *req.Limit > 0 {
+			result.Limit = *req.Limit
+		}
+	}
+	if req.OlderThan != nil {
+		result.OlderThan = req.OlderThan
+	}
+	if req.EngineInstanceKey != nil {
+		result.EngineInstanceKey = strings.TrimSpace(*req.EngineInstanceKey)
+	}
+	if req.EngineDefinitionName != nil {
+		result.EngineDefinitionName = strings.TrimSpace(*req.EngineDefinitionName)
+	}
+	if req.EngineRunStatus != nil {
+		normalizedStatus, err := normalizeEngineRunStatusValue(string(*req.EngineRunStatus))
+		if err != nil {
+			return enginecontrol.ProjectionBackfillRequest{}, err
+		}
+		result.EngineRunStatus = normalizedStatus
+	}
+	if req.EngineProjectionState != nil {
+		normalizedState, err := normalizeEngineProjectionStateValue(string(*req.EngineProjectionState))
+		if err != nil {
+			return enginecontrol.ProjectionBackfillRequest{}, err
+		}
+		result.EngineProjectionState = normalizedState
+	}
+
+	return result, nil
+}
+
+func errInvalidEngineProjectionBackfillLimit(_ int) error {
+	return &enginecontrol.APIError{
+		Code:       "invalid_request",
+		Message:    "limit must be 100 or less",
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func normalizeEngineRunStatusValue(value string) (string, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	switch EngineRunStatus(normalized) {
+	case "":
+		return "", nil
+	case EngineRunStatusQUEUED,
+		EngineRunStatusRUNNING,
+		EngineRunStatusWAITING,
+		EngineRunStatusSUSPENDED,
+		EngineRunStatusCOMPLETED,
+		EngineRunStatusFAILED,
+		EngineRunStatusCANCELLED,
+		EngineRunStatusTERMINATED,
+		EngineRunStatusCONTINUEDASNEW:
+		return normalized, nil
+	default:
+		return "", &enginecontrol.APIError{
+			Code:       "invalid_request",
+			Message:    "engine_run_status must be a valid EngineRunStatus value",
+			HTTPStatus: http.StatusBadRequest,
+		}
+	}
+}
+
+func normalizeEngineProjectionStateValue(value string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch EngineProjectionState(normalized) {
+	case "":
+		return "", nil
+	case UpToDate, CatchingUp, SummaryOnly, JournalExpired:
+		return normalized, nil
+	default:
+		return "", &enginecontrol.APIError{
+			Code:       "invalid_request",
+			Message:    "engine_projection_state must be a valid EngineProjectionState value",
+			HTTPStatus: http.StatusBadRequest,
+		}
+	}
 }
 
 func engineStartRunRequestFromAPI(req *EngineStartRunRequest) (engineStartRunRequest, error) {

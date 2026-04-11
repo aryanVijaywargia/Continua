@@ -72,6 +72,13 @@ const (
 	CompareTraceHeaderStatusRUNNING   CompareTraceHeaderStatus = "RUNNING"
 )
 
+// Defines values for EngineProjectionBackfillAction.
+const (
+	EngineProjectionBackfillActionRepairRequested EngineProjectionBackfillAction = "repair_requested"
+	EngineProjectionBackfillActionSkipped         EngineProjectionBackfillAction = "skipped"
+	EngineProjectionBackfillActionWouldRepair     EngineProjectionBackfillAction = "would_repair"
+)
+
 // Defines values for EngineProjectionState.
 const (
 	CatchingUp     EngineProjectionState = "catching_up"
@@ -88,11 +95,11 @@ const (
 
 // Defines values for EngineRepairReason.
 const (
-	AlreadyCatchingUp EngineRepairReason = "already_catching_up"
-	AlreadyUpToDate   EngineRepairReason = "already_up_to_date"
-	HistoryExpired    EngineRepairReason = "history_expired"
-	NoEventsToProject EngineRepairReason = "no_events_to_project"
-	RepairRequested   EngineRepairReason = "repair_requested"
+	EngineRepairReasonAlreadyCatchingUp EngineRepairReason = "already_catching_up"
+	EngineRepairReasonAlreadyUpToDate   EngineRepairReason = "already_up_to_date"
+	EngineRepairReasonHistoryExpired    EngineRepairReason = "history_expired"
+	EngineRepairReasonNoEventsToProject EngineRepairReason = "no_events_to_project"
+	EngineRepairReasonRepairRequested   EngineRepairReason = "repair_requested"
 )
 
 // Defines values for EngineRunStatus.
@@ -435,6 +442,8 @@ type EngineControlResponse struct {
 
 // EngineFailureSummary defines model for EngineFailureSummary.
 type EngineFailureSummary struct {
+	// ErrorCode Stable reserved value: `definition_version_mismatch`. Clients may
+	// exact-match this value while still accepting arbitrary strings.
 	ErrorCode    string `json:"error_code"`
 	ErrorMessage string `json:"error_message"`
 	Status       string `json:"status"`
@@ -501,6 +510,42 @@ type EnginePendingWorkResponse struct {
 	RunId                openapi_types.UUID        `json:"run_id"`
 	Signals              []EnginePendingSignalItem `json:"signals"`
 	Timers               []EnginePendingTimerItem  `json:"timers"`
+}
+
+// EngineProjectionBackfillAction defines model for EngineProjectionBackfillAction.
+type EngineProjectionBackfillAction string
+
+// EngineProjectionBackfillRequest defines model for EngineProjectionBackfillRequest.
+type EngineProjectionBackfillRequest struct {
+	DryRun               *bool   `json:"dry_run,omitempty"`
+	EngineDefinitionName *string `json:"engine_definition_name,omitempty"`
+	EngineInstanceKey    *string `json:"engine_instance_key,omitempty"`
+
+	// EngineProjectionState Defaults to `summary_only` when omitted. Explicit `up_to_date`,
+	// `catching_up`, and `journal_expired` return zero eligible rows.
+	EngineProjectionState *EngineProjectionState `json:"engine_projection_state,omitempty"`
+	EngineRunStatus       *EngineRunStatus       `json:"engine_run_status,omitempty"`
+	Limit                 *int                   `json:"limit,omitempty"`
+	OlderThan             *time.Time             `json:"older_than,omitempty"`
+}
+
+// EngineProjectionBackfillResponse defines model for EngineProjectionBackfillResponse.
+type EngineProjectionBackfillResponse struct {
+	DryRun               bool                                `json:"dry_run"`
+	EligibleCount        int                                 `json:"eligible_count"`
+	Limit                int                                 `json:"limit"`
+	RepairRequestedCount int                                 `json:"repair_requested_count"`
+	Results              []EngineProjectionBackfillRunResult `json:"results"`
+	SkippedCount         int                                 `json:"skipped_count"`
+}
+
+// EngineProjectionBackfillRunResult defines model for EngineProjectionBackfillRunResult.
+type EngineProjectionBackfillRunResult struct {
+	Action          EngineProjectionBackfillAction `json:"action"`
+	ProjectionState EngineProjectionState          `json:"projection_state"`
+	Reason          *EngineRepairReason            `json:"reason,omitempty"`
+	RunId           openapi_types.UUID             `json:"run_id"`
+	TraceId         string                         `json:"trace_id"`
 }
 
 // EngineProjectionState defines model for EngineProjectionState.
@@ -1214,6 +1259,12 @@ type GetTraceEventsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// BackfillEngineProjectionsParams defines parameters for BackfillEngineProjections.
+type BackfillEngineProjectionsParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+}
+
 // StartEngineRunParams defines parameters for StartEngineRun.
 type StartEngineRunParams struct {
 	// XContinuaEnginePreview Required preview header for mutating engine routes.
@@ -1278,6 +1329,9 @@ type IngestParams struct {
 	// Any other value is rejected with `400 unsupported_async_version`.
 	XContinuaAsyncVersion *string `json:"X-Continua-Async-Version,omitempty"`
 }
+
+// BackfillEngineProjectionsJSONRequestBody defines body for BackfillEngineProjections for application/json ContentType.
+type BackfillEngineProjectionsJSONRequestBody = EngineProjectionBackfillRequest
 
 // StartEngineRunJSONRequestBody defines body for StartEngineRun for application/json ContentType.
 type StartEngineRunJSONRequestBody = EngineStartRunRequest
@@ -1463,6 +1517,9 @@ type ServerInterface interface {
 	// Get an engine instance and current run
 	// (GET /v1/engine/instances/{instance_key})
 	GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string)
+	// Preview or request bulk projection repair for engine runs
+	// (POST /v1/engine/projections/backfill)
+	BackfillEngineProjections(w http.ResponseWriter, r *http.Request, params BackfillEngineProjectionsParams)
 	// Start an engine workflow run
 	// (POST /v1/engine/runs)
 	StartEngineRun(w http.ResponseWriter, r *http.Request, params StartEngineRunParams)
@@ -1562,6 +1619,12 @@ func (_ Unimplemented) ListSpansByTrace(w http.ResponseWriter, r *http.Request, 
 // Get an engine instance and current run
 // (GET /v1/engine/instances/{instance_key})
 func (_ Unimplemented) GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Preview or request bulk projection repair for engine runs
+// (POST /v1/engine/projections/backfill)
+func (_ Unimplemented) BackfillEngineProjections(w http.ResponseWriter, r *http.Request, params BackfillEngineProjectionsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2144,6 +2207,56 @@ func (siw *ServerInterfaceWrapper) GetEngineInstance(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetEngineInstance(w, r, instanceKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BackfillEngineProjections operation middleware
+func (siw *ServerInterfaceWrapper) BackfillEngineProjections(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params BackfillEngineProjectionsParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = XContinuaEnginePreview
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BackfillEngineProjections(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2983,6 +3096,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/engine/instances/{instance_key}", wrapper.GetEngineInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/projections/backfill", wrapper.BackfillEngineProjections)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/engine/runs", wrapper.StartEngineRun)

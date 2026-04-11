@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +23,10 @@ from .types import (
     EngineControlResponse,
     EngineInstanceResponse,
     EnginePendingWorkResponse,
+    EngineProjectionBackfillRequest,
+    EngineProjectionBackfillResponse,
+    EngineProjectionBackfillRunResult,
+    EngineProjectionState,
     EnginePurgeMode,
     EnginePurgeRequest,
     EnginePurgeResponse,
@@ -181,6 +186,87 @@ class EngineControlClient:
             f"/v1/engine/runs/{run_id}/repair",
             EngineRepairResponse,
             headers=_PREVIEW_HEADERS,
+        )
+
+    def backfill_projections(
+        self,
+        *,
+        dry_run: bool = False,
+        limit: int | None = None,
+        older_than: datetime | str | None = None,
+        engine_instance_key: str | None = None,
+        engine_definition_name: str | None = None,
+        engine_run_status: EngineRunStatus | str | None = None,
+        engine_projection_state: EngineProjectionState | str | None = None,
+    ) -> EngineProjectionBackfillResponse:
+        request = EngineProjectionBackfillRequest(
+            dry_run=dry_run,
+            limit=limit,
+            older_than=older_than,
+            engine_instance_key=engine_instance_key,
+            engine_definition_name=engine_definition_name,
+            engine_run_status=engine_run_status,
+            engine_projection_state=engine_projection_state,
+        )
+        return self._request_model(
+            "POST",
+            "/v1/engine/projections/backfill",
+            EngineProjectionBackfillResponse,
+            json=request.model_dump(mode="json", exclude_none=True),
+            headers=_PREVIEW_HEADERS,
+        )
+
+    def backfill_projections_all(
+        self,
+        *,
+        max_total: int = 1000,
+        dry_run: bool = False,
+        limit: int | None = None,
+        older_than: datetime | str | None = None,
+        engine_instance_key: str | None = None,
+        engine_definition_name: str | None = None,
+        engine_run_status: EngineRunStatus | str | None = None,
+        engine_projection_state: EngineProjectionState | str | None = None,
+    ) -> EngineProjectionBackfillResponse:
+        if dry_run:
+            raise ValueError(
+                "backfill_projections_all() cannot page dry-run previews because "
+                "the backfill API has no cursor and dry-run calls do not mutate "
+                "eligibility; call backfill_projections(dry_run=True, limit=...) "
+                "for a bounded preview."
+            )
+
+        page_limit = limit or 50
+        remaining = max_total
+        aggregate_results: list[EngineProjectionBackfillRunResult] = []
+        aggregate_repair_requested_count = 0
+        aggregate_skipped_count = 0
+
+        while remaining > 0:
+            response = self.backfill_projections(
+                dry_run=False,
+                limit=min(page_limit, remaining),
+                older_than=older_than,
+                engine_instance_key=engine_instance_key,
+                engine_definition_name=engine_definition_name,
+                engine_run_status=engine_run_status,
+                engine_projection_state=engine_projection_state,
+            )
+            aggregate_results.extend(response.results)
+            aggregate_repair_requested_count += response.repair_requested_count
+            aggregate_skipped_count += response.skipped_count
+            remaining -= len(response.results)
+
+            if len(response.results) < response.limit:
+                break
+
+        return EngineProjectionBackfillResponse(
+            dry_run=dry_run,
+            limit=page_limit,
+            eligible_count=len(aggregate_results),
+            repair_requested_count=aggregate_repair_requested_count,
+            skipped_count=aggregate_skipped_count,
+            results=aggregate_results,
         )
 
     def wait_for_terminal(

@@ -146,6 +146,41 @@ func engineRepairResponseToAPI(result *enginecontrol.RepairResult) EngineRepairR
 	}
 }
 
+func engineProjectionBackfillResponseToAPI(
+	result *enginecontrol.ProjectionBackfillResult,
+) EngineProjectionBackfillResponse {
+	response := EngineProjectionBackfillResponse{
+		DryRun:               result.DryRun,
+		EligibleCount:        result.EligibleCount,
+		Limit:                result.Limit,
+		RepairRequestedCount: result.RepairRequestedCount,
+		Results:              make([]EngineProjectionBackfillRunResult, 0, len(result.Results)),
+		SkippedCount:         result.SkippedCount,
+	}
+
+	for i := range result.Results {
+		response.Results = append(response.Results, engineProjectionBackfillRunResultToAPI(&result.Results[i]))
+	}
+
+	return response
+}
+
+func engineProjectionBackfillRunResultToAPI(
+	result *enginecontrol.ProjectionBackfillRunResult,
+) EngineProjectionBackfillRunResult {
+	apiResult := EngineProjectionBackfillRunResult{
+		Action:          EngineProjectionBackfillAction(result.Action),
+		ProjectionState: engineProjectionStateFromString(result.ProjectionState),
+		RunId:           result.RunID,
+		TraceId:         result.TraceID,
+	}
+	if result.Reason != nil {
+		reason := EngineRepairReason(*result.Reason)
+		apiResult.Reason = &reason
+	}
+	return apiResult
+}
+
 func enginePendingWorkResponseToAPI(result *enginePendingWorkResult) EnginePendingWorkResponse {
 	response := EnginePendingWorkResponse{
 		Activities:           make([]EnginePendingActivityItem, 0, len(result.Activities)),

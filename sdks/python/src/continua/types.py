@@ -32,6 +32,12 @@ class EngineProjectionState(Enum):
     journal_expired = "journal_expired"
 
 
+class EngineProjectionBackfillAction(Enum):
+    would_repair = "would_repair"
+    repair_requested = "repair_requested"
+    skipped = "skipped"
+
+
 class EnginePurgeMode(Enum):
     projection_only = "projection_only"
     full = "full"
@@ -116,8 +122,41 @@ class EnginePendingWorkResponse(BaseModel):
     pending_inbox_items: int
 
 
+class EngineProjectionBackfillRequest(BaseModel):
+    dry_run: bool | None = False
+    limit: int | None = Field(50, le=100)
+    older_than: AwareDatetime | None = None
+    engine_instance_key: str | None = None
+    engine_definition_name: str | None = None
+    engine_run_status: EngineRunStatus | None = None
+    engine_projection_state: EngineProjectionState | None = Field(
+        None,
+        description="Defaults to `summary_only` when omitted. Explicit `up_to_date`,\n`catching_up`, and `journal_expired` return zero eligible rows.\n",
+    )
+
+
+class EngineProjectionBackfillRunResult(BaseModel):
+    run_id: UUID
+    trace_id: str
+    projection_state: EngineProjectionState
+    action: EngineProjectionBackfillAction
+    reason: EngineRepairReason | None = None
+
+
+class EngineProjectionBackfillResponse(BaseModel):
+    dry_run: bool
+    limit: int
+    eligible_count: int
+    repair_requested_count: int
+    skipped_count: int
+    results: list[EngineProjectionBackfillRunResult]
+
+
 class EngineFailureSummary(BaseModel):
-    error_code: str
+    error_code: str = Field(
+        ...,
+        description="Stable reserved value: `definition_version_mismatch`. Clients may\nexact-match this value while still accepting arbitrary strings.\n",
+    )
     error_message: str
     status: str
 

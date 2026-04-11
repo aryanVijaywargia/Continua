@@ -60,6 +60,41 @@ type RepairResult struct {
 	ProjectionState string
 }
 
+type ProjectionBackfillAction string
+
+const (
+	ProjectionBackfillActionWouldRepair     ProjectionBackfillAction = "would_repair"
+	ProjectionBackfillActionRepairRequested ProjectionBackfillAction = "repair_requested"
+	ProjectionBackfillActionSkipped         ProjectionBackfillAction = "skipped"
+)
+
+type ProjectionBackfillRequest struct {
+	DryRun                bool
+	Limit                 int
+	OlderThan             *time.Time
+	EngineInstanceKey     string
+	EngineDefinitionName  string
+	EngineRunStatus       string
+	EngineProjectionState string
+}
+
+type ProjectionBackfillRunResult struct {
+	RunID           uuid.UUID
+	TraceID         string
+	ProjectionState string
+	Action          ProjectionBackfillAction
+	Reason          *RepairReason
+}
+
+type ProjectionBackfillResult struct {
+	DryRun               bool
+	Limit                int
+	EligibleCount        int
+	RepairRequestedCount int
+	SkippedCount         int
+	Results              []ProjectionBackfillRunResult
+}
+
 type Service struct {
 	platform *store.Store
 }
@@ -237,6 +272,77 @@ func (s *Service) RepairRun(
 	return result, nil
 }
 
+func (s *Service) BackfillProjections(
+	ctx context.Context,
+	projectID uuid.UUID,
+	req *ProjectionBackfillRequest,
+) (ProjectionBackfillResult, error) {
+	if s == nil || s.platform == nil {
+		return ProjectionBackfillResult{}, errors.New("engine control service is not configured")
+	}
+	if req == nil {
+		req = &ProjectionBackfillRequest{}
+	}
+
+	result := ProjectionBackfillResult{
+		DryRun: req.DryRun,
+		Limit:  req.Limit,
+	}
+
+	projectionState := normalizeBackfillProjectionState(req.EngineProjectionState)
+	if !isBackfillTargetProjectionState(projectionState) {
+		return result, nil
+	}
+
+	candidates, err := s.platform.ListProjectionBackfillCandidates(ctx, &store.ProjectionBackfillFilter{
+		ProjectID:             projectID,
+		OlderThan:             req.OlderThan,
+		EngineInstanceKey:     strings.TrimSpace(req.EngineInstanceKey),
+		EngineDefinitionName:  strings.TrimSpace(req.EngineDefinitionName),
+		EngineRunStatus:       strings.ToLower(strings.TrimSpace(req.EngineRunStatus)),
+		EngineProjectionState: projectionState,
+		Limit:                 req.Limit,
+	})
+	if err != nil {
+		return ProjectionBackfillResult{}, err
+	}
+
+	result.EligibleCount = len(candidates)
+	result.Results = make([]ProjectionBackfillRunResult, 0, len(candidates))
+	for _, candidate := range candidates {
+		runResult := ProjectionBackfillRunResult{
+			RunID:           candidate.RunID,
+			TraceID:         candidate.TraceID,
+			ProjectionState: candidate.ProjectionState,
+		}
+
+		if req.DryRun {
+			runResult.Action = ProjectionBackfillActionWouldRepair
+			result.Results = append(result.Results, runResult)
+			continue
+		}
+
+		repairResult, err := s.RepairRun(ctx, projectID, candidate.RunID)
+		if err != nil {
+			return ProjectionBackfillResult{}, err
+		}
+
+		runResult.ProjectionState = repairResult.ProjectionState
+		runResult.Reason = &repairResult.Reason
+		if repairResult.Reason == RepairReasonRequested {
+			runResult.Action = ProjectionBackfillActionRepairRequested
+			result.RepairRequestedCount++
+		} else {
+			runResult.Action = ProjectionBackfillActionSkipped
+			result.SkippedCount++
+		}
+
+		result.Results = append(result.Results, runResult)
+	}
+
+	return result, nil
+}
+
 func loadLockedRunTrace(
 	ctx context.Context,
 	tx *store.Tx,
@@ -271,6 +377,17 @@ func normalizedProjectionState(value *string) string {
 		return publicprojection.StateUpToDate.String()
 	}
 	return state
+}
+
+func normalizeBackfillProjectionState(value string) string {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return trimmed
+	}
+	return publicprojection.StateSummaryOnly.String()
+}
+
+func isBackfillTargetProjectionState(value string) bool {
+	return strings.TrimSpace(value) == publicprojection.StateSummaryOnly.String()
 }
 
 func isTerminalRun(status enginedb.EngineRunLifecycleStatus) bool {

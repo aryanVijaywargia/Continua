@@ -14,6 +14,8 @@ import {
 
 const API_KEY_STORAGE_KEY = 'continua_api_key';
 const API_KEY_EVENT_NAME = 'continua:api-key-change';
+const ENGINE_PREVIEW_HEADER = 'X-Continua-Engine-Preview';
+const ENGINE_PREVIEW_HEADER_VALUE = '1';
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -154,9 +156,21 @@ export type EngineRunStatus =
   | 'QUEUED'
   | 'RUNNING'
   | 'WAITING'
+  | 'SUSPENDED'
   | 'COMPLETED'
   | 'FAILED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'TERMINATED'
+  | 'CONTINUED_AS_NEW';
+
+export type EngineRepairReason =
+  | 'already_up_to_date'
+  | 'history_expired'
+  | 'no_events_to_project'
+  | 'repair_requested'
+  | 'already_catching_up';
+
+export type EnginePurgeMode = 'projection_only' | 'full';
 
 export interface EngineTraceInfo {
   run_id: string;
@@ -180,6 +194,39 @@ export interface EnginePendingWork {
   pending_inbox_items: number;
 }
 
+export interface EnginePendingActivityItem {
+  task_id: string;
+  activity_key: string;
+  activity_type: string;
+  status: string;
+  available_at: string;
+  attempt_count: number;
+}
+
+export interface EnginePendingTimerItem {
+  inbox_id: string;
+  timer_key: string;
+  status: string;
+  available_at: string;
+}
+
+export interface EnginePendingSignalItem {
+  inbox_id: string;
+  signal_name: string;
+  status: string;
+  available_at: string;
+}
+
+export interface EnginePendingWorkResponse {
+  run_id: string;
+  current_wait: EngineWaitState | null;
+  activities: EnginePendingActivityItem[];
+  timers: EnginePendingTimerItem[];
+  signals: EnginePendingSignalItem[];
+  pending_activity_tasks: number;
+  pending_inbox_items: number;
+}
+
 export interface EngineFailureSummary {
   error_code: string;
   error_message: string;
@@ -189,6 +236,10 @@ export interface EngineFailureSummary {
 export interface EngineRunSummary {
   run_id: string;
   instance_key: string;
+  continued_from_run_id?: string;
+  continued_to_run_id?: string;
+  continued_from_trace_id?: string;
+  continued_to_trace_id?: string;
   definition_name: string;
   definition_version: string;
   projection_state: EngineProjectionState;
@@ -201,6 +252,47 @@ export interface EngineRunSummary {
   result?: JsonValue;
   failure?: EngineFailureSummary;
   wait_state?: EngineWaitState;
+}
+
+export interface EngineRunResponse extends EngineRunSummary {
+  instance_id: string;
+}
+
+export interface EngineRunResultResponse {
+  run_id: string;
+  continued_from_run_id?: string;
+  continued_to_run_id?: string;
+  continued_from_trace_id?: string;
+  continued_to_trace_id?: string;
+  status: EngineRunStatus;
+  result: JsonValue | null;
+  failure?: EngineFailureSummary;
+}
+
+export interface EngineControlResponse {
+  run_id: string;
+  instance_key: string;
+  accepted: boolean;
+  wake_applied: boolean;
+}
+
+export interface EngineSignalRunRequest {
+  signal_name: string;
+  payload?: JsonValue;
+}
+
+export interface EnginePurgeResponse {
+  run_id: string;
+  mode: EnginePurgeMode;
+  projection_state: EngineProjectionState;
+  deleted: boolean;
+}
+
+export interface EngineRepairResponse {
+  run_id: string;
+  accepted: boolean;
+  reason: EngineRepairReason;
+  projection_state: EngineProjectionState;
 }
 
 export interface Trace {
@@ -547,4 +639,86 @@ export async function fetchSessionComparison(
   });
 
   return fetchAPI<SessionCompareResponse>(`/api/sessions/${sessionId}/compare?${params.toString()}`);
+}
+
+function withEnginePreviewHeader(options: RequestInit = {}): RequestInit {
+  return {
+    ...options,
+    headers: {
+      [ENGINE_PREVIEW_HEADER]: ENGINE_PREVIEW_HEADER_VALUE,
+      ...options.headers,
+    },
+  };
+}
+
+function withJsonBody(body?: unknown): RequestInit {
+  if (body === undefined) {
+    return { method: 'POST' };
+  }
+
+  return {
+    method: 'POST',
+    body: JSON.stringify(body),
+  };
+}
+
+export async function signalEngineRun(
+  runId: string,
+  request: EngineSignalRunRequest
+): Promise<EngineControlResponse> {
+  return fetchAPI<EngineControlResponse>(
+    `/v1/engine/runs/${runId}/signal`,
+    withEnginePreviewHeader(withJsonBody(request))
+  );
+}
+
+export async function cancelEngineRun(runId: string): Promise<EngineControlResponse> {
+  return fetchAPI<EngineControlResponse>(
+    `/v1/engine/runs/${runId}/cancel`,
+    withEnginePreviewHeader(withJsonBody())
+  );
+}
+
+export async function suspendEngineRun(runId: string): Promise<EngineRunResponse> {
+  return fetchAPI<EngineRunResponse>(
+    `/v1/engine/runs/${runId}/suspend`,
+    withEnginePreviewHeader(withJsonBody())
+  );
+}
+
+export async function resumeEngineRun(runId: string): Promise<EngineRunResponse> {
+  return fetchAPI<EngineRunResponse>(
+    `/v1/engine/runs/${runId}/resume`,
+    withEnginePreviewHeader(withJsonBody())
+  );
+}
+
+export async function terminateEngineRun(runId: string): Promise<EngineRunResultResponse> {
+  return fetchAPI<EngineRunResultResponse>(
+    `/v1/engine/runs/${runId}/terminate`,
+    withEnginePreviewHeader(withJsonBody())
+  );
+}
+
+export async function purgeEngineRun(
+  runId: string,
+  mode: EnginePurgeMode
+): Promise<EnginePurgeResponse> {
+  return fetchAPI<EnginePurgeResponse>(
+    `/v1/engine/runs/${runId}/purge`,
+    withEnginePreviewHeader(withJsonBody({ mode }))
+  );
+}
+
+export async function repairEngineRun(runId: string): Promise<EngineRepairResponse> {
+  return fetchAPI<EngineRepairResponse>(
+    `/v1/engine/runs/${runId}/repair`,
+    withEnginePreviewHeader(withJsonBody())
+  );
+}
+
+export async function fetchEnginePendingWork(
+  runId: string
+): Promise<EnginePendingWorkResponse> {
+  return fetchAPI<EnginePendingWorkResponse>(`/v1/engine/runs/${runId}/pending-work`);
 }

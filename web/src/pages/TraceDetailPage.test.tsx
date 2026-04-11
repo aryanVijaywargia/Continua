@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { focusManager, onlineManager } from '@tanstack/react-query';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -42,11 +42,99 @@ function createRunningTraceDetail(
   };
 }
 
+function createEngineTraceDetail({
+  engineOverrides = {},
+  traceOverrides = {},
+}: {
+  engineOverrides?: Partial<NonNullable<TraceDetail['engine']>>;
+  traceOverrides?: Partial<TraceDetail>;
+} = {}): TraceDetail {
+  return createRunningTraceDetail({
+    ...traceOverrides,
+    engine: {
+      run_id: '123e4567-e89b-12d3-a456-426614174103',
+      instance_key: 'instance-1',
+      definition_name: 'checkout',
+      definition_version: 'v1',
+      projection_state: 'summary_only',
+      status: 'WAITING',
+      created_at: '2026-03-14T10:00:00.000Z',
+      updated_at: '2026-03-14T10:00:05.000Z',
+      pending_work: {
+        pending_activity_tasks: 1,
+        pending_inbox_items: 2,
+      },
+      wait_state: {
+        kind: 'signal',
+        signal_name: 'approval',
+      },
+      ...engineOverrides,
+    },
+  });
+}
+
+function createPendingWorkResponse(
+  overrides: Partial<{
+    current_wait: Record<string, unknown> | null;
+    activities: Array<Record<string, unknown>>;
+    timers: Array<Record<string, unknown>>;
+    signals: Array<Record<string, unknown>>;
+    pending_activity_tasks: number;
+    pending_inbox_items: number;
+  }> = {}
+) {
+  return {
+    run_id: '123e4567-e89b-12d3-a456-426614174103',
+    current_wait: {
+      kind: 'signal',
+      signal_name: 'approval',
+    },
+    activities: [
+      {
+        task_id: 'task-1',
+        activity_key: 'charge-card',
+        activity_type: 'payments.charge',
+        status: 'scheduled',
+        available_at: '2026-03-14T10:01:00.000Z',
+        attempt_count: 2,
+      },
+    ],
+    timers: [
+      {
+        inbox_id: 'timer-1',
+        timer_key: 'approval-timeout',
+        status: 'scheduled',
+        available_at: '2026-03-14T10:02:00.000Z',
+      },
+    ],
+    signals: [
+      {
+        inbox_id: 'signal-1',
+        signal_name: 'manual_override',
+        status: 'queued',
+        available_at: '2026-03-14T10:03:00.000Z',
+      },
+    ],
+    pending_activity_tasks: 1,
+    pending_inbox_items: 2,
+    ...overrides,
+  };
+}
+
 function countRequests(pathname: string): number {
   return fetchMock.mock.calls.filter(([input]) => {
     const url = new URL(readRequestUrl(input), 'http://localhost');
     return url.pathname === pathname;
   }).length;
+}
+
+function getRequestCallsMatching(pattern: RegExp) {
+  return fetchMock.mock.calls.flatMap(([input, init]) => {
+    const url = new URL(readRequestUrl(input), 'http://localhost');
+    return pattern.test(url.pathname)
+      ? [{ url, init: init as RequestInit | undefined }]
+      : [];
+  });
 }
 
 function createWaitEvent({
@@ -228,6 +316,520 @@ describe('TraceDetailPage', () => {
     expect(screen.queryByText('Projection summary only')).not.toBeInTheDocument();
     expect(screen.queryByText('Projection journal expired')).not.toBeInTheDocument();
     expect(screen.queryByText('Waiting on signal')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Signal' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Pending work')).not.toBeInTheDocument();
+  });
+
+  it('renders pending work details and engine controls for engine-backed traces', async () => {
+    const rootSpan = createSpan({ span_id: 'engine-control-root', name: 'Engine control root' });
+    const runId = '123e4567-e89b-12d3-a456-426614174103';
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(
+            createEngineTraceDetail({
+              engineOverrides: { projection_state: 'catching_up' },
+            })
+          ),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+            engine: {
+              projection_state: 'catching_up',
+            },
+          }),
+        enginePendingWork: () => jsonResponse(createPendingWorkResponse()),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Drive the engine run from the debugger' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Engine wait state and queued work')).toBeInTheDocument();
+    expect(screen.getByText('payments.charge · charge-card')).toBeInTheDocument();
+    expect(screen.getByText('approval-timeout')).toBeInTheDocument();
+    expect(screen.getByText('manual_override')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Signal' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Purge' })).toBeDisabled();
+    expect(countRequests(`/v1/engine/runs/${runId}/pending-work`)).toBeGreaterThan(0);
+  });
+
+  it.each([
+    {
+      status: 'WAITING',
+      enabled: ['Signal', 'Cancel', 'Suspend', 'Terminate', 'Repair'],
+      disabled: ['Resume', 'Purge'],
+    },
+    {
+      status: 'SUSPENDED',
+      enabled: ['Signal', 'Cancel', 'Resume', 'Terminate', 'Repair'],
+      disabled: ['Suspend', 'Purge'],
+    },
+    {
+      status: 'COMPLETED',
+      enabled: ['Purge', 'Repair'],
+      disabled: ['Signal', 'Cancel', 'Suspend', 'Resume', 'Terminate'],
+    },
+    {
+      status: 'CONTINUED_AS_NEW',
+      enabled: ['Purge', 'Repair'],
+      disabled: ['Signal', 'Cancel', 'Suspend', 'Resume', 'Terminate'],
+    },
+  ] as const)(
+    'gates engine actions for $status runs',
+    async ({ status, enabled, disabled }) => {
+      const rootSpan = createSpan({ span_id: `root-${status}`, name: `Root ${status}` });
+
+      fetchMock.mockImplementation(
+        buildFetchHandler({
+          detail: () =>
+            jsonResponse(
+              createEngineTraceDetail({
+                engineOverrides: { status },
+                traceOverrides: {
+                  status: status === 'WAITING' || status === 'SUSPENDED'
+                    ? 'RUNNING'
+                    : 'FAILED',
+                },
+              })
+            ),
+          spans: () => jsonResponse({ spans: [rootSpan] }),
+          timeline: () =>
+            jsonResponse({
+              events: [],
+              trace_status:
+                status === 'WAITING' || status === 'SUSPENDED'
+                  ? 'RUNNING'
+                  : 'FAILED',
+              has_more: false,
+            }),
+        })
+      );
+
+      renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+      expect(await screen.findByRole('button', { name: 'Repair' })).toBeInTheDocument();
+
+      enabled.forEach((label) => {
+        expect(screen.getByRole('button', { name: label })).toBeEnabled();
+      });
+      disabled.forEach((label) => {
+        expect(screen.getByRole('button', { name: label })).toBeDisabled();
+      });
+    }
+  );
+
+  it('validates signal input, shows in-flight state, sends preview headers, and invalidates caches on success', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({ span_id: 'signal-root', name: 'Signal root' });
+    const deferred = createDeferredResponse();
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createEngineTraceDetail()),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+        enginePendingWork: () => jsonResponse(createPendingWorkResponse()),
+        engineAction: (url) => {
+          if (url.pathname.endsWith('/signal')) {
+            return deferred.promise;
+          }
+
+          return jsonResponse({ code: 'not_found', message: 'unexpected action' }, 404);
+        },
+      })
+    );
+
+    const view = renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+    const invalidateSpy = vi.spyOn(view.queryClient, 'invalidateQueries');
+
+    expect(await screen.findByRole('button', { name: 'Signal' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Signal' }));
+
+    const signalNameInput = screen.getByLabelText('Signal name');
+    const payloadInput = screen.getByLabelText('Payload (JSON)');
+    const sendButton = screen.getByRole('button', { name: 'Send signal' });
+
+    expect(sendButton).toBeDisabled();
+    await user.type(signalNameInput, '   ');
+    expect(screen.getByText('Signal name is required.')).toBeInTheDocument();
+    expect(sendButton).toBeDisabled();
+
+    await user.clear(signalNameInput);
+    await user.type(signalNameInput, ' approve ');
+    fireEvent.change(payloadInput, { target: { value: '{invalid' } });
+    expect(screen.getByText('Payload must be valid JSON.')).toBeInTheDocument();
+    expect(sendButton).toBeDisabled();
+
+    fireEvent.change(payloadInput, {
+      target: { value: '{"approved":true}' },
+    });
+    expect(sendButton).toBeEnabled();
+
+    await user.click(sendButton);
+    expect(sendButton).toBeDisabled();
+    expect(
+      screen.getAllByRole('button', { name: 'Submitting...' }).length
+    ).toBeGreaterThan(0);
+    expect(screen.getByText('Submitting signal...')).toBeInTheDocument();
+
+    const signalCalls = getRequestCallsMatching(/\/v1\/engine\/runs\/[^/]+\/signal$/);
+    expect(signalCalls).toHaveLength(1);
+    expect(signalCalls[0]?.init?.headers).toMatchObject({
+      'X-Continua-Engine-Preview': '1',
+      'X-API-Key': 'test-key',
+    });
+    expect(signalCalls[0]?.init?.body).toBe(
+      JSON.stringify({
+        signal_name: 'approve',
+        payload: { approved: true },
+      })
+    );
+
+    deferred.resolve(
+      jsonResponse({
+        run_id: '123e4567-e89b-12d3-a456-426614174103',
+        instance_key: 'instance-1',
+        accepted: true,
+        wake_applied: true,
+      })
+    );
+
+    expect(await screen.findByText('Signal accepted')).toBeInTheDocument();
+    expect(screen.queryByText('Signal name is required.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Payload must be valid JSON.')).not.toBeInTheDocument();
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['trace', TRACE_ONE.id],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['timeline', TRACE_ONE.id],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['spans', TRACE_ONE.id],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['enginePendingWork', '123e4567-e89b-12d3-a456-426614174103'],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['traces'],
+    });
+  });
+
+  it('supports full purge mode for CONTINUED_AS_NEW runs and sends the selected mode', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({ span_id: 'purge-root', name: 'Purge root' });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(
+            createEngineTraceDetail({
+              engineOverrides: { status: 'CONTINUED_AS_NEW' },
+              traceOverrides: { status: 'COMPLETED' },
+            })
+          ),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+        engineAction: (url) => {
+          if (url.pathname.endsWith('/purge')) {
+            return jsonResponse({
+              run_id: '123e4567-e89b-12d3-a456-426614174103',
+              mode: 'full',
+              projection_state: 'journal_expired',
+              deleted: true,
+            });
+          }
+
+          return jsonResponse({ code: 'not_found', message: 'unexpected action' }, 404);
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    const purgeButton = await screen.findByRole('button', { name: 'Purge' });
+    expect(purgeButton).toBeEnabled();
+    await user.click(purgeButton);
+
+    expect(screen.getByRole('radio', { name: /Projection only/i })).toBeChecked();
+    await user.click(screen.getByRole('radio', { name: /Full purge/i }));
+    expect(
+      screen.getByText('Permanently delete retained engine history. This cannot be recovered.')
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Confirm purge' }));
+
+    expect(await screen.findByText('Purge applied')).toBeInTheDocument();
+
+    const purgeCalls = getRequestCallsMatching(/\/v1\/engine\/runs\/[^/]+\/purge$/);
+    expect(purgeCalls).toHaveLength(1);
+    expect(purgeCalls[0]?.init?.headers).toMatchObject({
+      'X-Continua-Engine-Preview': '1',
+      'X-API-Key': 'test-key',
+    });
+    expect(purgeCalls[0]?.init?.body).toBe(JSON.stringify({ mode: 'full' }));
+  });
+
+  it('replaces control feedback messages instead of stacking them', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({ span_id: 'feedback-root', name: 'Feedback root' });
+    let repairCallCount = 0;
+    let signalCallCount = 0;
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createEngineTraceDetail()),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+        engineAction: (url) => {
+          if (url.pathname.endsWith('/repair')) {
+            repairCallCount += 1;
+
+            if (repairCallCount === 1) {
+              return jsonResponse({
+                run_id: '123e4567-e89b-12d3-a456-426614174103',
+                accepted: true,
+                reason: 'repair_requested',
+                projection_state: 'catching_up',
+              });
+            }
+
+            if (repairCallCount === 2) {
+              return jsonResponse({
+                run_id: '123e4567-e89b-12d3-a456-426614174103',
+                accepted: false,
+                reason: 'history_expired',
+                projection_state: 'journal_expired',
+              });
+            }
+
+            return jsonResponse({
+              run_id: '123e4567-e89b-12d3-a456-426614174103',
+              accepted: false,
+              reason: 'already_up_to_date',
+              projection_state: 'up_to_date',
+            });
+          }
+
+          if (url.pathname.endsWith('/signal')) {
+            signalCallCount += 1;
+            if (signalCallCount === 1) {
+              return jsonResponse(
+                { code: 'error', message: 'Signal delivery failed' },
+                500
+              );
+            }
+
+            return jsonResponse({
+              run_id: '123e4567-e89b-12d3-a456-426614174103',
+              instance_key: 'instance-1',
+              accepted: true,
+              wake_applied: false,
+            });
+          }
+
+          return jsonResponse({ code: 'not_found', message: 'unexpected action' }, 404);
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(await screen.findByRole('button', { name: 'Repair' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Repair' }));
+    expect(await screen.findByText('Repair requested')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Signal' }));
+    await user.type(screen.getByLabelText('Signal name'), 'approve');
+    await user.click(screen.getByRole('button', { name: 'Send signal' }));
+    expect(await screen.findByText('Signal failed')).toBeInTheDocument();
+    expect(screen.queryByText('Repair requested')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Send signal' }));
+    expect(await screen.findByText('Signal accepted')).toBeInTheDocument();
+    expect(screen.queryByText('Signal failed')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Repair' }));
+    expect(await screen.findByText('History expired')).toBeInTheDocument();
+    expect(screen.queryByText('Signal accepted')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Repair' }));
+    expect(await screen.findByText('Already up to date')).toBeInTheDocument();
+    expect(screen.queryByText('History expired')).not.toBeInTheDocument();
+  });
+
+  it('shows inline conflict errors and refetches trace detail plus pending work on 409 responses', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({ span_id: 'conflict-root', name: 'Conflict root' });
+    const runId = '123e4567-e89b-12d3-a456-426614174103';
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(createEngineTraceDetail()),
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+        enginePendingWork: () => jsonResponse(createPendingWorkResponse()),
+        engineAction: (url) => {
+          if (url.pathname.endsWith('/suspend')) {
+            return jsonResponse(
+              {
+                code: 'run_not_suspendable',
+                message: 'Run is not suspendable',
+              },
+              409
+            );
+          }
+
+          return jsonResponse({ code: 'not_found', message: 'unexpected action' }, 404);
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    expect(await screen.findByRole('button', { name: 'Suspend' })).toBeInTheDocument();
+    const initialDetailRequests = countRequests(`/api/traces/${TRACE_ONE.id}`);
+    const initialPendingRequests = countRequests(
+      `/v1/engine/runs/${runId}/pending-work`
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Suspend' }));
+
+    expect(await screen.findByText('Suspend failed')).toBeInTheDocument();
+    expect(screen.getByText('Run is not suspendable')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(countRequests(`/api/traces/${TRACE_ONE.id}`)).toBeGreaterThan(
+        initialDetailRequests
+      );
+      expect(countRequests(`/v1/engine/runs/${runId}/pending-work`)).toBeGreaterThan(
+        initialPendingRequests
+      );
+    });
+  });
+
+  it('shows the exact-match mismatch banner and preserves returnTo through continuation links', async () => {
+    const user = userEvent.setup();
+    const rootSpan = createSpan({ span_id: 'continue-root', name: 'Continue root' });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: (url) => {
+          const traceId = url.pathname.split('/').at(-1);
+
+          if (traceId === TRACE_ONE.id) {
+            return jsonResponse(
+              createEngineTraceDetail({
+                engineOverrides: {
+                  failure: {
+                    error_code: 'definition_version_mismatch',
+                    error_message: 'missing definition version',
+                    status: 'FAILED',
+                  },
+                  continued_from_trace_id: 'trace-prev',
+                  continued_to_trace_id: 'trace-next',
+                  status: 'FAILED',
+                },
+                traceOverrides: {
+                  status: 'FAILED',
+                  error_count: 1,
+                },
+              })
+            );
+          }
+
+          if (traceId === 'trace-next') {
+            return jsonResponse(
+              createEngineTraceDetail({
+                engineOverrides: {
+                  failure: {
+                    error_code: 'other_error',
+                    error_message: 'other failure',
+                    status: 'FAILED',
+                  },
+                },
+                traceOverrides: {
+                  ...TRACE_DETAIL,
+                  id: 'trace-next',
+                  name: 'Continued Trace',
+                  status: 'FAILED',
+                  error_count: 1,
+                },
+              })
+            );
+          }
+
+          return jsonResponse(createEngineTraceDetail());
+        },
+        spans: () => jsonResponse({ spans: [rootSpan] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'FAILED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([
+      {
+        pathname: `/traces/${TRACE_ONE.id}`,
+        state: { returnTo: `/sessions/${SESSION_ID}?sort_by=started_at&offset=20` },
+      },
+    ]);
+
+    expect(
+      await screen.findByText(
+        'This run failed because the engine definition version could not be matched during activation.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '← Previous run' })).toHaveAttribute(
+      'href',
+      '/traces/trace-prev'
+    );
+    expect(screen.getByRole('link', { name: 'Next run →' })).toHaveAttribute(
+      'href',
+      '/traces/trace-next'
+    );
+
+    await user.click(screen.getByRole('link', { name: 'Next run →' }));
+
+    expect(await screen.findByText('Continued Trace')).toBeInTheDocument();
+    expect(screen.queryByText('Definition version mismatch')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '← Session' })).toHaveAttribute(
+      'href',
+      `/sessions/${SESSION_ID}?sort_by=started_at&offset=20`
+    );
   });
 
   it('shows the auth recovery banner when the trace request returns 401', async () => {
@@ -548,7 +1150,7 @@ describe('TraceDetailPage', () => {
     );
 
     await user.click(
-      screen.getByRole('button', {
+      await screen.findByRole('button', {
         name: /Mobile reasoning child.*Choose a mobile tool\?/i,
       })
     );

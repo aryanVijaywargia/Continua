@@ -57,7 +57,10 @@ export {
 
 export type RequestInput = string | URL | Request;
 
-export type JsonHandler = (url: URL) => Promise<Response> | Response;
+export type JsonHandler = (
+  url: URL,
+  init?: RequestInit
+) => Promise<Response> | Response;
 
 export function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -77,6 +80,8 @@ export function buildFetchHandler({
   sessionNarrative,
   spans,
   timeline,
+  enginePendingWork,
+  engineAction,
 }: {
   list?: JsonHandler;
   detail?: JsonHandler;
@@ -86,13 +91,15 @@ export function buildFetchHandler({
   sessionNarrative?: JsonHandler;
   spans?: JsonHandler;
   timeline?: JsonHandler;
+  enginePendingWork?: JsonHandler;
+  engineAction?: JsonHandler;
 } = {}) {
-  return async (input: RequestInput) => {
+  return async (input: RequestInput, init?: RequestInit) => {
     const url = new URL(readRequestUrl(input), 'http://localhost');
 
     if (url.pathname === '/api/traces') {
       return (
-        list?.(url) ??
+        list?.(url, init) ??
         jsonResponse({
           traces: [TRACE_ONE, TRACE_TWO],
           total: 2,
@@ -101,12 +108,12 @@ export function buildFetchHandler({
     }
 
     if (/^\/api\/traces\/[^/]+\/spans$/.test(url.pathname)) {
-      return spans?.(url) ?? jsonResponse({ spans: [] });
+      return spans?.(url, init) ?? jsonResponse({ spans: [] });
     }
 
     if (/^\/api\/traces\/[^/]+\/events$/.test(url.pathname)) {
       return (
-        timeline?.(url) ??
+        timeline?.(url, init) ??
         jsonResponse({
           events: [],
           trace_status: 'COMPLETED',
@@ -117,7 +124,7 @@ export function buildFetchHandler({
 
     if (/^\/api\/traces\/[^/]+$/.test(url.pathname)) {
       if (detail) {
-        return detail(url);
+        return detail(url, init);
       }
 
       const traceId = url.pathname.split('/').at(-1);
@@ -148,7 +155,7 @@ export function buildFetchHandler({
 
     if (url.pathname === '/api/sessions') {
       return (
-        sessionsList?.(url) ??
+        sessionsList?.(url, init) ??
         jsonResponse({
           sessions: [SESSION_ONE, SESSION_TWO],
           total: 2,
@@ -158,7 +165,7 @@ export function buildFetchHandler({
 
     if (/^\/api\/sessions\/[^/]+\/narrative$/.test(url.pathname)) {
       if (sessionNarrative) {
-        return sessionNarrative(url);
+        return sessionNarrative(url, init);
       }
 
       const sessionId = url.pathname.split('/').at(-2);
@@ -173,7 +180,7 @@ export function buildFetchHandler({
 
     if (/^\/api\/sessions\/[^/]+\/compare$/.test(url.pathname)) {
       if (sessionCompare) {
-        return sessionCompare(url);
+        return sessionCompare(url, init);
       }
 
       return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
@@ -181,7 +188,7 @@ export function buildFetchHandler({
 
     if (/^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       if (sessionDetail) {
-        return sessionDetail(url);
+        return sessionDetail(url, init);
       }
 
       const sessionId = url.pathname.split('/').at(-1);
@@ -194,7 +201,95 @@ export function buildFetchHandler({
       return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
     }
 
+    if (/^\/v1\/engine\/runs\/[^/]+\/pending-work$/.test(url.pathname)) {
+      if (enginePendingWork) {
+        return enginePendingWork(url, init);
+      }
+
+      const runId = url.pathname.split('/').at(-2);
+      return jsonResponse({
+        run_id: runId,
+        current_wait: null,
+        activities: [],
+        timers: [],
+        signals: [],
+        pending_activity_tasks: 0,
+        pending_inbox_items: 0,
+      });
+    }
+
+    if (
+      /^\/v1\/engine\/runs\/[^/]+\/(signal|cancel|suspend|resume|terminate|purge|repair)$/.test(
+        url.pathname
+      )
+    ) {
+      if (engineAction) {
+        return engineAction(url, init);
+      }
+
+      const runId = url.pathname.split('/')[4];
+      const action = url.pathname.split('/').at(-1);
+
+      switch (action) {
+        case 'signal':
+        case 'cancel':
+          return jsonResponse({
+            run_id: runId,
+            instance_key: 'instance-1',
+            accepted: true,
+            wake_applied: false,
+          });
+        case 'suspend':
+          return jsonResponse(createEngineRunResponse(runId, 'SUSPENDED'));
+        case 'resume':
+          return jsonResponse(createEngineRunResponse(runId, 'RUNNING'));
+        case 'terminate':
+          return jsonResponse({
+            run_id: runId,
+            status: 'TERMINATED',
+            result: null,
+          });
+        case 'purge':
+          return jsonResponse({
+            run_id: runId,
+            mode: 'projection_only',
+            projection_state: 'summary_only',
+            deleted: true,
+          });
+        case 'repair':
+          return jsonResponse({
+            run_id: runId,
+            accepted: true,
+            reason: 'repair_requested',
+            projection_state: 'catching_up',
+          });
+        default:
+          break;
+      }
+    }
+
     throw new Error(`Unhandled request: ${url.pathname}${url.search}`);
+  };
+}
+
+function createEngineRunResponse(
+  runId: string | undefined,
+  status: 'RUNNING' | 'SUSPENDED'
+) {
+  return {
+    run_id: runId,
+    instance_id: 'instance-id-1',
+    instance_key: 'instance-1',
+    definition_name: 'checkout',
+    definition_version: 'v1',
+    projection_state: 'summary_only',
+    status,
+    created_at: '2026-03-14T10:00:00.000Z',
+    updated_at: '2026-03-14T10:00:05.000Z',
+    pending_work: {
+      pending_activity_tasks: 0,
+      pending_inbox_items: 0,
+    },
   };
 }
 
