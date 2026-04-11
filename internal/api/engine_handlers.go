@@ -274,7 +274,7 @@ func (s *Server) BackfillEngineProjections(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result, err := s.engineSharedControl.BackfillProjections(r.Context(), projectID, backfillReq)
+	result, err := s.engineSharedControl.BackfillProjections(r.Context(), projectID, &backfillReq)
 	if err != nil {
 		writeEngineError(w, err, "Failed to backfill engine projections")
 		return

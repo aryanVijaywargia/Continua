@@ -275,10 +275,13 @@ func (s *Service) RepairRun(
 func (s *Service) BackfillProjections(
 	ctx context.Context,
 	projectID uuid.UUID,
-	req ProjectionBackfillRequest,
+	req *ProjectionBackfillRequest,
 ) (ProjectionBackfillResult, error) {
 	if s == nil || s.platform == nil {
 		return ProjectionBackfillResult{}, errors.New("engine control service is not configured")
+	}
+	if req == nil {
+		req = &ProjectionBackfillRequest{}
 	}
 
 	result := ProjectionBackfillResult{
@@ -291,7 +294,7 @@ func (s *Service) BackfillProjections(
 		return result, nil
 	}
 
-	candidates, err := s.platform.ListProjectionBackfillCandidates(ctx, store.ProjectionBackfillFilter{
+	candidates, err := s.platform.ListProjectionBackfillCandidates(ctx, &store.ProjectionBackfillFilter{
 		ProjectID:             projectID,
 		OlderThan:             req.OlderThan,
 		EngineInstanceKey:     strings.TrimSpace(req.EngineInstanceKey),

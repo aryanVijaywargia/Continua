@@ -27,8 +27,12 @@ type ProjectionBackfillCandidate struct {
 
 func (s *Store) ListProjectionBackfillCandidates(
 	ctx context.Context,
-	filter ProjectionBackfillFilter,
+	filter *ProjectionBackfillFilter,
 ) ([]ProjectionBackfillCandidate, error) {
+	if filter == nil {
+		filter = &ProjectionBackfillFilter{}
+	}
+
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = 50

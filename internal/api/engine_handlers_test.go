@@ -2341,7 +2341,7 @@ func TestBackfillEngineProjections_IncompatibleProjectionStatesReturnEmptyResult
 				server,
 				projectID,
 				&EngineProjectionBackfillRequest{
-					DryRun:               &dryRun,
+					DryRun:                &dryRun,
 					EngineProjectionState: &projectionState,
 				},
 			))
