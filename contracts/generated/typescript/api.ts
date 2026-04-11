@@ -203,6 +203,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/engine/projections/backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview or request bulk projection repair for engine runs
+         * @description Identifies engine-backed traces eligible for projection repair and, when
+         *     `dry_run=false`, reuses the existing per-run repair service to request
+         *     catch-up. When `engine_projection_state` is omitted, only `summary_only`
+         *     candidates are considered. Explicit `up_to_date`, `catching_up`, and
+         *     `journal_expired` filters return zero eligible rows because those states
+         *     are not valid backfill targets.
+         *
+         */
+        post: operations["backfillEngineProjections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/engine/runs/{run_id}/signal": {
         parameters: {
             query?: never;
@@ -446,6 +472,8 @@ export interface components {
         /** @enum {string} */
         EngineProjectionState: "up_to_date" | "catching_up" | "summary_only" | "journal_expired";
         /** @enum {string} */
+        EngineProjectionBackfillAction: "would_repair" | "repair_requested" | "skipped";
+        /** @enum {string} */
         EnginePurgeMode: "projection_only" | "full";
         /** @enum {string} */
         EngineRepairReason: "already_up_to_date" | "history_expired" | "no_events_to_project" | "repair_requested" | "already_catching_up";
@@ -515,7 +543,41 @@ export interface components {
             /** Format: int64 */
             pending_inbox_items: number;
         };
+        EngineProjectionBackfillRequest: {
+            /** @default false */
+            dry_run: boolean;
+            /** @default 50 */
+            limit: number;
+            /** Format: date-time */
+            older_than?: string;
+            engine_instance_key?: string;
+            engine_definition_name?: string;
+            engine_run_status?: components["schemas"]["EngineRunStatus"];
+            /** @description Defaults to `summary_only` when omitted. Explicit `up_to_date`,
+             *     `catching_up`, and `journal_expired` return zero eligible rows.
+             *      */
+            engine_projection_state?: components["schemas"]["EngineProjectionState"];
+        };
+        EngineProjectionBackfillRunResult: {
+            /** Format: uuid */
+            run_id: string;
+            trace_id: string;
+            projection_state: components["schemas"]["EngineProjectionState"];
+            action: components["schemas"]["EngineProjectionBackfillAction"];
+            reason?: components["schemas"]["EngineRepairReason"];
+        };
+        EngineProjectionBackfillResponse: {
+            dry_run: boolean;
+            limit: number;
+            eligible_count: number;
+            repair_requested_count: number;
+            skipped_count: number;
+            results: components["schemas"]["EngineProjectionBackfillRunResult"][];
+        };
         EngineFailureSummary: {
+            /** @description Stable reserved value: `definition_version_mismatch`. Clients may
+             *     exact-match this value while still accepting arbitrary strings.
+             *      */
             error_code: string;
             error_message: string;
             status: string;
@@ -1648,6 +1710,60 @@ export interface operations {
                 };
             };
             /** @description Run not found or engine API disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    backfillEngineProjections: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EngineProjectionBackfillRequest"];
+            };
+        };
+        responses: {
+            /** @description Backfill preview or apply result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineProjectionBackfillResponse"];
+                };
+            };
+            /** @description Invalid request body, limit above 100, or missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Engine API disabled */
             404: {
                 headers: {
                     [name: string]: unknown;

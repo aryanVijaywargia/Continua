@@ -453,6 +453,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /v1/engine/projections/backfill:
+    post:
+      operationId: backfillEngineProjections
+      summary: Preview or request bulk projection repair for engine runs
+      description: |
+        Identifies engine-backed traces eligible for projection repair and, when
+        `dry_run=false`, reuses the existing per-run repair service to request
+        catch-up. When `engine_projection_state` is omitted, only `summary_only`
+        candidates are considered. Explicit `up_to_date`, `catching_up`, and
+        `journal_expired` filters return zero eligible rows because those states
+        are not valid backfill targets.
+      tags: [Engine]
+      parameters:
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineProjectionBackfillRequest'
+      responses:
+        '200':
+          description: Backfill preview or apply result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineProjectionBackfillResponse'
+        '400':
+          description: Invalid request body, limit above 100, or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /v1/engine/runs/{run_id}/signal:
     post:
       operationId: signalEngineRun
@@ -1132,6 +1183,10 @@ components:
       type: string
       enum: [up_to_date, catching_up, summary_only, journal_expired]
 
+    EngineProjectionBackfillAction:
+      type: string
+      enum: [would_repair, repair_requested, skipped]
+
     EnginePurgeMode:
       type: string
       enum: [projection_only, full]
@@ -1273,12 +1328,76 @@ components:
           type: integer
           format: int64
 
+    EngineProjectionBackfillRequest:
+      type: object
+      properties:
+        dry_run:
+          type: boolean
+          default: false
+        limit:
+          type: integer
+          default: 50
+          maximum: 100
+        older_than:
+          type: string
+          format: date-time
+        engine_instance_key:
+          type: string
+        engine_definition_name:
+          type: string
+        engine_run_status:
+          $ref: '#/components/schemas/EngineRunStatus'
+        engine_projection_state:
+          allOf:
+            - $ref: '#/components/schemas/EngineProjectionState'
+          description: |
+            Defaults to `summary_only` when omitted. Explicit `up_to_date`,
+            `catching_up`, and `journal_expired` return zero eligible rows.
+
+    EngineProjectionBackfillRunResult:
+      type: object
+      required: [run_id, trace_id, projection_state, action]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+        projection_state:
+          $ref: '#/components/schemas/EngineProjectionState'
+        action:
+          $ref: '#/components/schemas/EngineProjectionBackfillAction'
+        reason:
+          $ref: '#/components/schemas/EngineRepairReason'
+
+    EngineProjectionBackfillResponse:
+      type: object
+      required: [dry_run, limit, eligible_count, repair_requested_count, skipped_count, results]
+      properties:
+        dry_run:
+          type: boolean
+        limit:
+          type: integer
+        eligible_count:
+          type: integer
+        repair_requested_count:
+          type: integer
+        skipped_count:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineProjectionBackfillRunResult'
+
     EngineFailureSummary:
       type: object
       required: [error_code, error_message, status]
       properties:
         error_code:
           type: string
+          description: |
+            Stable reserved value: `definition_version_mismatch`. Clients may
+            exact-match this value while still accepting arbitrary strings.
         error_message:
           type: string
         status:

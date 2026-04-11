@@ -72,6 +72,40 @@ def _control_response(wake_applied: bool = True) -> dict[str, object]:
     }
 
 
+def _backfill_response(
+    *,
+    dry_run: bool,
+    limit: int,
+    start_index: int,
+    count: int,
+    action: str,
+    reason: str | None = None,
+) -> dict[str, object]:
+    results = []
+    for index in range(start_index, start_index + count):
+        result: dict[str, object] = {
+            "run_id": f"00000000-0000-0000-0000-{index:012d}",
+            "trace_id": f"engine:trace-{index}",
+            "projection_state": "summary_only" if action == "would_repair" else "catching_up",
+            "action": action,
+        }
+        if reason is not None:
+            result["reason"] = reason
+        results.append(result)
+
+    repair_requested_count = count if action == "repair_requested" else 0
+    skipped_count = count if action == "skipped" else 0
+
+    return {
+        "dry_run": dry_run,
+        "limit": limit,
+        "eligible_count": count,
+        "repair_requested_count": repair_requested_count,
+        "skipped_count": skipped_count,
+        "results": results,
+    }
+
+
 def test_get_run_decodes_typed_response():
     with patch("continua.engine_control.httpx.Client") as mock_client_class:
         mock_client = MagicMock()
@@ -434,6 +468,194 @@ def test_repair_decodes_all_supported_reasons(
         assert response.reason == EngineRepairReason(reason)
         assert response.accepted is accepted
         assert response.projection_state == EngineProjectionState(projection_state)
+
+
+def test_backfill_projections_decodes_typed_response_and_sends_preview_header():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.request.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(
+                return_value=_backfill_response(
+                    dry_run=True,
+                    limit=10,
+                    start_index=1,
+                    count=2,
+                    action="would_repair",
+                )
+            ),
+        )
+        mock_client_class.return_value = mock_client
+
+        from continua import EngineControlClient
+        from continua.types import EngineProjectionBackfillAction
+
+        client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+        response = client.backfill_projections(dry_run=True, limit=10)
+
+        assert response.dry_run is True
+        assert response.eligible_count == 2
+        assert response.results[0].action == EngineProjectionBackfillAction.would_repair
+        mock_client.request.assert_called_once_with(
+            "POST",
+            "/v1/engine/projections/backfill",
+            json={"dry_run": True, "limit": 10},
+            params=None,
+            headers={"X-Continua-Engine-Preview": "1"},
+        )
+
+
+def test_backfill_projections_all_rejects_dry_run_paging():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        from continua import EngineControlClient
+
+        client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+
+        with pytest.raises(ValueError, match="cannot page dry-run previews"):
+            client.backfill_projections_all(dry_run=True, max_total=100, limit=50)
+
+        mock_client.request.assert_not_called()
+
+
+def test_backfill_projections_all_stops_at_max_total():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.request.side_effect = [
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_backfill_response(
+                        dry_run=False,
+                        limit=50,
+                        start_index=1,
+                        count=50,
+                        action="repair_requested",
+                        reason="repair_requested",
+                    )
+                ),
+            ),
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_backfill_response(
+                        dry_run=False,
+                        limit=50,
+                        start_index=51,
+                        count=50,
+                        action="repair_requested",
+                        reason="repair_requested",
+                    )
+                ),
+            ),
+        ]
+        mock_client_class.return_value = mock_client
+
+        from continua import EngineControlClient
+
+        client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+        response = client.backfill_projections_all(max_total=100, limit=50)
+
+        assert response.eligible_count == 100
+        assert response.repair_requested_count == 100
+        assert response.skipped_count == 0
+        assert len(response.results) == 100
+        assert mock_client.request.call_count == 2
+
+
+def test_backfill_projections_all_stops_when_eligible_runs_are_exhausted():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.request.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(
+                return_value=_backfill_response(
+                    dry_run=False,
+                    limit=50,
+                    start_index=1,
+                    count=30,
+                    action="repair_requested",
+                    reason="repair_requested",
+                )
+            ),
+        )
+        mock_client_class.return_value = mock_client
+
+        from continua import EngineControlClient
+
+        client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+        response = client.backfill_projections_all(max_total=1000, limit=50)
+
+        assert response.eligible_count == 30
+        assert response.repair_requested_count == 30
+        assert len(response.results) == 30
+        assert mock_client.request.call_count == 1
+
+
+def test_backfill_projections_all_returns_aggregated_results():
+    with patch("continua.engine_control.httpx.Client") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.request.side_effect = [
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_backfill_response(
+                        dry_run=False,
+                        limit=2,
+                        start_index=1,
+                        count=2,
+                        action="repair_requested",
+                        reason="repair_requested",
+                    )
+                ),
+            ),
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_backfill_response(
+                        dry_run=False,
+                        limit=2,
+                        start_index=3,
+                        count=2,
+                        action="skipped",
+                        reason="already_catching_up",
+                    )
+                ),
+            ),
+            MagicMock(
+                status_code=200,
+                json=MagicMock(
+                    return_value=_backfill_response(
+                        dry_run=False,
+                        limit=1,
+                        start_index=5,
+                        count=1,
+                        action="repair_requested",
+                        reason="repair_requested",
+                    )
+                ),
+            ),
+        ]
+        mock_client_class.return_value = mock_client
+
+        from continua import EngineControlClient
+
+        client = EngineControlClient(api_key="test-key", endpoint="http://localhost:8080")
+        response = client.backfill_projections_all(max_total=5, limit=2)
+
+        assert response.eligible_count == 5
+        assert response.repair_requested_count == 3
+        assert response.skipped_count == 2
+        assert [item.trace_id for item in response.results] == [
+            "engine:trace-1",
+            "engine:trace-2",
+            "engine:trace-3",
+            "engine:trace-4",
+            "engine:trace-5",
+        ]
+        assert mock_client.request.call_args_list[-1].kwargs["json"]["limit"] == 1
 
 
 def test_purge_maps_run_not_terminal_to_typed_error():

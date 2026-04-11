@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -47,6 +48,21 @@ func writeEngineError(w http.ResponseWriter, err error, fallbackMessage string) 
 
 func decodeJSONRequest(w http.ResponseWriter, r *http.Request, dest any) bool {
 	if err := json.NewDecoder(r.Body).Decode(dest); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "Failed to parse request body: "+err.Error())
+		return false
+	}
+	return true
+}
+
+func decodeOptionalJSONRequest(w http.ResponseWriter, r *http.Request, dest any) bool {
+	if r.Body == nil || r.ContentLength == 0 {
+		return true
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(dest); err != nil {
+		if errors.Is(err, io.EOF) {
+			return true
+		}
 		writeError(w, http.StatusBadRequest, "invalid_json", "Failed to parse request body: "+err.Error())
 		return false
 	}
