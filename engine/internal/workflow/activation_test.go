@@ -567,9 +567,7 @@ func TestActivatorContinueAsNewCreatesNewRunAndInheritedTraceShell(t *testing.T)
 	if rootSpanName != "Original Trace" || rootSpanStatus != "running" {
 		t.Fatalf("unexpected continuation root span summary: name=%q status=%q", rootSpanName, rootSpanStatus)
 	}
-	if string(rootSpanInput) != `{"cursor":2,"phase":"next"}` {
-		t.Fatalf("unexpected continuation root span input: %s", rootSpanInput)
-	}
+	assertRawJSONEqual(t, `{"cursor":2,"phase":"next"}`, rootSpanInput)
 
 	cancelledTasks, err := store.ListCancelledActivityTasksByRun(ctx, run.ID)
 	if err != nil {
