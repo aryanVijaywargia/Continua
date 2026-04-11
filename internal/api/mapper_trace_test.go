@@ -142,6 +142,10 @@ func TestTraceDetailToAPIWithProjectedEngineSummary_UsesProjectedInstanceKey(t *
 
 func TestTraceDetailToAPIWithEngine_PrefersLiveEngineSummary(t *testing.T) {
 	runID := uuid.New()
+	previousRunID := uuid.New()
+	nextRunID := uuid.New()
+	previousTraceID := "engine:" + previousRunID.String()
+	nextTraceID := "engine:" + nextRunID.String()
 	trace := platform.Trace{
 		ID:                      uuid.New(),
 		TraceID:                 "engine:" + runID.String(),
@@ -156,15 +160,19 @@ func TestTraceDetailToAPIWithEngine_PrefersLiveEngineSummary(t *testing.T) {
 	}
 
 	live := engineRunSummaryToAPI(&engineRunSummary{
-		RunID:             runID,
-		InstanceKey:       "instance-1",
-		DefinitionName:    "checkout",
-		DefinitionVersion: "v1",
-		ProjectionState:   publicprojection.StateCatchingUp.String(),
-		Status:            enginedb.EngineRunLifecycleStatusWaiting,
-		CreatedAt:         time.Now().Add(-time.Minute).UTC(),
-		UpdatedAt:         time.Now().UTC(),
-		WaitState:         json.RawMessage(`{"kind":"signal","signal_name":"approval"}`),
+		RunID:                runID,
+		InstanceKey:          "instance-1",
+		ContinuedFromRunID:   &previousRunID,
+		ContinuedToRunID:     &nextRunID,
+		ContinuedFromTraceID: &previousTraceID,
+		ContinuedToTraceID:   &nextTraceID,
+		DefinitionName:       "checkout",
+		DefinitionVersion:    "v1",
+		ProjectionState:      publicprojection.StateCatchingUp.String(),
+		Status:               enginedb.EngineRunLifecycleStatusWaiting,
+		CreatedAt:            time.Now().Add(-time.Minute).UTC(),
+		UpdatedAt:            time.Now().UTC(),
+		WaitState:            json.RawMessage(`{"kind":"signal","signal_name":"approval"}`),
 	})
 
 	detail := traceDetailToAPIWithEngine(&store.TraceRead{Trace: trace}, &live)
@@ -172,6 +180,14 @@ func TestTraceDetailToAPIWithEngine_PrefersLiveEngineSummary(t *testing.T) {
 	require.NotNil(t, detail.Engine)
 	assert.Equal(t, "instance-1", detail.Engine.InstanceKey)
 	assert.Equal(t, EngineRunStatusWAITING, detail.Engine.Status)
+	require.NotNil(t, detail.Engine.ContinuedFromRunId)
+	assert.Equal(t, previousRunID, *detail.Engine.ContinuedFromRunId)
+	require.NotNil(t, detail.Engine.ContinuedToRunId)
+	assert.Equal(t, nextRunID, *detail.Engine.ContinuedToRunId)
+	require.NotNil(t, detail.Engine.ContinuedFromTraceId)
+	assert.Equal(t, previousTraceID, *detail.Engine.ContinuedFromTraceId)
+	require.NotNil(t, detail.Engine.ContinuedToTraceId)
+	assert.Equal(t, nextTraceID, *detail.Engine.ContinuedToTraceId)
 	require.NotNil(t, detail.Engine.WaitState)
 	require.NotNil(t, detail.Engine.WaitState.SignalName)
 	assert.Equal(t, "approval", *detail.Engine.WaitState.SignalName)

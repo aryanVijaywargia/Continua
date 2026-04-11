@@ -57,7 +57,7 @@ func (s *Store) listEngineRetentionCandidates(
 		INNER JOIN public.traces AS t
 		    ON t.project_id = r.project_id
 		   AND t.engine_run_id = r.id
-		WHERE r.status IN ('completed', 'failed', 'cancelled', 'terminated')
+		WHERE r.status IN ('completed', 'failed', 'cancelled', 'terminated', 'continued_as_new')
 		  AND r.completed_at IS NOT NULL
 		  AND r.completed_at < $1
 		  AND t.engine_projection_state = ANY($2::text[])

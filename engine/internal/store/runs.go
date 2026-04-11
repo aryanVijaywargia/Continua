@@ -88,6 +88,17 @@ func (o *storeOps) TransitionRunToCancelled(
 	return enginedb.EngineRun{}, o.classifyRunInvariantMiss(ctx, arg.ID, "cancel", err)
 }
 
+func (o *storeOps) TransitionRunToContinuedAsNew(
+	ctx context.Context,
+	arg enginedb.TransitionRunToContinuedAsNewParams,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToContinuedAsNew(ctx, arg)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
+}
+
 func (o *storeOps) TransitionRunToTerminated(
 	ctx context.Context,
 	id uuid.UUID,
@@ -120,6 +131,13 @@ func (o *storeOps) ClaimNextRun(
 	workerID string,
 	leaseDuration time.Duration,
 ) (enginedb.EngineRun, error) {
+	if o.projectFilter != nil {
+		return mapResult(o.q.ClaimNextRunByProject(ctx, enginedb.ClaimNextRunByProjectParams{
+			ProjectFilterID:     *o.projectFilter,
+			ClaimedBy:           nullableWorkerID(workerID),
+			LeaseDurationMicros: leaseDurationMicros(leaseDuration),
+		}))
+	}
 	return mapResult(o.q.ClaimNextRun(ctx, enginedb.ClaimNextRunParams{
 		ClaimedBy:           nullableWorkerID(workerID),
 		LeaseDurationMicros: leaseDurationMicros(leaseDuration),

@@ -45,7 +45,8 @@ const (
 var darkLaunchProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 type Projector struct {
-	store *enginestore.Store
+	store         *enginestore.Store
+	projectFilter *uuid.UUID
 }
 
 type projectionTarget struct {
@@ -68,7 +69,11 @@ type terminalProjection struct {
 }
 
 func New(store *enginestore.Store) *Projector {
-	return &Projector{store: store}
+	var projectFilter *uuid.UUID
+	if store != nil {
+		projectFilter = store.ProjectFilter()
+	}
+	return &Projector{store: store, projectFilter: projectFilter}
 }
 
 func (p *Projector) PollOnce(ctx context.Context, _ string) error {
@@ -286,6 +291,13 @@ func projectHistoryRow(
 			ErrorMessage:  "workflow cancelled",
 			CleanupReason: "cancelled",
 		})
+	case *publichistory.WorkflowContinuedAsNewPayload:
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
+			RunStatus:     enginedb.EngineRunLifecycleStatusContinuedAsNew,
+			ErrorCode:     "continued_as_new",
+			ErrorMessage:  "workflow continued as new",
+			CleanupReason: "continued_as_new",
+		})
 	case *publichistory.WorkflowTerminatedPayload:
 		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
 			RunStatus:     enginedb.EngineRunLifecycleStatusTerminated,
@@ -398,28 +410,80 @@ func writeTerminalProjection(
 		return fmt.Errorf("projected trace not found for run %s", target.RunID)
 	}
 
-	commandTag, err = tx.Exec(ctx, `
-		UPDATE public.spans
-		SET status = $3,
-		    end_time = $4::timestamptz,
-		    output = $5::jsonb,
-		    status_message = $6::text,
-		    duration_ms = CASE
-		        WHEN $4::timestamptz IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
-		        ELSE duration_ms
-		    END,
+	if err := upsertTerminalRootSpan(
+		ctx,
+		tx,
+		target,
+		spanStatus,
+		completedAt,
+		outputPayload,
+		stringPtr(projection.ErrorMessage),
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func upsertTerminalRootSpan(
+	ctx context.Context,
+	tx pgx.Tx,
+	target *projectionTarget,
+	spanStatus string,
+	completedAt time.Time,
+	outputPayload json.RawMessage,
+	statusMessage *string,
+) error {
+	if target == nil {
+		return errors.New("projection target is required")
+	}
+
+	commandTag, err := tx.Exec(ctx, `
+		INSERT INTO public.spans (
+		    project_id,
+		    trace_id,
+		    span_id,
+		    name,
+		    type,
+		    status,
+		    level,
+		    start_time,
+		    end_time,
+		    output,
+		    status_message,
+		    duration_ms,
+		    depth
+		)
+		SELECT $1,
+		       t.id,
+		       $3,
+		       COALESCE(NULLIF($4, ''), NULLIF(t.name, ''), 'workflow'),
+		       $5,
+		       $6,
+		       $7,
+		       COALESCE(t.start_time, $8::timestamptz),
+		       $8::timestamptz,
+		       $9::jsonb,
+		       $10::text,
+		       EXTRACT(EPOCH FROM ($8::timestamptz - COALESCE(t.start_time, $8::timestamptz))) * 1000,
+		       0
+		FROM public.traces AS t
+		WHERE t.id = $2
+		ON CONFLICT (trace_id, span_id) DO UPDATE
+		SET status = EXCLUDED.status,
+		    end_time = EXCLUDED.end_time,
+		    output = EXCLUDED.output,
+		    status_message = EXCLUDED.status_message,
+		    duration_ms = EXCLUDED.duration_ms,
 		    updated_at = NOW(),
-		    version = COALESCE(version, 1) + 1
-		WHERE trace_id = $1
-		  AND span_id = $2
-	`, target.TraceID, rootSpanExternalID(target.RunID), spanStatus, completedAt, outputPayload, nullableText(stringPtr(projection.ErrorMessage)))
+		    version = COALESCE(spans.version, 1) + 1
+	`, target.ProjectID, target.TraceID, rootSpanExternalID(target.RunID), target.TraceName, defaultProjectedSpanTypeRoot, spanStatus, defaultProjectedSpanLevel, completedAt, outputPayload, statusMessage)
 	if err != nil {
 		return err
 	}
 	if commandTag.RowsAffected() == 0 && target.ProjectID != darkLaunchProjectID {
-		return fmt.Errorf("projected root span not found for run %s", target.RunID)
+		return fmt.Errorf("projected trace not found for run %s", target.RunID)
 	}
-
 	return nil
 }
 
@@ -866,7 +930,7 @@ func emitProjectedEvent(ctx context.Context, tx pgx.Tx, event *projectedEvent) e
 	return nil
 }
 
-func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, error) {
+func selectProjectionTarget(ctx context.Context, tx pgx.Tx, projectFilter *uuid.UUID) (projectionTarget, error) {
 	var target projectionTarget
 	var projectionUpdatedAt pgtypeTimestamptz
 	err := tx.QueryRow(ctx, `
@@ -886,6 +950,7 @@ func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, e
 		           t.updated_at
 		    FROM public.traces AS t
 		WHERE t.engine_run_id IS NOT NULL
+		  AND ($1::uuid IS NULL OR t.project_id = $1)
 		  AND COALESCE(t.engine_projection_state, '') NOT IN ('summary_only', 'journal_expired')
 		)
 		SELECT id,
@@ -900,7 +965,7 @@ func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, e
 		WHERE last_projected_history_id < latest_history_id
 		ORDER BY engine_projection_updated_at ASC NULLS FIRST, updated_at ASC, id ASC
 		LIMIT 1
-	`).Scan(
+	`, nullableProjectFilter(projectFilter)).Scan(
 		&target.TraceID,
 		&target.ProjectID,
 		&target.TraceName,
@@ -917,6 +982,13 @@ func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, e
 		target.ProjectionUpdatedAt = &projectionUpdatedAt.Time
 	}
 	return target, nil
+}
+
+func nullableProjectFilter(projectFilter *uuid.UUID) pgtype.UUID {
+	if projectFilter == nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: *projectFilter, Valid: true}
 }
 
 func advanceProjectionCheckpoint(
@@ -980,7 +1052,7 @@ func (p *Projector) pollSingleHistoryRow(ctx context.Context) (bool, error) {
 		_ = tx.Rollback(ctx)
 	}()
 
-	target, err := selectProjectionTarget(ctx, tx.Tx())
+	target, err := selectProjectionTarget(ctx, tx.Tx(), p.projectFilter)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil

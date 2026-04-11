@@ -54,6 +54,7 @@ class EngineRunStatus(Enum):
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
     TERMINATED = "TERMINATED"
+    CONTINUED_AS_NEW = "CONTINUED_AS_NEW"
 
 
 class EngineTraceInfo(BaseModel):
@@ -124,6 +125,10 @@ class EngineFailureSummary(BaseModel):
 class EngineRunSummary(EngineTraceInfo):
     status: EngineRunStatus
     instance_key: str
+    continued_from_run_id: UUID | None = None
+    continued_to_run_id: UUID | None = None
+    continued_from_trace_id: str | None = None
+    continued_to_trace_id: str | None = None
     custom_status: dict[str, Any] | None = None
     wait_state: EngineWaitState | None = None
     pending_work: EnginePendingWork
@@ -227,6 +232,10 @@ class EngineRunResponse(EngineRunSummary):
 
 class EngineRunResultResponse(BaseModel):
     run_id: UUID
+    continued_from_run_id: UUID | None = None
+    continued_to_run_id: UUID | None = None
+    continued_from_trace_id: str | None = None
+    continued_to_trace_id: str | None = None
     status: EngineRunStatus
     result: Any = Field(
         ...,

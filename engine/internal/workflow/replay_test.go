@@ -102,6 +102,132 @@ func TestReplayDefinitionMismatchProducesFailureDecision(t *testing.T) {
 	}
 }
 
+func TestReplayDefinitionContinueAsNewFirstExecution(t *testing.T) {
+	input := mustRawJSON(t, map[string]any{"cursor": 1})
+	continuationInput := mustRawJSON(t, map[string]any{"cursor": 2, "phase": "next"})
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "continue-demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-continue-demo",
+			Input:             input,
+		}),
+	}
+
+	decision, err := replayDefinition(continueAsNewDefinition(continuationInput), historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionContinuedAsNew {
+		t.Fatalf("expected continued-as-new decision, got %+v", decision)
+	}
+	if len(decision.Events) != 1 {
+		t.Fatalf("expected workflow.continued_as_new event, got %+v", decision.Events)
+	}
+	if decision.Events[0].EventType != enginehistory.EventWorkflowContinuedAsNew {
+		t.Fatalf("expected workflow.continued_as_new event, got %+v", decision.Events[0])
+	}
+	if !equalJSON(decision.ContinuationInput, continuationInput) {
+		t.Fatalf("expected continuation input %s, got %s", continuationInput, decision.ContinuationInput)
+	}
+}
+
+func TestReplayDefinitionContinueAsNewMatchesRecordedHistory(t *testing.T) {
+	input := mustRawJSON(t, map[string]any{"cursor": 1})
+	continuationInput := mustRawJSON(t, map[string]any{"cursor": 2, "phase": "next"})
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "continue-demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-continue-demo",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventWorkflowContinuedAsNew, enginehistory.WorkflowContinuedAsNewPayload{
+			Input: continuationInput,
+		}),
+	}
+
+	decision, err := replayDefinition(continueAsNewDefinition(continuationInput), historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionContinuedAsNew {
+		t.Fatalf("expected continued-as-new decision, got %+v", decision)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected replay to avoid new continuation events, got %+v", decision.Events)
+	}
+}
+
+func TestReplayDefinitionContinueAsNewMatchesSemanticallyEquivalentJSON(t *testing.T) {
+	input := mustRawJSON(t, map[string]any{"cursor": 1})
+	recordedInput := json.RawMessage(`{"a":1,"b":2}`)
+	replayedInput := json.RawMessage(`{"b":2,"a":1}`)
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "continue-demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-continue-demo",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventWorkflowContinuedAsNew, enginehistory.WorkflowContinuedAsNewPayload{
+			Input: recordedInput,
+		}),
+	}
+
+	decision, err := replayDefinition(continueAsNewDefinition(replayedInput), historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionContinuedAsNew {
+		t.Fatalf("expected continued-as-new decision, got %+v", decision)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected semantic JSON replay equality to avoid new events, got %+v", decision.Events)
+	}
+	if !equalJSON(decision.ContinuationInput, recordedInput) {
+		t.Fatalf("expected continuation input to match recorded JSON, got %s", decision.ContinuationInput)
+	}
+}
+
+func TestReplayDefinitionContinueAsNewMismatchProducesFailureDecision(t *testing.T) {
+	input := mustRawJSON(t, map[string]any{"cursor": 1})
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "continue-demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-continue-demo",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventWorkflowContinuedAsNew, enginehistory.WorkflowContinuedAsNewPayload{
+			Input: mustRawJSON(t, map[string]any{"cursor": 2}),
+		}),
+	}
+
+	decision, err := replayDefinition(publicworkflow.Definition{
+		Name:    "continue-demo",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			return ctx.SetResult(map[string]bool{"done": true})
+		},
+	}, historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionFailed {
+		t.Fatalf("expected failed decision, got %+v", decision)
+	}
+	if len(decision.Events) != 2 {
+		t.Fatalf("expected replay mismatch + workflow failed events, got %+v", decision.Events)
+	}
+	if decision.Events[0].EventType != enginehistory.EventWorkflowReplayMismatch {
+		t.Fatalf("expected first event to be workflow.replay_mismatch, got %+v", decision.Events[0])
+	}
+	if decision.Events[1].EventType != enginehistory.EventWorkflowFailed {
+		t.Fatalf("expected second event to be workflow.failed, got %+v", decision.Events[1])
+	}
+}
+
 func TestReplayDefinitionSkipsRecordedActivityRetryEvents(t *testing.T) {
 	input := mustRawJSON(t, map[string]string{"name": "Ada"})
 	output := mustRawJSON(t, map[string]string{"greeting": "hello, Ada"})
@@ -725,6 +851,20 @@ func testDefinition(timerAt time.Time) publicworkflow.Definition {
 				"greeting": output["greeting"],
 				"approval": signal["approval"],
 			})
+		},
+	}
+}
+
+func continueAsNewDefinition(nextInput any) publicworkflow.Definition {
+	return publicworkflow.Definition{
+		Name:    "continue-demo",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var input map[string]any
+			if err := ctx.Input(&input); err != nil {
+				return err
+			}
+			return publicworkflow.ContinueAsNew(nextInput)
 		},
 	}
 }

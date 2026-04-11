@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -44,6 +46,7 @@ type RuntimeConfig struct {
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
 	RequestDedupeTTL        time.Duration
+	ProjectIDFilter         *uuid.UUID
 }
 
 // Load resolves the engine database configuration from environment variables.
@@ -80,6 +83,10 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	projectIDFilter, err := uuidFromEnv("CONTINUA_ENGINE_TEST_PROJECT_FILTER")
+	if err != nil {
+		return nil, err
+	}
 
 	return &Config{
 		Database: DatabaseConfig{
@@ -97,6 +104,7 @@ func Load() (*Config, error) {
 			RunLeaseTTL:             runLeaseTTL,
 			ActivityLeaseTTL:        activityLeaseTTL,
 			RequestDedupeTTL:        requestDedupeTTL,
+			ProjectIDFilter:         projectIDFilter,
 		},
 	}, nil
 }
@@ -112,4 +120,17 @@ func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) 
 		return 0, errors.New(key + " must be a valid duration: " + err.Error())
 	}
 	return parsed, nil
+}
+
+func uuidFromEnv(key string) (*uuid.UUID, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return nil, nil
+	}
+
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return nil, errors.New(key + " must be a valid UUID: " + err.Error())
+	}
+	return &parsed, nil
 }

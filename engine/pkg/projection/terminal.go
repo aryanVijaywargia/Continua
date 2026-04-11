@@ -6,6 +6,8 @@ func TerminalStatuses(runStatus string) (traceStatus, spanStatus string) {
 	switch runStatus {
 	case "completed":
 		return "completed", "completed"
+	case "continued_as_new":
+		return "completed", "completed"
 	case "cancelled":
 		return "cancelled", "failed"
 	case "terminated":
@@ -23,6 +25,9 @@ func TerminalOutputPayload(
 ) (json.RawMessage, error) {
 	if runStatus == "completed" {
 		return cloneRaw(result), nil
+	}
+	if runStatus == "continued_as_new" {
+		return nil, nil
 	}
 	return json.Marshal(map[string]any{
 		"error_code":    derefString(errorCode),

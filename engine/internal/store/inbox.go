@@ -52,7 +52,15 @@ func (o *storeOps) ListDiscardedTimerInboxItemsByRun(
 }
 
 func (o *storeOps) ListDueTimerRunIDs(ctx context.Context) ([]uuid.UUID, error) {
-	rawIDs, err := o.q.ListDueTimerRunIDs(ctx)
+	var (
+		rawIDs []pgtype.UUID
+		err    error
+	)
+	if o.projectFilter != nil {
+		rawIDs, err = o.q.ListDueTimerRunIDsByProject(ctx, *o.projectFilter)
+	} else {
+		rawIDs, err = o.q.ListDueTimerRunIDs(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}

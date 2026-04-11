@@ -95,3 +95,16 @@ class EngineRunWaitTimeoutError(ContinuaError):
         super().__init__(message)
         self.run_id = run_id
         self.timeout = timeout
+
+
+class EngineRunContinuationDepthError(ContinuaError):
+    """Raised when continuation following exceeds the configured hop limit."""
+
+    def __init__(self, run_id: str, max_continuations: int) -> None:
+        message = (
+            f"Exceeded continuation depth while waiting for engine run {run_id} "
+            f"(max_continuations={max_continuations})"
+        )
+        super().__init__(message)
+        self.run_id = run_id
+        self.max_continuations = max_continuations

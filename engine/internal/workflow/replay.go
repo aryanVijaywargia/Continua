@@ -18,10 +18,11 @@ import (
 type decisionKind string
 
 const (
-	decisionWaiting   decisionKind = "waiting"
-	decisionCompleted decisionKind = "completed"
-	decisionFailed    decisionKind = "failed"
-	decisionCancelled decisionKind = "cancelled"
+	decisionWaiting        decisionKind = "waiting"
+	decisionCompleted      decisionKind = "completed"
+	decisionFailed         decisionKind = "failed"
+	decisionCancelled      decisionKind = "cancelled"
+	decisionContinuedAsNew decisionKind = "continued_as_new"
 )
 
 type queuedHistoryEvent struct {
@@ -30,17 +31,18 @@ type queuedHistoryEvent struct {
 }
 
 type activationDecision struct {
-	Kind             decisionKind
-	Events           []queuedHistoryEvent
-	NextSequence     int32
-	WaitingFor       json.RawMessage
-	CustomStatus     json.RawMessage
-	Result           json.RawMessage
-	NewActivity      *newActivityTask
-	NewTimer         *enginehistory.TimerScheduledPayload
-	ConsumedInboxIDs []uuid.UUID
-	FailureCode      string
-	FailureMessage   string
+	Kind              decisionKind
+	Events            []queuedHistoryEvent
+	NextSequence      int32
+	WaitingFor        json.RawMessage
+	CustomStatus      json.RawMessage
+	Result            json.RawMessage
+	NewActivity       *newActivityTask
+	NewTimer          *enginehistory.TimerScheduledPayload
+	ContinuationInput json.RawMessage
+	ConsumedInboxIDs  []uuid.UUID
+	FailureCode       string
+	FailureMessage    string
 }
 
 type newActivityTask struct {
@@ -276,6 +278,23 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 				r.replayMismatch("", "", next, "recorded history contains events after workflow cancellation")
 			}
 			return r.cancelledDecision(), nil
+		}
+		if errors.Is(runErr, publicworkflow.ErrContinueAsNew) {
+			continuationInput, _ := publicworkflow.ContinueAsNewInput(runErr)
+			continuedAsNew := enginehistory.WorkflowContinuedAsNewPayload{Input: cloneRaw(continuationInput)}
+			if next, ok := r.peek(); ok {
+				recorded, ok := next.Payload.(*enginehistory.WorkflowContinuedAsNewPayload)
+				if !ok || !equalJSON(recorded.Input, continuedAsNew.Input) {
+					r.replayMismatch(enginehistory.EventWorkflowContinuedAsNew, "", next, "workflow continuation did not match recorded history")
+				}
+				r.cursor++
+			} else {
+				r.queueEvent(enginehistory.EventWorkflowContinuedAsNew, continuedAsNew)
+			}
+			if next, ok := r.peek(); ok {
+				r.replayMismatch("", "", next, "recorded history contains events after workflow continuation")
+			}
+			return r.continuedAsNewDecision(continuedAsNew.Input), nil
 		}
 
 		code := "workflow_failed"
@@ -696,6 +715,17 @@ func (r *workflowRunner) cancelledDecision() activationDecision {
 		ConsumedInboxIDs: append([]uuid.UUID(nil), r.consumedInboxIDs...),
 		FailureCode:      "cancelled",
 		FailureMessage:   "workflow cancelled",
+	}
+}
+
+func (r *workflowRunner) continuedAsNewDecision(input json.RawMessage) activationDecision {
+	return activationDecision{
+		Kind:              decisionContinuedAsNew,
+		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
+		NextSequence:      r.nextSequence,
+		CustomStatus:      cloneRaw(r.customStatus),
+		ContinuationInput: cloneRaw(input),
+		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
 	}
 }
 

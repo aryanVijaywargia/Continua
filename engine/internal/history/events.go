@@ -11,6 +11,7 @@ const (
 	EventWorkflowCompleted      = publichistory.EventWorkflowCompleted
 	EventWorkflowFailed         = publichistory.EventWorkflowFailed
 	EventWorkflowCancelled      = publichistory.EventWorkflowCancelled
+	EventWorkflowContinuedAsNew = publichistory.EventWorkflowContinuedAsNew
 	EventWorkflowSuspended      = publichistory.EventWorkflowSuspended
 	EventWorkflowResumed        = publichistory.EventWorkflowResumed
 	EventWorkflowTerminated     = publichistory.EventWorkflowTerminated
@@ -36,6 +37,7 @@ type WorkflowStartedPayload = publichistory.WorkflowStartedPayload
 type WorkflowCompletedPayload = publichistory.WorkflowCompletedPayload
 type WorkflowFailedPayload = publichistory.WorkflowFailedPayload
 type WorkflowCancelledPayload = publichistory.WorkflowCancelledPayload
+type WorkflowContinuedAsNewPayload = publichistory.WorkflowContinuedAsNewPayload
 type WorkflowSuspendedPayload = publichistory.WorkflowSuspendedPayload
 type WorkflowResumedPayload = publichistory.WorkflowResumedPayload
 type WorkflowTerminatedPayload = publichistory.WorkflowTerminatedPayload

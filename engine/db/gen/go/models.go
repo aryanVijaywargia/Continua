@@ -194,14 +194,15 @@ func (ns NullEngineRequestDedupeStatus) Value() (driver.Value, error) {
 type EngineRunLifecycleStatus string
 
 const (
-	EngineRunLifecycleStatusQueued     EngineRunLifecycleStatus = "queued"
-	EngineRunLifecycleStatusRunning    EngineRunLifecycleStatus = "running"
-	EngineRunLifecycleStatusCompleted  EngineRunLifecycleStatus = "completed"
-	EngineRunLifecycleStatusFailed     EngineRunLifecycleStatus = "failed"
-	EngineRunLifecycleStatusCancelled  EngineRunLifecycleStatus = "cancelled"
-	EngineRunLifecycleStatusWaiting    EngineRunLifecycleStatus = "waiting"
-	EngineRunLifecycleStatusTerminated EngineRunLifecycleStatus = "terminated"
-	EngineRunLifecycleStatusSuspended  EngineRunLifecycleStatus = "suspended"
+	EngineRunLifecycleStatusQueued         EngineRunLifecycleStatus = "queued"
+	EngineRunLifecycleStatusRunning        EngineRunLifecycleStatus = "running"
+	EngineRunLifecycleStatusCompleted      EngineRunLifecycleStatus = "completed"
+	EngineRunLifecycleStatusFailed         EngineRunLifecycleStatus = "failed"
+	EngineRunLifecycleStatusCancelled      EngineRunLifecycleStatus = "cancelled"
+	EngineRunLifecycleStatusWaiting        EngineRunLifecycleStatus = "waiting"
+	EngineRunLifecycleStatusTerminated     EngineRunLifecycleStatus = "terminated"
+	EngineRunLifecycleStatusSuspended      EngineRunLifecycleStatus = "suspended"
+	EngineRunLifecycleStatusContinuedAsNew EngineRunLifecycleStatus = "continued_as_new"
 )
 
 func (e *EngineRunLifecycleStatus) Scan(src interface{}) error {
@@ -339,23 +340,25 @@ type EngineRequestDedupe struct {
 }
 
 type EngineRun struct {
-	ID                uuid.UUID                `json:"id"`
-	ProjectID         uuid.UUID                `json:"project_id"`
-	InstanceID        uuid.UUID                `json:"instance_id"`
-	RunNumber         int32                    `json:"run_number"`
-	DefinitionVersion string                   `json:"definition_version"`
-	Status            EngineRunLifecycleStatus `json:"status"`
-	ReadyAt           time.Time                `json:"ready_at"`
-	AttemptCount      int32                    `json:"attempt_count"`
-	LastErrorCode     *string                  `json:"last_error_code"`
-	LastErrorMessage  *string                  `json:"last_error_message"`
-	ClaimedBy         *string                  `json:"claimed_by"`
-	ClaimedAt         pgtype.Timestamptz       `json:"claimed_at"`
-	LeaseExpiresAt    pgtype.Timestamptz       `json:"lease_expires_at"`
-	CreatedAt         time.Time                `json:"created_at"`
-	UpdatedAt         time.Time                `json:"updated_at"`
-	Result            []byte                   `json:"result"`
-	CustomStatus      []byte                   `json:"custom_status"`
-	WaitingFor        []byte                   `json:"waiting_for"`
-	CompletedAt       pgtype.Timestamptz       `json:"completed_at"`
+	ID                 uuid.UUID                `json:"id"`
+	ProjectID          uuid.UUID                `json:"project_id"`
+	InstanceID         uuid.UUID                `json:"instance_id"`
+	RunNumber          int32                    `json:"run_number"`
+	DefinitionVersion  string                   `json:"definition_version"`
+	Status             EngineRunLifecycleStatus `json:"status"`
+	ReadyAt            time.Time                `json:"ready_at"`
+	AttemptCount       int32                    `json:"attempt_count"`
+	LastErrorCode      *string                  `json:"last_error_code"`
+	LastErrorMessage   *string                  `json:"last_error_message"`
+	ClaimedBy          *string                  `json:"claimed_by"`
+	ClaimedAt          pgtype.Timestamptz       `json:"claimed_at"`
+	LeaseExpiresAt     pgtype.Timestamptz       `json:"lease_expires_at"`
+	CreatedAt          time.Time                `json:"created_at"`
+	UpdatedAt          time.Time                `json:"updated_at"`
+	Result             []byte                   `json:"result"`
+	CustomStatus       []byte                   `json:"custom_status"`
+	WaitingFor         []byte                   `json:"waiting_for"`
+	CompletedAt        pgtype.Timestamptz       `json:"completed_at"`
+	ContinuedFromRunID pgtype.UUID              `json:"continued_from_run_id"`
+	ContinuedToRunID   pgtype.UUID              `json:"continued_to_run_id"`
 }

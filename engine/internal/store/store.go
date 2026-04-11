@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,7 +26,8 @@ var (
 )
 
 type storeOps struct {
-	q *enginedb.Queries
+	q             *enginedb.Queries
+	projectFilter *uuid.UUID
 }
 
 // Store provides engine database access backed by a dedicated pgx pool.
@@ -47,6 +49,28 @@ func New(pool *pgxpool.Pool) *Store {
 		pool:     pool,
 		storeOps: &storeOps{q: enginedb.New(pool)},
 	}
+}
+
+func (s *Store) WithProjectFilter(projectID uuid.UUID) *Store {
+	if s == nil {
+		return nil
+	}
+	filter := projectID
+	return &Store{
+		pool: s.pool,
+		storeOps: &storeOps{
+			q:             s.q,
+			projectFilter: &filter,
+		},
+	}
+}
+
+func (o *storeOps) ProjectFilter() *uuid.UUID {
+	if o == nil || o.projectFilter == nil {
+		return nil
+	}
+	filter := *o.projectFilter
+	return &filter
 }
 
 // NewPool constructs a pgx pool using the engine defaults from config.
@@ -103,8 +127,11 @@ func (s *Store) BeginTx(ctx context.Context, opts pgx.TxOptions) (*Tx, error) {
 	}
 
 	return &Tx{
-		tx:       tx,
-		storeOps: &storeOps{q: s.q.WithTx(tx)},
+		tx: tx,
+		storeOps: &storeOps{
+			q:             s.q.WithTx(tx),
+			projectFilter: s.projectFilter,
+		},
 	}, nil
 }
 

@@ -22,6 +22,29 @@ func TestDecodePayloadRoundTripsCancelledAndTerminated(t *testing.T) {
 		}
 	})
 
+	t.Run("workflow.continued_as_new", func(t *testing.T) {
+		expected := WorkflowContinuedAsNewPayload{
+			Input: []byte(`{"cursor":2,"batch":"next"}`),
+		}
+		raw, err := MarshalPayload(expected)
+		if err != nil {
+			t.Fatalf("MarshalPayload() error = %v", err)
+		}
+
+		payload, err := DecodePayload(EventWorkflowContinuedAsNew, raw)
+		if err != nil {
+			t.Fatalf("DecodePayload() error = %v", err)
+		}
+
+		typed, ok := payload.(*WorkflowContinuedAsNewPayload)
+		if !ok {
+			t.Fatalf("expected *WorkflowContinuedAsNewPayload, got %T", payload)
+		}
+		if string(typed.Input) != string(expected.Input) {
+			t.Fatalf("unexpected continued-as-new payload: %s", typed.Input)
+		}
+	})
+
 	t.Run("workflow.suspended", func(t *testing.T) {
 		raw, err := MarshalPayload(WorkflowSuspendedPayload{})
 		if err != nil {

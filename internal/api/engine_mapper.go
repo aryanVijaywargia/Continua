@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
@@ -26,55 +27,68 @@ func engineInstanceResponseToAPI(result *engineInstanceResult) EngineInstanceRes
 
 func engineRunResponseToAPI(summary *engineRunSummary) EngineRunResponse {
 	return EngineRunResponse{
-		CompletedAt:       summary.CompletedAt,
-		CreatedAt:         summary.CreatedAt,
-		CustomStatus:      parseOptionalJSONObjectRaw(summary.CustomStatus),
-		DefinitionName:    summary.DefinitionName,
-		DefinitionVersion: summary.DefinitionVersion,
-		Failure:           engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
-		InstanceId:        summary.InstanceID,
-		InstanceKey:       summary.InstanceKey,
-		PendingWork:       enginePendingWorkToAPI(summary),
-		ProjectionState:   engineProjectionStateFromString(summary.ProjectionState),
-		Result:            parseOptionalJSONValueRaw(summary.Result),
-		RunId:             summary.RunID,
-		Status:            engineRunStatusToAPI(summary.Status),
-		UpdatedAt:         summary.UpdatedAt,
-		WaitState:         parseOptionalWaitState(summary.WaitState),
+		CompletedAt:          summary.CompletedAt,
+		ContinuedFromRunId:   openapiUUIDPtr(summary.ContinuedFromRunID),
+		ContinuedFromTraceId: cloneStringPtr(summary.ContinuedFromTraceID),
+		ContinuedToRunId:     openapiUUIDPtr(summary.ContinuedToRunID),
+		ContinuedToTraceId:   cloneStringPtr(summary.ContinuedToTraceID),
+		CreatedAt:            summary.CreatedAt,
+		CustomStatus:         parseOptionalJSONObjectRaw(summary.CustomStatus),
+		DefinitionName:       summary.DefinitionName,
+		DefinitionVersion:    summary.DefinitionVersion,
+		Failure:              engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
+		InstanceId:           summary.InstanceID,
+		InstanceKey:          summary.InstanceKey,
+		PendingWork:          enginePendingWorkToAPI(summary),
+		ProjectionState:      engineProjectionStateFromString(summary.ProjectionState),
+		Result:               parseOptionalJSONValueRaw(summary.Result),
+		RunId:                summary.RunID,
+		Status:               engineRunStatusToAPI(summary.Status),
+		UpdatedAt:            summary.UpdatedAt,
+		WaitState:            parseOptionalWaitState(summary.WaitState),
 	}
 }
 
 func engineRunResultResponseToAPI(summary *engineRunSummary) EngineRunResultResponse {
 	result := parseOptionalJSONValueRaw(summary.Result)
 	if summary.Status == enginedb.EngineRunLifecycleStatusCancelled ||
-		summary.Status == enginedb.EngineRunLifecycleStatusTerminated {
+		summary.Status == enginedb.EngineRunLifecycleStatusTerminated ||
+		summary.Status == enginedb.EngineRunLifecycleStatusContinuedAsNew {
 		result = nil
 	}
 
 	return EngineRunResultResponse{
-		Failure: engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
-		Result:  result,
-		RunId:   summary.RunID,
-		Status:  engineRunStatusToAPI(summary.Status),
+		ContinuedFromRunId:   openapiUUIDPtr(summary.ContinuedFromRunID),
+		ContinuedFromTraceId: cloneStringPtr(summary.ContinuedFromTraceID),
+		ContinuedToRunId:     openapiUUIDPtr(summary.ContinuedToRunID),
+		ContinuedToTraceId:   cloneStringPtr(summary.ContinuedToTraceID),
+		Failure:              engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
+		Result:               result,
+		RunId:                summary.RunID,
+		Status:               engineRunStatusToAPI(summary.Status),
 	}
 }
 
 func engineRunSummaryToAPI(summary *engineRunSummary) EngineRunSummary {
 	return EngineRunSummary{
-		CompletedAt:       summary.CompletedAt,
-		CreatedAt:         summary.CreatedAt,
-		CustomStatus:      parseOptionalJSONObjectRaw(summary.CustomStatus),
-		DefinitionName:    summary.DefinitionName,
-		DefinitionVersion: summary.DefinitionVersion,
-		Failure:           engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
-		InstanceKey:       summary.InstanceKey,
-		PendingWork:       enginePendingWorkToAPI(summary),
-		ProjectionState:   engineProjectionStateFromString(summary.ProjectionState),
-		Result:            parseOptionalJSONValueRaw(summary.Result),
-		RunId:             summary.RunID,
-		Status:            engineRunStatusToAPI(summary.Status),
-		UpdatedAt:         summary.UpdatedAt,
-		WaitState:         parseOptionalWaitState(summary.WaitState),
+		CompletedAt:          summary.CompletedAt,
+		ContinuedFromRunId:   openapiUUIDPtr(summary.ContinuedFromRunID),
+		ContinuedFromTraceId: cloneStringPtr(summary.ContinuedFromTraceID),
+		ContinuedToRunId:     openapiUUIDPtr(summary.ContinuedToRunID),
+		ContinuedToTraceId:   cloneStringPtr(summary.ContinuedToTraceID),
+		CreatedAt:            summary.CreatedAt,
+		CustomStatus:         parseOptionalJSONObjectRaw(summary.CustomStatus),
+		DefinitionName:       summary.DefinitionName,
+		DefinitionVersion:    summary.DefinitionVersion,
+		Failure:              engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
+		InstanceKey:          summary.InstanceKey,
+		PendingWork:          enginePendingWorkToAPI(summary),
+		ProjectionState:      engineProjectionStateFromString(summary.ProjectionState),
+		Result:               parseOptionalJSONValueRaw(summary.Result),
+		RunId:                summary.RunID,
+		Status:               engineRunStatusToAPI(summary.Status),
+		UpdatedAt:            summary.UpdatedAt,
+		WaitState:            parseOptionalWaitState(summary.WaitState),
 	}
 }
 
@@ -238,6 +252,10 @@ func shouldReadLiveEngineSummary(trace *store.TraceRead) bool {
 		return false
 	}
 
+	if strings.EqualFold(strings.TrimSpace(derefString(trace.EngineRunStatus)), string(enginedb.EngineRunLifecycleStatusContinuedAsNew)) {
+		return true
+	}
+
 	switch normalizedProjectionState(trace.EngineProjectionState) {
 	case publicprojection.StateCatchingUp.String(), publicprojection.StateSummaryOnly.String():
 		return true
@@ -262,6 +280,8 @@ func projectedEngineRunStatusFromTrace(trace *store.TraceRead) EngineRunStatus {
 		return EngineRunStatusSUSPENDED
 	case string(enginedb.EngineRunLifecycleStatusWaiting):
 		return EngineRunStatusWAITING
+	case string(enginedb.EngineRunLifecycleStatusContinuedAsNew):
+		return EngineRunStatusCONTINUEDASNEW
 	case string(enginedb.EngineRunLifecycleStatusCompleted):
 		return EngineRunStatusCOMPLETED
 	case string(enginedb.EngineRunLifecycleStatusFailed):
@@ -421,6 +441,8 @@ func engineRunStatusToAPI(status enginedb.EngineRunLifecycleStatus) EngineRunSta
 		return EngineRunStatusQUEUED
 	case enginedb.EngineRunLifecycleStatusSuspended:
 		return EngineRunStatusSUSPENDED
+	case enginedb.EngineRunLifecycleStatusContinuedAsNew:
+		return EngineRunStatusCONTINUEDASNEW
 	case enginedb.EngineRunLifecycleStatusCompleted:
 		return EngineRunStatusCOMPLETED
 	case enginedb.EngineRunLifecycleStatusFailed:
@@ -476,6 +498,30 @@ func pgUUIDPtr(value pgtype.UUID) *uuid.UUID {
 
 	id := uuid.UUID(value.Bytes)
 	return &id
+}
+
+func openapiUUIDPtr(value *uuid.UUID) *openapi_types.UUID {
+	if value == nil {
+		return nil
+	}
+	id := *value
+	return &id
+}
+
+func engineTraceIDPtr(runID *uuid.UUID) *string {
+	if runID == nil {
+		return nil
+	}
+	traceID := engineTracePrefix + runID.String()
+	return &traceID
+}
+
+func cloneStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func firstNonEmpty(values ...string) string {
