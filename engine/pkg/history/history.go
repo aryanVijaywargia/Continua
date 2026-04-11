@@ -11,6 +11,7 @@ const (
 	EventWorkflowCompleted      = "workflow.completed"
 	EventWorkflowFailed         = "workflow.failed"
 	EventWorkflowCancelled      = "workflow.cancelled"
+	EventWorkflowContinuedAsNew = "workflow.continued_as_new"
 	EventWorkflowSuspended      = "workflow.suspended"
 	EventWorkflowResumed        = "workflow.resumed"
 	EventWorkflowTerminated     = "workflow.terminated"
@@ -49,6 +50,10 @@ type WorkflowFailedPayload struct {
 }
 
 type WorkflowCancelledPayload struct{}
+
+type WorkflowContinuedAsNewPayload struct {
+	Input json.RawMessage `json:"input,omitempty"`
+}
 
 type WorkflowSuspendedPayload struct{}
 
@@ -159,6 +164,9 @@ func DecodePayload(eventType string, raw []byte) (any, error) {
 		if eventType == EventWorkflowCancelled {
 			return WorkflowCancelledPayload{}, nil
 		}
+		if eventType == EventWorkflowContinuedAsNew {
+			return WorkflowContinuedAsNewPayload{}, nil
+		}
 		if eventType == EventWorkflowSuspended {
 			return WorkflowSuspendedPayload{}, nil
 		}
@@ -223,6 +231,8 @@ func payloadTarget(eventType string) (any, error) {
 		return &WorkflowFailedPayload{}, nil
 	case EventWorkflowCancelled:
 		return &WorkflowCancelledPayload{}, nil
+	case EventWorkflowContinuedAsNew:
+		return &WorkflowContinuedAsNewPayload{}, nil
 	case EventWorkflowSuspended:
 		return &WorkflowSuspendedPayload{}, nil
 	case EventWorkflowResumed:

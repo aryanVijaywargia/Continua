@@ -88,6 +88,17 @@ func (o *storeOps) TransitionRunToCancelled(
 	return enginedb.EngineRun{}, o.classifyRunInvariantMiss(ctx, arg.ID, "cancel", err)
 }
 
+func (o *storeOps) TransitionRunToContinuedAsNew(
+	ctx context.Context,
+	arg enginedb.TransitionRunToContinuedAsNewParams,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToContinuedAsNew(ctx, arg)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
+}
+
 func (o *storeOps) TransitionRunToTerminated(
 	ctx context.Context,
 	id uuid.UUID,

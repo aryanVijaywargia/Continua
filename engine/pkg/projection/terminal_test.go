@@ -13,6 +13,7 @@ func TestTerminalStatuses(t *testing.T) {
 		wantSpan  string
 	}{
 		{name: "completed", runStatus: "completed", wantTrace: "completed", wantSpan: "completed"},
+		{name: "continued_as_new", runStatus: "continued_as_new", wantTrace: "completed", wantSpan: "completed"},
 		{name: "cancelled", runStatus: "cancelled", wantTrace: "cancelled", wantSpan: "failed"},
 		{name: "terminated", runStatus: "terminated", wantTrace: "failed", wantSpan: "failed"},
 		{name: "failed", runStatus: "failed", wantTrace: "failed", wantSpan: "failed"},
@@ -54,6 +55,16 @@ func TestTerminalOutputPayload(t *testing.T) {
 		}
 		if payload["error_code"] != errorCode || payload["error_message"] != errorMessage || payload["status"] != "terminated" {
 			t.Fatalf("unexpected payload: %+v", payload)
+		}
+	})
+
+	t.Run("continued_as_new keeps terminal output empty", func(t *testing.T) {
+		got, err := TerminalOutputPayload("continued_as_new", nil, nil, nil)
+		if err != nil {
+			t.Fatalf("TerminalOutputPayload() error = %v", err)
+		}
+		if got != nil {
+			t.Fatalf("TerminalOutputPayload() = %s, want nil", got)
 		}
 	})
 }

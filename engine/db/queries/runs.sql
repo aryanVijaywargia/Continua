@@ -4,9 +4,10 @@ INSERT INTO engine.runs (
     instance_id,
     run_number,
     definition_version,
-    ready_at
+    ready_at,
+    continued_from_run_id
 )
-VALUES ($1, $2, $3, $4, $5)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetRun :one
@@ -37,14 +38,14 @@ FOR UPDATE;
 SELECT *
 FROM engine.runs
 WHERE instance_id = $1
-ORDER BY created_at DESC, id DESC
+ORDER BY run_number DESC, id DESC
 LIMIT $2 OFFSET $3;
 
 -- name: GetLatestRunByInstance :one
 SELECT *
 FROM engine.runs
 WHERE instance_id = $1
-ORDER BY created_at DESC, id DESC
+ORDER BY run_number DESC, id DESC
 LIMIT 1;
 
 -- name: UpdateRunStatus :one
@@ -125,6 +126,25 @@ SET status = 'cancelled',
     updated_at = NOW()
 WHERE id = $1
   AND status = 'running'
+RETURNING *;
+
+-- name: TransitionRunToContinuedAsNew :one
+UPDATE engine.runs
+SET status = 'continued_as_new',
+    result = NULL,
+    custom_status = $4,
+    waiting_for = NULL,
+    completed_at = NOW(),
+    last_error_code = NULL,
+    last_error_message = NULL,
+    continued_to_run_id = $3,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
 RETURNING *;
 
 -- name: TransitionRunToTerminated :one

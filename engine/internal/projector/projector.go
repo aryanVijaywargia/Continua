@@ -286,6 +286,13 @@ func projectHistoryRow(
 			ErrorMessage:  "workflow cancelled",
 			CleanupReason: "cancelled",
 		})
+	case *publichistory.WorkflowContinuedAsNewPayload:
+		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
+			RunStatus:     enginedb.EngineRunLifecycleStatusContinuedAsNew,
+			ErrorCode:     "continued_as_new",
+			ErrorMessage:  "workflow continued as new",
+			CleanupReason: "continued_as_new",
+		})
 	case *publichistory.WorkflowTerminatedPayload:
 		return projectTerminalHistoryRow(ctx, tx, target, row, &terminalProjection{
 			RunStatus:     enginedb.EngineRunLifecycleStatusTerminated,
