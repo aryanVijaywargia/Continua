@@ -1150,7 +1150,7 @@ describe('TraceDetailPage', () => {
     );
 
     await user.click(
-      screen.getByRole('button', {
+      await screen.findByRole('button', {
         name: /Mobile reasoning child.*Choose a mobile tool\?/i,
       })
     );
