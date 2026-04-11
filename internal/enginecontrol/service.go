@@ -278,7 +278,8 @@ func isTerminalRun(status enginedb.EngineRunLifecycleStatus) bool {
 	case enginedb.EngineRunLifecycleStatusCompleted,
 		enginedb.EngineRunLifecycleStatusFailed,
 		enginedb.EngineRunLifecycleStatusCancelled,
-		enginedb.EngineRunLifecycleStatusTerminated:
+		enginedb.EngineRunLifecycleStatusTerminated,
+		enginedb.EngineRunLifecycleStatusContinuedAsNew:
 		return true
 	default:
 		return false

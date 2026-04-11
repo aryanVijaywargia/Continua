@@ -97,14 +97,15 @@ const (
 
 // Defines values for EngineRunStatus.
 const (
-	EngineRunStatusCANCELLED  EngineRunStatus = "CANCELLED"
-	EngineRunStatusCOMPLETED  EngineRunStatus = "COMPLETED"
-	EngineRunStatusFAILED     EngineRunStatus = "FAILED"
-	EngineRunStatusQUEUED     EngineRunStatus = "QUEUED"
-	EngineRunStatusRUNNING    EngineRunStatus = "RUNNING"
-	EngineRunStatusSUSPENDED  EngineRunStatus = "SUSPENDED"
-	EngineRunStatusTERMINATED EngineRunStatus = "TERMINATED"
-	EngineRunStatusWAITING    EngineRunStatus = "WAITING"
+	EngineRunStatusCANCELLED      EngineRunStatus = "CANCELLED"
+	EngineRunStatusCOMPLETED      EngineRunStatus = "COMPLETED"
+	EngineRunStatusCONTINUEDASNEW EngineRunStatus = "CONTINUED_AS_NEW"
+	EngineRunStatusFAILED         EngineRunStatus = "FAILED"
+	EngineRunStatusQUEUED         EngineRunStatus = "QUEUED"
+	EngineRunStatusRUNNING        EngineRunStatus = "RUNNING"
+	EngineRunStatusSUSPENDED      EngineRunStatus = "SUSPENDED"
+	EngineRunStatusTERMINATED     EngineRunStatus = "TERMINATED"
+	EngineRunStatusWAITING        EngineRunStatus = "WAITING"
 )
 
 // Defines values for IngestEventLevel.
@@ -288,14 +289,15 @@ const (
 
 // Defines values for ListTracesParamsEngineRunStatus.
 const (
-	ListTracesParamsEngineRunStatusCancelled  ListTracesParamsEngineRunStatus = "cancelled"
-	ListTracesParamsEngineRunStatusCompleted  ListTracesParamsEngineRunStatus = "completed"
-	ListTracesParamsEngineRunStatusFailed     ListTracesParamsEngineRunStatus = "failed"
-	ListTracesParamsEngineRunStatusQueued     ListTracesParamsEngineRunStatus = "queued"
-	ListTracesParamsEngineRunStatusRunning    ListTracesParamsEngineRunStatus = "running"
-	ListTracesParamsEngineRunStatusSuspended  ListTracesParamsEngineRunStatus = "suspended"
-	ListTracesParamsEngineRunStatusTerminated ListTracesParamsEngineRunStatus = "terminated"
-	ListTracesParamsEngineRunStatusWaiting    ListTracesParamsEngineRunStatus = "waiting"
+	ListTracesParamsEngineRunStatusCancelled      ListTracesParamsEngineRunStatus = "cancelled"
+	ListTracesParamsEngineRunStatusCompleted      ListTracesParamsEngineRunStatus = "completed"
+	ListTracesParamsEngineRunStatusContinuedAsNew ListTracesParamsEngineRunStatus = "continued_as_new"
+	ListTracesParamsEngineRunStatusFailed         ListTracesParamsEngineRunStatus = "failed"
+	ListTracesParamsEngineRunStatusQueued         ListTracesParamsEngineRunStatus = "queued"
+	ListTracesParamsEngineRunStatusRunning        ListTracesParamsEngineRunStatus = "running"
+	ListTracesParamsEngineRunStatusSuspended      ListTracesParamsEngineRunStatus = "suspended"
+	ListTracesParamsEngineRunStatusTerminated     ListTracesParamsEngineRunStatus = "terminated"
+	ListTracesParamsEngineRunStatusWaiting        ListTracesParamsEngineRunStatus = "waiting"
 )
 
 // BatchStatusResponse defines model for BatchStatusResponse.
@@ -544,16 +546,20 @@ type EngineRunHistoryResponse struct {
 
 // EngineRunResponse defines model for EngineRunResponse.
 type EngineRunResponse struct {
-	CompletedAt       *time.Time              `json:"completed_at,omitempty"`
-	CreatedAt         time.Time               `json:"created_at"`
-	CustomStatus      *map[string]interface{} `json:"custom_status,omitempty"`
-	DefinitionName    string                  `json:"definition_name"`
-	DefinitionVersion string                  `json:"definition_version"`
-	Failure           *EngineFailureSummary   `json:"failure,omitempty"`
-	InstanceId        openapi_types.UUID      `json:"instance_id"`
-	InstanceKey       string                  `json:"instance_key"`
-	PendingWork       EnginePendingWork       `json:"pending_work"`
-	ProjectionState   EngineProjectionState   `json:"projection_state"`
+	CompletedAt          *time.Time              `json:"completed_at,omitempty"`
+	ContinuedFromRunId   *openapi_types.UUID     `json:"continued_from_run_id,omitempty"`
+	ContinuedFromTraceId *string                 `json:"continued_from_trace_id,omitempty"`
+	ContinuedToRunId     *openapi_types.UUID     `json:"continued_to_run_id,omitempty"`
+	ContinuedToTraceId   *string                 `json:"continued_to_trace_id,omitempty"`
+	CreatedAt            time.Time               `json:"created_at"`
+	CustomStatus         *map[string]interface{} `json:"custom_status,omitempty"`
+	DefinitionName       string                  `json:"definition_name"`
+	DefinitionVersion    string                  `json:"definition_version"`
+	Failure              *EngineFailureSummary   `json:"failure,omitempty"`
+	InstanceId           openapi_types.UUID      `json:"instance_id"`
+	InstanceKey          string                  `json:"instance_key"`
+	PendingWork          EnginePendingWork       `json:"pending_work"`
+	ProjectionState      EngineProjectionState   `json:"projection_state"`
 
 	// Result Terminal workflow result payload when available.
 	Result    interface{}        `json:"result,omitempty"`
@@ -565,7 +571,11 @@ type EngineRunResponse struct {
 
 // EngineRunResultResponse defines model for EngineRunResultResponse.
 type EngineRunResultResponse struct {
-	Failure *EngineFailureSummary `json:"failure,omitempty"`
+	ContinuedFromRunId   *openapi_types.UUID   `json:"continued_from_run_id,omitempty"`
+	ContinuedFromTraceId *string               `json:"continued_from_trace_id,omitempty"`
+	ContinuedToRunId     *openapi_types.UUID   `json:"continued_to_run_id,omitempty"`
+	ContinuedToTraceId   *string               `json:"continued_to_trace_id,omitempty"`
+	Failure              *EngineFailureSummary `json:"failure,omitempty"`
 
 	// Result Terminal workflow result payload when available. `summary_only` and
 	// `journal_expired` runs continue to return the retained terminal shell.
@@ -579,15 +589,19 @@ type EngineRunStatus string
 
 // EngineRunSummary defines model for EngineRunSummary.
 type EngineRunSummary struct {
-	CompletedAt       *time.Time              `json:"completed_at,omitempty"`
-	CreatedAt         time.Time               `json:"created_at"`
-	CustomStatus      *map[string]interface{} `json:"custom_status,omitempty"`
-	DefinitionName    string                  `json:"definition_name"`
-	DefinitionVersion string                  `json:"definition_version"`
-	Failure           *EngineFailureSummary   `json:"failure,omitempty"`
-	InstanceKey       string                  `json:"instance_key"`
-	PendingWork       EnginePendingWork       `json:"pending_work"`
-	ProjectionState   EngineProjectionState   `json:"projection_state"`
+	CompletedAt          *time.Time              `json:"completed_at,omitempty"`
+	ContinuedFromRunId   *openapi_types.UUID     `json:"continued_from_run_id,omitempty"`
+	ContinuedFromTraceId *string                 `json:"continued_from_trace_id,omitempty"`
+	ContinuedToRunId     *openapi_types.UUID     `json:"continued_to_run_id,omitempty"`
+	ContinuedToTraceId   *string                 `json:"continued_to_trace_id,omitempty"`
+	CreatedAt            time.Time               `json:"created_at"`
+	CustomStatus         *map[string]interface{} `json:"custom_status,omitempty"`
+	DefinitionName       string                  `json:"definition_name"`
+	DefinitionVersion    string                  `json:"definition_version"`
+	Failure              *EngineFailureSummary   `json:"failure,omitempty"`
+	InstanceKey          string                  `json:"instance_key"`
+	PendingWork          EnginePendingWork       `json:"pending_work"`
+	ProjectionState      EngineProjectionState   `json:"projection_state"`
 
 	// Result Terminal workflow result payload when available.
 	Result    interface{}        `json:"result,omitempty"`

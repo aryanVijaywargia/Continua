@@ -95,15 +95,7 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 	}
 
 	var engineSummary *EngineRunSummary
-	readLiveEngineSummary := shouldReadLiveEngineSummary(&trace)
-	if !readLiveEngineSummary && s.engineControl != nil {
-		needsLiveSummary, err := s.engineControl.shouldReadLiveTraceSummary(r.Context(), &trace)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to read engine summary")
-			return
-		}
-		readLiveEngineSummary = needsLiveSummary
-	}
+	readLiveEngineSummary := trace.EngineRunID.Valid
 
 	if readLiveEngineSummary {
 		if s.engineControl == nil {

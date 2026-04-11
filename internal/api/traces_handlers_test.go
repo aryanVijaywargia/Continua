@@ -818,6 +818,77 @@ func TestListTraces_InvalidEngineFiltersReturn400(t *testing.T) {
 	assert.Equal(t, "invalid_request", decodeJSONBody[Error](t, projectionStateRec).Code)
 }
 
+func TestListTraces_FilterByContinuedAsNewRunStatus(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+
+	continuedTrace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "engine-trace-continued",
+		Name:      testutil.StrPtr("continued trace"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 18, 0, 0, 0, time.UTC)),
+	})
+	waitingTrace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "engine-trace-waiting",
+		Name:      testutil.StrPtr("waiting trace"),
+		Status:    "running",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 19, 0, 0, 0, time.UTC)),
+	})
+	nonEngineTrace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "non-engine-trace",
+		Name:      testutil.StrPtr("plain trace"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 20, 0, 0, 0, time.UTC)),
+	})
+
+	_, err := pool.Exec(ctx, `
+		UPDATE traces
+		SET engine_run_id = $2,
+		    engine_instance_key = 'instance-continued',
+		    engine_definition_name = 'checkout',
+		    engine_definition_version = 'v1',
+		    engine_run_status = 'continued_as_new',
+		    engine_projection_state = 'up_to_date',
+		    engine_projection_updated_at = NOW()
+		WHERE id = $1
+	`, continuedTrace.ID, uuid.New())
+	require.NoError(t, err)
+
+	_, err = pool.Exec(ctx, `
+		UPDATE traces
+		SET engine_run_id = $2,
+		    engine_instance_key = 'instance-waiting',
+		    engine_definition_name = 'checkout',
+		    engine_definition_version = 'v1',
+		    engine_run_status = 'waiting',
+		    engine_projection_state = 'up_to_date',
+		    engine_projection_updated_at = NOW()
+		WHERE id = $1
+	`, waitingTrace.ID, uuid.New())
+	require.NoError(t, err)
+
+	filter := ListTracesParamsEngineRunStatus("continued_as_new")
+	rec := invokeListTraces(t, server, projectID, ListTracesParams{
+		EngineRunStatus: &filter,
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[TraceList](t, rec)
+	require.Len(t, resp.Traces, 1)
+	assert.Equal(t, continuedTrace.ID, resp.Traces[0].Id)
+	require.NotNil(t, resp.Traces[0].Engine)
+	assert.NotEqual(t, uuid.Nil, resp.Traces[0].Engine.RunId)
+	assert.NotEqual(t, nonEngineTrace.ID, resp.Traces[0].Id)
+}
+
 func TestGetTrace_ProjectScopingReturns404(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()

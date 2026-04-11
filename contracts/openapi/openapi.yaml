@@ -783,7 +783,7 @@ paths:
           description: Filter by engine run lifecycle status
           schema:
             type: string
-            enum: [queued, running, waiting, suspended, completed, failed, cancelled, terminated]
+            enum: [queued, running, waiting, suspended, completed, failed, cancelled, terminated, continued_as_new]
         - name: engine_projection_state
           in: query
           description: Filter by engine projection state
@@ -1147,7 +1147,7 @@ components:
 
     EngineRunStatus:
       type: string
-      enum: [QUEUED, RUNNING, WAITING, SUSPENDED, COMPLETED, FAILED, CANCELLED, TERMINATED]
+      enum: [QUEUED, RUNNING, WAITING, SUSPENDED, COMPLETED, FAILED, CANCELLED, TERMINATED, CONTINUED_AS_NEW]
 
     EngineTraceInfo:
       type: object
@@ -1293,6 +1293,16 @@ components:
             status:
               $ref: '#/components/schemas/EngineRunStatus'
             instance_key:
+              type: string
+            continued_from_run_id:
+              type: string
+              format: uuid
+            continued_to_run_id:
+              type: string
+              format: uuid
+            continued_from_trace_id:
+              type: string
+            continued_to_trace_id:
               type: string
             custom_status:
               type: object
@@ -1471,6 +1481,16 @@ components:
         run_id:
           type: string
           format: uuid
+        continued_from_run_id:
+          type: string
+          format: uuid
+        continued_to_run_id:
+          type: string
+          format: uuid
+        continued_from_trace_id:
+          type: string
+        continued_to_trace_id:
+          type: string
         status:
           $ref: '#/components/schemas/EngineRunStatus'
         result:

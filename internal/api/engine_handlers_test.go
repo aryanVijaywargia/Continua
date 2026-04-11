@@ -564,6 +564,141 @@ func TestEngineHandlers_ReadSignalCancelAndTraceSurfaces(t *testing.T) {
 	assert.Equal(t, "run_terminal", decodeJSONBody[Error](t, terminalSignalRec).Code)
 }
 
+func TestEngineHandlers_ExposeContinuationChainAcrossReadSurfaces(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-continue-read",
+		RequestKey:        "req-continue-read",
+	}))
+
+	oldRun, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        start.RunId,
+	})
+	require.NoError(t, err)
+
+	now := time.Now().UTC().Round(time.Microsecond)
+	nextRun, err := engineQueries.CreateRun(ctx, enginedb.CreateRunParams{
+		ProjectID:          projectID,
+		InstanceID:         oldRun.InstanceID,
+		RunNumber:          oldRun.RunNumber + 1,
+		DefinitionVersion:  oldRun.DefinitionVersion,
+		ReadyAt:            now,
+		ContinuedFromRunID: pgtype.UUID{Bytes: oldRun.ID, Valid: true},
+	})
+	require.NoError(t, err)
+
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'continued_as_new',
+		    completed_at = $2,
+		    updated_at = $2,
+		    continued_to_run_id = $3,
+		    waiting_for = NULL,
+		    claimed_by = NULL,
+		    claimed_at = NULL,
+		    lease_expires_at = NULL
+		WHERE id = $1
+	`, oldRun.ID, now, nextRun.ID)
+	require.NoError(t, err)
+
+	oldTrace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE traces
+		SET status = 'completed',
+		    end_time = $2,
+		    output = NULL,
+		    engine_run_status = 'continued_as_new',
+		    engine_projection_state = 'up_to_date',
+		    engine_projection_updated_at = $2,
+		    updated_at = $2
+		WHERE id = $1
+	`, oldTrace.ID, now)
+	require.NoError(t, err)
+
+	nextTrace := upsertTraceRecord(ctx, t, platformStore.Queries(), platformdb.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "engine:" + nextRun.ID.String(),
+		Name:      testutil.StrPtr("Checkout Workflow"),
+		Status:    "running",
+		StartTime: testutil.PgtypeTimestamptz(now),
+	})
+
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE traces
+		SET engine_run_id = $2,
+		    engine_instance_key = $3,
+		    engine_definition_name = 'checkout',
+		    engine_definition_version = 'v1',
+		    engine_run_status = 'queued',
+		    engine_projection_state = 'up_to_date',
+		    engine_projection_updated_at = $4,
+		    updated_at = $4
+		WHERE id = $1
+	`, nextTrace.ID, nextRun.ID, "instance-continue-read", now)
+	require.NoError(t, err)
+
+	instanceRec := invokeGetEngineInstance(t, server, projectID, "instance-continue-read")
+	require.Equal(t, http.StatusOK, instanceRec.Code)
+	instanceResp := decodeJSONBody[EngineInstanceResponse](t, instanceRec)
+	assert.Equal(t, nextRun.ID, instanceResp.CurrentRun.RunId)
+	assert.Equal(t, EngineRunStatusQUEUED, instanceResp.CurrentRun.Status)
+	require.NotNil(t, instanceResp.CurrentRun.ContinuedFromRunId)
+	assert.Equal(t, oldRun.ID, *instanceResp.CurrentRun.ContinuedFromRunId)
+	require.NotNil(t, instanceResp.CurrentRun.ContinuedFromTraceId)
+	assert.Equal(t, "engine:"+oldRun.ID.String(), *instanceResp.CurrentRun.ContinuedFromTraceId)
+
+	runRec := invokeGetEngineRun(t, server, projectID, oldRun.ID)
+	require.Equal(t, http.StatusOK, runRec.Code)
+	runResp := decodeJSONBody[EngineRunResponse](t, runRec)
+	assert.Equal(t, EngineRunStatusCONTINUEDASNEW, runResp.Status)
+	require.NotNil(t, runResp.ContinuedToRunId)
+	assert.Equal(t, nextRun.ID, *runResp.ContinuedToRunId)
+	require.NotNil(t, runResp.ContinuedToTraceId)
+	assert.Equal(t, "engine:"+nextRun.ID.String(), *runResp.ContinuedToTraceId)
+
+	resultRec := invokeGetEngineRunResult(t, server, projectID, oldRun.ID)
+	require.Equal(t, http.StatusOK, resultRec.Code)
+	assertJSONFieldNull(t, resultRec.Body.Bytes(), "result")
+	resultResp := decodeJSONBody[EngineRunResultResponse](t, resultRec)
+	assert.Equal(t, EngineRunStatusCONTINUEDASNEW, resultResp.Status)
+	assert.Nil(t, resultResp.Result)
+	require.NotNil(t, resultResp.ContinuedToRunId)
+	assert.Equal(t, nextRun.ID, *resultResp.ContinuedToRunId)
+	require.NotNil(t, resultResp.ContinuedToTraceId)
+	assert.Equal(t, "engine:"+nextRun.ID.String(), *resultResp.ContinuedToTraceId)
+
+	terminateRec := invokeTerminateEngineRun(t, server, projectID, oldRun.ID)
+	require.Equal(t, http.StatusOK, terminateRec.Code)
+	assertJSONFieldNull(t, terminateRec.Body.Bytes(), "result")
+	terminateResp := decodeJSONBody[EngineRunResultResponse](t, terminateRec)
+	assert.Equal(t, EngineRunStatusCONTINUEDASNEW, terminateResp.Status)
+	assert.Nil(t, terminateResp.Result)
+	require.NotNil(t, terminateResp.ContinuedToRunId)
+	assert.Equal(t, nextRun.ID, *terminateResp.ContinuedToRunId)
+	require.NotNil(t, terminateResp.ContinuedToTraceId)
+	assert.Equal(t, "engine:"+nextRun.ID.String(), *terminateResp.ContinuedToTraceId)
+
+	traceRec := invokeGetTrace(t, server, projectID, oldTrace.ID)
+	require.Equal(t, http.StatusOK, traceRec.Code)
+	traceResp := decodeJSONBody[TraceDetail](t, traceRec)
+	require.NotNil(t, traceResp.Engine)
+	assert.Equal(t, EngineRunStatusCONTINUEDASNEW, traceResp.Engine.Status)
+	require.NotNil(t, traceResp.Engine.ContinuedToRunId)
+	assert.Equal(t, nextRun.ID, *traceResp.Engine.ContinuedToRunId)
+	require.NotNil(t, traceResp.Engine.ContinuedToTraceId)
+	assert.Equal(t, "engine:"+nextRun.ID.String(), *traceResp.Engine.ContinuedToTraceId)
+}
+
 func TestGetEngineRunResult_ReturnsCancelledFailureSummary(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
@@ -1744,6 +1879,56 @@ func TestPurgeEngineRun_RejectsNonTerminalRun(t *testing.T) {
 	rec := invokePurgeEngineRun(t, server, projectID, start.RunId, ProjectionOnly)
 	require.Equal(t, http.StatusConflict, rec.Code)
 	assert.Equal(t, "run_not_terminal", decodeJSONBody[Error](t, rec).Code)
+}
+
+func TestPurgeEngineRun_AcceptsContinuedAsNewRun(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-purge-continued",
+		RequestKey:        "req-purge-continued",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	completedAt := time.Now().UTC().Round(time.Microsecond)
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'continued_as_new',
+		    waiting_for = NULL,
+		    result = NULL,
+		    completed_at = $2,
+		    updated_at = $2
+		WHERE id = $1
+	`, start.RunId, completedAt)
+	require.NoError(t, err)
+
+	_, err = platformStore.Pool().Exec(ctx, `
+		UPDATE traces
+		SET status = 'completed',
+		    end_time = $2,
+		    output = NULL,
+		    engine_run_status = 'continued_as_new',
+		    engine_projection_state = 'up_to_date',
+		    engine_projection_updated_at = $2,
+		    updated_at = $2
+		WHERE id = $1
+	`, trace.ID, completedAt)
+	require.NoError(t, err)
+
+	rec := invokePurgeEngineRun(t, server, projectID, start.RunId, ProjectionOnly)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[EnginePurgeResponse](t, rec)
+	assert.True(t, resp.Deleted)
+	assert.Equal(t, SummaryOnly, resp.ProjectionState)
 }
 
 func TestPurgeEngineRun_ReturnsNotFoundForMissingRunAndCrossProject(t *testing.T) {

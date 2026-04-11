@@ -793,6 +793,7 @@ paths:
               - failed
               - cancelled
               - terminated
+              - continued_as_new
         - name: engine_projection_state
           in: query
           description: Filter by engine projection state
@@ -1171,6 +1172,7 @@ components:
         - FAILED
         - CANCELLED
         - TERMINATED
+        - CONTINUED_AS_NEW
     EngineTraceInfo:
       type: object
       required:
@@ -1342,6 +1344,16 @@ components:
             status:
               $ref: '#/components/schemas/EngineRunStatus'
             instance_key:
+              type: string
+            continued_from_run_id:
+              type: string
+              format: uuid
+            continued_to_run_id:
+              type: string
+              format: uuid
+            continued_from_trace_id:
+              type: string
+            continued_to_trace_id:
               type: string
             custom_status:
               type: object
@@ -1534,6 +1546,16 @@ components:
         run_id:
           type: string
           format: uuid
+        continued_from_run_id:
+          type: string
+          format: uuid
+        continued_to_run_id:
+          type: string
+          format: uuid
+        continued_from_trace_id:
+          type: string
+        continued_to_trace_id:
+          type: string
         status:
           $ref: '#/components/schemas/EngineRunStatus'
         result:

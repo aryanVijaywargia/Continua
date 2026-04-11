@@ -72,6 +72,10 @@ type engineRunSummary struct {
 	RunID                uuid.UUID
 	InstanceID           uuid.UUID
 	InstanceKey          string
+	ContinuedFromRunID   *uuid.UUID
+	ContinuedToRunID     *uuid.UUID
+	ContinuedFromTraceID *string
+	ContinuedToTraceID   *string
 	DefinitionName       string
 	DefinitionVersion    string
 	ProjectionState      string
@@ -473,7 +477,8 @@ func (s *engineControlService) GetRunResult(
 	}
 
 	if summary.Status == enginedb.EngineRunLifecycleStatusCancelled ||
-		summary.Status == enginedb.EngineRunLifecycleStatusTerminated {
+		summary.Status == enginedb.EngineRunLifecycleStatusTerminated ||
+		summary.Status == enginedb.EngineRunLifecycleStatusContinuedAsNew {
 		summary.Result = nil
 	}
 
@@ -1085,6 +1090,10 @@ func (s *engineControlService) buildRunSummary(
 		RunID:                run.ID,
 		InstanceID:           instance.ID,
 		InstanceKey:          instance.InstanceKey,
+		ContinuedFromRunID:   pgUUIDPtr(run.ContinuedFromRunID),
+		ContinuedToRunID:     pgUUIDPtr(run.ContinuedToRunID),
+		ContinuedFromTraceID: engineTraceIDPtr(pgUUIDPtr(run.ContinuedFromRunID)),
+		ContinuedToTraceID:   engineTraceIDPtr(pgUUIDPtr(run.ContinuedToRunID)),
 		DefinitionName:       instance.DefinitionName,
 		DefinitionVersion:    run.DefinitionVersion,
 		ProjectionState:      projectionState,
@@ -1339,7 +1348,8 @@ func isTerminalEngineRun(status enginedb.EngineRunLifecycleStatus) bool {
 	case enginedb.EngineRunLifecycleStatusCompleted,
 		enginedb.EngineRunLifecycleStatusFailed,
 		enginedb.EngineRunLifecycleStatusCancelled,
-		enginedb.EngineRunLifecycleStatusTerminated:
+		enginedb.EngineRunLifecycleStatusTerminated,
+		enginedb.EngineRunLifecycleStatusContinuedAsNew:
 		return true
 	default:
 		return false
@@ -1351,8 +1361,15 @@ func terminalRunSummaryFromRun(run *enginedb.EngineRun) engineRunSummary {
 		return engineRunSummary{}
 	}
 
+	continuedFromRunID := pgUUIDPtr(run.ContinuedFromRunID)
+	continuedToRunID := pgUUIDPtr(run.ContinuedToRunID)
+
 	return engineRunSummary{
 		RunID:                run.ID,
+		ContinuedFromRunID:   continuedFromRunID,
+		ContinuedToRunID:     continuedToRunID,
+		ContinuedFromTraceID: engineTraceIDPtr(continuedFromRunID),
+		ContinuedToTraceID:   engineTraceIDPtr(continuedToRunID),
 		Status:               run.Status,
 		Result:               cloneRaw(run.Result),
 		LastErrorCode:        run.LastErrorCode,

@@ -450,7 +450,7 @@ export interface components {
         /** @enum {string} */
         EngineRepairReason: "already_up_to_date" | "history_expired" | "no_events_to_project" | "repair_requested" | "already_catching_up";
         /** @enum {string} */
-        EngineRunStatus: "QUEUED" | "RUNNING" | "WAITING" | "SUSPENDED" | "COMPLETED" | "FAILED" | "CANCELLED" | "TERMINATED";
+        EngineRunStatus: "QUEUED" | "RUNNING" | "WAITING" | "SUSPENDED" | "COMPLETED" | "FAILED" | "CANCELLED" | "TERMINATED" | "CONTINUED_AS_NEW";
         EngineTraceInfo: {
             /** Format: uuid */
             run_id: string;
@@ -523,6 +523,12 @@ export interface components {
         EngineRunSummary: components["schemas"]["EngineTraceInfo"] & {
             status: components["schemas"]["EngineRunStatus"];
             instance_key: string;
+            /** Format: uuid */
+            continued_from_run_id?: string;
+            /** Format: uuid */
+            continued_to_run_id?: string;
+            continued_from_trace_id?: string;
+            continued_to_trace_id?: string;
             custom_status?: Record<string, never>;
             wait_state?: components["schemas"]["EngineWaitState"];
             pending_work: components["schemas"]["EnginePendingWork"];
@@ -617,6 +623,12 @@ export interface components {
         EngineRunResultResponse: {
             /** Format: uuid */
             run_id: string;
+            /** Format: uuid */
+            continued_from_run_id?: string;
+            /** Format: uuid */
+            continued_to_run_id?: string;
+            continued_from_trace_id?: string;
+            continued_to_trace_id?: string;
             status: components["schemas"]["EngineRunStatus"];
             /** @description Terminal workflow result payload when available. `summary_only` and
              *     `journal_expired` runs continue to return the retained terminal shell.
@@ -1971,7 +1983,7 @@ export interface operations {
                 /** @description Filter by engine definition name */
                 engine_definition_name?: string;
                 /** @description Filter by engine run lifecycle status */
-                engine_run_status?: "queued" | "running" | "waiting" | "suspended" | "completed" | "failed" | "cancelled" | "terminated";
+                engine_run_status?: "queued" | "running" | "waiting" | "suspended" | "completed" | "failed" | "cancelled" | "terminated" | "continued_as_new";
                 /** @description Filter by engine projection state */
                 engine_projection_state?: components["schemas"]["EngineProjectionState"];
                 /** @description Filter traces with errors (error_count > 0) */
