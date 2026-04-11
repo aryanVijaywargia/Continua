@@ -131,6 +131,13 @@ func (o *storeOps) ClaimNextRun(
 	workerID string,
 	leaseDuration time.Duration,
 ) (enginedb.EngineRun, error) {
+	if o.projectFilter != nil {
+		return mapResult(o.q.ClaimNextRunByProject(ctx, enginedb.ClaimNextRunByProjectParams{
+			ProjectFilterID:     *o.projectFilter,
+			ClaimedBy:           nullableWorkerID(workerID),
+			LeaseDurationMicros: leaseDurationMicros(leaseDuration),
+		}))
+	}
 	return mapResult(o.q.ClaimNextRun(ctx, enginedb.ClaimNextRunParams{
 		ClaimedBy:           nullableWorkerID(workerID),
 		LeaseDurationMicros: leaseDurationMicros(leaseDuration),

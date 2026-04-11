@@ -45,7 +45,8 @@ const (
 var darkLaunchProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 type Projector struct {
-	store *enginestore.Store
+	store         *enginestore.Store
+	projectFilter *uuid.UUID
 }
 
 type projectionTarget struct {
@@ -68,7 +69,11 @@ type terminalProjection struct {
 }
 
 func New(store *enginestore.Store) *Projector {
-	return &Projector{store: store}
+	var projectFilter *uuid.UUID
+	if store != nil {
+		projectFilter = store.ProjectFilter()
+	}
+	return &Projector{store: store, projectFilter: projectFilter}
 }
 
 func (p *Projector) PollOnce(ctx context.Context, _ string) error {
@@ -925,7 +930,7 @@ func emitProjectedEvent(ctx context.Context, tx pgx.Tx, event *projectedEvent) e
 	return nil
 }
 
-func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, error) {
+func selectProjectionTarget(ctx context.Context, tx pgx.Tx, projectFilter *uuid.UUID) (projectionTarget, error) {
 	var target projectionTarget
 	var projectionUpdatedAt pgtypeTimestamptz
 	err := tx.QueryRow(ctx, `
@@ -945,6 +950,7 @@ func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, e
 		           t.updated_at
 		    FROM public.traces AS t
 		WHERE t.engine_run_id IS NOT NULL
+		  AND ($1::uuid IS NULL OR t.project_id = $1)
 		  AND COALESCE(t.engine_projection_state, '') NOT IN ('summary_only', 'journal_expired')
 		)
 		SELECT id,
@@ -959,7 +965,7 @@ func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, e
 		WHERE last_projected_history_id < latest_history_id
 		ORDER BY engine_projection_updated_at ASC NULLS FIRST, updated_at ASC, id ASC
 		LIMIT 1
-	`).Scan(
+	`, nullableProjectFilter(projectFilter)).Scan(
 		&target.TraceID,
 		&target.ProjectID,
 		&target.TraceName,
@@ -976,6 +982,13 @@ func selectProjectionTarget(ctx context.Context, tx pgx.Tx) (projectionTarget, e
 		target.ProjectionUpdatedAt = &projectionUpdatedAt.Time
 	}
 	return target, nil
+}
+
+func nullableProjectFilter(projectFilter *uuid.UUID) pgtype.UUID {
+	if projectFilter == nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: *projectFilter, Valid: true}
 }
 
 func advanceProjectionCheckpoint(
@@ -1039,7 +1052,7 @@ func (p *Projector) pollSingleHistoryRow(ctx context.Context) (bool, error) {
 		_ = tx.Rollback(ctx)
 	}()
 
-	target, err := selectProjectionTarget(ctx, tx.Tx())
+	target, err := selectProjectionTarget(ctx, tx.Tx(), p.projectFilter)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil

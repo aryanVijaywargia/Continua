@@ -32,7 +32,7 @@ func TestProjectorPollOnce_RestartSafeForProjectedActivityRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	target, err := selectProjectionTarget(fixture.ctx, tx.Tx())
+	target, err := selectProjectionTarget(fixture.ctx, tx.Tx(), nil)
 	if err != nil {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("selectProjectionTarget() error = %v", err)
@@ -447,7 +447,7 @@ func TestProjectorBarrier_ConcurrentPurgeToSummaryOnlySkipsDetailWrites(t *testi
 	}
 	defer func() { _ = tx.Rollback(fixture.ctx) }()
 
-	target, err := selectProjectionTarget(fixture.ctx, tx.Tx())
+	target, err := selectProjectionTarget(fixture.ctx, tx.Tx(), nil)
 	if err != nil {
 		t.Fatalf("selectProjectionTarget() error = %v", err)
 	}
@@ -519,7 +519,7 @@ func TestProjectorBarrier_ConcurrentFullPurgeBlocksCheckpointWithoutHistoryRows(
 	}
 	defer func() { _ = tx.Rollback(fixture.ctx) }()
 
-	target, err := selectProjectionTarget(fixture.ctx, tx.Tx())
+	target, err := selectProjectionTarget(fixture.ctx, tx.Tx(), nil)
 	if err != nil {
 		t.Fatalf("selectProjectionTarget() error = %v", err)
 	}

@@ -56,6 +56,13 @@ func (o *storeOps) ClaimNextActivityTask(
 	workerID string,
 	leaseDuration time.Duration,
 ) (enginedb.EngineActivityTask, error) {
+	if o.projectFilter != nil {
+		return mapResult(o.q.ClaimNextActivityTaskByProject(ctx, enginedb.ClaimNextActivityTaskByProjectParams{
+			ProjectFilterID:     *o.projectFilter,
+			ClaimedBy:           nullableWorkerID(workerID),
+			LeaseDurationMicros: leaseDurationMicros(leaseDuration),
+		}))
+	}
 	return mapResult(o.q.ClaimNextActivityTask(ctx, enginedb.ClaimNextActivityTaskParams{
 		ClaimedBy:           nullableWorkerID(workerID),
 		LeaseDurationMicros: leaseDurationMicros(leaseDuration),

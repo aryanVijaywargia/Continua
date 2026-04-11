@@ -554,6 +554,9 @@ func withRuntime(
 		return err
 	}
 	store := enginestore.New(pool)
+	if cfg.Runtime.ProjectIDFilter != nil {
+		store = store.WithProjectFilter(*cfg.Runtime.ProjectIDFilter)
+	}
 	defer store.Close()
 
 	definitions, activities, err := buildRegistries()

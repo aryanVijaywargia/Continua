@@ -70,6 +70,16 @@ WHERE kind = 'timer'
   AND available_at <= NOW()
 ORDER BY run_id ASC;
 
+-- name: ListDueTimerRunIDsByProject :many
+SELECT DISTINCT run_id
+FROM engine.inbox
+WHERE project_id = $1
+  AND kind = 'timer'
+  AND run_id IS NOT NULL
+  AND status = 'pending'
+  AND available_at <= NOW()
+ORDER BY run_id ASC;
+
 -- name: MarkInboxProcessed :one
 UPDATE engine.inbox
 SET status = 'processed',

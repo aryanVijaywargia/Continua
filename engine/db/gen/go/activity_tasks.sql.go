@@ -127,6 +127,65 @@ func (q *Queries) ClaimNextActivityTask(ctx context.Context, arg ClaimNextActivi
 	return i, err
 }
 
+const claimNextActivityTaskByProject = `-- name: ClaimNextActivityTaskByProject :one
+UPDATE engine.activity_tasks
+SET status = 'claimed',
+    claimed_by = $1,
+    claimed_at = NOW(),
+    lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
+    attempt_count = attempt_count + 1,
+    updated_at = NOW()
+WHERE id = (
+    SELECT candidate.id
+    FROM engine.activity_tasks AS candidate
+    WHERE candidate.project_id = $3
+      AND ((candidate.status = 'queued' AND candidate.available_at <= NOW())
+        OR (candidate.status = 'claimed' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
+    ORDER BY candidate.available_at ASC, candidate.id ASC
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+`
+
+type ClaimNextActivityTaskByProjectParams struct {
+	ClaimedBy           *string   `json:"claimed_by"`
+	LeaseDurationMicros int64     `json:"lease_duration_micros"`
+	ProjectFilterID     uuid.UUID `json:"project_filter_id"`
+}
+
+func (q *Queries) ClaimNextActivityTaskByProject(ctx context.Context, arg ClaimNextActivityTaskByProjectParams) (EngineActivityTask, error) {
+	row := q.db.QueryRow(ctx, claimNextActivityTaskByProject, arg.ClaimedBy, arg.LeaseDurationMicros, arg.ProjectFilterID)
+	var i EngineActivityTask
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunID,
+		&i.HistoryID,
+		&i.ActivityKey,
+		&i.ActivityType,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.AvailableAt,
+		&i.AttemptCount,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxAttempts,
+		&i.InitialBackoffMs,
+		&i.MaxBackoffMs,
+		&i.BackoffMultiplier,
+	)
+	return i, err
+}
+
 const clearActivityTaskHistoryByRun = `-- name: ClearActivityTaskHistoryByRun :execrows
 UPDATE engine.activity_tasks
 SET history_id = NULL,

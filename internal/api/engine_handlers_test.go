@@ -994,7 +994,7 @@ func TestTerminateEngineRun_ProjectorEventuallyProjectsTerminalCleanup(t *testin
 	assert.Equal(t, string(enginedb.EngineRunLifecycleStatusWaiting), beforeRunStatus)
 	require.NotEmpty(t, beforeWaitState)
 
-	engineServe := startExternalEngineServeProcess(t)
+	engineServe := startExternalEngineServeProcess(t, projectID)
 	defer engineServe.stop(t)
 
 	traceStatus, runStatus, waitState := waitForProjectedTraceTerminalSummary(t, platformStore.Pool(), trace.ID)
@@ -1312,6 +1312,7 @@ func TestSuspendResumeEngineRun_SignalAccumulatedDuringSuspension(t *testing.T) 
 
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
+		projectID,
 		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
 		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
 	)
@@ -1361,6 +1362,7 @@ func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t
 
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
+		projectID,
 		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
 		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
 	)
@@ -1408,6 +1410,7 @@ func TestSuspendResumeEngineRun_CancelDuringSuspensionCancelsOnResume(t *testing
 
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
+		projectID,
 		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
 		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
 	)
@@ -1448,6 +1451,7 @@ func TestSuspendResumeEngineRun_ActivityCompletesDuringSuspensionAndIsObservedAf
 	releaseFile := filepath.Join(t.TempDir(), "activity.release")
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
+		projectID,
 		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
 		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
 		"CONTINUA_ENGINE_TEST_ACTIVITY_RELEASE_FILE="+releaseFile,
@@ -1501,6 +1505,7 @@ func TestSuspendResumeEngineRun_RetryExhaustedDuringSuspensionFailsAfterResume(t
 
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
+		projectID,
 		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
 		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
 		"CONTINUA_ENGINE_TEST_ACTIVITY_FAIL_COUNT=2",
@@ -1560,6 +1565,7 @@ func TestSuspendResumeEngineRun_RetryScheduledDuringSuspensionCompletesAfterResu
 
 	engineServe := startExternalEngineServeProcessWithEnv(
 		t,
+		projectID,
 		"ENGINE_ACTIVITY_POLL_INTERVAL=50ms",
 		"ENGINE_MAINTENANCE_POLL_INTERVAL=50ms",
 		"CONTINUA_ENGINE_TEST_ACTIVITY_FAIL_COUNT=1",
@@ -2141,7 +2147,7 @@ func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
 	assert.Equal(t, RepairRequested, repair.Reason)
 	assert.Equal(t, CatchingUp, repair.ProjectionState)
 
-	engineServe := startExternalEngineServeProcess(t)
+	engineServe := startExternalEngineServeProcess(t, projectID)
 	defer engineServe.stop(t)
 
 	waitForProjectedTraceCaughtUp(t, ctx, platformStore.Pool(), trace.ID, activityHistory.ID)
@@ -2421,7 +2427,7 @@ func TestEngineRunPendingWorkCountsStayConsistentAcrossRunReadAndProjectedSummar
 	})
 	require.NoError(t, err)
 
-	engineServe := startExternalEngineServeProcess(t)
+	engineServe := startExternalEngineServeProcess(t, projectID)
 	defer engineServe.stop(t)
 	waitForProjectedTracePendingInboxItems(t, ctx, platformStore.Pool(), trace.ID, timerHistory.ID, 2)
 
@@ -3273,11 +3279,11 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-func startExternalEngineServeProcess(t *testing.T) *externalEngineServeProcess {
-	return startExternalEngineServeProcessWithEnv(t)
+func startExternalEngineServeProcess(t *testing.T, projectID uuid.UUID) *externalEngineServeProcess {
+	return startExternalEngineServeProcessWithEnv(t, projectID)
 }
 
-func startExternalEngineServeProcessWithEnv(t *testing.T, extraEnv ...string) *externalEngineServeProcess {
+func startExternalEngineServeProcessWithEnv(t *testing.T, projectID uuid.UUID, extraEnv ...string) *externalEngineServeProcess {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -3293,6 +3299,7 @@ func startExternalEngineServeProcessWithEnv(t *testing.T, extraEnv ...string) *e
 		"ENGINE_RUN_LEASE_TTL=500ms",
 		"ENGINE_ACTIVITY_LEASE_TTL=500ms",
 		"ENGINE_REQUEST_DEDUPE_TTL=2s",
+		"CONTINUA_ENGINE_TEST_PROJECT_FILTER="+projectID.String(),
 	)
 	cmd.Env = applyEnvOverrides(cmd.Env, extraEnv...)
 

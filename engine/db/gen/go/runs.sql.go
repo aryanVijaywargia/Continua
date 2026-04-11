@@ -67,6 +67,62 @@ func (q *Queries) ClaimNextRun(ctx context.Context, arg ClaimNextRunParams) (Eng
 	return i, err
 }
 
+const claimNextRunByProject = `-- name: ClaimNextRunByProject :one
+UPDATE engine.runs
+SET status = 'running',
+    claimed_by = $1,
+    claimed_at = NOW(),
+    lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
+    attempt_count = attempt_count + 1,
+    updated_at = NOW()
+WHERE id = (
+    SELECT candidate.id
+    FROM engine.runs AS candidate
+    WHERE candidate.project_id = $3
+      AND ((candidate.status = 'queued' AND candidate.ready_at <= NOW())
+        OR (candidate.status = 'running' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
+    ORDER BY candidate.ready_at ASC, candidate.id ASC
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+`
+
+type ClaimNextRunByProjectParams struct {
+	ClaimedBy           *string   `json:"claimed_by"`
+	LeaseDurationMicros int64     `json:"lease_duration_micros"`
+	ProjectFilterID     uuid.UUID `json:"project_filter_id"`
+}
+
+func (q *Queries) ClaimNextRunByProject(ctx context.Context, arg ClaimNextRunByProjectParams) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, claimNextRunByProject, arg.ClaimedBy, arg.LeaseDurationMicros, arg.ProjectFilterID)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+		&i.ContinuedFromRunID,
+		&i.ContinuedToRunID,
+	)
+	return i, err
+}
+
 const createRun = `-- name: CreateRun :one
 INSERT INTO engine.runs (
     project_id,

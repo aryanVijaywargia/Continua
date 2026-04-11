@@ -218,3 +218,23 @@ WHERE id = (
     FOR UPDATE SKIP LOCKED
 )
 RETURNING *;
+
+-- name: ClaimNextRunByProject :one
+UPDATE engine.runs
+SET status = 'running',
+    claimed_by = sqlc.arg(claimed_by),
+    claimed_at = NOW(),
+    lease_expires_at = NOW() + (sqlc.arg(lease_duration_micros)::bigint * INTERVAL '1 microsecond'),
+    attempt_count = attempt_count + 1,
+    updated_at = NOW()
+WHERE id = (
+    SELECT candidate.id
+    FROM engine.runs AS candidate
+    WHERE candidate.project_id = sqlc.arg(project_filter_id)
+      AND ((candidate.status = 'queued' AND candidate.ready_at <= NOW())
+        OR (candidate.status = 'running' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
+    ORDER BY candidate.ready_at ASC, candidate.id ASC
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING *;

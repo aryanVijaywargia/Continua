@@ -277,6 +277,37 @@ func (q *Queries) ListDueTimerRunIDs(ctx context.Context) ([]pgtype.UUID, error)
 	return items, nil
 }
 
+const listDueTimerRunIDsByProject = `-- name: ListDueTimerRunIDsByProject :many
+SELECT DISTINCT run_id
+FROM engine.inbox
+WHERE project_id = $1
+  AND kind = 'timer'
+  AND run_id IS NOT NULL
+  AND status = 'pending'
+  AND available_at <= NOW()
+ORDER BY run_id ASC
+`
+
+func (q *Queries) ListDueTimerRunIDsByProject(ctx context.Context, projectID uuid.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listDueTimerRunIDsByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var run_id pgtype.UUID
+		if err := rows.Scan(&run_id); err != nil {
+			return nil, err
+		}
+		items = append(items, run_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenInboxItemsByRunAndKind = `-- name: ListOpenInboxItemsByRunAndKind :many
 SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
 FROM engine.inbox

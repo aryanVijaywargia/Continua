@@ -72,6 +72,26 @@ WHERE id = (
 )
 RETURNING *;
 
+-- name: ClaimNextActivityTaskByProject :one
+UPDATE engine.activity_tasks
+SET status = 'claimed',
+    claimed_by = sqlc.arg(claimed_by),
+    claimed_at = NOW(),
+    lease_expires_at = NOW() + (sqlc.arg(lease_duration_micros)::bigint * INTERVAL '1 microsecond'),
+    attempt_count = attempt_count + 1,
+    updated_at = NOW()
+WHERE id = (
+    SELECT candidate.id
+    FROM engine.activity_tasks AS candidate
+    WHERE candidate.project_id = sqlc.arg(project_filter_id)
+      AND ((candidate.status = 'queued' AND candidate.available_at <= NOW())
+        OR (candidate.status = 'claimed' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
+    ORDER BY candidate.available_at ASC, candidate.id ASC
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING *;
+
 -- name: CompleteActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'completed',
