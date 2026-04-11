@@ -252,6 +252,10 @@ func shouldReadLiveEngineSummary(trace *store.TraceRead) bool {
 		return false
 	}
 
+	if strings.EqualFold(strings.TrimSpace(derefString(trace.EngineRunStatus)), string(enginedb.EngineRunLifecycleStatusContinuedAsNew)) {
+		return true
+	}
+
 	switch normalizedProjectionState(trace.EngineProjectionState) {
 	case publicprojection.StateCatchingUp.String(), publicprojection.StateSummaryOnly.String():
 		return true
