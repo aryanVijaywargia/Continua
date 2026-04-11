@@ -250,6 +250,46 @@ func TestProjectorPollOnce_DoesNotOverwriteTerminalTraceSummary(t *testing.T) {
 	}
 }
 
+func TestProjectorPollOnce_RecreatesMissingTerminalRootSpan(t *testing.T) {
+	fixture := newProjectorFixture(t)
+
+	result := mustJSON(t, map[string]bool{"ok": true})
+	completedHistory := fixture.appendHistoryEvent(2, publichistory.EventWorkflowCompleted, publichistory.WorkflowCompletedPayload{
+		Result: result,
+	})
+	fixture.setTraceProjection(completedHistory.ID, fixture.startedHistory.ID, publicprojection.StateCatchingUp.String())
+
+	if _, err := fixture.db.Pool.Exec(fixture.ctx, `
+		DELETE FROM public.spans
+		WHERE trace_id = $1
+		  AND span_id = $2
+	`, fixture.traceID, rootSpanExternalID(fixture.run.ID)); err != nil {
+		t.Fatalf("delete root span: %v", err)
+	}
+
+	if err := fixture.projector.PollOnce(fixture.ctx, "projector-recreate-terminal-root"); err != nil {
+		t.Fatalf("PollOnce() error = %v", err)
+	}
+
+	var rootSpanStatus string
+	var rootSpanOutput []byte
+	if err := fixture.db.Pool.QueryRow(fixture.ctx, `
+		SELECT status,
+		       output
+		FROM public.spans
+		WHERE trace_id = $1
+		  AND span_id = $2
+	`, fixture.traceID, rootSpanExternalID(fixture.run.ID)).Scan(&rootSpanStatus, &rootSpanOutput); err != nil {
+		t.Fatalf("query recreated root span: %v", err)
+	}
+	if rootSpanStatus != "completed" {
+		t.Fatalf("expected completed root span status, got %q", rootSpanStatus)
+	}
+	if !jsonEqual(rootSpanOutput, result) {
+		t.Fatalf("expected recreated root span output %s, got %s", result, rootSpanOutput)
+	}
+}
+
 func TestProjectorPollOnce_SuspendResumeControlEventsPreserveRunningStatuses(t *testing.T) {
 	testCases := []struct {
 		name            string

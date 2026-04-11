@@ -405,28 +405,80 @@ func writeTerminalProjection(
 		return fmt.Errorf("projected trace not found for run %s", target.RunID)
 	}
 
-	commandTag, err = tx.Exec(ctx, `
-		UPDATE public.spans
-		SET status = $3,
-		    end_time = $4::timestamptz,
-		    output = $5::jsonb,
-		    status_message = $6::text,
-		    duration_ms = CASE
-		        WHEN $4::timestamptz IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
-		        ELSE duration_ms
-		    END,
+	if err := upsertTerminalRootSpan(
+		ctx,
+		tx,
+		target,
+		spanStatus,
+		completedAt,
+		outputPayload,
+		stringPtr(projection.ErrorMessage),
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func upsertTerminalRootSpan(
+	ctx context.Context,
+	tx pgx.Tx,
+	target *projectionTarget,
+	spanStatus string,
+	completedAt time.Time,
+	outputPayload json.RawMessage,
+	statusMessage *string,
+) error {
+	if target == nil {
+		return errors.New("projection target is required")
+	}
+
+	commandTag, err := tx.Exec(ctx, `
+		INSERT INTO public.spans (
+		    project_id,
+		    trace_id,
+		    span_id,
+		    name,
+		    type,
+		    status,
+		    level,
+		    start_time,
+		    end_time,
+		    output,
+		    status_message,
+		    duration_ms,
+		    depth
+		)
+		SELECT $1,
+		       t.id,
+		       $3,
+		       COALESCE(NULLIF($4, ''), NULLIF(t.name, ''), 'workflow'),
+		       $5,
+		       $6,
+		       $7,
+		       COALESCE(t.start_time, $8::timestamptz),
+		       $8::timestamptz,
+		       $9::jsonb,
+		       $10::text,
+		       EXTRACT(EPOCH FROM ($8::timestamptz - COALESCE(t.start_time, $8::timestamptz))) * 1000,
+		       0
+		FROM public.traces AS t
+		WHERE t.id = $2
+		ON CONFLICT (trace_id, span_id) DO UPDATE
+		SET status = EXCLUDED.status,
+		    end_time = EXCLUDED.end_time,
+		    output = EXCLUDED.output,
+		    status_message = EXCLUDED.status_message,
+		    duration_ms = EXCLUDED.duration_ms,
 		    updated_at = NOW(),
-		    version = COALESCE(version, 1) + 1
-		WHERE trace_id = $1
-		  AND span_id = $2
-	`, target.TraceID, rootSpanExternalID(target.RunID), spanStatus, completedAt, outputPayload, nullableText(stringPtr(projection.ErrorMessage)))
+		    version = COALESCE(spans.version, 1) + 1
+	`, target.ProjectID, target.TraceID, rootSpanExternalID(target.RunID), target.TraceName, defaultProjectedSpanTypeRoot, spanStatus, defaultProjectedSpanLevel, completedAt, outputPayload, statusMessage)
 	if err != nil {
 		return err
 	}
 	if commandTag.RowsAffected() == 0 && target.ProjectID != darkLaunchProjectID {
-		return fmt.Errorf("projected root span not found for run %s", target.RunID)
+		return fmt.Errorf("projected trace not found for run %s", target.RunID)
 	}
-
 	return nil
 }
 
