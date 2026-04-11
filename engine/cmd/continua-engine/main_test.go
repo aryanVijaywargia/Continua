@@ -162,12 +162,16 @@ func TestMigrateDownRejectsWaitingRuns(t *testing.T) {
 		t.Fatal("expected waiting enum label to remain after failed rollback")
 	}
 
-	updatedRun, err := store.GetRun(ctx, run.ID)
-	if err != nil {
-		t.Fatalf("GetRun() error = %v", err)
+	var status string
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT status::text
+		FROM engine.runs
+		WHERE id = $1
+	`, run.ID).Scan(&status); err != nil {
+		t.Fatalf("load run status after failed rollback: %v", err)
 	}
-	if updatedRun.Status != enginedb.EngineRunLifecycleStatusWaiting {
-		t.Fatalf("expected waiting run to remain unchanged after failed rollback, got %+v", updatedRun)
+	if status != string(enginedb.EngineRunLifecycleStatusWaiting) {
+		t.Fatalf("expected waiting run to remain unchanged after failed rollback, got %q", status)
 	}
 }
 

@@ -519,12 +519,8 @@ func TestActivatorContinueAsNewCreatesNewRunAndInheritedTraceShell(t *testing.T)
 	if newRelease == nil || *newRelease != "release-2026.04" {
 		t.Fatalf("expected inherited release, got %+v", newRelease)
 	}
-	if string(newMetadata) != `{"source":"projected-trace"}` {
-		t.Fatalf("expected inherited metadata, got %s", newMetadata)
-	}
-	if string(newTraceInput) != `{"cursor":2,"phase":"next"}` {
-		t.Fatalf("expected continuation trace input, got %s", newTraceInput)
-	}
+	assertRawJSONEqual(t, `{"source":"projected-trace"}`, newMetadata)
+	assertRawJSONEqual(t, `{"cursor":2,"phase":"next"}`, newTraceInput)
 	if len(newTraceOutput) != 0 {
 		t.Fatalf("expected continuation trace output to stay null, got %s", newTraceOutput)
 	}
