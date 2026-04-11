@@ -411,9 +411,7 @@ func TestActivatorContinueAsNewCreatesNewRunAndInheritedTraceShell(t *testing.T)
 	if err := enginehistory.UnmarshalPayload(lastOldEvent.Payload, &continuedPayload); err != nil {
 		t.Fatalf("UnmarshalPayload(continued_as_new) error = %v", err)
 	}
-	if string(continuedPayload.Input) != `{"cursor":2,"phase":"next"}` {
-		t.Fatalf("unexpected continuation payload: %s", continuedPayload.Input)
-	}
+	assertRawJSONEqual(t, `{"cursor":2,"phase":"next"}`, continuedPayload.Input)
 
 	newHistory, err := store.GetHistoryByRun(ctx, nextRun.ID)
 	if err != nil {
@@ -426,9 +424,7 @@ func TestActivatorContinueAsNewCreatesNewRunAndInheritedTraceShell(t *testing.T)
 	if err := enginehistory.UnmarshalPayload(newHistory[0].Payload, &newStarted); err != nil {
 		t.Fatalf("UnmarshalPayload(workflow.started) error = %v", err)
 	}
-	if string(newStarted.Input) != `{"cursor":2,"phase":"next"}` {
-		t.Fatalf("unexpected continuation start input: %s", newStarted.Input)
-	}
+	assertRawJSONEqual(t, `{"cursor":2,"phase":"next"}`, newStarted.Input)
 
 	var (
 		newTraceID                string
@@ -1693,6 +1689,30 @@ func mustJSON(t *testing.T, value any) json.RawMessage {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	return raw
+}
+
+func assertRawJSONEqual(t *testing.T, expected string, actual json.RawMessage) {
+	t.Helper()
+
+	expectedCanonical := canonicalRawJSON(t, json.RawMessage(expected))
+	actualCanonical := canonicalRawJSON(t, actual)
+	if actualCanonical != expectedCanonical {
+		t.Fatalf("unexpected JSON payload: got %s, want %s", actual, expected)
+	}
+}
+
+func canonicalRawJSON(t *testing.T, raw json.RawMessage) string {
+	t.Helper()
+
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		t.Fatalf("json.Unmarshal(%s) error = %v", raw, err)
+	}
+	normalized, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal(%s) error = %v", raw, err)
+	}
+	return string(normalized)
 }
 
 func uuidOrFatal(t *testing.T) uuid.UUID {
