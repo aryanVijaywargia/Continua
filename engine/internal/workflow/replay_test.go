@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -65,6 +66,508 @@ func TestReplayDefinitionHappyPath(t *testing.T) {
 	}
 	if !equalJSON(decision.Result, result) {
 		t.Fatalf("expected replayed result %s, got %s", result, decision.Result)
+	}
+}
+
+func TestReplayDefinitionChildWorkflowRoundTrip(t *testing.T) {
+	projectID := uuid.New()
+	runID := uuid.New()
+	childInstanceID := uuid.New()
+	childRunID := uuid.New()
+	input := mustRawJSON(t, map[string]string{"order_id": "ord-123"})
+	childInput := mustRawJSON(t, map[string]string{"order_id": "ord-123"})
+	childOutput := mustRawJSON(t, map[string]string{"status": "authorized"})
+	result := mustRawJSON(t, map[string]string{"status": "authorized"})
+	childInstanceKey := defaultChildInstanceKey(projectID, runID, "charge-card")
+
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "checkout",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-checkout",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventChildWorkflowScheduled, enginehistory.ChildWorkflowScheduledPayload{
+			ChildKey:          "charge-card",
+			DefinitionName:    "billing",
+			DefinitionVersion: "v1",
+			Input:             childInput,
+			ChildInstanceKey:  childInstanceKey,
+		}),
+		historyRow(t, 3, enginehistory.EventChildWorkflowStarted, enginehistory.ChildWorkflowStartedPayload{
+			ChildKey:         "charge-card",
+			ChildInstanceID:  childInstanceID.String(),
+			ChildInstanceKey: childInstanceKey,
+			ChildRunID:       childRunID.String(),
+			RootRunID:        runID.String(),
+			ChildDepth:       1,
+		}),
+		historyRow(t, 4, enginehistory.EventChildWorkflowCompleted, enginehistory.ChildWorkflowCompletedPayload{
+			ChildKey:           "charge-card",
+			ChildInstanceID:    childInstanceID.String(),
+			TerminalChildRunID: childRunID.String(),
+			Result:             childOutput,
+		}),
+		historyRow(t, 5, enginehistory.EventWorkflowCompleted, enginehistory.WorkflowCompletedPayload{
+			Result: result,
+		}),
+	}
+
+	decision, err := replayDefinitionForRun(publicworkflow.Definition{
+		Name:    "checkout",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var workflowInput map[string]string
+			if err := ctx.Input(&workflowInput); err != nil {
+				return err
+			}
+			var childResult map[string]string
+			if err := ctx.ChildWorkflow("charge-card", "billing", "v1", workflowInput, &childResult); err != nil {
+				return err
+			}
+			return ctx.SetResult(map[string]string{"status": childResult["status"]})
+		},
+	}, &enginedb.EngineRun{
+		ID:        runID,
+		ProjectID: projectID,
+	}, historyRows, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinitionForRun() error = %v", err)
+	}
+	if decision.Kind != decisionCompleted {
+		t.Fatalf("expected completed decision, got %+v", decision)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected no new history events during child workflow replay, got %+v", decision.Events)
+	}
+	if !equalJSON(decision.Result, result) {
+		t.Fatalf("expected replayed result %s, got %s", result, decision.Result)
+	}
+}
+
+func TestReplayDefinitionConsumesFailedPendingChildOutcomeBeforeReturningError(t *testing.T) {
+	projectID := uuid.New()
+	runID := uuid.New()
+	childInstanceID := uuid.New()
+	childRunID := uuid.New()
+	input := mustRawJSON(t, map[string]string{"order_id": "ord-123"})
+	childInput := mustRawJSON(t, map[string]string{"order_id": "ord-123"})
+	childInstanceKey := defaultChildInstanceKey(projectID, runID, "charge-card")
+	errorCode := "card_declined"
+	errorMessage := "card declined"
+
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "checkout",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-checkout",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventChildWorkflowScheduled, enginehistory.ChildWorkflowScheduledPayload{
+			ChildKey:          "charge-card",
+			DefinitionName:    "billing",
+			DefinitionVersion: "v1",
+			Input:             childInput,
+			ChildInstanceKey:  childInstanceKey,
+		}),
+		historyRow(t, 3, enginehistory.EventChildWorkflowStarted, enginehistory.ChildWorkflowStartedPayload{
+			ChildKey:         "charge-card",
+			ChildInstanceID:  childInstanceID.String(),
+			ChildInstanceKey: childInstanceKey,
+			ChildRunID:       childRunID.String(),
+			RootRunID:        runID.String(),
+			ChildDepth:       1,
+		}),
+		historyRow(t, 4, enginehistory.EventChildWorkflowScheduled, enginehistory.ChildWorkflowScheduledPayload{
+			ChildKey:          "charge-card",
+			DefinitionName:    "billing",
+			DefinitionVersion: "v1",
+			Input:             childInput,
+			ChildInstanceKey:  childInstanceKey,
+		}),
+		historyRow(t, 5, enginehistory.EventChildWorkflowStarted, enginehistory.ChildWorkflowStartedPayload{
+			ChildKey:         "charge-card",
+			ChildInstanceID:  childInstanceID.String(),
+			ChildInstanceKey: childInstanceKey,
+			ChildRunID:       childRunID.String(),
+			RootRunID:        runID.String(),
+			ChildDepth:       1,
+		}),
+	}
+
+	decision, err := replayDefinitionForRun(publicworkflow.Definition{
+		Name:    "checkout",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var workflowInput map[string]string
+			if err := ctx.Input(&workflowInput); err != nil {
+				return err
+			}
+			for i := 0; i < 2; i++ {
+				var childResult map[string]string
+				err := ctx.ChildWorkflow("charge-card", "billing", "v1", workflowInput, &childResult)
+				if err == nil {
+					continue
+				}
+				var childErr *publicworkflow.ChildWorkflowError
+				if !errors.As(err, &childErr) {
+					return err
+				}
+				if childErr.Code() != errorCode {
+					return err
+				}
+			}
+			return ctx.SetResult(map[string]string{"status": "handled"})
+		},
+	}, &enginedb.EngineRun{
+		ID:        runID,
+		ProjectID: projectID,
+		RootRunID: runID,
+	}, historyRows, nil, []enginedb.ListChildWorkflowOutcomesByParentRunRow{
+		{
+			ChildKey:                   "charge-card",
+			RequestedDefinitionName:    "billing",
+			RequestedDefinitionVersion: "v1",
+			ChildInstanceID:            childInstanceID,
+			ChildInstanceKey:           childInstanceKey,
+			CurrentChildRunID:          childRunID,
+			TerminalChildRunID:         pgtype.UUID{Bytes: childRunID, Valid: true},
+			RootRunID:                  runID,
+			ChildDepth:                 1,
+			Status:                     enginedb.EngineChildWorkflowStatusFailed,
+			TerminalLastErrorCode:      &errorCode,
+			TerminalLastErrorMessage:   &errorMessage,
+			TerminalRunStatus: enginedb.NullEngineRunLifecycleStatus{
+				EngineRunLifecycleStatus: enginedb.EngineRunLifecycleStatusFailed,
+				Valid:                    true,
+			},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("replayDefinitionForRun() error = %v", err)
+	}
+	if decision.Kind != decisionWaiting {
+		t.Fatalf("expected pending child outcome to be consumed before second wait, got %+v", decision)
+	}
+	if len(decision.Events) != 1 {
+		t.Fatalf("expected one child failure event, got %+v", decision.Events)
+	}
+	if decision.Events[0].EventType != enginehistory.EventChildWorkflowFailed {
+		t.Fatalf("expected child workflow failure event, got %+v", decision.Events[0])
+	}
+	var wait enginehistory.ChildWorkflowWait
+	if err := json.Unmarshal(decision.WaitingFor, &wait); err != nil {
+		t.Fatalf("decode waiting state: %v", err)
+	}
+	if wait.Kind != enginehistory.WaitKindChildWorkflow || wait.ChildKey != "charge-card" {
+		t.Fatalf("expected second child workflow wait, got %+v", wait)
+	}
+}
+
+func TestReplayDefinitionRejectsChildWorkflowAtMaxDepth(t *testing.T) {
+	projectID := uuid.New()
+	runID := uuid.New()
+	input := mustRawJSON(t, map[string]string{"order_id": "ord-depth"})
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "checkout",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-depth",
+			Input:             input,
+		}),
+	}
+
+	decision, err := replayDefinitionForRun(publicworkflow.Definition{
+		Name:    "checkout",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var workflowInput map[string]string
+			if err := ctx.Input(&workflowInput); err != nil {
+				return err
+			}
+			var childResult map[string]string
+			return ctx.ChildWorkflow("too-deep", "billing", "v1", workflowInput, &childResult)
+		},
+	}, &enginedb.EngineRun{
+		ID:         runID,
+		ProjectID:  projectID,
+		RootRunID:  runID,
+		ChildDepth: maxChildDepth,
+	}, historyRows, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinitionForRun() error = %v", err)
+	}
+	if decision.Kind != decisionFailed {
+		t.Fatalf("expected failed decision, got %+v", decision)
+	}
+	if decision.FailureCode != "max_child_depth_exceeded" {
+		t.Fatalf("expected max depth failure code, got %+v", decision)
+	}
+	if len(decision.Events) != 1 || decision.Events[0].EventType != enginehistory.EventWorkflowFailed {
+		t.Fatalf("expected workflow.failed event, got %+v", decision.Events)
+	}
+}
+
+func TestReplayDefinitionFailsDeterministicallyWhenNewChildValidatorRejectsBinding(t *testing.T) {
+	projectID := uuid.New()
+	runID := uuid.New()
+	input := mustRawJSON(t, map[string]string{"order_id": "ord-conflict"})
+
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "checkout",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-conflict",
+			Input:             input,
+		}),
+	}
+
+	decision, err := replayDefinitionForRunWithValidator(
+		publicworkflow.Definition{
+			Name:    "checkout",
+			Version: "v1",
+			Run: func(ctx publicworkflow.Context) error {
+				var workflowInput map[string]string
+				if err := ctx.Input(&workflowInput); err != nil {
+					return err
+				}
+				var childResult map[string]string
+				return ctx.ChildWorkflowWithOptions(
+					"charge-card",
+					"billing",
+					"v2",
+					workflowInput,
+					&childResult,
+					publicworkflow.ChildWorkflowOptions{InstanceKey: "custom-child-binding"},
+				)
+			},
+		},
+		&enginedb.EngineRun{
+			ID:        runID,
+			ProjectID: projectID,
+			RootRunID: runID,
+		},
+		historyRows,
+		nil,
+		nil,
+		nil,
+		func(enginehistory.ChildWorkflowScheduledPayload) error {
+			return codedWorkflowError{
+				code:    "instance_conflict",
+				message: "child instance key is already attached to a different workflow relationship",
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("replayDefinitionForRunWithValidator() error = %v", err)
+	}
+	if decision.Kind != decisionFailed {
+		t.Fatalf("expected failed decision, got %+v", decision)
+	}
+	if decision.NewChildWorkflow != nil {
+		t.Fatalf("expected rejected child binding not to queue child creation, got %+v", decision.NewChildWorkflow)
+	}
+	if len(decision.Events) != 1 || decision.Events[0].EventType != enginehistory.EventWorkflowFailed {
+		t.Fatalf("expected only workflow.failed event, got %+v", decision.Events)
+	}
+	var failure enginehistory.WorkflowFailedPayload
+	if err := enginehistory.UnmarshalPayload(decision.Events[0].Payload, &failure); err != nil {
+		t.Fatalf("UnmarshalPayload(workflow.failed) error = %v", err)
+	}
+	if failure.ErrorCode != "instance_conflict" {
+		t.Fatalf("expected instance_conflict failure, got %+v", failure)
+	}
+}
+
+func TestReplayDefinitionPendingChildTerminalOutcomesExposeResultAndErrors(t *testing.T) {
+	testCases := []struct {
+		name          string
+		status        enginedb.EngineChildWorkflowStatus
+		errorCode     string
+		errorMessage  string
+		terminalState string
+		wantCompleted bool
+		wantEvent     string
+	}{
+		{
+			name:          "completed",
+			status:        enginedb.EngineChildWorkflowStatusCompleted,
+			wantCompleted: true,
+			wantEvent:     enginehistory.EventChildWorkflowCompleted,
+		},
+		{
+			name:          "failed",
+			status:        enginedb.EngineChildWorkflowStatusFailed,
+			errorCode:     "card_declined",
+			errorMessage:  "card declined",
+			terminalState: "failed",
+			wantEvent:     enginehistory.EventChildWorkflowFailed,
+		},
+		{
+			name:          "cancelled",
+			status:        enginedb.EngineChildWorkflowStatusCancelled,
+			errorCode:     "cancelled",
+			errorMessage:  "workflow cancelled",
+			terminalState: "cancelled",
+			wantEvent:     enginehistory.EventChildWorkflowCancelled,
+		},
+		{
+			name:          "terminated",
+			status:        enginedb.EngineChildWorkflowStatusTerminated,
+			errorCode:     "terminated",
+			errorMessage:  "workflow terminated",
+			terminalState: "terminated",
+			wantEvent:     enginehistory.EventChildWorkflowTerminated,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			projectID := uuid.New()
+			runID := uuid.New()
+			childInstanceID := uuid.New()
+			childRunID := uuid.New()
+			input := mustRawJSON(t, map[string]string{"order_id": "ord-terminal"})
+			childOutput := mustRawJSON(t, map[string]string{"status": "authorized"})
+			childInstanceKey := defaultChildInstanceKey(projectID, runID, "charge-card")
+			errorCode := testCase.errorCode
+			errorMessage := testCase.errorMessage
+			historyRows := childWorkflowStartedHistory(t, runID, childInstanceID, childRunID, input, childInstanceKey)
+
+			decision, err := replayDefinitionForRun(publicworkflow.Definition{
+				Name:    "checkout",
+				Version: "v1",
+				Run: func(ctx publicworkflow.Context) error {
+					var workflowInput map[string]string
+					if err := ctx.Input(&workflowInput); err != nil {
+						return err
+					}
+					var childResult map[string]string
+					err := ctx.ChildWorkflow("charge-card", "billing", "v1", workflowInput, &childResult)
+					if testCase.wantCompleted {
+						if err != nil {
+							return err
+						}
+						return ctx.SetResult(map[string]string{"status": childResult["status"]})
+					}
+					var childErr *publicworkflow.ChildWorkflowError
+					if !errors.As(err, &childErr) {
+						return err
+					}
+					if childErr.Code() != testCase.errorCode ||
+						childErr.Message() != testCase.errorMessage ||
+						childErr.TerminalState() != testCase.terminalState {
+						return err
+					}
+					return ctx.SetResult(map[string]string{"handled": childErr.TerminalState()})
+				},
+			}, &enginedb.EngineRun{
+				ID:        runID,
+				ProjectID: projectID,
+				RootRunID: runID,
+			}, historyRows, nil, []enginedb.ListChildWorkflowOutcomesByParentRunRow{
+				{
+					ChildKey:                   "charge-card",
+					RequestedDefinitionName:    "billing",
+					RequestedDefinitionVersion: "v1",
+					ChildInstanceID:            childInstanceID,
+					ChildInstanceKey:           childInstanceKey,
+					CurrentChildRunID:          childRunID,
+					TerminalChildRunID:         pgtype.UUID{Bytes: childRunID, Valid: true},
+					RootRunID:                  runID,
+					ChildDepth:                 1,
+					Status:                     testCase.status,
+					TerminalResult:             childOutput,
+					TerminalLastErrorCode:      &errorCode,
+					TerminalLastErrorMessage:   &errorMessage,
+				},
+			}, nil)
+			if err != nil {
+				t.Fatalf("replayDefinitionForRun() error = %v", err)
+			}
+			if decision.Kind != decisionCompleted {
+				t.Fatalf("expected completed decision, got %+v", decision)
+			}
+			if len(decision.Events) != 2 {
+				t.Fatalf("expected child terminal + workflow completed events, got %+v", decision.Events)
+			}
+			if decision.Events[0].EventType != testCase.wantEvent {
+				t.Fatalf("expected child terminal event %s, got %+v", testCase.wantEvent, decision.Events)
+			}
+			if decision.Events[1].EventType != enginehistory.EventWorkflowCompleted {
+				t.Fatalf("expected workflow.completed event, got %+v", decision.Events)
+			}
+		})
+	}
+}
+
+func TestReplayDefinitionContinuationWaitFailedBeatsLateTerminalOutcome(t *testing.T) {
+	projectID := uuid.New()
+	runID := uuid.New()
+	childInstanceID := uuid.New()
+	childRunID := uuid.New()
+	terminalChildRunID := uuid.New()
+	input := mustRawJSON(t, map[string]string{"order_id": "ord-continuation"})
+	childInstanceKey := defaultChildInstanceKey(projectID, runID, "charge-card")
+	historyRows := childWorkflowStartedHistory(t, runID, childInstanceID, childRunID, input, childInstanceKey)
+
+	decision, err := replayDefinitionForRun(publicworkflow.Definition{
+		Name:    "checkout",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var workflowInput map[string]string
+			if err := ctx.Input(&workflowInput); err != nil {
+				return err
+			}
+			var childResult map[string]string
+			err := ctx.ChildWorkflow("charge-card", "billing", "v1", workflowInput, &childResult)
+			var childErr *publicworkflow.ChildWorkflowError
+			if !errors.As(err, &childErr) {
+				return err
+			}
+			if childErr.Code() != childWaitFailedContinuationCode ||
+				childErr.TerminalState() != "wait_failed" {
+				return err
+			}
+			return ctx.SetResult(map[string]string{"handled": childErr.Code()})
+		},
+	}, &enginedb.EngineRun{
+		ID:        runID,
+		ProjectID: projectID,
+		RootRunID: runID,
+	}, historyRows, nil, []enginedb.ListChildWorkflowOutcomesByParentRunRow{
+		{
+			ChildKey:                   "charge-card",
+			RequestedDefinitionName:    "billing",
+			RequestedDefinitionVersion: "v1",
+			ChildInstanceID:            childInstanceID,
+			ChildInstanceKey:           childInstanceKey,
+			CurrentChildRunID:          childRunID,
+			TerminalChildRunID:         pgtype.UUID{Bytes: terminalChildRunID, Valid: true},
+			RootRunID:                  runID,
+			ChildDepth:                 1,
+			ContinuationCount:          maxContinuationFollowDepth,
+			Status:                     enginedb.EngineChildWorkflowStatusCompleted,
+			TerminalResult:             mustRawJSON(t, map[string]string{"status": "too-late"}),
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("replayDefinitionForRun() error = %v", err)
+	}
+	if decision.Kind != decisionCompleted {
+		t.Fatalf("expected completed decision after handled wait_failed, got %+v", decision)
+	}
+	if len(decision.Events) != 2 {
+		t.Fatalf("expected wait_failed + workflow.completed events, got %+v", decision.Events)
+	}
+	if decision.Events[0].EventType != enginehistory.EventChildWorkflowWaitFailed {
+		t.Fatalf("expected child_workflow.wait_failed to beat late terminal outcome, got %+v", decision.Events)
+	}
+	if decision.Events[1].EventType != enginehistory.EventWorkflowCompleted {
+		t.Fatalf("expected workflow.completed event, got %+v", decision.Events)
+	}
+	if len(decision.ChildWaitFailures) != 1 || decision.ChildWaitFailures[0].ChildKey != "charge-card" {
+		t.Fatalf("expected child wait failure marker, got %+v", decision.ChildWaitFailures)
 	}
 }
 
@@ -814,6 +1317,41 @@ func historyRow(t *testing.T, sequenceNo int32, eventType string, payload any) e
 		EventType:  eventType,
 		Payload:    raw,
 		CreatedAt:  time.Unix(int64(sequenceNo), 0).UTC(),
+	}
+}
+
+func childWorkflowStartedHistory(
+	t *testing.T,
+	runID uuid.UUID,
+	childInstanceID uuid.UUID,
+	childRunID uuid.UUID,
+	input json.RawMessage,
+	childInstanceKey string,
+) []enginedb.EngineHistory {
+	t.Helper()
+
+	return []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "checkout",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-checkout",
+			Input:             input,
+		}),
+		historyRow(t, 2, enginehistory.EventChildWorkflowScheduled, enginehistory.ChildWorkflowScheduledPayload{
+			ChildKey:          "charge-card",
+			DefinitionName:    "billing",
+			DefinitionVersion: "v1",
+			Input:             input,
+			ChildInstanceKey:  childInstanceKey,
+		}),
+		historyRow(t, 3, enginehistory.EventChildWorkflowStarted, enginehistory.ChildWorkflowStartedPayload{
+			ChildKey:         "charge-card",
+			ChildInstanceID:  childInstanceID.String(),
+			ChildInstanceKey: childInstanceKey,
+			ChildRunID:       childRunID.String(),
+			RootRunID:        runID.String(),
+			ChildDepth:       1,
+		}),
 	}
 }
 

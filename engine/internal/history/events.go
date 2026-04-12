@@ -7,30 +7,38 @@ import (
 )
 
 const (
-	EventWorkflowStarted        = publichistory.EventWorkflowStarted
-	EventWorkflowCompleted      = publichistory.EventWorkflowCompleted
-	EventWorkflowFailed         = publichistory.EventWorkflowFailed
-	EventWorkflowCancelled      = publichistory.EventWorkflowCancelled
-	EventWorkflowContinuedAsNew = publichistory.EventWorkflowContinuedAsNew
-	EventWorkflowSuspended      = publichistory.EventWorkflowSuspended
-	EventWorkflowResumed        = publichistory.EventWorkflowResumed
-	EventWorkflowTerminated     = publichistory.EventWorkflowTerminated
-	EventWorkflowReplayMismatch = publichistory.EventWorkflowReplayMismatch
-	EventActivityScheduled      = publichistory.EventActivityScheduled
-	EventActivityCompleted      = publichistory.EventActivityCompleted
-	EventActivityFailed         = publichistory.EventActivityFailed
-	EventActivityRetryScheduled = publichistory.EventActivityRetryScheduled
-	EventTimerScheduled         = publichistory.EventTimerScheduled
-	EventTimerFired             = publichistory.EventTimerFired
-	EventSignalReceived         = publichistory.EventSignalReceived
-	EventCancelRequested        = publichistory.EventCancelRequested
-	EventCustomStatusUpdated    = publichistory.EventCustomStatusUpdated
+	EventWorkflowStarted         = publichistory.EventWorkflowStarted
+	EventWorkflowCompleted       = publichistory.EventWorkflowCompleted
+	EventWorkflowFailed          = publichistory.EventWorkflowFailed
+	EventWorkflowCancelled       = publichistory.EventWorkflowCancelled
+	EventWorkflowContinuedAsNew  = publichistory.EventWorkflowContinuedAsNew
+	EventWorkflowSuspended       = publichistory.EventWorkflowSuspended
+	EventWorkflowResumed         = publichistory.EventWorkflowResumed
+	EventWorkflowTerminated      = publichistory.EventWorkflowTerminated
+	EventWorkflowReplayMismatch  = publichistory.EventWorkflowReplayMismatch
+	EventActivityScheduled       = publichistory.EventActivityScheduled
+	EventActivityCompleted       = publichistory.EventActivityCompleted
+	EventActivityFailed          = publichistory.EventActivityFailed
+	EventActivityRetryScheduled  = publichistory.EventActivityRetryScheduled
+	EventChildWorkflowScheduled  = publichistory.EventChildWorkflowScheduled
+	EventChildWorkflowStarted    = publichistory.EventChildWorkflowStarted
+	EventChildWorkflowCompleted  = publichistory.EventChildWorkflowCompleted
+	EventChildWorkflowFailed     = publichistory.EventChildWorkflowFailed
+	EventChildWorkflowCancelled  = publichistory.EventChildWorkflowCancelled
+	EventChildWorkflowTerminated = publichistory.EventChildWorkflowTerminated
+	EventChildWorkflowWaitFailed = publichistory.EventChildWorkflowWaitFailed
+	EventTimerScheduled          = publichistory.EventTimerScheduled
+	EventTimerFired              = publichistory.EventTimerFired
+	EventSignalReceived          = publichistory.EventSignalReceived
+	EventCancelRequested         = publichistory.EventCancelRequested
+	EventCustomStatusUpdated     = publichistory.EventCustomStatusUpdated
 )
 
 const (
-	WaitKindActivity = publichistory.WaitKindActivity
-	WaitKindTimer    = publichistory.WaitKindTimer
-	WaitKindSignal   = publichistory.WaitKindSignal
+	WaitKindActivity      = publichistory.WaitKindActivity
+	WaitKindTimer         = publichistory.WaitKindTimer
+	WaitKindSignal        = publichistory.WaitKindSignal
+	WaitKindChildWorkflow = publichistory.WaitKindChildWorkflow
 )
 
 type WorkflowStartedPayload = publichistory.WorkflowStartedPayload
@@ -46,6 +54,13 @@ type ActivityScheduledPayload = publichistory.ActivityScheduledPayload
 type ActivityCompletedPayload = publichistory.ActivityCompletedPayload
 type ActivityFailedPayload = publichistory.ActivityFailedPayload
 type ActivityRetryScheduledPayload = publichistory.ActivityRetryScheduledPayload
+type ChildWorkflowScheduledPayload = publichistory.ChildWorkflowScheduledPayload
+type ChildWorkflowStartedPayload = publichistory.ChildWorkflowStartedPayload
+type ChildWorkflowCompletedPayload = publichistory.ChildWorkflowCompletedPayload
+type ChildWorkflowFailedPayload = publichistory.ChildWorkflowFailedPayload
+type ChildWorkflowCancelledPayload = publichistory.ChildWorkflowCancelledPayload
+type ChildWorkflowTerminatedPayload = publichistory.ChildWorkflowTerminatedPayload
+type ChildWorkflowWaitFailedPayload = publichistory.ChildWorkflowWaitFailedPayload
 type TimerScheduledPayload = publichistory.TimerScheduledPayload
 type TimerFiredPayload = publichistory.TimerFiredPayload
 type SignalReceivedPayload = publichistory.SignalReceivedPayload
@@ -54,6 +69,7 @@ type CustomStatusUpdatedPayload = publichistory.CustomStatusUpdatedPayload
 type ActivityWait = publichistory.ActivityWait
 type TimerWait = publichistory.TimerWait
 type SignalWait = publichistory.SignalWait
+type ChildWorkflowWait = publichistory.ChildWorkflowWait
 
 func MarshalPayload(value any) (json.RawMessage, error) {
 	return publichistory.MarshalPayload(value)

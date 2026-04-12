@@ -281,4 +281,8 @@ type Trace struct {
 	EngineWaitState              []byte             `json:"engine_wait_state"`
 	EnginePendingActivityTasks   *int64             `json:"engine_pending_activity_tasks"`
 	EnginePendingInboxItems      *int64             `json:"engine_pending_inbox_items"`
+	EngineParentRunID            pgtype.UUID        `json:"engine_parent_run_id"`
+	EngineRootRunID              pgtype.UUID        `json:"engine_root_run_id"`
+	EngineChildKey               *string            `json:"engine_child_key"`
+	EngineChildDepth             *int32             `json:"engine_child_depth"`
 }

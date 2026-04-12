@@ -81,6 +81,10 @@ func TestTraceDetailToAPI_MapsSummaryAndDetailFields(t *testing.T) {
 
 func TestTraceToAPI_MapsEngineMetadata(t *testing.T) {
 	runID := uuid.New()
+	parentRunID := uuid.New()
+	rootRunID := uuid.New()
+	childKey := "charge-card"
+	childDepth := int32(2)
 	trace := platform.Trace{
 		ID:                      uuid.New(),
 		TraceID:                 "engine:" + runID.String(),
@@ -91,6 +95,10 @@ func TestTraceToAPI_MapsEngineMetadata(t *testing.T) {
 		EngineDefinitionName:    testutil.StrPtr("checkout"),
 		EngineDefinitionVersion: testutil.StrPtr("v1"),
 		EngineProjectionState:   testutil.StrPtr(publicprojection.StateUpToDate.String()),
+		EngineParentRunID:       pgtype.UUID{Bytes: parentRunID, Valid: true},
+		EngineRootRunID:         pgtype.UUID{Bytes: rootRunID, Valid: true},
+		EngineChildKey:          &childKey,
+		EngineChildDepth:        &childDepth,
 	}
 
 	apiTrace := traceToAPI(&store.TraceRead{Trace: trace})
@@ -100,10 +108,22 @@ func TestTraceToAPI_MapsEngineMetadata(t *testing.T) {
 	assert.Equal(t, "checkout", apiTrace.Engine.DefinitionName)
 	assert.Equal(t, "v1", apiTrace.Engine.DefinitionVersion)
 	assert.Equal(t, UpToDate, apiTrace.Engine.ProjectionState)
+	require.NotNil(t, apiTrace.Engine.ParentRunId)
+	assert.Equal(t, parentRunID, *apiTrace.Engine.ParentRunId)
+	require.NotNil(t, apiTrace.Engine.RootRunId)
+	assert.Equal(t, rootRunID, *apiTrace.Engine.RootRunId)
+	require.NotNil(t, apiTrace.Engine.ChildKey)
+	assert.Equal(t, childKey, *apiTrace.Engine.ChildKey)
+	require.NotNil(t, apiTrace.Engine.ChildDepth)
+	assert.Equal(t, int(childDepth), *apiTrace.Engine.ChildDepth)
 }
 
 func TestTraceDetailToAPIWithProjectedEngineSummary_UsesProjectedInstanceKey(t *testing.T) {
 	runID := uuid.New()
+	parentRunID := uuid.New()
+	rootRunID := uuid.New()
+	childKey := "charge-card"
+	childDepth := int32(1)
 	trace := platform.Trace{
 		ID:                         uuid.New(),
 		TraceID:                    "engine:" + runID.String(),
@@ -120,6 +140,10 @@ func TestTraceDetailToAPIWithProjectedEngineSummary_UsesProjectedInstanceKey(t *
 		EngineDefinitionName:       testutil.StrPtr("checkout"),
 		EngineDefinitionVersion:    testutil.StrPtr("v1"),
 		EngineProjectionState:      testutil.StrPtr(publicprojection.StateUpToDate.String()),
+		EngineParentRunID:          pgtype.UUID{Bytes: parentRunID, Valid: true},
+		EngineRootRunID:            pgtype.UUID{Bytes: rootRunID, Valid: true},
+		EngineChildKey:             &childKey,
+		EngineChildDepth:           &childDepth,
 	}
 	sessionExternalID := "session-1"
 
@@ -138,12 +162,24 @@ func TestTraceDetailToAPIWithProjectedEngineSummary_UsesProjectedInstanceKey(t *
 	assert.Equal(t, "approval", *detail.Engine.WaitState.SignalName)
 	assert.EqualValues(t, 2, detail.Engine.PendingWork.PendingActivityTasks)
 	assert.EqualValues(t, 1, detail.Engine.PendingWork.PendingInboxItems)
+	require.NotNil(t, detail.Engine.ParentRunId)
+	assert.Equal(t, parentRunID, *detail.Engine.ParentRunId)
+	require.NotNil(t, detail.Engine.RootRunId)
+	assert.Equal(t, rootRunID, *detail.Engine.RootRunId)
+	require.NotNil(t, detail.Engine.ChildKey)
+	assert.Equal(t, childKey, *detail.Engine.ChildKey)
+	require.NotNil(t, detail.Engine.ChildDepth)
+	assert.Equal(t, int(childDepth), *detail.Engine.ChildDepth)
 }
 
 func TestTraceDetailToAPIWithEngine_PrefersLiveEngineSummary(t *testing.T) {
 	runID := uuid.New()
 	previousRunID := uuid.New()
 	nextRunID := uuid.New()
+	parentRunID := uuid.New()
+	rootRunID := uuid.New()
+	childKey := "refund-order"
+	childDepth := int32(3)
 	previousTraceID := "engine:" + previousRunID.String()
 	nextTraceID := "engine:" + nextRunID.String()
 	trace := platform.Trace{
@@ -173,6 +209,10 @@ func TestTraceDetailToAPIWithEngine_PrefersLiveEngineSummary(t *testing.T) {
 		CreatedAt:            time.Now().Add(-time.Minute).UTC(),
 		UpdatedAt:            time.Now().UTC(),
 		WaitState:            json.RawMessage(`{"kind":"signal","signal_name":"approval"}`),
+		ParentRunID:          &parentRunID,
+		RootRunID:            &rootRunID,
+		ChildKey:             &childKey,
+		ChildDepth:           &childDepth,
 	})
 
 	detail := traceDetailToAPIWithEngine(&store.TraceRead{Trace: trace}, &live)
@@ -191,6 +231,14 @@ func TestTraceDetailToAPIWithEngine_PrefersLiveEngineSummary(t *testing.T) {
 	require.NotNil(t, detail.Engine.WaitState)
 	require.NotNil(t, detail.Engine.WaitState.SignalName)
 	assert.Equal(t, "approval", *detail.Engine.WaitState.SignalName)
+	require.NotNil(t, detail.Engine.ParentRunId)
+	assert.Equal(t, parentRunID, *detail.Engine.ParentRunId)
+	require.NotNil(t, detail.Engine.RootRunId)
+	assert.Equal(t, rootRunID, *detail.Engine.RootRunId)
+	require.NotNil(t, detail.Engine.ChildKey)
+	assert.Equal(t, childKey, *detail.Engine.ChildKey)
+	require.NotNil(t, detail.Engine.ChildDepth)
+	assert.Equal(t, int(childDepth), *detail.Engine.ChildDepth)
 }
 
 func TestTraceDetailToAPI_TagsMapping(t *testing.T) {

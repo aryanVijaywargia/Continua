@@ -27,6 +27,8 @@ func engineInstanceResponseToAPI(result *engineInstanceResult) EngineInstanceRes
 
 func engineRunResponseToAPI(summary *engineRunSummary) EngineRunResponse {
 	return EngineRunResponse{
+		ChildDepth:           int32AsIntPtr(summary.ChildDepth),
+		ChildKey:             cloneStringPtr(summary.ChildKey),
 		CompletedAt:          summary.CompletedAt,
 		ContinuedFromRunId:   openapiUUIDPtr(summary.ContinuedFromRunID),
 		ContinuedFromTraceId: cloneStringPtr(summary.ContinuedFromTraceID),
@@ -39,9 +41,11 @@ func engineRunResponseToAPI(summary *engineRunSummary) EngineRunResponse {
 		Failure:              engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
 		InstanceId:           summary.InstanceID,
 		InstanceKey:          summary.InstanceKey,
+		ParentRunId:          openapiUUIDPtr(summary.ParentRunID),
 		PendingWork:          enginePendingWorkToAPI(summary),
 		ProjectionState:      engineProjectionStateFromString(summary.ProjectionState),
 		Result:               parseOptionalJSONValueRaw(summary.Result),
+		RootRunId:            openapiUUIDPtr(summary.RootRunID),
 		RunId:                summary.RunID,
 		Status:               engineRunStatusToAPI(summary.Status),
 		UpdatedAt:            summary.UpdatedAt,
@@ -71,6 +75,8 @@ func engineRunResultResponseToAPI(summary *engineRunSummary) EngineRunResultResp
 
 func engineRunSummaryToAPI(summary *engineRunSummary) EngineRunSummary {
 	return EngineRunSummary{
+		ChildDepth:           int32AsIntPtr(summary.ChildDepth),
+		ChildKey:             cloneStringPtr(summary.ChildKey),
 		CompletedAt:          summary.CompletedAt,
 		ContinuedFromRunId:   openapiUUIDPtr(summary.ContinuedFromRunID),
 		ContinuedFromTraceId: cloneStringPtr(summary.ContinuedFromTraceID),
@@ -82,9 +88,11 @@ func engineRunSummaryToAPI(summary *engineRunSummary) EngineRunSummary {
 		DefinitionVersion:    summary.DefinitionVersion,
 		Failure:              engineFailureSummaryToAPI(summary.Status, summary.LastErrorCode, summary.LastErrorMessage),
 		InstanceKey:          summary.InstanceKey,
+		ParentRunId:          openapiUUIDPtr(summary.ParentRunID),
 		PendingWork:          enginePendingWorkToAPI(summary),
 		ProjectionState:      engineProjectionStateFromString(summary.ProjectionState),
 		Result:               parseOptionalJSONValueRaw(summary.Result),
+		RootRunId:            openapiUUIDPtr(summary.RootRunID),
 		RunId:                summary.RunID,
 		Status:               engineRunStatusToAPI(summary.Status),
 		UpdatedAt:            summary.UpdatedAt,
@@ -237,16 +245,20 @@ func projectedEngineRunSummaryFromTrace(trace *store.TraceRead) *EngineRunSummar
 	}
 
 	summary := &EngineRunSummary{
+		ChildDepth:        int32AsIntPtr(trace.EngineChildDepth),
+		ChildKey:          cloneStringPtr(trace.EngineChildKey),
 		CreatedAt:         traceStartedAt(trace),
 		CustomStatus:      parseOptionalJSONObjectRaw(cloneTraceJSON(trace.EngineCustomStatus)),
 		DefinitionName:    info.DefinitionName,
 		DefinitionVersion: info.DefinitionVersion,
 		InstanceKey:       projectedEngineInstanceKey(trace),
+		ParentRunId:       openapiUUIDPtr(pgUUIDPtr(trace.EngineParentRunID)),
 		PendingWork: EnginePendingWork{
 			PendingActivityTasks: derefInt64(trace.EnginePendingActivityTasks),
 			PendingInboxItems:    derefInt64(trace.EnginePendingInboxItems),
 		},
 		ProjectionState: info.ProjectionState,
+		RootRunId:       openapiUUIDPtr(pgUUIDPtr(trace.EngineRootRunID)),
 		RunId:           info.RunId,
 		Status:          projectedEngineRunStatusFromTrace(trace),
 		UpdatedAt:       trace.UpdatedAt,
@@ -338,6 +350,10 @@ func engineTraceInfoFromTrace(trace *store.TraceRead) *EngineTraceInfo {
 		trace.EngineDefinitionName,
 		trace.EngineDefinitionVersion,
 		trace.EngineProjectionState,
+		pgUUIDPtr(trace.EngineParentRunID),
+		pgUUIDPtr(trace.EngineRootRunID),
+		trace.EngineChildKey,
+		trace.EngineChildDepth,
 	)
 }
 
@@ -347,6 +363,10 @@ func engineTraceInfoFromCompareHeader(header *store.SessionCompareTraceHeader) *
 		header.EngineDefinitionName,
 		header.EngineDefinitionVersion,
 		header.EngineProjectionState,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 }
 
@@ -355,6 +375,10 @@ func engineTraceInfoFromParts(
 	definitionName *string,
 	definitionVersion *string,
 	projectionState *string,
+	parentRunID *uuid.UUID,
+	rootRunID *uuid.UUID,
+	childKey *string,
+	childDepth *int32,
 ) *EngineTraceInfo {
 	if runID == nil || definitionName == nil || definitionVersion == nil || projectionState == nil {
 		return nil
@@ -364,9 +388,13 @@ func engineTraceInfoFromParts(
 	}
 
 	return &EngineTraceInfo{
+		ChildDepth:        int32AsIntPtr(childDepth),
+		ChildKey:          cloneStringPtr(childKey),
 		DefinitionName:    *definitionName,
 		DefinitionVersion: *definitionVersion,
+		ParentRunId:       openapiUUIDPtr(parentRunID),
 		ProjectionState:   engineProjectionStateFromString(*projectionState),
+		RootRunId:         openapiUUIDPtr(rootRunID),
 		RunId:             *runID,
 	}
 }
@@ -557,6 +585,14 @@ func cloneStringPtr(value *string) *string {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func int32AsIntPtr(value *int32) *int {
+	if value == nil {
+		return nil
+	}
+	converted := int(*value)
+	return &converted
 }
 
 func firstNonEmpty(values ...string) string {

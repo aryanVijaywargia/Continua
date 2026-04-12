@@ -1,13 +1,38 @@
 -- name: CreateRun :one
+WITH new_run AS (
+    SELECT gen_random_uuid() AS id
+)
+INSERT INTO engine.runs (
+    id,
+    project_id,
+    instance_id,
+    run_number,
+    definition_version,
+    ready_at,
+    continued_from_run_id,
+    parent_run_id,
+    root_run_id,
+    child_key,
+    child_depth
+)
+SELECT id, $1, $2, $3, $4, $5, $6, NULL, id, NULL, 0
+FROM new_run
+RETURNING *;
+
+-- name: CreateChildRun :one
 INSERT INTO engine.runs (
     project_id,
     instance_id,
     run_number,
     definition_version,
     ready_at,
-    continued_from_run_id
+    continued_from_run_id,
+    parent_run_id,
+    root_run_id,
+    child_key,
+    child_depth
 )
-VALUES ($1, $2, $3, $4, $5, $6)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetRun :one
@@ -198,6 +223,20 @@ SET status = 'queued',
     updated_at = NOW()
 WHERE id = $1
   AND status = 'waiting'
+RETURNING *;
+
+-- name: WakeWaitingChildWorkflowRun :one
+UPDATE engine.runs
+SET status = 'queued',
+    waiting_for = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    ready_at = NOW(),
+    updated_at = NOW()
+WHERE id = sqlc.arg(id)
+  AND status = 'waiting'
+  AND waiting_for @> jsonb_build_object('kind', 'child_workflow', 'child_key', sqlc.arg(child_key)::text)
 RETURNING *;
 
 -- name: ClaimNextRun :one

@@ -165,11 +165,33 @@ func traceFilterFromParams(projectID uuid.UUID, params *ListTracesParams, limit,
 	if params.EngineInstanceKey != nil {
 		filter.EngineInstanceKey = *params.EngineInstanceKey
 	}
+	if params.EngineRunId != nil {
+		id := *params.EngineRunId
+		filter.EngineRunID = &id
+	}
 	if params.EngineDefinitionName != nil {
 		filter.EngineDefinitionName = *params.EngineDefinitionName
 	}
+	if params.EngineDefinitionVersion != nil {
+		filter.EngineDefinitionVersion = *params.EngineDefinitionVersion
+	}
 	if params.EngineRunStatus != nil {
 		filter.EngineRunStatus = string(*params.EngineRunStatus)
+	}
+	if params.EngineParentRunId != nil {
+		id := *params.EngineParentRunId
+		filter.EngineParentRunID = &id
+	}
+	if params.EngineRootRunId != nil {
+		id := *params.EngineRootRunId
+		filter.EngineRootRunID = &id
+	}
+	if params.EngineChildKey != nil {
+		filter.EngineChildKey = *params.EngineChildKey
+	}
+	if params.EngineChildDepth != nil {
+		depth := int32(*params.EngineChildDepth)
+		filter.EngineChildDepth = &depth
 	}
 	if params.EngineProjectionState != nil {
 		filter.EngineProjectionState = string(*params.EngineProjectionState)
@@ -199,8 +221,14 @@ func traceNeedsDynamicQuery(filter *store.TraceFilter) bool {
 		filter.StartTimeTo != nil ||
 		filter.UserID != "" ||
 		filter.EngineInstanceKey != "" ||
+		filter.EngineRunID != nil ||
 		filter.EngineDefinitionName != "" ||
+		filter.EngineDefinitionVersion != "" ||
 		filter.EngineRunStatus != "" ||
+		filter.EngineParentRunID != nil ||
+		filter.EngineRootRunID != nil ||
+		filter.EngineChildKey != "" ||
+		filter.EngineChildDepth != nil ||
 		filter.EngineProjectionState != "" ||
 		filter.HasErrors != nil ||
 		filter.MinDurationMs != nil

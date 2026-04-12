@@ -76,6 +76,7 @@ INSERT INTO traces (
     engine_run_id, engine_instance_key, engine_run_status,
     engine_custom_status, engine_wait_state, engine_pending_activity_tasks,
     engine_pending_inbox_items, engine_definition_name, engine_definition_version,
+    engine_parent_run_id, engine_root_run_id, engine_child_key, engine_child_depth,
     engine_projection_state, engine_latest_history_id,
     engine_last_projected_history_id, engine_projection_updated_at
 )
@@ -86,8 +87,9 @@ VALUES (
     $15, $16, $17,
     $18, $19, $20,
     $21, $22, $23,
-    $24, $25,
-    $26, $27
+    $24, $25, $26, $27,
+    $28, $29,
+    $30, $31
 )
 RETURNING *;
 

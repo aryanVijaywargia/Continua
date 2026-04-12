@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -725,6 +726,863 @@ func TestActivatorContinueAsNewPreservesChainAcrossMultipleHops(t *testing.T) {
 	}
 	if !runs[2].ContinuedToRunID.Valid || uuid.UUID(runs[2].ContinuedToRunID.Bytes) != runs[1].ID {
 		t.Fatalf("expected run 1 to continue to run 2, got %+v", runs[2])
+	}
+}
+
+func TestActivatorSchedulesChildWorkflowAndCreatesLineage(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-parent-child",
+		definitionName:    "checkout",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-123"}),
+	}
+	instance, run := createStartedRun(t, store, testCase)
+	insertProjectedTraceShell(t, ctx, db.Pool, instance, run, "Checkout Parent Trace", 1)
+
+	registry, err := NewRegistry(publicworkflow.Definition{
+		Name:    "checkout",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var input map[string]string
+			if err := ctx.Input(&input); err != nil {
+				return err
+			}
+			var childOutput map[string]string
+			return ctx.ChildWorkflow("charge-card", "billing", "v1", input, &childOutput)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	claimed, err := store.ClaimNextRun(ctx, "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() error = %v", err)
+	}
+
+	activator := NewActivator(store, registry)
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	historyRows, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+	if len(historyRows) != 3 {
+		t.Fatalf("expected started + child scheduled + child started history, got %+v", historyRows)
+	}
+	if historyRows[1].EventType != enginehistory.EventChildWorkflowScheduled {
+		t.Fatalf("expected child_workflow.scheduled event, got %+v", historyRows[1])
+	}
+	if historyRows[2].EventType != enginehistory.EventChildWorkflowStarted {
+		t.Fatalf("expected child_workflow.started event, got %+v", historyRows[2])
+	}
+
+	childWorkflow, err := store.GetChildWorkflowByParentRunAndKey(ctx, enginedb.GetChildWorkflowByParentRunAndKeyParams{
+		ProjectID:   testCase.projectID,
+		ParentRunID: run.ID,
+		ChildKey:    "charge-card",
+	})
+	if err != nil {
+		t.Fatalf("GetChildWorkflowByParentRunAndKey() error = %v", err)
+	}
+	if childWorkflow.Status != enginedb.EngineChildWorkflowStatusActive {
+		t.Fatalf("expected active child workflow, got %+v", childWorkflow)
+	}
+	if childWorkflow.RootRunID != run.ID {
+		t.Fatalf("expected child workflow root run %s, got %+v", run.ID, childWorkflow)
+	}
+	if childWorkflow.ChildDepth != 1 {
+		t.Fatalf("expected child workflow depth 1, got %+v", childWorkflow)
+	}
+
+	childRun, err := store.GetRun(ctx, childWorkflow.CurrentChildRunID)
+	if err != nil {
+		t.Fatalf("GetRun(child) error = %v", err)
+	}
+	if !childRun.ParentRunID.Valid || childRun.ParentRunID.Bytes != run.ID {
+		t.Fatalf("expected child run parent %s, got %+v", run.ID, childRun)
+	}
+	if childRun.RootRunID != run.ID {
+		t.Fatalf("expected child run root %s, got %+v", run.ID, childRun)
+	}
+	if childRun.ChildKey == nil || *childRun.ChildKey != "charge-card" {
+		t.Fatalf("expected child run key charge-card, got %+v", childRun)
+	}
+	if childRun.ChildDepth != 1 {
+		t.Fatalf("expected child run depth 1, got %+v", childRun)
+	}
+
+	var (
+		traceID     uuid.UUID
+		parentRunID pgtype.UUID
+		rootRunID   pgtype.UUID
+		childKey    *string
+		childDepth  *int32
+	)
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT id, engine_parent_run_id, engine_root_run_id, engine_child_key, engine_child_depth
+		FROM public.traces
+		WHERE project_id = $1
+		  AND engine_run_id = $2
+	`, testCase.projectID, childRun.ID).Scan(&traceID, &parentRunID, &rootRunID, &childKey, &childDepth); err != nil {
+		t.Fatalf("query child trace shell: %v", err)
+	}
+	if traceID == uuid.Nil {
+		t.Fatalf("expected projected child trace shell id, got %s", traceID)
+	}
+	if !parentRunID.Valid || parentRunID.Bytes != run.ID {
+		t.Fatalf("expected projected child trace parent %s, got %+v", run.ID, parentRunID)
+	}
+	if !rootRunID.Valid || rootRunID.Bytes != run.ID {
+		t.Fatalf("expected projected child trace root %s, got %+v", run.ID, rootRunID)
+	}
+	if childKey == nil || *childKey != "charge-card" {
+		t.Fatalf("expected projected child trace key charge-card, got %+v", childKey)
+	}
+	if childDepth == nil || *childDepth != 1 {
+		t.Fatalf("expected projected child trace depth 1, got %+v", childDepth)
+	}
+}
+
+func TestActivatorChildWorkflowBindingIdempotencyAndConflicts(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+	activator := NewActivator(store, mustRegistry(t))
+
+	parentInstance, parentRun := createStartedRun(t, store, workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-binding-parent",
+		definitionName:    "checkout",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-binding"}),
+	})
+	otherParentInstance, otherParentRun := createStartedRun(t, store, workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-binding-other-parent",
+		definitionName:    "checkout",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-binding-other"}),
+	})
+
+	child := &newChildWorkflow{Scheduled: enginehistory.ChildWorkflowScheduledPayload{
+		ChildKey:          "charge-card",
+		DefinitionName:    "billing",
+		DefinitionVersion: "v1",
+		Input:             mustJSON(t, map[string]string{"order_id": "ord-binding"}),
+		ChildInstanceKey:  "custom-child-binding",
+	}}
+
+	tx, err := store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	childInstance, childRun, childStartedEvent, createdChild, err := activator.createOrAttachChildExecution(ctx, tx, &parentInstance, &parentRun, child)
+	if err != nil {
+		t.Fatalf("createOrAttachChildExecution() first error = %v", err)
+	}
+	if !createdChild || childStartedEvent == nil {
+		t.Fatalf("expected first child binding to create execution, created=%v event=%+v", createdChild, childStartedEvent)
+	}
+
+	attachedInstance, attachedRun, attachedStartedEvent, attachedCreated, err := activator.createOrAttachChildExecution(ctx, tx, &parentInstance, &parentRun, child)
+	if err != nil {
+		t.Fatalf("createOrAttachChildExecution() idempotent error = %v", err)
+	}
+	if attachedCreated || attachedStartedEvent != nil {
+		t.Fatalf("expected idempotent attach without new child history, created=%v event=%+v", attachedCreated, attachedStartedEvent)
+	}
+	if attachedInstance.ID != childInstance.ID || attachedRun.ID != childRun.ID {
+		t.Fatalf("expected idempotent attach to return existing child, instance=%s/%s run=%s/%s", attachedInstance.ID, childInstance.ID, attachedRun.ID, childRun.ID)
+	}
+
+	versionMismatch := *child
+	versionMismatch.Scheduled.DefinitionVersion = "v2"
+	_, _, _, _, err = activator.createOrAttachChildExecution(ctx, tx, &parentInstance, &parentRun, &versionMismatch)
+	var coded codedWorkflowError
+	if !errors.As(err, &coded) || coded.code != "instance_conflict" {
+		t.Fatalf("expected instance_conflict for reused child_key with different definition, got %v", err)
+	}
+
+	_, _, _, _, err = activator.createOrAttachChildExecution(ctx, tx, &otherParentInstance, &otherParentRun, child)
+	if !errors.As(err, &coded) || coded.code != "instance_conflict" {
+		t.Fatalf("expected instance_conflict for child instance attached to another parent, got %v", err)
+	}
+}
+
+func TestActivatorChildWorkflowConflictFailsDeterministically(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	seedActivator := NewActivator(store, mustRegistry(t))
+	existingParentInstance, existingParentRun := createStartedRun(t, store, workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-binding-existing-parent",
+		definitionName:    "checkout",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-existing"}),
+	})
+
+	tx, err := store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx() seed error = %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, _, _, _, err := seedActivator.createOrAttachChildExecution(ctx, tx, &existingParentInstance, &existingParentRun, &newChildWorkflow{
+		Scheduled: enginehistory.ChildWorkflowScheduledPayload{
+			ChildKey:          "charge-card",
+			DefinitionName:    "billing",
+			DefinitionVersion: "v1",
+			Input:             mustJSON(t, map[string]string{"order_id": "ord-existing"}),
+			ChildInstanceKey:  "custom-child-binding-conflict",
+		},
+	}); err != nil {
+		t.Fatalf("createOrAttachChildExecution() seed error = %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("Commit() seed error = %v", err)
+	}
+
+	instance, run := createStartedRun(t, store, workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-binding-conflict-parent",
+		definitionName:    "checkout-binding-conflict",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-conflict"}),
+	})
+	insertProjectedTraceShell(t, ctx, db.Pool, instance, run, "Binding Conflict Parent", 1)
+
+	registry, err := NewRegistry(publicworkflow.Definition{
+		Name:    "checkout-binding-conflict",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var input map[string]string
+			if err := ctx.Input(&input); err != nil {
+				return err
+			}
+			var childOutput map[string]string
+			return ctx.ChildWorkflowWithOptions(
+				"charge-card",
+				"billing",
+				"v2",
+				input,
+				&childOutput,
+				publicworkflow.ChildWorkflowOptions{InstanceKey: "custom-child-binding-conflict"},
+			)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	activator := NewActivator(store, registry)
+	claimed := forceClaimRun(t, ctx, db.Pool, store, run.ID, "worker-binding-conflict")
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+
+	failedRun, err := store.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun() error = %v", err)
+	}
+	if failedRun.Status != enginedb.EngineRunLifecycleStatusFailed {
+		t.Fatalf("expected failed run status, got %+v", failedRun)
+	}
+	if failedRun.LastErrorCode == nil || *failedRun.LastErrorCode != "instance_conflict" {
+		t.Fatalf("expected instance_conflict last error code, got %+v", failedRun)
+	}
+
+	historyRows, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+	assertHistoryEndsWith(t, historyRows, enginehistory.EventWorkflowStarted, enginehistory.EventWorkflowFailed)
+	var failure enginehistory.WorkflowFailedPayload
+	if err := enginehistory.UnmarshalPayload(historyRows[len(historyRows)-1].Payload, &failure); err != nil {
+		t.Fatalf("UnmarshalPayload(workflow.failed) error = %v", err)
+	}
+	if failure.ErrorCode != "instance_conflict" {
+		t.Fatalf("expected workflow.failed instance_conflict, got %+v", failure)
+	}
+
+	_, err = store.GetChildWorkflowByParentRunAndKey(ctx, enginedb.GetChildWorkflowByParentRunAndKeyParams{
+		ProjectID:   run.ProjectID,
+		ParentRunID: run.ID,
+		ChildKey:    "charge-card",
+	})
+	if !errors.Is(err, enginestore.ErrNotFound) {
+		t.Fatalf("expected no child relationship row for failed parent, got err=%v", err)
+	}
+}
+
+func TestActivatorChildContinueAsNewBlocksParentUntilTerminalRun(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-child-continue-parent",
+		definitionName:    "checkout-child-continue",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-child-continue"}),
+	}
+	instance, parentRun := createStartedRun(t, store, testCase)
+	insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Continue Parent", 1)
+
+	continueChild := false
+	registry, err := NewRegistry(
+		childWaitingParentDefinition("checkout-child-continue", func(err error) error { return err }),
+		publicworkflow.Definition{
+			Name:    "billing",
+			Version: "v1",
+			Run: func(ctx publicworkflow.Context) error {
+				if continueChild {
+					return publicworkflow.ContinueAsNew(map[string]any{"continued": true})
+				}
+				return ctx.SetResult(map[string]string{"status": "authorized"})
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	activator := NewActivator(store, registry)
+
+	activateNextRun(t, ctx, store, activator, "worker-parent")
+	parentAfterSchedule, childWorkflow := assertParentWaitingOnChild(t, ctx, store, parentRun.ID)
+	childRunID := childWorkflow.CurrentChildRunID
+
+	continueChild = true
+	activateRunByID(t, ctx, db.Pool, store, activator, childRunID, "worker-child-continue")
+	childWorkflow = getChildWorkflow(t, ctx, store, parentAfterSchedule.ProjectID, parentAfterSchedule.ID)
+	if childWorkflow.ContinuationCount != 1 {
+		t.Fatalf("expected one child continuation, got %+v", childWorkflow)
+	}
+	parentStillWaiting, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent) error = %v", err)
+	}
+	if parentStillWaiting.Status != enginedb.EngineRunLifecycleStatusWaiting {
+		t.Fatalf("expected parent to remain waiting after child ContinueAsNew, got %+v", parentStillWaiting)
+	}
+	if childWorkflow.CurrentChildRunID == childRunID {
+		t.Fatalf("expected child current run to advance after ContinueAsNew, got %+v", childWorkflow)
+	}
+
+	continueChild = false
+	terminalChildRunID := childWorkflow.CurrentChildRunID
+	activateRunByID(t, ctx, db.Pool, store, activator, terminalChildRunID, "worker-child-terminal")
+	childWorkflow = getChildWorkflow(t, ctx, store, parentRun.ProjectID, parentRun.ID)
+	if childWorkflow.Status != enginedb.EngineChildWorkflowStatusCompleted {
+		t.Fatalf("expected completed child workflow, got %+v", childWorkflow)
+	}
+	if !childWorkflow.TerminalChildRunID.Valid || childWorkflow.TerminalChildRunID.Bytes != terminalChildRunID {
+		t.Fatalf("expected terminal child run %s, got %+v", terminalChildRunID, childWorkflow)
+	}
+	parentAfterChildTerminal, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent terminal wake) error = %v", err)
+	}
+	if parentAfterChildTerminal.Status != enginedb.EngineRunLifecycleStatusQueued {
+		t.Fatalf("expected parent to wake only after terminal child run, got %+v", parentAfterChildTerminal)
+	}
+
+	activateRunByID(t, ctx, db.Pool, store, activator, parentRun.ID, "worker-parent-complete")
+	completedParent, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent completed) error = %v", err)
+	}
+	if completedParent.Status != enginedb.EngineRunLifecycleStatusCompleted {
+		t.Fatalf("expected completed parent, got %+v", completedParent)
+	}
+	assertRawJSONEqual(t, `{"status":"authorized"}`, completedParent.Result)
+	parentHistory, err := store.GetHistoryByRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun(parent) error = %v", err)
+	}
+	assertHistoryEndsWith(t, parentHistory, enginehistory.EventChildWorkflowCompleted, enginehistory.EventWorkflowCompleted)
+}
+
+func TestActivatorChildTerminalOutcomesRecordMatchingParentAndChildHistory(t *testing.T) {
+	testCases := []struct {
+		name                    string
+		childRun                func(publicworkflow.Context) error
+		activateChild           bool
+		terminateChild          bool
+		wantChildRunStatus      enginedb.EngineRunLifecycleStatus
+		wantChildWorkflowStatus enginedb.EngineChildWorkflowStatus
+		wantChildTerminalEvent  string
+		wantParentTerminalEvent string
+		wantChildErrorCode      string
+		wantChildErrorMessage   string
+		wantChildTerminalState  string
+		wantParentResultJSON    string
+	}{
+		{
+			name: "failed",
+			childRun: func(ctx publicworkflow.Context) error {
+				return codedWorkflowError{
+					code:    "card_declined",
+					message: "card declined",
+				}
+			},
+			activateChild:           true,
+			wantChildRunStatus:      enginedb.EngineRunLifecycleStatusFailed,
+			wantChildWorkflowStatus: enginedb.EngineChildWorkflowStatusFailed,
+			wantChildTerminalEvent:  enginehistory.EventWorkflowFailed,
+			wantParentTerminalEvent: enginehistory.EventChildWorkflowFailed,
+			wantChildErrorCode:      "card_declined",
+			wantChildErrorMessage:   "card declined",
+			wantChildTerminalState:  "failed",
+			wantParentResultJSON:    `{"handled":"failed"}`,
+		},
+		{
+			name: "cancelled",
+			childRun: func(ctx publicworkflow.Context) error {
+				return publicworkflow.ErrCancelled
+			},
+			activateChild:           true,
+			wantChildRunStatus:      enginedb.EngineRunLifecycleStatusCancelled,
+			wantChildWorkflowStatus: enginedb.EngineChildWorkflowStatusCancelled,
+			wantChildTerminalEvent:  enginehistory.EventWorkflowCancelled,
+			wantParentTerminalEvent: enginehistory.EventChildWorkflowCancelled,
+			wantChildErrorCode:      "cancelled",
+			wantChildErrorMessage:   "workflow cancelled",
+			wantChildTerminalState:  "cancelled",
+			wantParentResultJSON:    `{"handled":"cancelled"}`,
+		},
+		{
+			name: "terminated",
+			childRun: func(ctx publicworkflow.Context) error {
+				var signal map[string]string
+				return ctx.ReceiveSignal("hold", &signal)
+			},
+			terminateChild:          true,
+			wantChildRunStatus:      enginedb.EngineRunLifecycleStatusTerminated,
+			wantChildWorkflowStatus: enginedb.EngineChildWorkflowStatusTerminated,
+			wantChildTerminalEvent:  enginehistory.EventWorkflowTerminated,
+			wantParentTerminalEvent: enginehistory.EventChildWorkflowTerminated,
+			wantChildErrorCode:      "terminated",
+			wantChildErrorMessage:   "run terminated by operator",
+			wantChildTerminalState:  "terminated",
+			wantParentResultJSON:    `{"handled":"terminated"}`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db := enginetest.NewTestDatabase(t)
+			store := enginestore.New(db.Pool)
+			ctx := context.Background()
+
+			parentDefinitionName := "checkout-child-terminal-" + testCase.name
+			instance, parentRun := createStartedRun(t, store, workflowTestCase{
+				projectID:         enginetest.DefaultPlatformProjectID,
+				instanceKey:       "instance-" + testCase.name + "-parent",
+				definitionName:    parentDefinitionName,
+				definitionVersion: "v1",
+				input:             mustJSON(t, map[string]string{"order_id": "ord-" + testCase.name}),
+			})
+			insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Terminal Parent "+testCase.name, 1)
+
+			registry := mustRegistry(
+				t,
+				publicworkflow.Definition{
+					Name:    parentDefinitionName,
+					Version: "v1",
+					Run: func(ctx publicworkflow.Context) error {
+						var input map[string]string
+						if err := ctx.Input(&input); err != nil {
+							return err
+						}
+
+						var childOutput map[string]string
+						err := ctx.ChildWorkflow("charge-card", "billing", "v1", input, &childOutput)
+						if err == nil {
+							return errors.New("expected child terminal error")
+						}
+
+						var childErr *publicworkflow.ChildWorkflowError
+						if !errors.As(err, &childErr) {
+							return err
+						}
+						if childErr.Code() != testCase.wantChildErrorCode ||
+							childErr.Message() != testCase.wantChildErrorMessage ||
+							childErr.TerminalState() != testCase.wantChildTerminalState {
+							return fmt.Errorf(
+								"unexpected child terminal outcome code=%q message=%q terminal_state=%q",
+								childErr.Code(),
+								childErr.Message(),
+								childErr.TerminalState(),
+							)
+						}
+
+						return ctx.SetResult(map[string]string{"handled": childErr.TerminalState()})
+					},
+				},
+				publicworkflow.Definition{
+					Name:    "billing",
+					Version: "v1",
+					Run:     testCase.childRun,
+				},
+			)
+			activator := NewActivator(store, registry)
+
+			activateNextRun(t, ctx, store, activator, "worker-parent-"+testCase.name)
+			_, childWorkflow := assertParentWaitingOnChild(t, ctx, store, parentRun.ID)
+			childRunID := childWorkflow.CurrentChildRunID
+
+			switch {
+			case testCase.activateChild:
+				activateRunByID(t, ctx, db.Pool, store, activator, childRunID, "worker-child-"+testCase.name)
+			case testCase.terminateChild:
+				forceTerminateChildRunForTest(t, ctx, store, childRunID)
+			default:
+				t.Fatalf("invalid child terminal test case configuration: %+v", testCase)
+			}
+
+			childRun, err := store.GetRun(ctx, childRunID)
+			if err != nil {
+				t.Fatalf("GetRun(child) error = %v", err)
+			}
+			if childRun.Status != testCase.wantChildRunStatus {
+				t.Fatalf("expected child run status %s, got %+v", testCase.wantChildRunStatus, childRun)
+			}
+
+			childHistory, err := store.GetHistoryByRun(ctx, childRunID)
+			if err != nil {
+				t.Fatalf("GetHistoryByRun(child) error = %v", err)
+			}
+			assertHistoryEndsWith(t, childHistory, testCase.wantChildTerminalEvent)
+			assertChildTerminalHistoryPayload(t, childHistory[len(childHistory)-1], childRunID, testCase.wantChildTerminalEvent, testCase.wantChildErrorCode, testCase.wantChildErrorMessage)
+
+			relationship := getChildWorkflow(t, ctx, store, parentRun.ProjectID, parentRun.ID)
+			if relationship.Status != testCase.wantChildWorkflowStatus {
+				t.Fatalf("expected child workflow status %s, got %+v", testCase.wantChildWorkflowStatus, relationship)
+			}
+			if !relationship.TerminalChildRunID.Valid || relationship.TerminalChildRunID.Bytes != childRunID {
+				t.Fatalf("expected terminal child run %s, got %+v", childRunID, relationship)
+			}
+
+			parentQueued, err := store.GetRun(ctx, parentRun.ID)
+			if err != nil {
+				t.Fatalf("GetRun(parent queued) error = %v", err)
+			}
+			if parentQueued.Status != enginedb.EngineRunLifecycleStatusQueued {
+				t.Fatalf("expected parent to queue after child terminal outcome, got %+v", parentQueued)
+			}
+
+			activateRunByID(t, ctx, db.Pool, store, activator, parentRun.ID, "worker-parent-complete-"+testCase.name)
+			completedParent, err := store.GetRun(ctx, parentRun.ID)
+			if err != nil {
+				t.Fatalf("GetRun(parent completed) error = %v", err)
+			}
+			if completedParent.Status != enginedb.EngineRunLifecycleStatusCompleted {
+				t.Fatalf("expected completed parent run, got %+v", completedParent)
+			}
+			assertRawJSONEqual(t, testCase.wantParentResultJSON, completedParent.Result)
+
+			parentHistory, err := store.GetHistoryByRun(ctx, parentRun.ID)
+			if err != nil {
+				t.Fatalf("GetHistoryByRun(parent) error = %v", err)
+			}
+			assertHistoryEndsWith(t, parentHistory, testCase.wantParentTerminalEvent, enginehistory.EventWorkflowCompleted)
+			assertParentChildTerminalEventPayload(
+				t,
+				parentHistory[len(parentHistory)-2],
+				childRunID,
+				testCase.wantParentTerminalEvent,
+				testCase.wantChildErrorCode,
+				testCase.wantChildErrorMessage,
+			)
+		})
+	}
+}
+
+func TestActivatorChildContinuationDepthWaitFailureAndLateTerminalGuard(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-child-follow-depth",
+		definitionName:    "checkout-child-follow-depth",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-follow-depth"}),
+	}
+	instance, parentRun := createStartedRun(t, store, testCase)
+	insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Follow Depth Parent", 1)
+
+	continueChild := true
+	registry, err := NewRegistry(
+		childWaitingParentDefinition("checkout-child-follow-depth", func(err error) error {
+			var childErr *publicworkflow.ChildWorkflowError
+			if !errors.As(err, &childErr) || childErr.TerminalState() != "wait_failed" {
+				return err
+			}
+			return nil
+		}),
+		publicworkflow.Definition{
+			Name:    "billing",
+			Version: "v1",
+			Run: func(ctx publicworkflow.Context) error {
+				if continueChild {
+					return publicworkflow.ContinueAsNew(map[string]any{"continued": true})
+				}
+				return ctx.SetResult(map[string]string{"status": "too-late"})
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	activator := NewActivator(store, registry)
+
+	activateNextRun(t, ctx, store, activator, "worker-parent")
+	parentAfterSchedule, childWorkflow := assertParentWaitingOnChild(t, ctx, store, parentRun.ID)
+	if _, err := db.Pool.Exec(ctx, `
+		UPDATE engine.child_workflows
+		SET continuation_count = 30
+		WHERE id = $1
+	`, childWorkflow.ID); err != nil {
+		t.Fatalf("seed child continuation count: %v", err)
+	}
+
+	activateRunByID(t, ctx, db.Pool, store, activator, childWorkflow.CurrentChildRunID, "worker-child-31")
+	childWorkflow = getChildWorkflow(t, ctx, store, parentRun.ProjectID, parentRun.ID)
+	if childWorkflow.ContinuationCount != maxContinuationFollowDepth-1 {
+		t.Fatalf("expected below-limit continuation count, got %+v", childWorkflow)
+	}
+	parentStillWaiting, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent below limit) error = %v", err)
+	}
+	if parentStillWaiting.Status != enginedb.EngineRunLifecycleStatusWaiting {
+		t.Fatalf("expected below-limit child continuation not to wake parent, got %+v", parentStillWaiting)
+	}
+
+	activateRunByID(t, ctx, db.Pool, store, activator, childWorkflow.CurrentChildRunID, "worker-child-32")
+	childWorkflow = getChildWorkflow(t, ctx, store, parentRun.ProjectID, parentRun.ID)
+	if childWorkflow.ContinuationCount != maxContinuationFollowDepth {
+		t.Fatalf("expected max continuation count, got %+v", childWorkflow)
+	}
+	if childWorkflow.Status != enginedb.EngineChildWorkflowStatusActive || childWorkflow.TerminalChildRunID.Valid {
+		t.Fatalf("expected child to remain active at follow-depth guard, got %+v", childWorkflow)
+	}
+	parentWoken, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent woken) error = %v", err)
+	}
+	if parentWoken.Status != enginedb.EngineRunLifecycleStatusQueued {
+		t.Fatalf("expected 32nd continuation to wake parent, got %+v", parentWoken)
+	}
+
+	activateRunByID(t, ctx, db.Pool, store, activator, parentRun.ID, "worker-parent-wait-failed")
+	childWorkflow = getChildWorkflow(t, ctx, store, parentRun.ProjectID, parentRun.ID)
+	if !childWorkflow.ParentWaitFailedAt.Valid ||
+		childWorkflow.ParentWaitErrorCode == nil ||
+		*childWorkflow.ParentWaitErrorCode != childWaitFailedContinuationCode {
+		t.Fatalf("expected durable parent wait failed marker, got %+v", childWorkflow)
+	}
+	parentAfterWaitFailed, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent after wait_failed) error = %v", err)
+	}
+	if parentAfterWaitFailed.Status != enginedb.EngineRunLifecycleStatusWaiting {
+		t.Fatalf("expected parent to wait on unrelated signal after handled wait_failed, got %+v", parentAfterWaitFailed)
+	}
+	assertWaitingForSignal(t, parentAfterWaitFailed, "after-child-wait-failed")
+	parentHistory, err := store.GetHistoryByRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun(parent wait_failed) error = %v", err)
+	}
+	if !historyContainsEvent(parentHistory, enginehistory.EventChildWorkflowWaitFailed) {
+		t.Fatalf("expected child_workflow.wait_failed history event, got %+v", parentHistory)
+	}
+
+	continueChild = false
+	activateRunByID(t, ctx, db.Pool, store, activator, childWorkflow.CurrentChildRunID, "worker-child-late-terminal")
+	parentAfterLateTerminal, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent after late terminal) error = %v", err)
+	}
+	if parentAfterLateTerminal.Status != enginedb.EngineRunLifecycleStatusWaiting {
+		t.Fatalf("expected late terminal child not to wake unrelated parent wait, got %+v", parentAfterLateTerminal)
+	}
+	assertWaitingForSignal(t, parentAfterLateTerminal, "after-child-wait-failed")
+	lateTerminalRelationship := getChildWorkflow(t, ctx, store, parentRun.ProjectID, parentAfterSchedule.ID)
+	if lateTerminalRelationship.Status != enginedb.EngineChildWorkflowStatusCompleted {
+		t.Fatalf("expected late terminal update to complete child relationship, got %+v", lateTerminalRelationship)
+	}
+}
+
+func TestActivatorChildTerminalWakeGuardRequiresMatchingWaitIdentity(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-child-wake-guard",
+		definitionName:    "checkout-child-wake-guard",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-wake-guard"}),
+	}
+	instance, parentRun := createStartedRun(t, store, testCase)
+	insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Wake Guard Parent", 1)
+
+	registry, err := NewRegistry(
+		childWaitingParentDefinition("checkout-child-wake-guard", func(err error) error { return err }),
+		publicworkflow.Definition{
+			Name:    "billing",
+			Version: "v1",
+			Run: func(ctx publicworkflow.Context) error {
+				return ctx.SetResult(map[string]string{"status": "authorized"})
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	activator := NewActivator(store, registry)
+
+	activateNextRun(t, ctx, store, activator, "worker-parent")
+	_, childWorkflow := assertParentWaitingOnChild(t, ctx, store, parentRun.ID)
+	wrongWait, err := enginehistory.MarshalPayload(enginehistory.ChildWorkflowWait{
+		Kind:     enginehistory.WaitKindChildWorkflow,
+		ChildKey: "other-child",
+	})
+	if err != nil {
+		t.Fatalf("MarshalPayload(wrong wait) error = %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		UPDATE engine.runs
+		SET waiting_for = $2
+		WHERE id = $1
+	`, parentRun.ID, wrongWait); err != nil {
+		t.Fatalf("set wrong parent wait identity: %v", err)
+	}
+
+	activateRunByID(t, ctx, db.Pool, store, activator, childWorkflow.CurrentChildRunID, "worker-child-terminal")
+	parentAfterTerminal, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent after terminal) error = %v", err)
+	}
+	if parentAfterTerminal.Status != enginedb.EngineRunLifecycleStatusWaiting {
+		t.Fatalf("expected terminal child not to wake mismatched parent wait, got %+v", parentAfterTerminal)
+	}
+	var wait enginehistory.ChildWorkflowWait
+	if err := json.Unmarshal(parentAfterTerminal.WaitingFor, &wait); err != nil {
+		t.Fatalf("decode parent wait: %v", err)
+	}
+	if wait.ChildKey != "other-child" {
+		t.Fatalf("expected mismatched child wait to remain unchanged, got %+v", wait)
+	}
+}
+
+func TestActivatorCancelledDecisionEnqueuesActiveChildCancelIdempotently(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-child-cancel-parent",
+		definitionName:    "checkout-child-cancel",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{"order_id": "ord-cancel-child"}),
+	}
+	instance, parentRun := createStartedRun(t, store, testCase)
+	insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Cancel Parent", 1)
+
+	registry, err := NewRegistry(childWaitingParentDefinition("checkout-child-cancel", func(err error) error { return err }))
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	activator := NewActivator(store, registry)
+
+	activateNextRun(t, ctx, store, activator, "worker-parent")
+	_, childWorkflow := assertParentWaitingOnChild(t, ctx, store, parentRun.ID)
+	claimedParent := forceClaimRun(t, ctx, db.Pool, store, parentRun.ID, "worker-parent-cancel")
+
+	tx, err := store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	parentInstance, err := tx.GetInstance(ctx, claimedParent.InstanceID)
+	if err != nil {
+		t.Fatalf("GetInstance(parent) error = %v", err)
+	}
+	parentRunForDecision, err := tx.GetRun(ctx, claimedParent.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent) error = %v", err)
+	}
+	decision := activationDecision{
+		Kind:         decisionCancelled,
+		NextSequence: 4,
+		Events: []queuedHistoryEvent{{
+			EventType: enginehistory.EventWorkflowCancelled,
+			Payload:   mustMarshalPayload(enginehistory.WorkflowCancelledPayload{}),
+		}},
+	}
+	if err := activator.commitDecision(ctx, tx, &parentInstance, &parentRunForDecision, parentRunForDecision.ClaimedBy, &decision); err != nil {
+		t.Fatalf("commitDecision(cancelled) error = %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("Commit(cancelled) error = %v", err)
+	}
+
+	tx, err = store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx(second cancel cascade) error = %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	parentAfterCancel, err := tx.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(parent cancelled) error = %v", err)
+	}
+	if err := activator.enqueueChildCancelCascade(ctx, tx, &parentAfterCancel); err != nil {
+		t.Fatalf("enqueueChildCancelCascade() second error = %v", err)
+	}
+	if err := activator.enqueueChildCancelCascade(ctx, tx, &parentAfterCancel); err != nil {
+		t.Fatalf("enqueueChildCancelCascade() third error = %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("Commit(second cancel cascade) error = %v", err)
+	}
+
+	var cancelInboxCount int
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM engine.inbox
+		WHERE run_id = $1
+		  AND kind = 'cancel'
+		  AND dedupe_key = $2
+	`, childWorkflow.CurrentChildRunID, "cancel:"+childWorkflow.CurrentChildRunID.String()).Scan(&cancelInboxCount); err != nil {
+		t.Fatalf("count child cancel inbox: %v", err)
+	}
+	if cancelInboxCount != 1 {
+		t.Fatalf("expected exactly one child cancel inbox row, got %d", cancelInboxCount)
+	}
+	cancelledParent, err := store.GetRun(ctx, parentRun.ID)
+	if err != nil {
+		t.Fatalf("GetRun(cancelled parent) error = %v", err)
+	}
+	if cancelledParent.Status != enginedb.EngineRunLifecycleStatusCancelled {
+		t.Fatalf("expected cancelled parent, got %+v", cancelledParent)
 	}
 }
 
@@ -1717,4 +2575,373 @@ func uuidOrFatal(t *testing.T) uuid.UUID {
 		t.Fatalf("uuid.NewV7() error = %v", err)
 	}
 	return id
+}
+
+func mustRegistry(t *testing.T, defs ...publicworkflow.Definition) *Registry {
+	t.Helper()
+
+	registry, err := NewRegistry(defs...)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	return registry
+}
+
+func childWaitingParentDefinition(
+	definitionName string,
+	handleErr func(error) error,
+) publicworkflow.Definition {
+	return publicworkflow.Definition{
+		Name:    definitionName,
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var input map[string]string
+			if err := ctx.Input(&input); err != nil {
+				return err
+			}
+
+			var childOutput map[string]string
+			err := ctx.ChildWorkflow("charge-card", "billing", "v1", input, &childOutput)
+			if err != nil {
+				if handleErr != nil {
+					if handledErr := handleErr(err); handledErr != nil {
+						return handledErr
+					}
+				}
+
+				var signal map[string]string
+				if err := ctx.ReceiveSignal("after-child-wait-failed", &signal); err != nil {
+					return err
+				}
+				return ctx.SetResult(map[string]string{"signal": signal["status"]})
+			}
+
+			return ctx.SetResult(map[string]string{"status": childOutput["status"]})
+		},
+	}
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func activateNextRun(
+	t *testing.T,
+	ctx context.Context,
+	store *enginestore.Store,
+	activator *Activator,
+	workerID string,
+) {
+	t.Helper()
+
+	claimed, err := store.ClaimNextRun(ctx, workerID, time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() error = %v", err)
+	}
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func forceClaimRun(
+	t *testing.T,
+	ctx context.Context,
+	pool interface {
+		Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	},
+	store *enginestore.Store,
+	runID uuid.UUID,
+	workerID string,
+) enginedb.EngineRun {
+	t.Helper()
+
+	if _, err := pool.Exec(ctx, `
+		UPDATE engine.runs
+		SET status = 'running',
+		    claimed_by = $2,
+		    claimed_at = NOW(),
+		    lease_expires_at = NOW() + INTERVAL '1 minute',
+		    attempt_count = attempt_count + 1,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, runID, workerID); err != nil {
+		t.Fatalf("force claim run %s: %v", runID, err)
+	}
+
+	run, err := store.GetRun(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetRun(%s) error = %v", runID, err)
+	}
+	if run.Status != enginedb.EngineRunLifecycleStatusRunning {
+		t.Fatalf("expected running run after force claim, got %+v", run)
+	}
+	if run.ClaimedBy == nil || *run.ClaimedBy != workerID {
+		t.Fatalf("expected claimed_by=%s after force claim, got %+v", workerID, run)
+	}
+	return run
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func activateRunByID(
+	t *testing.T,
+	ctx context.Context,
+	pool interface {
+		Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	},
+	store *enginestore.Store,
+	activator *Activator,
+	runID uuid.UUID,
+	workerID string,
+) {
+	t.Helper()
+
+	claimed := forceClaimRun(t, ctx, pool, store, runID, workerID)
+	if err := activator.Activate(ctx, &claimed); err != nil {
+		t.Fatalf("Activate(%s) error = %v", runID, err)
+	}
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func forceTerminateChildRunForTest(
+	t *testing.T,
+	ctx context.Context,
+	store *enginestore.Store,
+	childRunID uuid.UUID,
+) {
+	t.Helper()
+
+	tx, err := store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	run, err := tx.GetRunForUpdate(ctx, childRunID)
+	if err != nil {
+		t.Fatalf("GetRunForUpdate(%s) error = %v", childRunID, err)
+	}
+	historyRows, err := tx.GetHistoryByRun(ctx, childRunID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun(%s) error = %v", childRunID, err)
+	}
+	requireSequence := int32(1)
+	if len(historyRows) > 0 {
+		requireSequence = historyRows[len(historyRows)-1].SequenceNo + 1
+	}
+	payload, err := enginehistory.MarshalPayload(enginehistory.WorkflowTerminatedPayload{
+		ErrorCode:    "terminated",
+		ErrorMessage: "run terminated by operator",
+	})
+	if err != nil {
+		t.Fatalf("MarshalPayload(workflow.terminated) error = %v", err)
+	}
+	if _, err := tx.AppendHistory(ctx, enginedb.AppendHistoryParams{
+		ProjectID:  run.ProjectID,
+		InstanceID: run.InstanceID,
+		RunID:      run.ID,
+		SequenceNo: requireSequence,
+		EventType:  enginehistory.EventWorkflowTerminated,
+		Payload:    payload,
+	}); err != nil {
+		t.Fatalf("AppendHistory(workflow.terminated) error = %v", err)
+	}
+	terminatedRun, err := tx.TransitionRunToTerminated(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("TransitionRunToTerminated(%s) error = %v", run.ID, err)
+	}
+	if _, err := tx.UpdateInstanceStatus(ctx, enginedb.UpdateInstanceStatusParams{
+		ID:     run.InstanceID,
+		Status: enginedb.EngineInstanceLifecycleStatusTerminated,
+	}); err != nil {
+		t.Fatalf("UpdateInstanceStatus(terminated) error = %v", err)
+	}
+	childWorkflow, err := tx.UpdateChildWorkflowTerminal(ctx, enginedb.UpdateChildWorkflowTerminalParams{
+		ProjectID:          terminatedRun.ProjectID,
+		CurrentChildRunID:  terminatedRun.ID,
+		TerminalChildRunID: pgtype.UUID{Bytes: terminatedRun.ID, Valid: true},
+		Status:             enginedb.EngineChildWorkflowStatusTerminated,
+	})
+	if err != nil {
+		t.Fatalf("UpdateChildWorkflowTerminal(%s) error = %v", terminatedRun.ID, err)
+	}
+	wokenParent, err := tx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
+		ID:       childWorkflow.ParentRunID,
+		ChildKey: childWorkflow.ChildKey,
+	})
+	if err != nil {
+		t.Fatalf("WakeWaitingChildWorkflowRun(%s,%s) error = %v", childWorkflow.ParentRunID, childWorkflow.ChildKey, err)
+	}
+	if !wokenParent.Applied {
+		t.Fatalf("expected force-terminated child to wake parent, got %+v", wokenParent)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("Commit(force terminate child) error = %v", err)
+	}
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func assertParentWaitingOnChild(
+	t *testing.T,
+	ctx context.Context,
+	store *enginestore.Store,
+	parentRunID uuid.UUID,
+) (enginedb.EngineRun, enginedb.EngineChildWorkflow) {
+	t.Helper()
+
+	run, err := store.GetRun(ctx, parentRunID)
+	if err != nil {
+		t.Fatalf("GetRun(parent) error = %v", err)
+	}
+	if run.Status != enginedb.EngineRunLifecycleStatusWaiting {
+		t.Fatalf("expected waiting parent run, got %+v", run)
+	}
+
+	var wait enginehistory.ChildWorkflowWait
+	if err := json.Unmarshal(run.WaitingFor, &wait); err != nil {
+		t.Fatalf("decode parent wait: %v", err)
+	}
+	if wait.Kind != enginehistory.WaitKindChildWorkflow || wait.ChildKey != "charge-card" {
+		t.Fatalf("expected child workflow wait %q, got %+v", "charge-card", wait)
+	}
+
+	childWorkflow := getChildWorkflow(t, ctx, store, run.ProjectID, parentRunID)
+	if childWorkflow.Status != enginedb.EngineChildWorkflowStatusActive {
+		t.Fatalf("expected active child relationship, got %+v", childWorkflow)
+	}
+	return run, childWorkflow
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func getChildWorkflow(
+	t *testing.T,
+	ctx context.Context,
+	store *enginestore.Store,
+	projectID uuid.UUID,
+	parentRunID uuid.UUID,
+) enginedb.EngineChildWorkflow {
+	t.Helper()
+
+	childWorkflow, err := store.GetChildWorkflowByParentRunAndKey(ctx, enginedb.GetChildWorkflowByParentRunAndKeyParams{
+		ProjectID:   projectID,
+		ParentRunID: parentRunID,
+		ChildKey:    "charge-card",
+	})
+	if err != nil {
+		t.Fatalf("GetChildWorkflowByParentRunAndKey(%s) error = %v", "charge-card", err)
+	}
+	return childWorkflow
+}
+
+func assertWaitingForSignal(t *testing.T, run enginedb.EngineRun, signalName string) {
+	t.Helper()
+
+	if run.Status != enginedb.EngineRunLifecycleStatusWaiting {
+		t.Fatalf("expected waiting run, got %+v", run)
+	}
+
+	var wait enginehistory.SignalWait
+	if err := json.Unmarshal(run.WaitingFor, &wait); err != nil {
+		t.Fatalf("decode signal wait: %v", err)
+	}
+	if wait.Kind != enginehistory.WaitKindSignal || wait.SignalName != signalName {
+		t.Fatalf("expected waiting on signal %q, got %+v", signalName, wait)
+	}
+}
+
+func historyContainsEvent(rows []enginedb.EngineHistory, eventType string) bool {
+	for i := range rows {
+		if rows[i].EventType == eventType {
+			return true
+		}
+	}
+	return false
+}
+
+func assertHistoryEndsWith(t *testing.T, rows []enginedb.EngineHistory, want ...string) {
+	t.Helper()
+
+	if len(rows) < len(want) {
+		t.Fatalf("history too short: got %d rows, want suffix %v", len(rows), want)
+	}
+	offset := len(rows) - len(want)
+	for i := range want {
+		if rows[offset+i].EventType != want[i] {
+			t.Fatalf("unexpected history suffix: got %v want %v", historyEventTypes(rows[offset:]), want)
+		}
+	}
+}
+
+func historyEventTypes(rows []enginedb.EngineHistory) []string {
+	eventTypes := make([]string, 0, len(rows))
+	for i := range rows {
+		eventTypes = append(eventTypes, rows[i].EventType)
+	}
+	return eventTypes
+}
+
+func assertChildTerminalHistoryPayload(
+	t *testing.T,
+	row enginedb.EngineHistory,
+	childRunID uuid.UUID,
+	eventType string,
+	errorCode string,
+	errorMessage string,
+) {
+	t.Helper()
+
+	switch eventType {
+	case enginehistory.EventWorkflowFailed:
+		payload := mustHistoryPayload[enginehistory.WorkflowFailedPayload](t, row.Payload)
+		if payload.ErrorCode != errorCode || payload.ErrorMessage != errorMessage {
+			t.Fatalf("unexpected child workflow.failed payload: %+v", payload)
+		}
+	case enginehistory.EventWorkflowCancelled:
+		_ = mustHistoryPayload[enginehistory.WorkflowCancelledPayload](t, row.Payload)
+	case enginehistory.EventWorkflowTerminated:
+		payload := mustHistoryPayload[enginehistory.WorkflowTerminatedPayload](t, row.Payload)
+		if payload.ErrorCode != errorCode || payload.ErrorMessage != errorMessage {
+			t.Fatalf("unexpected child workflow.terminated payload: %+v", payload)
+		}
+	default:
+		t.Fatalf("unsupported child terminal event type %s for run %s", eventType, childRunID)
+	}
+}
+
+func assertParentChildTerminalEventPayload(
+	t *testing.T,
+	row enginedb.EngineHistory,
+	childRunID uuid.UUID,
+	eventType string,
+	errorCode string,
+	errorMessage string,
+) {
+	t.Helper()
+
+	switch eventType {
+	case enginehistory.EventChildWorkflowFailed:
+		payload := mustHistoryPayload[enginehistory.ChildWorkflowFailedPayload](t, row.Payload)
+		if payload.ErrorCode != errorCode || payload.ErrorMessage != errorMessage || payload.TerminalChildRunID != childRunID.String() {
+			t.Fatalf("unexpected parent child_workflow.failed payload: %+v", payload)
+		}
+	case enginehistory.EventChildWorkflowCancelled:
+		payload := mustHistoryPayload[enginehistory.ChildWorkflowCancelledPayload](t, row.Payload)
+		if payload.ErrorCode != errorCode || payload.ErrorMessage != errorMessage || payload.TerminalChildRunID != childRunID.String() {
+			t.Fatalf("unexpected parent child_workflow.cancelled payload: %+v", payload)
+		}
+	case enginehistory.EventChildWorkflowTerminated:
+		payload := mustHistoryPayload[enginehistory.ChildWorkflowTerminatedPayload](t, row.Payload)
+		if payload.ErrorCode != errorCode || payload.ErrorMessage != errorMessage || payload.TerminalChildRunID != childRunID.String() {
+			t.Fatalf("unexpected parent child_workflow.terminated payload: %+v", payload)
+		}
+	default:
+		t.Fatalf("unsupported parent child terminal event type %s", eventType)
+	}
+}
+
+func mustHistoryPayload[T any](t *testing.T, raw json.RawMessage) T {
+	t.Helper()
+
+	var payload T
+	if err := enginehistory.UnmarshalPayload(raw, &payload); err != nil {
+		t.Fatalf("UnmarshalPayload() error = %v", err)
+	}
+	return payload
 }

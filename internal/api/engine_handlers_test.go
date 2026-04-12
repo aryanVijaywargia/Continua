@@ -853,6 +853,90 @@ func TestTerminateEngineRun_ReturnsTerminatedSummaryAndIsIdempotent(t *testing.T
 	assert.Equal(t, "not_found", decodeJSONBody[Error](t, missingRunRec).Code)
 }
 
+func TestTerminateEngineRun_RecursivelyTerminatesActiveDescendants(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-terminate-descendants",
+		RequestKey:        "req-terminate-descendants",
+	}))
+
+	rootRun, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        start.RunId,
+	})
+	require.NoError(t, err)
+	rootInstance, err := engineQueries.GetInstance(ctx, rootRun.InstanceID)
+	require.NoError(t, err)
+
+	childInstance, childRun := seedEngineChildRun(
+		t,
+		ctx,
+		platformStore,
+		engineQueries,
+		rootInstance,
+		rootRun,
+		"charge-card",
+		"billing",
+		"v1",
+		"instance-terminate-descendants-child",
+	)
+	grandchildInstance, grandchildRun := seedEngineChildRun(
+		t,
+		ctx,
+		platformStore,
+		engineQueries,
+		childInstance,
+		childRun,
+		"issue-receipt",
+		"receipts",
+		"v1",
+		"instance-terminate-descendants-grandchild",
+	)
+
+	rec := invokeTerminateEngineRun(t, server, projectID, rootRun.ID)
+	require.Equal(t, http.StatusOK, rec.Code)
+	resp := decodeJSONBody[EngineRunResultResponse](t, rec)
+	assert.Equal(t, EngineRunStatusTERMINATED, resp.Status)
+
+	assertTerminatedRunState(t, ctx, engineQueries, projectID, rootRun.ID, publichistory.EventWorkflowTerminated)
+	assertTerminatedRunState(t, ctx, engineQueries, projectID, childRun.ID, publichistory.EventWorkflowTerminated)
+	assertTerminatedRunState(t, ctx, engineQueries, projectID, grandchildRun.ID, publichistory.EventWorkflowTerminated)
+
+	childRelationship, err := engineQueries.GetChildWorkflowByParentRunAndKey(ctx, enginedb.GetChildWorkflowByParentRunAndKeyParams{
+		ProjectID:   projectID,
+		ParentRunID: rootRun.ID,
+		ChildKey:    "charge-card",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineChildWorkflowStatusTerminated, childRelationship.Status)
+	require.True(t, childRelationship.TerminalChildRunID.Valid)
+	assert.Equal(t, childRun.ID, uuid.UUID(childRelationship.TerminalChildRunID.Bytes))
+
+	grandchildRelationship, err := engineQueries.GetChildWorkflowByParentRunAndKey(ctx, enginedb.GetChildWorkflowByParentRunAndKeyParams{
+		ProjectID:   projectID,
+		ParentRunID: childRun.ID,
+		ChildKey:    "issue-receipt",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineChildWorkflowStatusTerminated, grandchildRelationship.Status)
+	require.True(t, grandchildRelationship.TerminalChildRunID.Valid)
+	assert.Equal(t, grandchildRun.ID, uuid.UUID(grandchildRelationship.TerminalChildRunID.Bytes))
+
+	childInstanceState, err := engineQueries.GetInstance(ctx, childRun.InstanceID)
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineInstanceLifecycleStatusTerminated, childInstanceState.Status)
+	grandchildInstanceState, err := engineQueries.GetInstance(ctx, grandchildRun.InstanceID)
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineInstanceLifecycleStatusTerminated, grandchildInstanceState.Status)
+
+	assert.Equal(t, childInstance.ID, childInstanceState.ID)
+	assert.Equal(t, grandchildInstance.ID, grandchildInstanceState.ID)
+}
+
 func TestTerminateEngineRun_ReturnsExistingTerminalStateWhenActivationWinsRowLock(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
@@ -3216,6 +3300,156 @@ func appendEngineHistoryEvent(
 	})
 	require.NoError(t, err)
 	return row
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func seedEngineChildRun(
+	t *testing.T,
+	ctx context.Context,
+	platformStore *store.Store,
+	engineQueries *enginedb.Queries,
+	parentInstance enginedb.EngineInstance,
+	parentRun enginedb.EngineRun,
+	childKey string,
+	definitionName string,
+	definitionVersion string,
+	instanceKey string,
+) (enginedb.EngineInstance, enginedb.EngineRun) {
+	t.Helper()
+
+	childInstance, err := engineQueries.CreateInstance(ctx, enginedb.CreateInstanceParams{
+		ProjectID:      parentRun.ProjectID,
+		InstanceKey:    instanceKey,
+		DefinitionName: definitionName,
+	})
+	require.NoError(t, err)
+
+	rootRunID := parentRun.RootRunID
+	if rootRunID == uuid.Nil {
+		rootRunID = parentRun.ID
+	}
+	childRun, err := engineQueries.CreateChildRun(ctx, enginedb.CreateChildRunParams{
+		ProjectID:          parentRun.ProjectID,
+		InstanceID:         childInstance.ID,
+		RunNumber:          1,
+		DefinitionVersion:  definitionVersion,
+		ReadyAt:            time.Now().UTC().Add(-time.Minute),
+		ContinuedFromRunID: pgtype.UUID{},
+		ParentRunID:        pgtype.UUID{Bytes: parentRun.ID, Valid: true},
+		RootRunID:          rootRunID,
+		ChildKey:           &childKey,
+		ChildDepth:         parentRun.ChildDepth + 1,
+	})
+	require.NoError(t, err)
+
+	startedHistory := appendEngineHistoryEvent(
+		t,
+		ctx,
+		engineQueries,
+		parentRun.ProjectID,
+		childInstance.ID,
+		childRun.ID,
+		1,
+		publichistory.EventWorkflowStarted,
+		publichistory.WorkflowStartedPayload{
+			DefinitionName:    definitionName,
+			DefinitionVersion: definitionVersion,
+			InstanceKey:       instanceKey,
+			Input:             []byte(`{"seeded":true}`),
+		},
+	)
+
+	_, err = engineQueries.CreateChildWorkflow(ctx, enginedb.CreateChildWorkflowParams{
+		ProjectID:                  parentRun.ProjectID,
+		ParentInstanceID:           parentInstance.ID,
+		ParentRunID:                parentRun.ID,
+		ChildKey:                   childKey,
+		RequestedDefinitionName:    definitionName,
+		RequestedDefinitionVersion: definitionVersion,
+		ChildInstanceID:            childInstance.ID,
+		ChildInstanceKey:           instanceKey,
+		CurrentChildRunID:          childRun.ID,
+		RootRunID:                  childRun.RootRunID,
+		ChildDepth:                 childRun.ChildDepth,
+	})
+	require.NoError(t, err)
+
+	createEngineProjectedTraceShell(t, ctx, platformStore, childInstance, childRun, startedHistory.ID, startedHistory.CreatedAt)
+	return childInstance, childRun
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func createEngineProjectedTraceShell(
+	t *testing.T,
+	ctx context.Context,
+	platformStore *store.Store,
+	instance enginedb.EngineInstance,
+	run enginedb.EngineRun,
+	latestHistoryID int64,
+	startTime time.Time,
+) {
+	t.Helper()
+
+	runStatus := string(run.Status)
+	projectionState := publicprojection.StateUpToDate.String()
+	_, err := platformStore.Queries().CreateEngineTraceShell(ctx, platformdb.CreateEngineTraceShellParams{
+		ProjectID:                    run.ProjectID,
+		SessionID:                    pgtype.UUID{},
+		TraceID:                      "engine:" + run.ID.String(),
+		Name:                         testutil.StrPtr(instance.DefinitionName),
+		UserID:                       nil,
+		Tags:                         nil,
+		Environment:                  nil,
+		Release:                      nil,
+		Metadata:                     nil,
+		Input:                        []byte(`{"seeded":true}`),
+		Output:                       nil,
+		Status:                       "running",
+		StartTime:                    pgtype.Timestamptz{Time: startTime, Valid: true},
+		EndTime:                      pgtype.Timestamptz{},
+		EngineRunID:                  pgtype.UUID{Bytes: run.ID, Valid: true},
+		EngineInstanceKey:            testutil.StrPtr(instance.InstanceKey),
+		EngineRunStatus:              &runStatus,
+		EngineCustomStatus:           nil,
+		EngineWaitState:              nil,
+		EnginePendingActivityTasks:   testutil.Ptr(int64(0)),
+		EnginePendingInboxItems:      testutil.Ptr(int64(0)),
+		EngineDefinitionName:         testutil.StrPtr(instance.DefinitionName),
+		EngineDefinitionVersion:      &run.DefinitionVersion,
+		EngineParentRunID:            run.ParentRunID,
+		EngineRootRunID:              pgtype.UUID{Bytes: run.RootRunID, Valid: run.RootRunID != uuid.Nil},
+		EngineChildKey:               run.ChildKey,
+		EngineChildDepth:             testutil.Ptr(run.ChildDepth),
+		EngineProjectionState:        &projectionState,
+		EngineLatestHistoryID:        &latestHistoryID,
+		EngineLastProjectedHistoryID: &latestHistoryID,
+		EngineProjectionUpdatedAt:    pgtype.Timestamptz{Time: startTime, Valid: true},
+	})
+	require.NoError(t, err)
+}
+
+//nolint:revive // Keep testing.T first in test helper signatures.
+func assertTerminatedRunState(
+	t *testing.T,
+	ctx context.Context,
+	engineQueries *enginedb.Queries,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+	wantTerminalEvent string,
+) {
+	t.Helper()
+
+	run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineRunLifecycleStatusTerminated, run.Status)
+
+	historyRows, err := engineQueries.GetHistoryByRun(ctx, runID)
+	require.NoError(t, err)
+	require.NotEmpty(t, historyRows)
+	assert.Equal(t, wantTerminalEvent, historyRows[len(historyRows)-1].EventType)
 }
 
 //nolint:revive // Keep testing.T first in test helper signatures.

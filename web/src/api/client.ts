@@ -177,12 +177,17 @@ export interface EngineTraceInfo {
   definition_name: string;
   definition_version: string;
   projection_state: EngineProjectionState;
+  parent_run_id?: string;
+  root_run_id?: string;
+  child_key?: string;
+  child_depth?: number;
 }
 
 export interface EngineWaitState {
   kind?: string;
   activity_key?: string;
   activity_type?: string;
+  child_key?: string;
   due_at?: string;
   signal_name?: string;
   timer_key?: string;
@@ -243,6 +248,10 @@ export interface EngineRunSummary {
   definition_name: string;
   definition_version: string;
   projection_state: EngineProjectionState;
+  parent_run_id?: string;
+  root_run_id?: string;
+  child_key?: string;
+  child_depth?: number;
   status: EngineRunStatus;
   created_at: string;
   updated_at: string;

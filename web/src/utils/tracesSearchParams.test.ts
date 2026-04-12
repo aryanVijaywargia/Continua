@@ -208,6 +208,86 @@ describe('tracesSearchParams', () => {
     });
   });
 
+  it('round-trips lineage engine filters and clears individual lineage chips', () => {
+    const state = parseTracesParams(
+      new URLSearchParams({
+        engine_run_id: '123E4567-E89B-12D3-A456-426614174001',
+        engine_definition_version: '  v2  ',
+        engine_parent_run_id: '123E4567-E89B-12D3-A456-426614174002',
+        engine_root_run_id: '123E4567-E89B-12D3-A456-426614174003',
+        engine_child_key: '  charge-card  ',
+        engine_child_depth: '2',
+      })
+    );
+
+    expect(state).toMatchObject({
+      limit: 20,
+      offset: 0,
+      engine_run_id: '123e4567-e89b-12d3-a456-426614174001',
+      engine_definition_version: 'v2',
+      engine_parent_run_id: '123e4567-e89b-12d3-a456-426614174002',
+      engine_root_run_id: '123e4567-e89b-12d3-a456-426614174003',
+      engine_child_key: 'charge-card',
+      engine_child_depth: 2,
+    });
+
+    expect(buildCanonicalQueryString(state)).toBe(
+      [
+        'limit=20',
+        'engine_run_id=123e4567-e89b-12d3-a456-426614174001',
+        'engine_definition_version=v2',
+        'engine_parent_run_id=123e4567-e89b-12d3-a456-426614174002',
+        'engine_root_run_id=123e4567-e89b-12d3-a456-426614174003',
+        'engine_child_key=charge-card',
+        'engine_child_depth=2',
+      ].join('&')
+    );
+
+    expect(deriveActiveChips(state)).toEqual([
+      {
+        key: 'engine_run_id',
+        label: 'Engine run',
+        value: '123e4567-e89b-12d3-a456-426614174001',
+      },
+      {
+        key: 'engine_definition_version',
+        label: 'Engine version',
+        value: 'v2',
+      },
+      {
+        key: 'engine_parent_run_id',
+        label: 'Parent run',
+        value: '123e4567-e89b-12d3-a456-426614174002',
+      },
+      {
+        key: 'engine_root_run_id',
+        label: 'Root run',
+        value: '123e4567-e89b-12d3-a456-426614174003',
+      },
+      {
+        key: 'engine_child_key',
+        label: 'Child key',
+        value: 'charge-card',
+      },
+      {
+        key: 'engine_child_depth',
+        label: 'Child depth',
+        value: '2',
+      },
+    ]);
+
+    expect(clearChip(state, 'engine_child_depth')).toMatchObject({
+      limit: 20,
+      offset: 0,
+      engine_run_id: '123e4567-e89b-12d3-a456-426614174001',
+      engine_definition_version: 'v2',
+      engine_parent_run_id: '123e4567-e89b-12d3-a456-426614174002',
+      engine_root_run_id: '123e4567-e89b-12d3-a456-426614174003',
+      engine_child_key: 'charge-card',
+      engine_child_depth: undefined,
+    });
+  });
+
   it('builds identical canonical strings for equivalent params', () => {
     const first = buildCanonicalQueryString(
       parseTracesParams(

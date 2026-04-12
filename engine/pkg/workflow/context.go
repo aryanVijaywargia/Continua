@@ -66,9 +66,56 @@ type Context interface {
 	Input(out any) error
 	Activity(key, activityType string, input any, out any) error
 	ActivityWithOptions(key, activityType string, input any, out any, opts ActivityOptions) error
+	ChildWorkflow(childKey, definitionName, definitionVersion string, input any, out any) error
+	ChildWorkflowWithOptions(childKey, definitionName, definitionVersion string, input any, out any, opts ChildWorkflowOptions) error
 	SleepUntil(key string, at time.Time) error
 	ReceiveSignal(name string, out any) error
 	CancellationRequested() bool
 	SetCustomStatus(value any) error
 	SetResult(value any) error
+}
+
+type ChildWorkflowOptions struct {
+	InstanceKey string
+}
+
+type ChildWorkflowError struct {
+	code          string
+	message       string
+	terminalState string
+}
+
+func NewChildWorkflowError(code, message, terminalState string) *ChildWorkflowError {
+	return &ChildWorkflowError{code: code, message: message, terminalState: terminalState}
+}
+
+func (e *ChildWorkflowError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.message != "" {
+		return e.message
+	}
+	return e.code
+}
+
+func (e *ChildWorkflowError) Code() string {
+	if e == nil {
+		return ""
+	}
+	return e.code
+}
+
+func (e *ChildWorkflowError) Message() string {
+	if e == nil {
+		return ""
+	}
+	return e.message
+}
+
+func (e *ChildWorkflowError) TerminalState() string {
+	if e == nil {
+		return ""
+	}
+	return e.terminalState
 }

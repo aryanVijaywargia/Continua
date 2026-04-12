@@ -7,30 +7,38 @@ import (
 )
 
 const (
-	EventWorkflowStarted        = "workflow.started"
-	EventWorkflowCompleted      = "workflow.completed"
-	EventWorkflowFailed         = "workflow.failed"
-	EventWorkflowCancelled      = "workflow.cancelled"
-	EventWorkflowContinuedAsNew = "workflow.continued_as_new"
-	EventWorkflowSuspended      = "workflow.suspended"
-	EventWorkflowResumed        = "workflow.resumed"
-	EventWorkflowTerminated     = "workflow.terminated"
-	EventWorkflowReplayMismatch = "workflow.replay_mismatch"
-	EventActivityScheduled      = "activity.scheduled"
-	EventActivityCompleted      = "activity.completed"
-	EventActivityFailed         = "activity.failed"
-	EventActivityRetryScheduled = "activity.retry_scheduled"
-	EventTimerScheduled         = "timer.scheduled"
-	EventTimerFired             = "timer.fired"
-	EventSignalReceived         = "signal.received"
-	EventCancelRequested        = "cancel.requested"
-	EventCustomStatusUpdated    = "custom_status.updated"
+	EventWorkflowStarted         = "workflow.started"
+	EventWorkflowCompleted       = "workflow.completed"
+	EventWorkflowFailed          = "workflow.failed"
+	EventWorkflowCancelled       = "workflow.cancelled"
+	EventWorkflowContinuedAsNew  = "workflow.continued_as_new"
+	EventWorkflowSuspended       = "workflow.suspended"
+	EventWorkflowResumed         = "workflow.resumed"
+	EventWorkflowTerminated      = "workflow.terminated"
+	EventWorkflowReplayMismatch  = "workflow.replay_mismatch"
+	EventActivityScheduled       = "activity.scheduled"
+	EventActivityCompleted       = "activity.completed"
+	EventActivityFailed          = "activity.failed"
+	EventActivityRetryScheduled  = "activity.retry_scheduled"
+	EventChildWorkflowScheduled  = "child_workflow.scheduled"
+	EventChildWorkflowStarted    = "child_workflow.started"
+	EventChildWorkflowCompleted  = "child_workflow.completed"
+	EventChildWorkflowFailed     = "child_workflow.failed"
+	EventChildWorkflowCancelled  = "child_workflow.cancelled"
+	EventChildWorkflowTerminated = "child_workflow.terminated"
+	EventChildWorkflowWaitFailed = "child_workflow.wait_failed"
+	EventTimerScheduled          = "timer.scheduled"
+	EventTimerFired              = "timer.fired"
+	EventSignalReceived          = "signal.received"
+	EventCancelRequested         = "cancel.requested"
+	EventCustomStatusUpdated     = "custom_status.updated"
 )
 
 const (
-	WaitKindActivity = "activity"
-	WaitKindTimer    = "timer"
-	WaitKindSignal   = "signal"
+	WaitKindActivity      = "activity"
+	WaitKindTimer         = "timer"
+	WaitKindSignal        = "signal"
+	WaitKindChildWorkflow = "child_workflow"
 )
 
 type WorkflowStartedPayload struct {
@@ -100,6 +108,62 @@ type ActivityRetryScheduledPayload struct {
 	ErrorMessage    string    `json:"error_message"`
 }
 
+type ChildWorkflowScheduledPayload struct {
+	ChildKey          string          `json:"child_key"`
+	DefinitionName    string          `json:"definition_name"`
+	DefinitionVersion string          `json:"definition_version"`
+	Input             json.RawMessage `json:"input"`
+	ChildInstanceKey  string          `json:"child_instance_key"`
+}
+
+type ChildWorkflowStartedPayload struct {
+	ChildKey         string `json:"child_key"`
+	ChildInstanceID  string `json:"child_instance_id"`
+	ChildInstanceKey string `json:"child_instance_key"`
+	ChildRunID       string `json:"child_run_id"`
+	RootRunID        string `json:"root_run_id"`
+	ChildDepth       int32  `json:"child_depth"`
+}
+
+type ChildWorkflowCompletedPayload struct {
+	ChildKey           string          `json:"child_key"`
+	ChildInstanceID    string          `json:"child_instance_id"`
+	TerminalChildRunID string          `json:"terminal_child_run_id"`
+	Result             json.RawMessage `json:"result"`
+}
+
+type ChildWorkflowFailedPayload struct {
+	ChildKey           string `json:"child_key"`
+	ChildInstanceID    string `json:"child_instance_id"`
+	TerminalChildRunID string `json:"terminal_child_run_id"`
+	ErrorCode          string `json:"error_code"`
+	ErrorMessage       string `json:"error_message"`
+}
+
+type ChildWorkflowCancelledPayload struct {
+	ChildKey           string `json:"child_key"`
+	ChildInstanceID    string `json:"child_instance_id"`
+	TerminalChildRunID string `json:"terminal_child_run_id"`
+	ErrorCode          string `json:"error_code"`
+	ErrorMessage       string `json:"error_message"`
+}
+
+type ChildWorkflowTerminatedPayload struct {
+	ChildKey           string `json:"child_key"`
+	ChildInstanceID    string `json:"child_instance_id"`
+	TerminalChildRunID string `json:"terminal_child_run_id"`
+	ErrorCode          string `json:"error_code"`
+	ErrorMessage       string `json:"error_message"`
+}
+
+type ChildWorkflowWaitFailedPayload struct {
+	ChildKey          string `json:"child_key"`
+	ChildInstanceID   string `json:"child_instance_id"`
+	CurrentChildRunID string `json:"current_child_run_id"`
+	ErrorCode         string `json:"error_code"`
+	ErrorMessage      string `json:"error_message"`
+}
+
 type TimerScheduledPayload struct {
 	TimerKey string    `json:"timer_key"`
 	DueAt    time.Time `json:"due_at"`
@@ -135,6 +199,11 @@ type TimerWait struct {
 type SignalWait struct {
 	Kind       string `json:"kind"`
 	SignalName string `json:"signal_name"`
+}
+
+type ChildWorkflowWait struct {
+	Kind     string `json:"kind"`
+	ChildKey string `json:"child_key"`
 }
 
 func MarshalPayload(value any) (json.RawMessage, error) {
@@ -204,6 +273,34 @@ func EventKey(eventType string, payload any) string {
 		return value.ActivityKey
 	case *ActivityRetryScheduledPayload:
 		return value.ActivityKey
+	case ChildWorkflowScheduledPayload:
+		return value.ChildKey
+	case *ChildWorkflowScheduledPayload:
+		return value.ChildKey
+	case ChildWorkflowStartedPayload:
+		return value.ChildKey
+	case *ChildWorkflowStartedPayload:
+		return value.ChildKey
+	case ChildWorkflowCompletedPayload:
+		return value.ChildKey
+	case *ChildWorkflowCompletedPayload:
+		return value.ChildKey
+	case ChildWorkflowFailedPayload:
+		return value.ChildKey
+	case *ChildWorkflowFailedPayload:
+		return value.ChildKey
+	case ChildWorkflowCancelledPayload:
+		return value.ChildKey
+	case *ChildWorkflowCancelledPayload:
+		return value.ChildKey
+	case ChildWorkflowTerminatedPayload:
+		return value.ChildKey
+	case *ChildWorkflowTerminatedPayload:
+		return value.ChildKey
+	case ChildWorkflowWaitFailedPayload:
+		return value.ChildKey
+	case *ChildWorkflowWaitFailedPayload:
+		return value.ChildKey
 	case TimerScheduledPayload:
 		return value.TimerKey
 	case *TimerScheduledPayload:
@@ -249,6 +346,20 @@ func payloadTarget(eventType string) (any, error) {
 		return &ActivityFailedPayload{}, nil
 	case EventActivityRetryScheduled:
 		return &ActivityRetryScheduledPayload{}, nil
+	case EventChildWorkflowScheduled:
+		return &ChildWorkflowScheduledPayload{}, nil
+	case EventChildWorkflowStarted:
+		return &ChildWorkflowStartedPayload{}, nil
+	case EventChildWorkflowCompleted:
+		return &ChildWorkflowCompletedPayload{}, nil
+	case EventChildWorkflowFailed:
+		return &ChildWorkflowFailedPayload{}, nil
+	case EventChildWorkflowCancelled:
+		return &ChildWorkflowCancelledPayload{}, nil
+	case EventChildWorkflowTerminated:
+		return &ChildWorkflowTerminatedPayload{}, nil
+	case EventChildWorkflowWaitFailed:
+		return &ChildWorkflowWaitFailedPayload{}, nil
 	case EventTimerScheduled:
 		return &TimerScheduledPayload{}, nil
 	case EventTimerFired:

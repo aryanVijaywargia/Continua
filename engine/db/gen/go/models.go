@@ -58,6 +58,51 @@ func (ns NullEngineActivityTaskStatus) Value() (driver.Value, error) {
 	return string(ns.EngineActivityTaskStatus), nil
 }
 
+type EngineChildWorkflowStatus string
+
+const (
+	EngineChildWorkflowStatusActive     EngineChildWorkflowStatus = "active"
+	EngineChildWorkflowStatusCompleted  EngineChildWorkflowStatus = "completed"
+	EngineChildWorkflowStatusFailed     EngineChildWorkflowStatus = "failed"
+	EngineChildWorkflowStatusCancelled  EngineChildWorkflowStatus = "cancelled"
+	EngineChildWorkflowStatusTerminated EngineChildWorkflowStatus = "terminated"
+)
+
+func (e *EngineChildWorkflowStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = EngineChildWorkflowStatus(s)
+	case string:
+		*e = EngineChildWorkflowStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for EngineChildWorkflowStatus: %T", src)
+	}
+	return nil
+}
+
+type NullEngineChildWorkflowStatus struct {
+	EngineChildWorkflowStatus EngineChildWorkflowStatus `json:"engine_child_workflow_status"`
+	Valid                     bool                      `json:"valid"` // Valid is true if EngineChildWorkflowStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullEngineChildWorkflowStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.EngineChildWorkflowStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.EngineChildWorkflowStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullEngineChildWorkflowStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.EngineChildWorkflowStatus), nil
+}
+
 type EngineInboxStatus string
 
 const (
@@ -267,6 +312,29 @@ type EngineActivityTask struct {
 	BackoffMultiplier *float64                 `json:"backoff_multiplier"`
 }
 
+type EngineChildWorkflow struct {
+	ID                         uuid.UUID                 `json:"id"`
+	ProjectID                  uuid.UUID                 `json:"project_id"`
+	ParentInstanceID           uuid.UUID                 `json:"parent_instance_id"`
+	ParentRunID                uuid.UUID                 `json:"parent_run_id"`
+	ChildKey                   string                    `json:"child_key"`
+	RequestedDefinitionName    string                    `json:"requested_definition_name"`
+	RequestedDefinitionVersion string                    `json:"requested_definition_version"`
+	ChildInstanceID            uuid.UUID                 `json:"child_instance_id"`
+	ChildInstanceKey           string                    `json:"child_instance_key"`
+	CurrentChildRunID          uuid.UUID                 `json:"current_child_run_id"`
+	TerminalChildRunID         pgtype.UUID               `json:"terminal_child_run_id"`
+	RootRunID                  uuid.UUID                 `json:"root_run_id"`
+	ChildDepth                 int32                     `json:"child_depth"`
+	ContinuationCount          int32                     `json:"continuation_count"`
+	Status                     EngineChildWorkflowStatus `json:"status"`
+	ParentWaitFailedAt         pgtype.Timestamptz        `json:"parent_wait_failed_at"`
+	ParentWaitErrorCode        *string                   `json:"parent_wait_error_code"`
+	ParentWaitErrorMessage     *string                   `json:"parent_wait_error_message"`
+	CreatedAt                  time.Time                 `json:"created_at"`
+	UpdatedAt                  time.Time                 `json:"updated_at"`
+}
+
 type EngineDefinitionCatalog struct {
 	DefinitionName    string    `json:"definition_name"`
 	DefinitionVersion string    `json:"definition_version"`
@@ -361,4 +429,8 @@ type EngineRun struct {
 	CompletedAt        pgtype.Timestamptz       `json:"completed_at"`
 	ContinuedFromRunID pgtype.UUID              `json:"continued_from_run_id"`
 	ContinuedToRunID   pgtype.UUID              `json:"continued_to_run_id"`
+	ParentRunID        pgtype.UUID              `json:"parent_run_id"`
+	RootRunID          uuid.UUID                `json:"root_run_id"`
+	ChildKey           *string                  `json:"child_key"`
+	ChildDepth         int32                    `json:"child_depth"`
 }

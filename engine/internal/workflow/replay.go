@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +18,13 @@ import (
 )
 
 type decisionKind string
+
+const (
+	maxChildDepth                      int32 = 32
+	maxContinuationFollowDepth         int32 = 32
+	childWaitFailedContinuationCode          = "max_continuation_follow_depth_exceeded"
+	childWaitFailedContinuationMessage       = "child workflow continuation follow depth exceeded"
+)
 
 const (
 	decisionWaiting        decisionKind = "waiting"
@@ -39,8 +48,10 @@ type activationDecision struct {
 	Result            json.RawMessage
 	NewActivity       *newActivityTask
 	NewTimer          *enginehistory.TimerScheduledPayload
+	NewChildWorkflow  *newChildWorkflow
 	ContinuationInput json.RawMessage
 	ConsumedInboxIDs  []uuid.UUID
+	ChildWaitFailures []childWaitFailure
 	FailureCode       string
 	FailureMessage    string
 }
@@ -48,6 +59,16 @@ type activationDecision struct {
 type newActivityTask struct {
 	Scheduled enginehistory.ActivityScheduledPayload
 	Options   publicworkflow.NormalizedActivityOptions
+}
+
+type newChildWorkflow struct {
+	Scheduled enginehistory.ChildWorkflowScheduledPayload
+}
+
+type childWaitFailure struct {
+	ChildKey     string
+	ErrorCode    string
+	ErrorMessage string
 }
 
 type decodedEvent struct {
@@ -58,6 +79,29 @@ type decodedEvent struct {
 type activityOutcome struct {
 	completed *enginehistory.ActivityCompletedPayload
 	failed    *enginehistory.ActivityFailedPayload
+}
+
+type childWorkflowOutcome struct {
+	childKey                   string
+	requestedDefinitionName    string
+	requestedDefinitionVersion string
+	childInstanceID            uuid.UUID
+	childInstanceKey           string
+	currentChildRunID          uuid.UUID
+	terminalChildRunID         uuid.UUID
+	terminalChildRunIDValid    bool
+	rootRunID                  uuid.UUID
+	childDepth                 int32
+	continuationCount          int32
+	status                     enginedb.EngineChildWorkflowStatus
+	parentWaitFailed           bool
+	parentWaitErrorCode        string
+	parentWaitErrorMessage     string
+	terminalResult             json.RawMessage
+	terminalLastErrorCode      string
+	terminalLastErrorMessage   string
+	terminalRunStatus          enginedb.EngineRunLifecycleStatus
+	terminalRunStatusValid     bool
 }
 
 type pendingSignal struct {
@@ -92,6 +136,11 @@ func (e codedWorkflowError) Error() string {
 
 type workflowRunner struct {
 	input             json.RawMessage
+	projectID         uuid.UUID
+	runID             uuid.UUID
+	rootRunID         uuid.UUID
+	childDepth        int32
+	validateNewChild  func(enginehistory.ChildWorkflowScheduledPayload) error
 	replayEvents      []decodedEvent
 	cursor            int
 	nextSequence      int32
@@ -99,24 +148,65 @@ type workflowRunner struct {
 	result            json.RawMessage
 	cancelRequested   bool
 	pendingActivities map[string]activityOutcome
+	pendingChildren   map[string]childWorkflowOutcome
 	pendingSignals    map[string][]pendingSignal
 	pendingTimers     map[string]pendingTimer
 	pendingFrontier   []pendingInboxItem
 
-	queuedEvents     []queuedHistoryEvent
-	waitingFor       json.RawMessage
-	newActivity      *newActivityTask
-	newTimer         *enginehistory.TimerScheduledPayload
-	consumedInboxIDs []uuid.UUID
+	queuedEvents      []queuedHistoryEvent
+	waitingFor        json.RawMessage
+	newActivity       *newActivityTask
+	newTimer          *enginehistory.TimerScheduledPayload
+	newChildWorkflow  *newChildWorkflow
+	consumedInboxIDs  []uuid.UUID
+	childWaitFailures []childWaitFailure
 }
 
+//nolint:unparam // Test helper wrapper keeps the optional pending activity input explicit.
 func replayDefinition(
 	definition publicworkflow.Definition,
 	historyRows []enginedb.EngineHistory,
 	activityTasks []enginedb.EngineActivityTask,
 	inboxRows []enginedb.EngineInbox,
 ) (activationDecision, error) {
-	runner, err := newWorkflowRunner(historyRows, activityTasks, inboxRows)
+	runner, err := newWorkflowRunner(nil, historyRows, activityTasks, nil, inboxRows, nil)
+	if err != nil {
+		return activationDecision{}, err
+	}
+
+	return runner.execute(definition)
+}
+
+//nolint:unparam // Test helper wrapper keeps the full runner inputs explicit.
+func replayDefinitionForRun(
+	definition publicworkflow.Definition,
+	run *enginedb.EngineRun,
+	historyRows []enginedb.EngineHistory,
+	activityTasks []enginedb.EngineActivityTask,
+	childWorkflows []enginedb.ListChildWorkflowOutcomesByParentRunRow,
+	inboxRows []enginedb.EngineInbox,
+) (activationDecision, error) {
+	return replayDefinitionForRunWithValidator(
+		definition,
+		run,
+		historyRows,
+		activityTasks,
+		childWorkflows,
+		inboxRows,
+		nil,
+	)
+}
+
+func replayDefinitionForRunWithValidator(
+	definition publicworkflow.Definition,
+	run *enginedb.EngineRun,
+	historyRows []enginedb.EngineHistory,
+	activityTasks []enginedb.EngineActivityTask,
+	childWorkflows []enginedb.ListChildWorkflowOutcomesByParentRunRow,
+	inboxRows []enginedb.EngineInbox,
+	validateNewChild func(enginehistory.ChildWorkflowScheduledPayload) error,
+) (activationDecision, error) {
+	runner, err := newWorkflowRunner(run, historyRows, activityTasks, childWorkflows, inboxRows, validateNewChild)
 	if err != nil {
 		return activationDecision{}, err
 	}
@@ -125,9 +215,12 @@ func replayDefinition(
 }
 
 func newWorkflowRunner(
+	run *enginedb.EngineRun,
 	historyRows []enginedb.EngineHistory,
 	activityTasks []enginedb.EngineActivityTask,
+	childWorkflows []enginedb.ListChildWorkflowOutcomesByParentRunRow,
 	inboxRows []enginedb.EngineInbox,
+	validateNewChild func(enginehistory.ChildWorkflowScheduledPayload) error,
 ) (*workflowRunner, error) {
 	if len(historyRows) == 0 {
 		return nil, fmt.Errorf("workflow replay requires at least one history event")
@@ -145,8 +238,16 @@ func newWorkflowRunner(
 		input:             cloneRaw(startedPayload.Input),
 		nextSequence:      historyRows[len(historyRows)-1].SequenceNo + 1,
 		pendingActivities: make(map[string]activityOutcome),
+		pendingChildren:   make(map[string]childWorkflowOutcome),
 		pendingSignals:    make(map[string][]pendingSignal),
 		pendingTimers:     make(map[string]pendingTimer),
+		validateNewChild:  validateNewChild,
+	}
+	if run != nil {
+		runner.projectID = run.ProjectID
+		runner.runID = run.ID
+		runner.rootRunID = run.RootRunID
+		runner.childDepth = run.ChildDepth
 	}
 
 	for i := 1; i < len(historyRows); i++ {
@@ -190,6 +291,11 @@ func newWorkflowRunner(
 				},
 			}
 		}
+	}
+
+	for i := range childWorkflows {
+		child := childWorkflowOutcomeFromRow(&childWorkflows[i])
+		runner.pendingChildren[child.childKey] = child
 	}
 
 	for i := range inboxRows {
@@ -303,6 +409,11 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 		if errors.As(runErr, &coded) {
 			code = coded.code
 			message = coded.message
+		}
+		var childErr *publicworkflow.ChildWorkflowError
+		if errors.As(runErr, &childErr) {
+			code = childErr.Code()
+			message = childErr.Message()
 		}
 		failure := enginehistory.WorkflowFailedPayload{
 			ErrorCode:    code,
@@ -442,6 +553,134 @@ func (r *workflowRunner) ActivityWithOptions(
 			ActivityType: activityType,
 		},
 		&queuedHistoryEvent{EventType: enginehistory.EventActivityScheduled, Payload: mustMarshalPayload(scheduled)},
+		nil,
+	)
+	return nil
+}
+
+func (r *workflowRunner) ChildWorkflow(
+	childKey, definitionName, definitionVersion string,
+	input, out any,
+) error {
+	return r.ChildWorkflowWithOptions(
+		childKey,
+		definitionName,
+		definitionVersion,
+		input,
+		out,
+		publicworkflow.ChildWorkflowOptions{},
+	)
+}
+
+func (r *workflowRunner) ChildWorkflowWithOptions(
+	childKey, definitionName, definitionVersion string,
+	input, out any,
+	opts publicworkflow.ChildWorkflowOptions,
+) error {
+	if childKey == "" {
+		return publicworkflow.ErrEmptyKey
+	}
+	r.advanceState()
+
+	inputRaw, err := enginehistory.MarshalPayload(input)
+	if err != nil {
+		return err
+	}
+	instanceKey := opts.InstanceKey
+	if instanceKey == "" {
+		if r.projectID == uuid.Nil || r.runID == uuid.Nil {
+			return codedWorkflowError{code: "missing_run_context", message: "child workflow requires durable run context"}
+		}
+		instanceKey = defaultChildInstanceKey(r.projectID, r.runID, childKey)
+	}
+
+	if next, ok := r.peek(); ok {
+		scheduled, ok := next.Payload.(*enginehistory.ChildWorkflowScheduledPayload)
+		if !ok || !matchChildWorkflowScheduled(scheduled, childKey, definitionName, definitionVersion, inputRaw, instanceKey) {
+			r.replayMismatch(enginehistory.EventChildWorkflowScheduled, childKey, next, "child workflow scheduling did not match recorded history")
+		}
+		r.cursor++
+		r.advanceState()
+
+		startedEvent, ok := r.peek()
+		if !ok {
+			r.replayMismatch(enginehistory.EventChildWorkflowStarted, childKey, decodedEvent{}, "child workflow history is missing started event")
+		}
+		started, ok := startedEvent.Payload.(*enginehistory.ChildWorkflowStartedPayload)
+		if !ok || started.ChildKey != childKey || started.ChildInstanceKey != instanceKey {
+			r.replayMismatch(enginehistory.EventChildWorkflowStarted, childKey, startedEvent, "child workflow started event did not match recorded history")
+		}
+		r.cursor++
+		r.advanceState()
+
+		if outcomeEvent, ok := r.peek(); ok {
+			if result, handled, err := r.consumeRecordedChildWorkflowOutcome(childKey, outcomeEvent, out); handled {
+				if result {
+					r.cursor++
+				}
+				if err != nil {
+					return err
+				}
+				return nil
+			}
+		}
+
+		if outcome, ok := r.pendingChildren[childKey]; ok {
+			if outcome.requestedDefinitionName != definitionName || outcome.requestedDefinitionVersion != definitionVersion {
+				return codedWorkflowError{
+					code:    "instance_conflict",
+					message: "child workflow definition binding does not match recorded child key",
+				}
+			}
+			consumesPendingOutcome := childWorkflowIsTerminal(outcome.status) || childWorkflowWaitFailed(&outcome)
+			if consumesPendingOutcome {
+				delete(r.pendingChildren, childKey)
+			}
+			if err := r.applyPendingChildWorkflowOutcome(&outcome, out); err != nil {
+				return err
+			}
+			if consumesPendingOutcome {
+				return nil
+			}
+		}
+
+		if nextAfter, ok := r.peek(); ok {
+			r.replayMismatch(enginehistory.EventChildWorkflowCompleted, childKey, nextAfter, "child workflow history is missing a terminal outcome")
+		}
+
+		r.blockOnWait(enginehistory.ChildWorkflowWait{
+			Kind:     enginehistory.WaitKindChildWorkflow,
+			ChildKey: childKey,
+		}, nil, nil)
+		return nil
+	}
+
+	r.advanceState()
+	if r.childDepth >= maxChildDepth {
+		return codedWorkflowError{
+			code:    "max_child_depth_exceeded",
+			message: "child workflow depth limit exceeded",
+		}
+	}
+	scheduled := enginehistory.ChildWorkflowScheduledPayload{
+		ChildKey:          childKey,
+		DefinitionName:    definitionName,
+		DefinitionVersion: definitionVersion,
+		Input:             cloneRaw(inputRaw),
+		ChildInstanceKey:  instanceKey,
+	}
+	if r.validateNewChild != nil {
+		if err := r.validateNewChild(scheduled); err != nil {
+			return err
+		}
+	}
+	r.newChildWorkflow = &newChildWorkflow{Scheduled: scheduled}
+	r.blockOnWait(
+		enginehistory.ChildWorkflowWait{
+			Kind:     enginehistory.WaitKindChildWorkflow,
+			ChildKey: childKey,
+		},
+		&queuedHistoryEvent{EventType: enginehistory.EventChildWorkflowScheduled, Payload: mustMarshalPayload(scheduled)},
 		nil,
 	)
 	return nil
@@ -672,49 +911,54 @@ func (r *workflowRunner) replayMismatch(expectedType, expectedKey string, actual
 
 func (r *workflowRunner) waitingDecision() activationDecision {
 	return activationDecision{
-		Kind:             decisionWaiting,
-		Events:           append([]queuedHistoryEvent(nil), r.queuedEvents...),
-		NextSequence:     r.nextSequence,
-		WaitingFor:       cloneRaw(r.waitingFor),
-		CustomStatus:     cloneRaw(r.customStatus),
-		NewActivity:      r.newActivity,
-		NewTimer:         r.newTimer,
-		ConsumedInboxIDs: append([]uuid.UUID(nil), r.consumedInboxIDs...),
+		Kind:              decisionWaiting,
+		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
+		NextSequence:      r.nextSequence,
+		WaitingFor:        cloneRaw(r.waitingFor),
+		CustomStatus:      cloneRaw(r.customStatus),
+		NewActivity:       r.newActivity,
+		NewTimer:          r.newTimer,
+		NewChildWorkflow:  r.newChildWorkflow,
+		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
+		ChildWaitFailures: append([]childWaitFailure(nil), r.childWaitFailures...),
 	}
 }
 
 func (r *workflowRunner) completedDecision() activationDecision {
 	return activationDecision{
-		Kind:             decisionCompleted,
-		Events:           append([]queuedHistoryEvent(nil), r.queuedEvents...),
-		NextSequence:     r.nextSequence,
-		CustomStatus:     cloneRaw(r.customStatus),
-		Result:           cloneRaw(r.result),
-		ConsumedInboxIDs: append([]uuid.UUID(nil), r.consumedInboxIDs...),
+		Kind:              decisionCompleted,
+		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
+		NextSequence:      r.nextSequence,
+		CustomStatus:      cloneRaw(r.customStatus),
+		Result:            cloneRaw(r.result),
+		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
+		ChildWaitFailures: append([]childWaitFailure(nil), r.childWaitFailures...),
 	}
 }
 
 func (r *workflowRunner) failedDecision(failure enginehistory.WorkflowFailedPayload) activationDecision {
 	return activationDecision{
-		Kind:             decisionFailed,
-		Events:           append([]queuedHistoryEvent(nil), r.queuedEvents...),
-		NextSequence:     r.nextSequence,
-		CustomStatus:     cloneRaw(r.customStatus),
-		ConsumedInboxIDs: append([]uuid.UUID(nil), r.consumedInboxIDs...),
-		FailureCode:      failure.ErrorCode,
-		FailureMessage:   failure.ErrorMessage,
+		Kind:              decisionFailed,
+		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
+		NextSequence:      r.nextSequence,
+		CustomStatus:      cloneRaw(r.customStatus),
+		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
+		FailureCode:       failure.ErrorCode,
+		FailureMessage:    failure.ErrorMessage,
+		ChildWaitFailures: append([]childWaitFailure(nil), r.childWaitFailures...),
 	}
 }
 
 func (r *workflowRunner) cancelledDecision() activationDecision {
 	return activationDecision{
-		Kind:             decisionCancelled,
-		Events:           append([]queuedHistoryEvent(nil), r.queuedEvents...),
-		NextSequence:     r.nextSequence,
-		CustomStatus:     cloneRaw(r.customStatus),
-		ConsumedInboxIDs: append([]uuid.UUID(nil), r.consumedInboxIDs...),
-		FailureCode:      "cancelled",
-		FailureMessage:   "workflow cancelled",
+		Kind:              decisionCancelled,
+		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
+		NextSequence:      r.nextSequence,
+		CustomStatus:      cloneRaw(r.customStatus),
+		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
+		FailureCode:       "cancelled",
+		FailureMessage:    "workflow cancelled",
+		ChildWaitFailures: append([]childWaitFailure(nil), r.childWaitFailures...),
 	}
 }
 
@@ -726,6 +970,7 @@ func (r *workflowRunner) continuedAsNewDecision(input json.RawMessage) activatio
 		CustomStatus:      cloneRaw(r.customStatus),
 		ContinuationInput: cloneRaw(input),
 		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
+		ChildWaitFailures: append([]childWaitFailure(nil), r.childWaitFailures...),
 	}
 }
 
@@ -737,6 +982,210 @@ func matchActivityScheduled(
 	return recorded.ActivityKey == key &&
 		recorded.ActivityType == activityType &&
 		equalJSON(recorded.Input, input)
+}
+
+func matchChildWorkflowScheduled(
+	recorded *enginehistory.ChildWorkflowScheduledPayload,
+	childKey, definitionName, definitionVersion string,
+	input json.RawMessage,
+	instanceKey string,
+) bool {
+	return recorded.ChildKey == childKey &&
+		recorded.DefinitionName == definitionName &&
+		recorded.DefinitionVersion == definitionVersion &&
+		recorded.ChildInstanceKey == instanceKey &&
+		equalJSON(recorded.Input, input)
+}
+
+func defaultChildInstanceKey(projectID, parentRunID uuid.UUID, childKey string) string {
+	input := projectID.String() + "\x00" + parentRunID.String() + "\x00" + childKey
+	sum := sha256.Sum256([]byte(input))
+	return "child:v1:" + hex.EncodeToString(sum[:])
+}
+
+func childWorkflowOutcomeFromRow(row *enginedb.ListChildWorkflowOutcomesByParentRunRow) childWorkflowOutcome {
+	if row == nil {
+		return childWorkflowOutcome{}
+	}
+
+	outcome := childWorkflowOutcome{
+		childKey:                   row.ChildKey,
+		requestedDefinitionName:    row.RequestedDefinitionName,
+		requestedDefinitionVersion: row.RequestedDefinitionVersion,
+		childInstanceID:            row.ChildInstanceID,
+		childInstanceKey:           row.ChildInstanceKey,
+		currentChildRunID:          row.CurrentChildRunID,
+		rootRunID:                  row.RootRunID,
+		childDepth:                 row.ChildDepth,
+		continuationCount:          row.ContinuationCount,
+		status:                     row.Status,
+		parentWaitFailed:           row.ParentWaitFailedAt.Valid,
+		parentWaitErrorCode:        stringValue(row.ParentWaitErrorCode),
+		parentWaitErrorMessage:     stringValue(row.ParentWaitErrorMessage),
+		terminalResult:             cloneRaw(row.TerminalResult),
+		terminalLastErrorCode:      stringValue(row.TerminalLastErrorCode),
+		terminalLastErrorMessage:   stringValue(row.TerminalLastErrorMessage),
+	}
+	if row.TerminalChildRunID.Valid {
+		outcome.terminalChildRunID = row.TerminalChildRunID.Bytes
+		outcome.terminalChildRunIDValid = true
+	}
+	if row.TerminalRunStatus.Valid {
+		outcome.terminalRunStatus = row.TerminalRunStatus.EngineRunLifecycleStatus
+		outcome.terminalRunStatusValid = true
+	}
+	return outcome
+}
+
+func (r *workflowRunner) consumeRecordedChildWorkflowOutcome(
+	childKey string,
+	event decodedEvent,
+	out any,
+) (consume, handled bool, err error) {
+	switch payload := event.Payload.(type) {
+	case *enginehistory.ChildWorkflowCompletedPayload:
+		if payload.ChildKey != childKey {
+			return false, false, nil
+		}
+		return true, true, unmarshalOptional(payload.Result, out)
+	case *enginehistory.ChildWorkflowFailedPayload:
+		if payload.ChildKey != childKey {
+			return false, false, nil
+		}
+		return true, true, publicworkflow.NewChildWorkflowError(payload.ErrorCode, payload.ErrorMessage, "failed")
+	case *enginehistory.ChildWorkflowCancelledPayload:
+		if payload.ChildKey != childKey {
+			return false, false, nil
+		}
+		code, message := normalizedChildCancelledError(payload.ErrorCode, payload.ErrorMessage)
+		return true, true, publicworkflow.NewChildWorkflowError(code, message, "cancelled")
+	case *enginehistory.ChildWorkflowTerminatedPayload:
+		if payload.ChildKey != childKey {
+			return false, false, nil
+		}
+		code, message := normalizedChildTerminatedError(payload.ErrorCode, payload.ErrorMessage)
+		return true, true, publicworkflow.NewChildWorkflowError(code, message, "terminated")
+	case *enginehistory.ChildWorkflowWaitFailedPayload:
+		if payload.ChildKey != childKey {
+			return false, false, nil
+		}
+		code, message := normalizedChildWaitFailure(payload.ErrorCode, payload.ErrorMessage)
+		return true, true, publicworkflow.NewChildWorkflowError(code, message, "wait_failed")
+	default:
+		return false, false, nil
+	}
+}
+
+func (r *workflowRunner) applyPendingChildWorkflowOutcome(outcome *childWorkflowOutcome, out any) error {
+	if childWorkflowWaitFailed(outcome) {
+		code, message := normalizedChildWaitFailure(outcome.parentWaitErrorCode, outcome.parentWaitErrorMessage)
+		payload := enginehistory.ChildWorkflowWaitFailedPayload{
+			ChildKey:          outcome.childKey,
+			ChildInstanceID:   outcome.childInstanceID.String(),
+			CurrentChildRunID: outcome.currentChildRunID.String(),
+			ErrorCode:         code,
+			ErrorMessage:      message,
+		}
+		r.queueEvent(enginehistory.EventChildWorkflowWaitFailed, payload)
+		r.childWaitFailures = append(r.childWaitFailures, childWaitFailure{
+			ChildKey:     outcome.childKey,
+			ErrorCode:    code,
+			ErrorMessage: message,
+		})
+		return publicworkflow.NewChildWorkflowError(code, message, "wait_failed")
+	}
+
+	switch outcome.status {
+	case enginedb.EngineChildWorkflowStatusCompleted:
+		r.queueEvent(enginehistory.EventChildWorkflowCompleted, enginehistory.ChildWorkflowCompletedPayload{
+			ChildKey:           outcome.childKey,
+			ChildInstanceID:    outcome.childInstanceID.String(),
+			TerminalChildRunID: outcome.terminalChildRunID.String(),
+			Result:             cloneRaw(outcome.terminalResult),
+		})
+		return unmarshalOptional(outcome.terminalResult, out)
+	case enginedb.EngineChildWorkflowStatusFailed:
+		r.queueEvent(enginehistory.EventChildWorkflowFailed, enginehistory.ChildWorkflowFailedPayload{
+			ChildKey:           outcome.childKey,
+			ChildInstanceID:    outcome.childInstanceID.String(),
+			TerminalChildRunID: outcome.terminalChildRunID.String(),
+			ErrorCode:          outcome.terminalLastErrorCode,
+			ErrorMessage:       outcome.terminalLastErrorMessage,
+		})
+		return publicworkflow.NewChildWorkflowError(
+			outcome.terminalLastErrorCode,
+			outcome.terminalLastErrorMessage,
+			"failed",
+		)
+	case enginedb.EngineChildWorkflowStatusCancelled:
+		code, message := normalizedChildCancelledError(outcome.terminalLastErrorCode, outcome.terminalLastErrorMessage)
+		r.queueEvent(enginehistory.EventChildWorkflowCancelled, enginehistory.ChildWorkflowCancelledPayload{
+			ChildKey:           outcome.childKey,
+			ChildInstanceID:    outcome.childInstanceID.String(),
+			TerminalChildRunID: outcome.terminalChildRunID.String(),
+			ErrorCode:          code,
+			ErrorMessage:       message,
+		})
+		return publicworkflow.NewChildWorkflowError(code, message, "cancelled")
+	case enginedb.EngineChildWorkflowStatusTerminated:
+		code, message := normalizedChildTerminatedError(outcome.terminalLastErrorCode, outcome.terminalLastErrorMessage)
+		r.queueEvent(enginehistory.EventChildWorkflowTerminated, enginehistory.ChildWorkflowTerminatedPayload{
+			ChildKey:           outcome.childKey,
+			ChildInstanceID:    outcome.childInstanceID.String(),
+			TerminalChildRunID: outcome.terminalChildRunID.String(),
+			ErrorCode:          code,
+			ErrorMessage:       message,
+		})
+		return publicworkflow.NewChildWorkflowError(code, message, "terminated")
+	default:
+		return nil
+	}
+}
+
+func childWorkflowIsTerminal(status enginedb.EngineChildWorkflowStatus) bool {
+	switch status {
+	case enginedb.EngineChildWorkflowStatusCompleted,
+		enginedb.EngineChildWorkflowStatusFailed,
+		enginedb.EngineChildWorkflowStatusCancelled,
+		enginedb.EngineChildWorkflowStatusTerminated:
+		return true
+	default:
+		return false
+	}
+}
+
+func childWorkflowWaitFailed(outcome *childWorkflowOutcome) bool {
+	return outcome.parentWaitFailed || outcome.continuationCount >= maxContinuationFollowDepth
+}
+
+func normalizedChildWaitFailure(code, message string) (normalizedCode, normalizedMessage string) {
+	if code == "" {
+		code = childWaitFailedContinuationCode
+	}
+	if message == "" {
+		message = childWaitFailedContinuationMessage
+	}
+	return code, message
+}
+
+func normalizedChildCancelledError(code, message string) (normalizedCode, normalizedMessage string) {
+	if code == "" {
+		code = "cancelled"
+	}
+	if message == "" {
+		message = "workflow cancelled"
+	}
+	return code, message
+}
+
+func normalizedChildTerminatedError(code, message string) (normalizedCode, normalizedMessage string) {
+	if code == "" {
+		code = "terminated"
+	}
+	if message == "" {
+		message = "workflow terminated"
+	}
+	return code, message
 }
 
 func mustMarshalPayload(payload any) json.RawMessage {

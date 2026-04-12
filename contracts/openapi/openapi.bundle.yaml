@@ -825,9 +825,20 @@ paths:
           description: Filter by engine instance key
           schema:
             type: string
+        - name: engine_run_id
+          in: query
+          description: Filter by engine run ID
+          schema:
+            type: string
+            format: uuid
         - name: engine_definition_name
           in: query
           description: Filter by engine definition name
+          schema:
+            type: string
+        - name: engine_definition_version
+          in: query
+          description: Filter by engine definition version
           schema:
             type: string
         - name: engine_run_status
@@ -845,6 +856,28 @@ paths:
               - cancelled
               - terminated
               - continued_as_new
+        - name: engine_parent_run_id
+          in: query
+          description: Filter by engine parent run ID
+          schema:
+            type: string
+            format: uuid
+        - name: engine_root_run_id
+          in: query
+          description: Filter by engine root run ID
+          schema:
+            type: string
+            format: uuid
+        - name: engine_child_key
+          in: query
+          description: Filter by engine child key
+          schema:
+            type: string
+        - name: engine_child_depth
+          in: query
+          description: Filter by engine child depth
+          schema:
+            type: integer
         - name: engine_projection_state
           in: query
           description: Filter by engine projection state
@@ -1247,6 +1280,16 @@ components:
           type: string
         projection_state:
           $ref: '#/components/schemas/EngineProjectionState'
+        parent_run_id:
+          type: string
+          format: uuid
+        root_run_id:
+          type: string
+          format: uuid
+        child_key:
+          type: string
+        child_depth:
+          type: integer
     EngineWaitState:
       type: object
       additionalProperties: true
@@ -1263,6 +1306,8 @@ components:
           type: string
           format: date-time
         signal_name:
+          type: string
+        child_key:
           type: string
     EnginePendingWork:
       type: object

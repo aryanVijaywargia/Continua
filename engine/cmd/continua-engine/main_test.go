@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"io/fs"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	enginepgmigrations "github.com/continua-ai/continua/engine/db/migrations/postgres"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
 )
@@ -44,14 +47,15 @@ func TestMigrateCommandsRoundTrip(t *testing.T) {
 	t.Setenv("ENGINE_DATABASE_URL", db.DatabaseURL)
 	t.Setenv("DATABASE_URL", "")
 
-	stdout, stderr, err := executeCommand(t, "migrate", "down", "8")
+	runtimeRollbackSteps := rollbackStepsThroughVersion(t, 2)
+	stdout, stderr, err := executeCommand(t, "migrate", "down", strconv.Itoa(runtimeRollbackSteps))
 	if err != nil {
-		t.Fatalf("execute migrate down 8: %v", err)
+		t.Fatalf("execute migrate down %d: %v", runtimeRollbackSteps, err)
 	}
 	if stderr != "" {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
-	if !strings.Contains(stdout, "Rolled back 8 engine migration step(s)") {
+	if !strings.Contains(stdout, "Rolled back "+strconv.Itoa(runtimeRollbackSteps)+" engine migration step(s)") {
 		t.Fatalf("unexpected migrate down output: %q", stdout)
 	}
 
@@ -143,9 +147,10 @@ func TestMigrateDownRejectsWaitingRuns(t *testing.T) {
 		t.Fatalf("TransitionRunToWaiting() error = %v", err)
 	}
 
-	stdout, stderr, err := executeCommand(t, "migrate", "down", "8")
+	runtimeRollbackSteps := rollbackStepsThroughVersion(t, 2)
+	stdout, stderr, err := executeCommand(t, "migrate", "down", strconv.Itoa(runtimeRollbackSteps))
 	if err == nil {
-		t.Fatal("expected migrate down 8 to fail when waiting rows exist")
+		t.Fatalf("expected migrate down %d to fail when waiting rows exist", runtimeRollbackSteps)
 	}
 	if stdout != "" {
 		t.Fatalf("expected empty stdout on failed rollback, got %q", stdout)
@@ -265,8 +270,9 @@ func TestBackfillMigrationRecomputesInstanceStatusesFromLatestRun(t *testing.T) 
 		t.Fatalf("corrupt instance statuses: %v", err)
 	}
 
-	if stdout, stderr, err := executeCommand(t, "migrate", "down", "5"); err != nil {
-		t.Fatalf("execute migrate down 5: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	backfillRollbackSteps := rollbackStepsThroughVersion(t, 5)
+	if stdout, stderr, err := executeCommand(t, "migrate", "down", strconv.Itoa(backfillRollbackSteps)); err != nil {
+		t.Fatalf("execute migrate down %d: %v (stdout=%q stderr=%q)", backfillRollbackSteps, err, stdout, stderr)
 	}
 	if stdout, stderr, err := executeCommand(t, "migrate", "up"); err != nil {
 		t.Fatalf("execute migrate up after backfill rollback: %v (stdout=%q stderr=%q)", err, stdout, stderr)
@@ -301,6 +307,35 @@ func executeCommand(t *testing.T, args ...string) (string, string, error) {
 
 	err := cmd.Execute()
 	return stdout.String(), stderr.String(), err
+}
+
+func rollbackStepsThroughVersion(t *testing.T, version int) int {
+	t.Helper()
+
+	entries, err := fs.Glob(enginepgmigrations.Migrations, "*.up.sql")
+	if err != nil {
+		t.Fatalf("glob engine migrations: %v", err)
+	}
+
+	steps := 0
+	for _, entry := range entries {
+		prefix, _, ok := strings.Cut(entry, "_")
+		if !ok {
+			continue
+		}
+		migrationVersion, err := strconv.Atoi(prefix)
+		if err != nil {
+			continue
+		}
+		if migrationVersion >= version {
+			steps++
+		}
+	}
+	if steps == 0 {
+		t.Fatalf("expected rollback steps for migration version %d", version)
+	}
+
+	return steps
 }
 
 func schemaExists(t *testing.T, databaseURL string, schemaName string) bool {

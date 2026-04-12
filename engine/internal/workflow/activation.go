@@ -39,6 +39,11 @@ type Activator struct {
 	definitions *Registry
 }
 
+type childWorkflowBindingState struct {
+	relationship  *enginedb.EngineChildWorkflow
+	childInstance *enginedb.EngineInstance
+}
+
 func NewActivator(store *store.Store, definitions *Registry) *Activator {
 	return &Activator{
 		store:       store,
@@ -76,6 +81,10 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 	if err != nil {
 		return err
 	}
+	childWorkflows, err := tx.ListChildWorkflowOutcomesByParentRun(ctx, run.ProjectID, run.ID)
+	if err != nil {
+		return err
+	}
 	inboxRows, err := tx.ListPendingInboxByRun(ctx, run.ID)
 	if err != nil {
 		return err
@@ -103,7 +112,17 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 		return tx.Commit(ctx)
 	}
 
-	decision, err := replayDefinition(definition, historyRows, activityTasks, inboxRows)
+	decision, err := replayDefinitionForRunWithValidator(
+		definition,
+		&run,
+		historyRows,
+		activityTasks,
+		childWorkflows,
+		inboxRows,
+		func(scheduled enginehistory.ChildWorkflowScheduledPayload) error {
+			return a.validateChildWorkflowScheduling(ctx, tx, &run, &scheduled)
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -138,6 +157,7 @@ func (a *Activator) commitDecision(
 	sequence := decision.NextSequence
 	var activityHistoryID *int64
 	var timerHistoryID *int64
+	var childScheduleHistoryID *int64
 	var latestHistoryID *int64
 
 	for _, inboxID := range decision.ConsumedInboxIDs {
@@ -165,9 +185,28 @@ func (a *Activator) commitDecision(
 			activityHistoryID = &appended.ID
 		case enginehistory.EventTimerScheduled:
 			timerHistoryID = &appended.ID
+		case enginehistory.EventChildWorkflowScheduled:
+			childScheduleHistoryID = &appended.ID
 		}
 		latestHistoryID = &appended.ID
 		sequence++
+	}
+
+	if len(decision.ChildWaitFailures) > 0 {
+		if err := a.commitChildWaitFailures(ctx, tx, run, decision.ChildWaitFailures); err != nil {
+			return err
+		}
+	}
+
+	if decision.NewChildWorkflow != nil {
+		if childScheduleHistoryID == nil {
+			return fmt.Errorf("child workflow schedule event missing history id")
+		}
+		parentStartedEvent, err := a.commitNewChildWorkflow(ctx, tx, instance, run, decision.NewChildWorkflow, sequence)
+		if err != nil {
+			return err
+		}
+		latestHistoryID = &parentStartedEvent.ID
 	}
 
 	// Non-cancel activation paths still maintain the stored per-trace freshness
@@ -236,37 +275,52 @@ func (a *Activator) commitDecision(
 		}
 		return nil
 	case decisionCompleted:
-		if _, err := tx.TransitionRunToCompleted(ctx, enginedb.TransitionRunToCompletedParams{
+		updatedRun, err := tx.TransitionRunToCompleted(ctx, enginedb.TransitionRunToCompletedParams{
 			ID:           run.ID,
 			ClaimedBy:    workerClaimedBy,
 			Result:       decision.Result,
 			CustomStatus: decision.CustomStatus,
-		}); err != nil {
+		})
+		if err != nil {
+			return err
+		}
+		if err := a.commitChildTerminalTransition(ctx, tx, &updatedRun, enginedb.EngineChildWorkflowStatusCompleted); err != nil {
 			return err
 		}
 		return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusCompleted)
 	case decisionFailed:
-		if _, err := tx.TransitionRunToFailed(ctx, enginedb.TransitionRunToFailedParams{
+		updatedRun, err := tx.TransitionRunToFailed(ctx, enginedb.TransitionRunToFailedParams{
 			ID:               run.ID,
 			ClaimedBy:        workerClaimedBy,
 			CustomStatus:     decision.CustomStatus,
 			LastErrorCode:    &decision.FailureCode,
 			LastErrorMessage: &decision.FailureMessage,
-		}); err != nil {
+		})
+		if err != nil {
+			return err
+		}
+		if err := a.commitChildTerminalTransition(ctx, tx, &updatedRun, enginedb.EngineChildWorkflowStatusFailed); err != nil {
 			return err
 		}
 		return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusFailed)
 	case decisionCancelled:
-		if _, err := tx.TransitionRunToCancelled(ctx, enginedb.TransitionRunToCancelledParams{
+		updatedRun, err := tx.TransitionRunToCancelled(ctx, enginedb.TransitionRunToCancelledParams{
 			ID:           run.ID,
 			CustomStatus: decision.CustomStatus,
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 		if _, err := tx.CancelOpenActivityTasksByRun(ctx, run.ID); err != nil {
 			return err
 		}
 		if _, err := tx.DiscardOpenInboxItemsByRun(ctx, run.ID); err != nil {
+			return err
+		}
+		if err := a.enqueueChildCancelCascade(ctx, tx, &updatedRun); err != nil {
+			return err
+		}
+		if err := a.commitChildTerminalTransition(ctx, tx, &updatedRun, enginedb.EngineChildWorkflowStatusCancelled); err != nil {
 			return err
 		}
 		return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusCancelled)
@@ -302,14 +356,30 @@ func (a *Activator) commitContinuationDecision(
 	}
 
 	startedAt := timeNowUTC()
-	nextRun, err := tx.CreateRun(ctx, enginedb.CreateRunParams{
-		ProjectID:          run.ProjectID,
-		InstanceID:         run.InstanceID,
-		RunNumber:          run.RunNumber + 1,
-		DefinitionVersion:  run.DefinitionVersion,
-		ReadyAt:            startedAt,
-		ContinuedFromRunID: pgtype.UUID{Bytes: run.ID, Valid: true},
-	})
+	var nextRun enginedb.EngineRun
+	if run.ParentRunID.Valid {
+		nextRun, err = tx.CreateChildRun(ctx, enginedb.CreateChildRunParams{
+			ProjectID:          run.ProjectID,
+			InstanceID:         run.InstanceID,
+			RunNumber:          run.RunNumber + 1,
+			DefinitionVersion:  run.DefinitionVersion,
+			ReadyAt:            startedAt,
+			ContinuedFromRunID: pgtype.UUID{Bytes: run.ID, Valid: true},
+			ParentRunID:        run.ParentRunID,
+			RootRunID:          run.RootRunID,
+			ChildKey:           cloneStringPtr(run.ChildKey),
+			ChildDepth:         run.ChildDepth,
+		})
+	} else {
+		nextRun, err = tx.CreateRun(ctx, enginedb.CreateRunParams{
+			ProjectID:          run.ProjectID,
+			InstanceID:         run.InstanceID,
+			RunNumber:          run.RunNumber + 1,
+			DefinitionVersion:  run.DefinitionVersion,
+			ReadyAt:            startedAt,
+			ContinuedFromRunID: pgtype.UUID{Bytes: run.ID, Valid: true},
+		})
+	}
 	if err != nil {
 		return err
 	}
@@ -344,11 +414,416 @@ func (a *Activator) commitContinuationDecision(
 		return err
 	}
 
+	if run.ParentRunID.Valid {
+		childWorkflow, err := tx.UpdateChildWorkflowContinuation(ctx, enginedb.UpdateChildWorkflowContinuationParams{
+			ProjectID:          run.ProjectID,
+			PreviousChildRunID: run.ID,
+			NextChildRunID:     nextRun.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if childWorkflow.ContinuationCount >= maxContinuationFollowDepth && !childWorkflow.ParentWaitFailedAt.Valid {
+			if _, err := tx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
+				ID:       childWorkflow.ParentRunID,
+				ChildKey: childWorkflow.ChildKey,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
 	if err := createContinuationTraceShell(ctx, tx, instance, &nextRun, traceSeed, &startedEvent, decision.ContinuationInput); err != nil {
 		return err
 	}
 
 	return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusActive)
+}
+
+func (a *Activator) commitChildWaitFailures(
+	ctx context.Context,
+	tx *store.Tx,
+	run *enginedb.EngineRun,
+	failures []childWaitFailure,
+) error {
+	if run == nil {
+		return errors.New("run is required")
+	}
+	for i := range failures {
+		failure := failures[i]
+		errorCode := failure.ErrorCode
+		errorMessage := failure.ErrorMessage
+		if _, err := tx.MarkChildWorkflowParentWaitFailed(ctx, enginedb.MarkChildWorkflowParentWaitFailedParams{
+			ProjectID:              run.ProjectID,
+			ParentRunID:            run.ID,
+			ChildKey:               failure.ChildKey,
+			ParentWaitErrorCode:    &errorCode,
+			ParentWaitErrorMessage: &errorMessage,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *Activator) commitNewChildWorkflow(
+	ctx context.Context,
+	tx *store.Tx,
+	parentInstance *enginedb.EngineInstance,
+	parentRun *enginedb.EngineRun,
+	child *newChildWorkflow,
+	sequence int32,
+) (enginedb.EngineHistory, error) {
+	if parentInstance == nil || parentRun == nil || child == nil {
+		return enginedb.EngineHistory{}, errors.New("parent instance, parent run, and child workflow are required")
+	}
+
+	childInstance, childRun, childStartedEvent, createdChild, err := a.createOrAttachChildExecution(ctx, tx, parentInstance, parentRun, child)
+	if err != nil {
+		return enginedb.EngineHistory{}, err
+	}
+
+	parentStartedPayload, err := enginehistory.MarshalPayload(enginehistory.ChildWorkflowStartedPayload{
+		ChildKey:         child.Scheduled.ChildKey,
+		ChildInstanceID:  childInstance.ID.String(),
+		ChildInstanceKey: childInstance.InstanceKey,
+		ChildRunID:       childRun.ID.String(),
+		RootRunID:        childRun.RootRunID.String(),
+		ChildDepth:       childRun.ChildDepth,
+	})
+	if err != nil {
+		return enginedb.EngineHistory{}, err
+	}
+	parentStartedEvent, err := tx.AppendHistory(ctx, enginedb.AppendHistoryParams{
+		ProjectID:  parentRun.ProjectID,
+		InstanceID: parentRun.InstanceID,
+		RunID:      parentRun.ID,
+		SequenceNo: sequence,
+		EventType:  enginehistory.EventChildWorkflowStarted,
+		Payload:    parentStartedPayload,
+	})
+	if err != nil {
+		return enginedb.EngineHistory{}, err
+	}
+
+	if createdChild && childStartedEvent != nil {
+		traceSeed, err := loadContinuationTraceSeed(ctx, tx, parentRun.ProjectID, parentRun.ID)
+		if err != nil {
+			return enginedb.EngineHistory{}, err
+		}
+		traceName := &childInstance.DefinitionName
+		if err := createProjectedTraceShell(ctx, tx, &childInstance, &childRun, traceSeed, childStartedEvent, child.Scheduled.Input, traceName); err != nil {
+			return enginedb.EngineHistory{}, err
+		}
+	}
+
+	return parentStartedEvent, nil
+}
+
+func (a *Activator) createOrAttachChildExecution(
+	ctx context.Context,
+	tx *store.Tx,
+	parentInstance *enginedb.EngineInstance,
+	parentRun *enginedb.EngineRun,
+	child *newChildWorkflow,
+) (enginedb.EngineInstance, enginedb.EngineRun, *enginedb.EngineHistory, bool, error) {
+	if parentInstance == nil || parentRun == nil || child == nil {
+		return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, errors.New("parent instance, parent run, and child workflow are required")
+	}
+
+	bindingState, err := a.loadChildWorkflowBindingState(ctx, tx, parentRun, &child.Scheduled)
+	if err != nil {
+		return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, err
+	}
+
+	if bindingState.relationship != nil {
+		childRun, err := tx.GetRun(ctx, bindingState.relationship.CurrentChildRunID)
+		if err != nil {
+			return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, err
+		}
+		return *bindingState.childInstance, childRun, nil, false, nil
+	}
+
+	var (
+		childInstance enginedb.EngineInstance
+	)
+	if bindingState.childInstance != nil {
+		childInstance = *bindingState.childInstance
+	} else {
+		childInstance, _, err = a.getOrCreateChildInstance(ctx, tx, parentRun, child)
+		if err != nil {
+			return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, err
+		}
+	}
+
+	startedAt := timeNowUTC()
+	childKey := child.Scheduled.ChildKey
+	childRun, err := tx.CreateChildRun(ctx, enginedb.CreateChildRunParams{
+		ProjectID:          parentRun.ProjectID,
+		InstanceID:         childInstance.ID,
+		RunNumber:          1,
+		DefinitionVersion:  child.Scheduled.DefinitionVersion,
+		ReadyAt:            startedAt,
+		ContinuedFromRunID: pgtype.UUID{},
+		ParentRunID:        pgtype.UUID{Bytes: parentRun.ID, Valid: true},
+		RootRunID:          parentRun.RootRunID,
+		ChildKey:           &childKey,
+		ChildDepth:         parentRun.ChildDepth + 1,
+	})
+	if err != nil {
+		return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, err
+	}
+
+	childStartedPayload, err := enginehistory.MarshalPayload(enginehistory.WorkflowStartedPayload{
+		DefinitionName:    child.Scheduled.DefinitionName,
+		DefinitionVersion: child.Scheduled.DefinitionVersion,
+		InstanceKey:       child.Scheduled.ChildInstanceKey,
+		Input:             cloneRaw(child.Scheduled.Input),
+	})
+	if err != nil {
+		return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, err
+	}
+	childStartedEvent, err := tx.AppendHistory(ctx, enginedb.AppendHistoryParams{
+		ProjectID:  childRun.ProjectID,
+		InstanceID: childRun.InstanceID,
+		RunID:      childRun.ID,
+		SequenceNo: 1,
+		EventType:  enginehistory.EventWorkflowStarted,
+		Payload:    childStartedPayload,
+	})
+	if err != nil {
+		return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, err
+	}
+
+	if _, err := tx.CreateChildWorkflow(ctx, enginedb.CreateChildWorkflowParams{
+		ProjectID:                  parentRun.ProjectID,
+		ParentInstanceID:           parentInstance.ID,
+		ParentRunID:                parentRun.ID,
+		ChildKey:                   child.Scheduled.ChildKey,
+		RequestedDefinitionName:    child.Scheduled.DefinitionName,
+		RequestedDefinitionVersion: child.Scheduled.DefinitionVersion,
+		ChildInstanceID:            childInstance.ID,
+		ChildInstanceKey:           child.Scheduled.ChildInstanceKey,
+		CurrentChildRunID:          childRun.ID,
+		RootRunID:                  childRun.RootRunID,
+		ChildDepth:                 childRun.ChildDepth,
+	}); err != nil {
+		return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, err
+	}
+
+	return childInstance, childRun, &childStartedEvent, true, nil
+}
+
+func (a *Activator) validateChildWorkflowScheduling(
+	ctx context.Context,
+	tx *store.Tx,
+	parentRun *enginedb.EngineRun,
+	scheduled *enginehistory.ChildWorkflowScheduledPayload,
+) error {
+	_, err := a.loadChildWorkflowBindingState(ctx, tx, parentRun, scheduled)
+	return err
+}
+
+func (a *Activator) loadChildWorkflowBindingState(
+	ctx context.Context,
+	tx *store.Tx,
+	parentRun *enginedb.EngineRun,
+	scheduled *enginehistory.ChildWorkflowScheduledPayload,
+) (childWorkflowBindingState, error) {
+	if parentRun == nil || scheduled == nil {
+		return childWorkflowBindingState{}, errors.New("parent run and scheduled child workflow are required")
+	}
+
+	if existing, err := tx.GetChildWorkflowByParentRunAndKeyForUpdate(ctx, enginedb.GetChildWorkflowByParentRunAndKeyForUpdateParams{
+		ProjectID:   parentRun.ProjectID,
+		ParentRunID: parentRun.ID,
+		ChildKey:    scheduled.ChildKey,
+	}); err == nil {
+		if existing.RequestedDefinitionName != scheduled.DefinitionName ||
+			existing.RequestedDefinitionVersion != scheduled.DefinitionVersion ||
+			existing.ChildInstanceKey != scheduled.ChildInstanceKey {
+			return childWorkflowBindingState{}, codedWorkflowError{
+				code:    "instance_conflict",
+				message: "child workflow binding does not match the existing child relationship",
+			}
+		}
+		childInstance, err := tx.GetInstance(ctx, existing.ChildInstanceID)
+		if err != nil {
+			return childWorkflowBindingState{}, err
+		}
+		return childWorkflowBindingState{
+			relationship:  &existing,
+			childInstance: &childInstance,
+		}, nil
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return childWorkflowBindingState{}, err
+	}
+
+	childInstance, err := tx.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
+		ProjectID:   parentRun.ProjectID,
+		InstanceKey: scheduled.ChildInstanceKey,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return childWorkflowBindingState{}, nil
+		}
+		return childWorkflowBindingState{}, err
+	}
+	if childInstance.DefinitionName != scheduled.DefinitionName {
+		return childWorkflowBindingState{}, codedWorkflowError{
+			code:    "instance_conflict",
+			message: "child instance key is already bound to a different definition",
+		}
+	}
+
+	relationship, err := tx.GetChildWorkflowByChildInstanceForUpdate(ctx, enginedb.GetChildWorkflowByChildInstanceForUpdateParams{
+		ProjectID:       parentRun.ProjectID,
+		ChildInstanceID: childInstance.ID,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return childWorkflowBindingState{}, codedWorkflowError{
+				code:    "instance_conflict",
+				message: "child instance key is already attached to a different workflow relationship",
+			}
+		}
+		return childWorkflowBindingState{}, err
+	}
+	if relationship.ParentRunID != parentRun.ID ||
+		relationship.ChildKey != scheduled.ChildKey ||
+		relationship.RequestedDefinitionName != scheduled.DefinitionName ||
+		relationship.RequestedDefinitionVersion != scheduled.DefinitionVersion ||
+		relationship.ChildInstanceKey != scheduled.ChildInstanceKey {
+		return childWorkflowBindingState{}, codedWorkflowError{
+			code:    "instance_conflict",
+			message: "child instance key is already attached to a different workflow relationship",
+		}
+	}
+	return childWorkflowBindingState{
+		relationship:  &relationship,
+		childInstance: &childInstance,
+	}, nil
+}
+
+func (a *Activator) getOrCreateChildInstance(
+	ctx context.Context,
+	tx *store.Tx,
+	parentRun *enginedb.EngineRun,
+	child *newChildWorkflow,
+) (enginedb.EngineInstance, bool, error) {
+	if _, err := tx.Tx().Exec(ctx, "SAVEPOINT child_create_instance"); err != nil {
+		return enginedb.EngineInstance{}, false, err
+	}
+	instance, err := tx.CreateInstance(ctx, enginedb.CreateInstanceParams{
+		ProjectID:      parentRun.ProjectID,
+		InstanceKey:    child.Scheduled.ChildInstanceKey,
+		DefinitionName: child.Scheduled.DefinitionName,
+	})
+	if err == nil {
+		if _, releaseErr := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT child_create_instance"); releaseErr != nil {
+			return enginedb.EngineInstance{}, false, releaseErr
+		}
+		return instance, true, nil
+	}
+
+	if _, rollbackErr := tx.Tx().Exec(ctx, "ROLLBACK TO SAVEPOINT child_create_instance"); rollbackErr != nil {
+		return enginedb.EngineInstance{}, false, rollbackErr
+	}
+	if _, releaseErr := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT child_create_instance"); releaseErr != nil {
+		return enginedb.EngineInstance{}, false, releaseErr
+	}
+	if !errors.Is(err, store.ErrAlreadyExists) {
+		return enginedb.EngineInstance{}, false, err
+	}
+
+	instance, err = tx.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
+		ProjectID:   parentRun.ProjectID,
+		InstanceKey: child.Scheduled.ChildInstanceKey,
+	})
+	if err != nil {
+		return enginedb.EngineInstance{}, false, err
+	}
+	if instance.DefinitionName != child.Scheduled.DefinitionName {
+		return enginedb.EngineInstance{}, false, codedWorkflowError{
+			code:    "instance_conflict",
+			message: "child instance key is already bound to a different definition",
+		}
+	}
+	return instance, false, nil
+}
+
+func (a *Activator) enqueueChildCancelCascade(ctx context.Context, tx *store.Tx, run *enginedb.EngineRun) error {
+	if run == nil {
+		return errors.New("run is required")
+	}
+	children, err := tx.ListActiveChildWorkflowsByParentRun(ctx, run.ProjectID, run.ID)
+	if err != nil {
+		return err
+	}
+	payload, err := enginehistory.MarshalPayload(enginehistory.CancelRequestedPayload{})
+	if err != nil {
+		return err
+	}
+	for i := range children {
+		child := children[i]
+		dedupeKey := "cancel:" + child.CurrentChildRunID.String()
+		if _, err := tx.Tx().Exec(ctx, "SAVEPOINT child_cancel_inbox"); err != nil {
+			return err
+		}
+		_, err := tx.CreateInboxItem(ctx, enginedb.CreateInboxItemParams{
+			ProjectID:   child.ProjectID,
+			InstanceID:  child.ChildInstanceID,
+			RunID:       pgtype.UUID{Bytes: child.CurrentChildRunID, Valid: true},
+			Kind:        "cancel",
+			Payload:     payload,
+			AvailableAt: timeNowUTC(),
+			DedupeKey:   &dedupeKey,
+		})
+		if err == nil {
+			if _, releaseErr := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT child_cancel_inbox"); releaseErr != nil {
+				return releaseErr
+			}
+			continue
+		}
+		if _, rollbackErr := tx.Tx().Exec(ctx, "ROLLBACK TO SAVEPOINT child_cancel_inbox"); rollbackErr != nil {
+			return rollbackErr
+		}
+		if _, releaseErr := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT child_cancel_inbox"); releaseErr != nil {
+			return releaseErr
+		}
+		if !errors.Is(err, store.ErrAlreadyExists) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *Activator) commitChildTerminalTransition(
+	ctx context.Context,
+	tx *store.Tx,
+	run *enginedb.EngineRun,
+	status enginedb.EngineChildWorkflowStatus,
+) error {
+	if run == nil || !run.ParentRunID.Valid {
+		return nil
+	}
+	childWorkflow, err := tx.UpdateChildWorkflowTerminal(ctx, enginedb.UpdateChildWorkflowTerminalParams{
+		ProjectID:          run.ProjectID,
+		CurrentChildRunID:  run.ID,
+		TerminalChildRunID: pgtype.UUID{Bytes: run.ID, Valid: true},
+		Status:             status,
+	})
+	if err != nil {
+		return err
+	}
+	if childWorkflow.ParentWaitFailedAt.Valid {
+		return nil
+	}
+	_, err = tx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
+		ID:       childWorkflow.ParentRunID,
+		ChildKey: childWorkflow.ChildKey,
+	})
+	return err
 }
 
 func updateRunInstanceStatus(
@@ -433,9 +908,25 @@ func createContinuationTraceShell(
 		return errors.New("continuation trace shell requires tx, instance, run, seed, and started event")
 	}
 
+	return createProjectedTraceShell(ctx, tx, instance, run, seed, startedEvent, input, seed.Name)
+}
+
+func createProjectedTraceShell(
+	ctx context.Context,
+	tx *store.Tx,
+	instance *enginedb.EngineInstance,
+	run *enginedb.EngineRun,
+	seed *continuationTraceSeed,
+	startedEvent *enginedb.EngineHistory,
+	input json.RawMessage,
+	traceName *string,
+) error {
+	if tx == nil || instance == nil || run == nil || seed == nil || startedEvent == nil {
+		return errors.New("projected trace shell requires tx, instance, run, seed, and started event")
+	}
+
 	runStatus := string(enginedb.EngineRunLifecycleStatusQueued)
 	projectionState := publicprojection.StateUpToDate.String()
-	traceName := seed.Name
 	traceRowID := uuid.UUID{}
 
 	if err := tx.Tx().QueryRow(ctx, `
@@ -463,6 +954,10 @@ func createContinuationTraceShell(
 		    engine_pending_inbox_items,
 		    engine_definition_name,
 		    engine_definition_version,
+		    engine_parent_run_id,
+		    engine_root_run_id,
+		    engine_child_key,
+		    engine_child_depth,
 		    engine_projection_state,
 		    engine_latest_history_id,
 		    engine_last_projected_history_id,
@@ -471,11 +966,12 @@ func createContinuationTraceShell(
 		VALUES (
 		    $1, $2, $3, $4, $5, $6,
 		    $7, $8, $9, $10, $11,
-		    'running', $12, NULL,
-		    $13, $14, $15,
-		    NULL, NULL, 0, 0,
-		    $16, $17, $18, $19, $19, $20
-		)
+			    'running', $12, NULL,
+			    $13, $14, $15,
+			    NULL, NULL, 0, 0,
+			    $16, $17, $18, $19, $20, $21,
+			    $22, $23, $23, $24
+			)
 		RETURNING id
 	`,
 		run.ProjectID,
@@ -495,6 +991,10 @@ func createContinuationTraceShell(
 		runStatus,
 		instance.DefinitionName,
 		run.DefinitionVersion,
+		run.ParentRunID,
+		run.RootRunID,
+		run.ChildKey,
+		run.ChildDepth,
 		projectionState,
 		startedEvent.ID,
 		startedEvent.CreatedAt,
@@ -559,6 +1059,14 @@ func cloneBytes(raw []byte) []byte {
 		return nil
 	}
 	return append([]byte(nil), raw...)
+}
+
+func cloneStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func timeNowUTC() time.Time {

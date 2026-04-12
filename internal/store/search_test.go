@@ -786,38 +786,55 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	engineRunID := uuid.New()
+	engineParentRunID := uuid.New()
+	engineRootRunID := uuid.New()
+	otherRunID := uuid.New()
+	completedRunID := uuid.New()
+
 	_, err = pool.Exec(ctx, `
 		UPDATE traces
 		SET engine_run_id = $2,
 		    engine_instance_key = 'instance-checkout',
 		    engine_definition_name = 'checkout',
+		    engine_definition_version = 'v1',
 		    engine_run_status = 'waiting',
+		    engine_parent_run_id = $3,
+		    engine_root_run_id = $4,
+		    engine_child_key = 'charge-card',
+		    engine_child_depth = 2,
 		    engine_projection_state = 'catching_up',
 		    engine_projection_updated_at = NOW()
 		WHERE id = $1
-	`, engineTrace.ID, uuid.New())
+	`, engineTrace.ID, engineRunID, engineParentRunID, engineRootRunID)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
 		UPDATE traces
 		SET engine_run_id = $2,
 		    engine_instance_key = 'instance-billing',
 		    engine_definition_name = 'billing',
+		    engine_definition_version = 'v2',
 		    engine_run_status = 'suspended',
+		    engine_root_run_id = $2,
+		    engine_child_depth = 0,
 		    engine_projection_state = 'up_to_date',
 		    engine_projection_updated_at = NOW()
 		WHERE id = $1
-	`, otherEngineTrace.ID, uuid.New())
+	`, otherEngineTrace.ID, otherRunID)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
 		UPDATE traces
 		SET engine_run_id = $2,
 		    engine_instance_key = 'instance-fulfillment',
 		    engine_definition_name = 'fulfillment',
+		    engine_definition_version = 'v3',
 		    engine_run_status = 'completed',
+		    engine_root_run_id = $2,
+		    engine_child_depth = 0,
 		    engine_projection_state = 'up_to_date',
 		    engine_projection_updated_at = NOW()
 		WHERE id = $1
-	`, completedEngineTrace.ID, uuid.New())
+	`, completedEngineTrace.ID, completedRunID)
 	require.NoError(t, err)
 
 	byInstance, err := s.ListTracesFiltered(ctx, store.TraceFilter{
@@ -838,6 +855,32 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	require.Len(t, byDefinition.Traces, 1)
 	assert.Equal(t, engineTrace.ID, byDefinition.Traces[0].ID)
 
+	byRunID, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:   projectID,
+		EngineRunID: &engineRunID,
+		Limit:       10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byRunID.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byRunID.Traces[0].ID)
+	assert.True(t, byRunID.Traces[0].EngineParentRunID.Valid)
+	assert.Equal(t, engineParentRunID, uuid.UUID(byRunID.Traces[0].EngineParentRunID.Bytes))
+	assert.True(t, byRunID.Traces[0].EngineRootRunID.Valid)
+	assert.Equal(t, engineRootRunID, uuid.UUID(byRunID.Traces[0].EngineRootRunID.Bytes))
+	require.NotNil(t, byRunID.Traces[0].EngineChildKey)
+	assert.Equal(t, "charge-card", *byRunID.Traces[0].EngineChildKey)
+	require.NotNil(t, byRunID.Traces[0].EngineChildDepth)
+	assert.EqualValues(t, 2, *byRunID.Traces[0].EngineChildDepth)
+
+	byDefinitionVersion, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:               projectID,
+		EngineDefinitionVersion: "v1",
+		Limit:                   10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byDefinitionVersion.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byDefinitionVersion.Traces[0].ID)
+
 	byRunStatus, err := s.ListTracesFiltered(ctx, store.TraceFilter{
 		ProjectID:       projectID,
 		EngineRunStatus: "waiting",
@@ -856,6 +899,43 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	require.Len(t, bySuspendedRunStatus.Traces, 1)
 	assert.Equal(t, otherEngineTrace.ID, bySuspendedRunStatus.Traces[0].ID)
 
+	byParentRunID, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:         projectID,
+		EngineParentRunID: &engineParentRunID,
+		Limit:             10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byParentRunID.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byParentRunID.Traces[0].ID)
+
+	byRootRunID, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:       projectID,
+		EngineRootRunID: &engineRootRunID,
+		Limit:           10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byRootRunID.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byRootRunID.Traces[0].ID)
+
+	byChildKey, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:      projectID,
+		EngineChildKey: "charge-card",
+		Limit:          10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byChildKey.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byChildKey.Traces[0].ID)
+
+	childDepth := int32(2)
+	byChildDepth, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:        projectID,
+		EngineChildDepth: &childDepth,
+		Limit:            10,
+	})
+	require.NoError(t, err)
+	require.Len(t, byChildDepth.Traces, 1)
+	assert.Equal(t, engineTrace.ID, byChildDepth.Traces[0].ID)
+
 	byProjectionState, err := s.ListTracesFiltered(ctx, store.TraceFilter{
 		ProjectID:             projectID,
 		EngineProjectionState: "catching_up",
@@ -866,11 +946,14 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byProjectionState.Traces[0].ID)
 
 	combined, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:             projectID,
-		EngineDefinitionName:  "checkout",
-		EngineRunStatus:       "waiting",
-		EngineProjectionState: "catching_up",
-		Limit:                 10,
+		ProjectID:               projectID,
+		EngineDefinitionName:    "checkout",
+		EngineDefinitionVersion: "v1",
+		EngineRunStatus:         "waiting",
+		EngineParentRunID:       &engineParentRunID,
+		EngineChildKey:          "charge-card",
+		EngineProjectionState:   "catching_up",
+		Limit:                   10,
 	})
 	require.NoError(t, err)
 	require.Len(t, combined.Traces, 1)

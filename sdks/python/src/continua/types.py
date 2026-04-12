@@ -68,6 +68,10 @@ class EngineTraceInfo(BaseModel):
     definition_name: str
     definition_version: str
     projection_state: EngineProjectionState
+    parent_run_id: UUID | None = None
+    root_run_id: UUID | None = None
+    child_key: str | None = None
+    child_depth: int | None = None
 
 
 class EngineWaitState(BaseModel):
@@ -80,6 +84,7 @@ class EngineWaitState(BaseModel):
     timer_key: str | None = None
     due_at: AwareDatetime | None = None
     signal_name: str | None = None
+    child_key: str | None = None
 
 
 class EnginePendingWork(BaseModel):
