@@ -72,6 +72,10 @@ type engineRunSummary struct {
 	RunID                uuid.UUID
 	InstanceID           uuid.UUID
 	InstanceKey          string
+	ParentRunID          *uuid.UUID
+	RootRunID            *uuid.UUID
+	ChildKey             *string
+	ChildDepth           *int32
 	ContinuedFromRunID   *uuid.UUID
 	ContinuedToRunID     *uuid.UUID
 	ContinuedFromTraceID *string
@@ -349,6 +353,10 @@ func (s *engineControlService) StartRun(
 		EnginePendingInboxItems:      int64Ptr(0),
 		EngineDefinitionName:         stringPtr(req.DefinitionName),
 		EngineDefinitionVersion:      stringPtr(req.DefinitionVersion),
+		EngineParentRunID:            pgtype.UUID{},
+		EngineRootRunID:              pgtype.UUID{Bytes: run.ID, Valid: true},
+		EngineChildKey:               nil,
+		EngineChildDepth:             int32Pointer(0),
 		EngineProjectionState:        &projectionState,
 		EngineLatestHistoryID:        int64Ptr(startedEvent.ID),
 		EngineLastProjectedHistoryID: int64Ptr(startedEvent.ID),
@@ -759,38 +767,32 @@ func (s *engineControlService) TerminateRun(
 		return terminalRunSummaryFromRun(&run), nil
 	}
 
-	payload, err := publichistory.MarshalPayload(publichistory.WorkflowTerminatedPayload{
-		ErrorCode:    engineTerminateCode,
-		ErrorMessage: engineTerminateMessage,
+	descendants, err := engineTx.ListActiveChildWorkflowDescendants(ctx, enginedb.ListActiveChildWorkflowDescendantsParams{
+		ProjectID:   projectID,
+		ParentRunID: run.ID,
 	})
 	if err != nil {
 		return engineRunSummary{}, err
 	}
-	appended, err := appendLockedRunHistoryEvent(ctx, engineTx, &run, publichistory.EventWorkflowTerminated, payload)
-	if err != nil {
-		return engineRunSummary{}, err
-	}
-	if err := updateProjectedTraceLatestHistory(ctx, tx, run.ID, appended.ID); err != nil {
-		return engineRunSummary{}, err
+
+	for i := range descendants {
+		descendantRun, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+			ProjectID: projectID,
+			ID:        descendants[i].CurrentChildRunID,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return engineRunSummary{}, fmt.Errorf("terminate descendant invariant failed for run %s", descendants[i].CurrentChildRunID)
+			}
+			return engineRunSummary{}, err
+		}
+		if _, err := terminateLockedRun(ctx, tx, engineTx, &descendantRun, false); err != nil {
+			return engineRunSummary{}, err
+		}
 	}
 
-	updatedRun, err := engineTx.TransitionRunToTerminated(ctx, run.ID)
+	updatedRun, err := terminateLockedRun(ctx, tx, engineTx, &run, true)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return engineRunSummary{}, fmt.Errorf("terminate transition invariant failed for run %s", run.ID)
-		}
-		return engineRunSummary{}, err
-	}
-	if _, err := engineTx.CancelOpenActivityTasksByRun(ctx, run.ID); err != nil {
-		return engineRunSummary{}, err
-	}
-	if _, err := engineTx.DiscardOpenInboxItemsByRun(ctx, pgtype.UUID{Bytes: run.ID, Valid: true}); err != nil {
-		return engineRunSummary{}, err
-	}
-	if _, err := engineTx.UpdateInstanceStatus(ctx, enginedb.UpdateInstanceStatusParams{
-		ID:     run.InstanceID,
-		Status: enginedb.EngineInstanceLifecycleStatusTerminated,
-	}); err != nil {
 		return engineRunSummary{}, err
 	}
 
@@ -881,6 +883,87 @@ func (s *engineControlService) SuspendRun(
 		return engineRunSummary{}, err
 	}
 	return s.buildRunSummary(ctx, &instance, &updatedRun)
+}
+
+func terminateLockedRun(
+	ctx context.Context,
+	tx *store.Tx,
+	engineTx *enginedb.Queries,
+	run *enginedb.EngineRun,
+	wakeParent bool,
+) (enginedb.EngineRun, error) {
+	if tx == nil || engineTx == nil || run == nil {
+		return enginedb.EngineRun{}, errors.New("transaction, engine queries, and run are required")
+	}
+
+	payload, err := publichistory.MarshalPayload(publichistory.WorkflowTerminatedPayload{
+		ErrorCode:    engineTerminateCode,
+		ErrorMessage: engineTerminateMessage,
+	})
+	if err != nil {
+		return enginedb.EngineRun{}, err
+	}
+	appended, err := appendLockedRunHistoryEvent(ctx, engineTx, run, publichistory.EventWorkflowTerminated, payload)
+	if err != nil {
+		return enginedb.EngineRun{}, err
+	}
+	if err := updateProjectedTraceLatestHistory(ctx, tx, run.ID, appended.ID); err != nil {
+		return enginedb.EngineRun{}, err
+	}
+
+	updatedRun, err := engineTx.TransitionRunToTerminated(ctx, run.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return enginedb.EngineRun{}, fmt.Errorf("terminate transition invariant failed for run %s", run.ID)
+		}
+		return enginedb.EngineRun{}, err
+	}
+	if _, err := engineTx.CancelOpenActivityTasksByRun(ctx, run.ID); err != nil {
+		return enginedb.EngineRun{}, err
+	}
+	if _, err := engineTx.DiscardOpenInboxItemsByRun(ctx, pgtype.UUID{Bytes: run.ID, Valid: true}); err != nil {
+		return enginedb.EngineRun{}, err
+	}
+	if _, err := engineTx.UpdateInstanceStatus(ctx, enginedb.UpdateInstanceStatusParams{
+		ID:     run.InstanceID,
+		Status: enginedb.EngineInstanceLifecycleStatusTerminated,
+	}); err != nil {
+		return enginedb.EngineRun{}, err
+	}
+	if err := terminateChildRelationship(ctx, engineTx, &updatedRun, wakeParent); err != nil {
+		return enginedb.EngineRun{}, err
+	}
+	return updatedRun, nil
+}
+
+func terminateChildRelationship(
+	ctx context.Context,
+	engineTx *enginedb.Queries,
+	run *enginedb.EngineRun,
+	wakeParent bool,
+) error {
+	if engineTx == nil || run == nil || !run.ParentRunID.Valid {
+		return nil
+	}
+	childWorkflow, err := engineTx.UpdateChildWorkflowTerminal(ctx, enginedb.UpdateChildWorkflowTerminalParams{
+		ProjectID:          run.ProjectID,
+		CurrentChildRunID:  run.ID,
+		TerminalChildRunID: pgtype.UUID{Bytes: run.ID, Valid: true},
+		Status:             enginedb.EngineChildWorkflowStatusTerminated,
+	})
+	if err != nil {
+		return err
+	}
+	if !wakeParent || childWorkflow.ParentWaitFailedAt.Valid {
+		return nil
+	}
+	if _, err := engineTx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
+		ID:       childWorkflow.ParentRunID,
+		ChildKey: childWorkflow.ChildKey,
+	}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	return nil
 }
 
 func (s *engineControlService) ResumeRun(
@@ -1090,6 +1173,10 @@ func (s *engineControlService) buildRunSummary(
 		RunID:                run.ID,
 		InstanceID:           instance.ID,
 		InstanceKey:          instance.InstanceKey,
+		ParentRunID:          pgUUIDPtr(run.ParentRunID),
+		RootRunID:            cloneUUID(run.RootRunID),
+		ChildKey:             cloneStringPtr(run.ChildKey),
+		ChildDepth:           int32Pointer(run.ChildDepth),
 		ContinuedFromRunID:   pgUUIDPtr(run.ContinuedFromRunID),
 		ContinuedToRunID:     pgUUIDPtr(run.ContinuedToRunID),
 		ContinuedFromTraceID: engineTraceIDPtr(pgUUIDPtr(run.ContinuedFromRunID)),
@@ -1365,6 +1452,10 @@ func terminalRunSummaryFromRun(run *enginedb.EngineRun) engineRunSummary {
 	continuedToRunID := pgUUIDPtr(run.ContinuedToRunID)
 
 	return engineRunSummary{
+		ParentRunID:          pgUUIDPtr(run.ParentRunID),
+		RootRunID:            cloneUUID(run.RootRunID),
+		ChildKey:             cloneStringPtr(run.ChildKey),
+		ChildDepth:           int32Pointer(run.ChildDepth),
 		RunID:                run.ID,
 		ContinuedFromRunID:   continuedFromRunID,
 		ContinuedToRunID:     continuedToRunID,
@@ -1400,4 +1491,9 @@ func pgTimePtr(value pgtype.Timestamptz) *time.Time {
 		return nil
 	}
 	return &value.Time
+}
+
+func cloneUUID(value uuid.UUID) *uuid.UUID {
+	cloned := value
+	return &cloned
 }

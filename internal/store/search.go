@@ -11,22 +11,28 @@ import (
 
 // TraceFilter defines filter options for trace search.
 type TraceFilter struct {
-	ProjectID             uuid.UUID
-	Query                 string     // Full-text search query
-	Status                string     // running, completed, failed
-	StartTimeFrom         *time.Time // Filter traces starting at or after this time
-	StartTimeTo           *time.Time // Filter traces starting at or before this time
-	UserID                string     // Filter by user_id
-	SessionID             *uuid.UUID // Filter by session_id
-	EngineInstanceKey     string     // Filter by engine_instance_key
-	EngineDefinitionName  string     // Filter by engine_definition_name
-	EngineRunStatus       string     // Filter by engine_run_status
-	EngineProjectionState string     // Filter by engine_projection_state
-	HasErrors             *bool      // Filter by error_count > 0
-	MinDurationMs         *int64     // Filter by duration in milliseconds
-	SortDir               SortDirection
-	Limit                 int32
-	Offset                int32
+	ProjectID               uuid.UUID
+	Query                   string     // Full-text search query
+	Status                  string     // running, completed, failed
+	StartTimeFrom           *time.Time // Filter traces starting at or after this time
+	StartTimeTo             *time.Time // Filter traces starting at or before this time
+	UserID                  string     // Filter by user_id
+	SessionID               *uuid.UUID // Filter by session_id
+	EngineRunID             *uuid.UUID // Filter by engine_run_id
+	EngineInstanceKey       string     // Filter by engine_instance_key
+	EngineDefinitionName    string     // Filter by engine_definition_name
+	EngineDefinitionVersion string     // Filter by engine_definition_version
+	EngineRunStatus         string     // Filter by engine_run_status
+	EngineParentRunID       *uuid.UUID // Filter by engine_parent_run_id
+	EngineRootRunID         *uuid.UUID // Filter by engine_root_run_id
+	EngineChildKey          string     // Filter by engine_child_key
+	EngineChildDepth        *int32     // Filter by engine_child_depth
+	EngineProjectionState   string     // Filter by engine_projection_state
+	HasErrors               *bool      // Filter by error_count > 0
+	MinDurationMs           *int64     // Filter by duration in milliseconds
+	SortDir                 SortDirection
+	Limit                   int32
+	Offset                  int32
 }
 
 // TraceSearchResult contains the results of a trace search.
@@ -135,15 +141,51 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 		argNum++
 	}
 
+	if filter.EngineRunID != nil {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_run_id = $%d", argNum))
+		args = append(args, *filter.EngineRunID)
+		argNum++
+	}
+
 	if filter.EngineDefinitionName != "" {
 		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_definition_name = $%d", argNum))
 		args = append(args, filter.EngineDefinitionName)
 		argNum++
 	}
 
+	if filter.EngineDefinitionVersion != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_definition_version = $%d", argNum))
+		args = append(args, filter.EngineDefinitionVersion)
+		argNum++
+	}
+
 	if filter.EngineRunStatus != "" {
 		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_run_status = $%d", argNum))
 		args = append(args, strings.ToLower(strings.TrimSpace(filter.EngineRunStatus)))
+		argNum++
+	}
+
+	if filter.EngineParentRunID != nil {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_parent_run_id = $%d", argNum))
+		args = append(args, *filter.EngineParentRunID)
+		argNum++
+	}
+
+	if filter.EngineRootRunID != nil {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_root_run_id = $%d", argNum))
+		args = append(args, *filter.EngineRootRunID)
+		argNum++
+	}
+
+	if filter.EngineChildKey != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_child_key = $%d", argNum))
+		args = append(args, filter.EngineChildKey)
+		argNum++
+	}
+
+	if filter.EngineChildDepth != nil {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_child_depth = $%d", argNum))
+		args = append(args, *filter.EngineChildDepth)
 		argNum++
 	}
 
@@ -224,6 +266,7 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 		       t.engine_run_id, t.engine_definition_name, t.engine_definition_version, t.engine_projection_state,
 		       t.engine_latest_history_id, t.engine_last_projected_history_id, t.engine_projection_updated_at, t.engine_instance_key,
 		       t.engine_run_status, t.engine_custom_status, t.engine_wait_state, t.engine_pending_activity_tasks, t.engine_pending_inbox_items,
+		       t.engine_parent_run_id, t.engine_root_run_id, t.engine_child_key, t.engine_child_depth,
 		       sess.external_id AS session_external_id%s%s
 		%s
 		WHERE %s
@@ -254,6 +297,7 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 			&trace.EngineRunID, &trace.EngineDefinitionName, &trace.EngineDefinitionVersion, &trace.EngineProjectionState,
 			&trace.EngineLatestHistoryID, &trace.EngineLastProjectedHistoryID, &trace.EngineProjectionUpdatedAt, &trace.EngineInstanceKey,
 			&trace.EngineRunStatus, &trace.EngineCustomStatus, &trace.EngineWaitState, &trace.EnginePendingActivityTasks, &trace.EnginePendingInboxItems,
+			&trace.EngineParentRunID, &trace.EngineRootRunID, &trace.EngineChildKey, &trace.EngineChildDepth,
 			&trace.SessionExternalID,
 		}
 		if hasSearchQuery {

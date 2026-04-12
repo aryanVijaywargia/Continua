@@ -12,10 +12,12 @@ import {
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  fetchTraces,
   fetchSpans,
   fetchTrace,
   isAuthError,
   type Span,
+  type Trace,
   type TimelineEvent,
   type TraceDetail,
 } from '../api/client';
@@ -86,8 +88,11 @@ import {
 } from '../utils/spanTree';
 
 const EMPTY_SPANS: Span[] = [];
+const EMPTY_TRACES: Trace[] = [];
 const EMPTY_RETRY_SAFETY_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
 const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
+const MAX_LINEAGE_ANCESTOR_DEPTH = 64;
+const CHILD_TRACES_PAGE_SIZE = 20;
 
 function queryErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -140,10 +145,31 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     refetchOnReconnect: false,
   });
   const trace = traceQuery.data ?? null;
+  const lineageAncestorsQuery = useQuery({
+    queryKey: [
+      'trace-lineage-ancestors',
+      traceId,
+      trace?.engine?.run_id ?? null,
+      trace?.engine?.parent_run_id ?? null,
+    ],
+    queryFn: () => fetchTraceLineageAncestors(trace!),
+    enabled: Boolean(trace?.engine?.parent_run_id),
+  });
+  const childTracesQuery = useQuery({
+    queryKey: ['trace-lineage-children', traceId, trace?.engine?.run_id ?? null],
+    queryFn: () => fetchDirectChildTraces(trace!.engine!.run_id),
+    enabled: Boolean(trace?.engine?.run_id),
+  });
   const pendingWorkQuery = useEnginePendingWork(
     trace?.engine?.run_id,
     trace?.engine?.status
   );
+  const lineageAncestors = lineageAncestorsQuery.data ?? EMPTY_TRACES;
+  const lineageChain = useMemo(
+    () => buildTraceLineageChain(trace, lineageAncestors),
+    [lineageAncestors, trace]
+  );
+  const childTraces = childTracesQuery.data ?? EMPTY_TRACES;
   const spans = spansQuery.data?.spans ?? EMPTY_SPANS;
   const timelineAuthError = isAuthError(timeline.rawError);
   const timelineStatus = trace ? timeline.traceStatus ?? trace.status : timeline.traceStatus;
@@ -314,6 +340,17 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const stateContent = <StateDiffViewer changes={stateChanges} />;
   const mobileSummaryContent = (
     <div className="grid h-full gap-4 overflow-y-auto p-4">
+      <TraceLineageCard
+        childTraces={childTraces}
+        childTracesLoading={childTracesQuery.isLoading}
+        hasChildTracesError={childTracesQuery.isError}
+        lineageChain={lineageChain}
+        lineageLoading={lineageAncestorsQuery.isLoading}
+        returnTo={returnTo}
+        showLineageSummary
+        showEmptyChildren={Boolean(trace.engine?.parent_run_id)}
+        trace={trace}
+      />
       {detailsContent}
       {reasoningContent}
     </div>
@@ -356,6 +393,15 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
                 </span>
               ) : null}
             </div>
+
+            {isDesktop ? (
+              <TraceLineageBreadcrumb
+                chain={lineageChain}
+                isLoading={lineageAncestorsQuery.isLoading}
+                returnTo={returnTo}
+                trace={trace}
+              />
+            ) : null}
 
             {trace.engine?.continued_from_trace_id ||
             trace.engine?.continued_to_trace_id ? (
@@ -472,7 +518,11 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       {isDesktop && isTraceContextOpen ? (
         <TraceContextDrawer
           buildCopyTraceUrl={buildCopyTraceUrl}
+          childTraces={childTraces}
+          childTracesLoading={childTracesQuery.isLoading}
+          hasLineageError={childTracesQuery.isError}
           onClose={() => setIsTraceContextOpen(false)}
+          returnTo={returnTo}
           trace={trace}
         />
       ) : null}
@@ -480,7 +530,11 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       {!isDesktop && isTraceContextOpen ? (
         <TraceContextSheet
           buildCopyTraceUrl={buildCopyTraceUrl}
+          childTraces={childTraces}
+          childTracesLoading={childTracesQuery.isLoading}
+          hasLineageError={childTracesQuery.isError}
           onClose={() => setIsTraceContextOpen(false)}
+          returnTo={returnTo}
           trace={trace}
         />
       ) : null}
@@ -508,6 +562,374 @@ function EngineWaitStateSummary({
       </div>
       <p className="mt-1 text-sm leading-6">{summary.detail}</p>
     </section>
+  );
+}
+
+function TraceLineageBreadcrumb({
+  chain,
+  isLoading,
+  returnTo,
+  trace,
+}: {
+  chain: Trace[];
+  isLoading: boolean;
+  returnTo: string;
+  trace: TraceDetail;
+}) {
+  if (!trace.engine?.parent_run_id) {
+    return null;
+  }
+
+  if (!isLoading && chain.length <= 1) {
+    return null;
+  }
+
+  return (
+    <section className="mt-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+        Lineage
+      </p>
+      <nav
+        aria-label="Trace lineage"
+        className="mt-2 flex flex-wrap items-center gap-2 text-sm"
+      >
+        {chain.length > 1 ? (
+          chain.map((lineageTrace, index) => {
+            const isCurrent = lineageTrace.id === trace.id;
+            return (
+              <div
+                key={lineageTrace.engine?.run_id ?? lineageTrace.id}
+                className="contents"
+              >
+                {index > 0 ? (
+                  <span className="text-[var(--continua-text-muted)]">›</span>
+                ) : null}
+                {isCurrent ? (
+                  <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 font-medium text-[var(--continua-text-primary)]">
+                    {lineageTrace.name}
+                  </span>
+                ) : (
+                  <Link
+                    to={`/traces/${lineageTrace.id}`}
+                    state={{ returnTo }}
+                    className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-1.5 font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-accent)]"
+                  >
+                    {lineageTrace.name}
+                  </Link>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-1.5 text-[var(--continua-text-muted)]">
+            Loading lineage...
+          </span>
+        )}
+      </nav>
+    </section>
+  );
+}
+
+async function fetchTraceLineageAncestors(trace: TraceDetail): Promise<Trace[]> {
+  const engine = trace.engine;
+  if (!engine?.run_id || !engine.parent_run_id) {
+    return [];
+  }
+
+  const ancestors: Trace[] = [];
+  const visitedRunIds = new Set<string>([engine.run_id]);
+  let parentRunId: string | undefined = engine.parent_run_id;
+
+  while (parentRunId) {
+    if (ancestors.length >= MAX_LINEAGE_ANCESTOR_DEPTH) {
+      return [];
+    }
+    if (visitedRunIds.has(parentRunId)) {
+      return [];
+    }
+    visitedRunIds.add(parentRunId);
+
+    const page = await fetchTraces({
+      engine_run_id: parentRunId,
+      limit: 1,
+    });
+    const parentTrace = page.traces[0];
+    if (!parentTrace?.engine?.run_id) {
+      return [];
+    }
+
+    ancestors.push(parentTrace);
+    parentRunId = parentTrace.engine.parent_run_id;
+  }
+
+  return ancestors.reverse();
+}
+
+async function fetchDirectChildTraces(parentRunId: string): Promise<Trace[]> {
+  const traces: Trace[] = [];
+  let offset = 0;
+
+  for (;;) {
+    const page = await fetchTraces({
+      engine_parent_run_id: parentRunId,
+      limit: CHILD_TRACES_PAGE_SIZE,
+      offset,
+    });
+
+    traces.push(...page.traces);
+    if (
+      page.traces.length === 0 ||
+      traces.length >= page.total ||
+      page.traces.length < CHILD_TRACES_PAGE_SIZE
+    ) {
+      return traces;
+    }
+
+    offset += page.traces.length;
+  }
+}
+
+function buildTraceLineageChain(
+  trace: TraceDetail | null,
+  lineageAncestors: Trace[]
+): Trace[] {
+  if (!trace?.engine?.run_id) {
+    return [];
+  }
+
+  const visitedRunIds = new Set<string>();
+  return [...lineageAncestors, trace].filter((lineageTrace) => {
+    const runId = lineageTrace.engine?.run_id;
+    if (!runId || visitedRunIds.has(runId)) {
+      return false;
+    }
+    visitedRunIds.add(runId);
+    return true;
+  });
+}
+
+function TraceLineageCard({
+  childTraces,
+  childTracesLoading,
+  framed = true,
+  hasChildTracesError,
+  lineageChain,
+  lineageLoading,
+  returnTo,
+  showEmptyChildren = false,
+  showLineageSummary = false,
+  trace,
+}: {
+  childTraces: Trace[];
+  childTracesLoading: boolean;
+  framed?: boolean;
+  hasChildTracesError: boolean;
+  lineageChain: Trace[];
+  lineageLoading: boolean;
+  returnTo: string;
+  showEmptyChildren?: boolean;
+  showLineageSummary?: boolean;
+  trace: TraceDetail;
+}) {
+  const hasParent = Boolean(trace.engine?.parent_run_id);
+  const hasRenderableLineage =
+    showLineageSummary && hasParent && (lineageLoading || lineageChain.length > 1);
+  const shouldRender =
+    hasRenderableLineage ||
+    childTracesLoading ||
+    hasChildTracesError ||
+    childTraces.length > 0 ||
+    showEmptyChildren;
+
+  if (!trace.engine || !shouldRender) {
+    return null;
+  }
+
+  return (
+    <section
+      className={
+        framed
+          ? 'overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]'
+          : 'space-y-4'
+      }
+    >
+      <div
+        className={
+          framed
+            ? 'border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3'
+            : ''
+        }
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-secondary)]">
+          Child Workflows
+        </h2>
+      </div>
+      <div className={framed ? 'space-y-4 p-4' : 'space-y-4'}>
+        {showLineageSummary ? (
+          <TraceLineageSummaryBreadcrumb
+            chain={lineageChain}
+            isLoading={lineageLoading}
+            returnTo={returnTo}
+            trace={trace}
+          />
+        ) : null}
+        <ChildWorkflowSection
+          childTraces={childTraces}
+          isError={hasChildTracesError}
+          isLoading={childTracesLoading}
+          returnTo={returnTo}
+          showEmptyState={showEmptyChildren}
+        />
+      </div>
+    </section>
+  );
+}
+
+function TraceLineageSummaryBreadcrumb({
+  chain,
+  isLoading,
+  returnTo,
+  trace,
+}: {
+  chain: Trace[];
+  isLoading: boolean;
+  returnTo: string;
+  trace: TraceDetail;
+}) {
+  if (!trace.engine?.parent_run_id) {
+    return null;
+  }
+
+  if (!isLoading && chain.length <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+        Lineage
+      </p>
+      {chain.length > 1 ? (
+        <nav
+          aria-label="Trace lineage summary"
+          className="flex flex-wrap items-center gap-2 text-sm"
+        >
+          {chain.map((lineageTrace, index) => {
+            const isCurrent = lineageTrace.id === trace.id;
+            return (
+              <div
+                key={lineageTrace.engine?.run_id ?? lineageTrace.id}
+                className="contents"
+              >
+                {index > 0 ? (
+                  <span className="text-[var(--continua-text-muted)]">›</span>
+                ) : null}
+                {isCurrent ? (
+                  <span className="rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-2 font-medium text-[var(--continua-text-primary)]">
+                    {lineageTrace.name}
+                  </span>
+                ) : (
+                  <Link
+                    to={`/traces/${lineageTrace.id}`}
+                    state={{ returnTo }}
+                    className="inline-flex max-w-full items-center rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-2 font-medium text-[var(--continua-accent)] transition hover:border-[var(--continua-border-strong)] hover:opacity-80"
+                  >
+                    <span className="truncate">{lineageTrace.name}</span>
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+      ) : isLoading ? (
+        <p className="text-sm text-[var(--continua-text-muted)]">
+          Loading lineage...
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ChildWorkflowSection({
+  childTraces,
+  isError,
+  isLoading,
+  returnTo,
+  showEmptyState,
+}: {
+  childTraces: Trace[];
+  isError: boolean;
+  isLoading: boolean;
+  returnTo: string;
+  showEmptyState: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+          Direct Children
+        </p>
+        {!isLoading && !isError ? (
+          <span className="text-xs text-[var(--continua-text-muted)]">
+            {childTraces.length}
+          </span>
+        ) : null}
+      </div>
+
+      {isLoading ? (
+        <p className="text-sm text-[var(--continua-text-muted)]">
+          Loading child workflows...
+        </p>
+      ) : null}
+
+      {isError ? (
+        <p className="text-sm text-[var(--continua-text-muted)]">
+          Child workflow lineage is temporarily unavailable.
+        </p>
+      ) : null}
+
+      {!isLoading && !isError && childTraces.length === 0 && showEmptyState ? (
+        <p className="text-sm text-[var(--continua-text-muted)]">
+          No direct child workflows yet.
+        </p>
+      ) : null}
+
+      {!isLoading && !isError && childTraces.length > 0 ? (
+        <div className="space-y-3">
+          {childTraces.map((childTrace) => (
+            <Link
+              key={childTrace.id}
+              to={`/traces/${childTrace.id}`}
+              state={{ returnTo }}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-3 transition hover:border-[var(--continua-border-strong)] hover:bg-[var(--continua-surface-elevated)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent)]"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs text-[var(--continua-text-muted)]">
+                    {childTrace.engine?.child_key ?? 'child'}
+                  </span>
+                  <StatusBadge status={childTrace.status} />
+                </div>
+                <p className="mt-2 truncate text-sm font-medium text-[var(--continua-text-primary)]">
+                  {childTrace.name}
+                </p>
+                {childTrace.engine ? (
+                  <p className="mt-1 text-xs text-[var(--continua-text-muted)]">
+                    {childTrace.engine.definition_name}@
+                    {childTrace.engine.definition_version}
+                  </p>
+                ) : null}
+              </div>
+              <span
+                className="inline-flex items-center rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-2 text-sm font-medium text-[var(--continua-accent)] transition hover:border-[var(--continua-border-strong)] hover:opacity-80"
+              >
+                Open trace
+              </span>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -767,11 +1189,19 @@ function TraceHeaderMetric({
 
 function TraceContextDrawer({
   buildCopyTraceUrl,
+  childTraces,
+  childTracesLoading,
+  hasLineageError,
   onClose,
+  returnTo,
   trace,
 }: {
   buildCopyTraceUrl: () => string;
+  childTraces: Trace[];
+  childTracesLoading: boolean;
+  hasLineageError: boolean;
   onClose: () => void;
+  returnTo: string;
   trace: TraceDetail;
 }) {
   return (
@@ -790,8 +1220,13 @@ function TraceContextDrawer({
       >
         <TraceContextSection
           buildCopyTraceUrl={buildCopyTraceUrl}
+          childTraces={childTraces}
+          childTracesLoading={childTracesLoading}
+          hasLineageError={hasLineageError}
           onToggle={onClose}
           open
+          returnTo={returnTo}
+          showLineage
           trace={trace}
         />
       </aside>
@@ -801,11 +1236,19 @@ function TraceContextDrawer({
 
 function TraceContextSheet({
   buildCopyTraceUrl,
+  childTraces,
+  childTracesLoading,
+  hasLineageError,
   onClose,
+  returnTo,
   trace,
 }: {
   buildCopyTraceUrl: () => string;
+  childTraces: Trace[];
+  childTracesLoading: boolean;
+  hasLineageError: boolean;
   onClose: () => void;
+  returnTo: string;
   trace: TraceDetail;
 }) {
   return (
@@ -824,8 +1267,13 @@ function TraceContextSheet({
       >
         <TraceContextSection
           buildCopyTraceUrl={buildCopyTraceUrl}
+          childTraces={childTraces}
+          childTracesLoading={childTracesLoading}
+          hasLineageError={hasLineageError}
           onToggle={onClose}
           open
+          returnTo={returnTo}
+          showLineage={false}
           trace={trace}
         />
       </aside>
@@ -835,13 +1283,23 @@ function TraceContextSheet({
 
 function TraceContextSection({
   buildCopyTraceUrl,
+  childTraces,
+  childTracesLoading,
+  hasLineageError,
   onToggle,
   open,
+  returnTo,
+  showLineage,
   trace,
 }: {
   buildCopyTraceUrl: () => string;
+  childTraces: Trace[];
+  childTracesLoading: boolean;
+  hasLineageError: boolean;
   onToggle: () => void;
   open: boolean;
+  returnTo: string;
+  showLineage: boolean;
   trace: TraceDetail;
 }) {
   return (
@@ -935,6 +1393,19 @@ function TraceContextSection({
               )}
             />
           </div>
+
+          {showLineage && trace.engine ? (
+            <TraceLineageCard
+              childTraces={childTraces}
+              childTracesLoading={childTracesLoading}
+              framed={false}
+              hasChildTracesError={hasLineageError}
+              lineageChain={EMPTY_TRACES}
+              lineageLoading={false}
+              returnTo={returnTo}
+              trace={trace}
+            />
+          ) : null}
 
           {(trace.input !== undefined || trace.output !== undefined) ? (
             <div className="grid gap-4 xl:grid-cols-2">

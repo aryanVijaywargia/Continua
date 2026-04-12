@@ -485,6 +485,12 @@ export interface components {
             definition_name: string;
             definition_version: string;
             projection_state: components["schemas"]["EngineProjectionState"];
+            /** Format: uuid */
+            parent_run_id?: string;
+            /** Format: uuid */
+            root_run_id?: string;
+            child_key?: string;
+            child_depth?: number;
         };
         EngineWaitState: {
             kind?: string;
@@ -494,6 +500,7 @@ export interface components {
             /** Format: date-time */
             due_at?: string;
             signal_name?: string;
+            child_key?: string;
         } & {
             [key: string]: unknown;
         };
@@ -2096,10 +2103,22 @@ export interface operations {
                 user_id?: string;
                 /** @description Filter by engine instance key */
                 engine_instance_key?: string;
+                /** @description Filter by engine run ID */
+                engine_run_id?: string;
                 /** @description Filter by engine definition name */
                 engine_definition_name?: string;
+                /** @description Filter by engine definition version */
+                engine_definition_version?: string;
                 /** @description Filter by engine run lifecycle status */
                 engine_run_status?: "queued" | "running" | "waiting" | "suspended" | "completed" | "failed" | "cancelled" | "terminated" | "continued_as_new";
+                /** @description Filter by engine parent run ID */
+                engine_parent_run_id?: string;
+                /** @description Filter by engine root run ID */
+                engine_root_run_id?: string;
+                /** @description Filter by engine child key */
+                engine_child_key?: string;
+                /** @description Filter by engine child depth */
+                engine_child_depth?: number;
                 /** @description Filter by engine projection state */
                 engine_projection_state?: components["schemas"]["EngineProjectionState"];
                 /** @description Filter traces with errors (error_count > 0) */

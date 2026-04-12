@@ -815,6 +815,10 @@ func ensureDarkLaunchProjectedShell(
 		    engine_pending_inbox_items,
 		    engine_definition_name,
 		    engine_definition_version,
+		    engine_parent_run_id,
+		    engine_root_run_id,
+		    engine_child_key,
+		    engine_child_depth,
 		    engine_projection_state,
 		    engine_latest_history_id,
 		    engine_last_projected_history_id,
@@ -835,12 +839,16 @@ func ensureDarkLaunchProjectedShell(
 		    0,
 		    $9,
 		    $10,
+		    NULL,
+		    $11,
+		    NULL,
+		    0,
 		    'up_to_date',
-		    $11,
-		    $11,
+		    $12,
+		    $12,
 		    $6::timestamptz
 		)
-	`, traceUUID, darkLaunchProjectID, traceID, definitionName, cloneRaw(input), now, run.ID, instance.InstanceKey, definitionName, definitionVersion, startedHistoryID); err != nil {
+	`, traceUUID, darkLaunchProjectID, traceID, definitionName, cloneRaw(input), now, run.ID, instance.InstanceKey, definitionName, definitionVersion, run.ID, startedHistoryID); err != nil {
 		return err
 	}
 

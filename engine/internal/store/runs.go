@@ -22,6 +22,11 @@ func (o *storeOps) CreateRun(ctx context.Context, arg enginedb.CreateRunParams) 
 	return mapResult(o.q.CreateRun(ctx, arg))
 }
 
+//nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
+func (o *storeOps) CreateChildRun(ctx context.Context, arg enginedb.CreateChildRunParams) (enginedb.EngineRun, error) {
+	return mapResult(o.q.CreateChildRun(ctx, arg))
+}
+
 func (o *storeOps) GetRun(ctx context.Context, id uuid.UUID) (enginedb.EngineRun, error) {
 	return mapResult(o.q.GetRun(ctx, id))
 }
@@ -120,6 +125,25 @@ func (o *storeOps) WakeWaitingRun(ctx context.Context, id uuid.UUID) (WakeWaitin
 	}
 
 	current, lookupErr := o.GetRun(ctx, id)
+	if lookupErr != nil {
+		return WakeWaitingRunResult{}, lookupErr
+	}
+	return WakeWaitingRunResult{Run: current, Applied: false}, nil
+}
+
+func (o *storeOps) WakeWaitingChildWorkflowRun(
+	ctx context.Context,
+	arg enginedb.WakeWaitingChildWorkflowRunParams,
+) (WakeWaitingRunResult, error) {
+	run, err := o.q.WakeWaitingChildWorkflowRun(ctx, arg)
+	if err == nil {
+		return WakeWaitingRunResult{Run: run, Applied: true}, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return WakeWaitingRunResult{}, normalizeError(err)
+	}
+
+	current, lookupErr := o.GetRun(ctx, arg.ID)
 	if lookupErr != nil {
 		return WakeWaitingRunResult{}, lookupErr
 	}

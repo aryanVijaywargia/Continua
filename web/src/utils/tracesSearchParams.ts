@@ -69,9 +69,15 @@ export interface FetchTracesParams {
   start_time_from?: string;
   start_time_to?: string;
   user_id?: string;
+  engine_run_id?: string;
   engine_instance_key?: string;
   engine_definition_name?: string;
+  engine_definition_version?: string;
   engine_run_status?: EngineRunStatusFilter;
+  engine_parent_run_id?: string;
+  engine_root_run_id?: string;
+  engine_child_key?: string;
+  engine_child_depth?: number;
   engine_projection_state?: EngineProjectionStateFilter;
   has_errors?: boolean;
   min_duration_ms?: number;
@@ -88,9 +94,15 @@ export interface TracesFilterState {
   start_time_from?: string;
   start_time_to?: string;
   user_id?: string;
+  engine_run_id?: string;
   engine_instance_key?: string;
   engine_definition_name?: string;
+  engine_definition_version?: string;
   engine_run_status?: EngineRunStatusFilter;
+  engine_parent_run_id?: string;
+  engine_root_run_id?: string;
+  engine_child_key?: string;
+  engine_child_depth?: number;
   engine_projection_state?: EngineProjectionStateFilter;
   has_errors?: boolean;
   min_duration_ms?: number;
@@ -138,9 +150,15 @@ const CANONICAL_PARAM_ORDER: Array<keyof FetchTracesParams> = [
   'start_time_from',
   'start_time_to',
   'user_id',
+  'engine_run_id',
   'engine_instance_key',
   'engine_definition_name',
+  'engine_definition_version',
   'engine_run_status',
+  'engine_parent_run_id',
+  'engine_root_run_id',
+  'engine_child_key',
+  'engine_child_depth',
   'engine_projection_state',
   'has_errors',
   'min_duration_ms',
@@ -271,9 +289,17 @@ function normalizeTracesParams(
     start_time_from: normalizeISODateTime(params.start_time_from),
     start_time_to: normalizeISODateTime(params.start_time_to),
     user_id: normalizeOptionalText(params.user_id),
+    engine_run_id: normalizeUUID(params.engine_run_id),
     engine_instance_key: normalizeOptionalText(params.engine_instance_key),
     engine_definition_name: normalizeOptionalText(params.engine_definition_name),
+    engine_definition_version: normalizeOptionalText(
+      params.engine_definition_version
+    ),
     engine_run_status: normalizeEngineRunStatus(params.engine_run_status),
+    engine_parent_run_id: normalizeUUID(params.engine_parent_run_id),
+    engine_root_run_id: normalizeUUID(params.engine_root_run_id),
+    engine_child_key: normalizeOptionalText(params.engine_child_key),
+    engine_child_depth: normalizeNonNegativeInteger(params.engine_child_depth),
     engine_projection_state: normalizeEngineProjectionState(
       params.engine_projection_state
     ),
@@ -321,14 +347,32 @@ function toQueryEntries(
   if (params.user_id) {
     entries.push(['user_id', params.user_id]);
   }
+  if (params.engine_run_id) {
+    entries.push(['engine_run_id', params.engine_run_id]);
+  }
   if (params.engine_instance_key) {
     entries.push(['engine_instance_key', params.engine_instance_key]);
   }
   if (params.engine_definition_name) {
     entries.push(['engine_definition_name', params.engine_definition_name]);
   }
+  if (params.engine_definition_version) {
+    entries.push(['engine_definition_version', params.engine_definition_version]);
+  }
   if (params.engine_run_status) {
     entries.push(['engine_run_status', params.engine_run_status]);
+  }
+  if (params.engine_parent_run_id) {
+    entries.push(['engine_parent_run_id', params.engine_parent_run_id]);
+  }
+  if (params.engine_root_run_id) {
+    entries.push(['engine_root_run_id', params.engine_root_run_id]);
+  }
+  if (params.engine_child_key) {
+    entries.push(['engine_child_key', params.engine_child_key]);
+  }
+  if (params.engine_child_depth !== undefined) {
+    entries.push(['engine_child_depth', String(params.engine_child_depth)]);
   }
   if (params.engine_projection_state) {
     entries.push(['engine_projection_state', params.engine_projection_state]);
@@ -384,10 +428,18 @@ export function parseTracesParams(searchParams: URLSearchParams): TracesFilterSt
     start_time_from: searchParams.get('start_time_from') ?? undefined,
     start_time_to: searchParams.get('start_time_to') ?? undefined,
     user_id: searchParams.get('user_id') ?? undefined,
+    engine_run_id: searchParams.get('engine_run_id') ?? undefined,
     engine_instance_key: searchParams.get('engine_instance_key') ?? undefined,
     engine_definition_name:
       searchParams.get('engine_definition_name') ?? undefined,
+    engine_definition_version:
+      searchParams.get('engine_definition_version') ?? undefined,
     engine_run_status: searchParams.get('engine_run_status') ?? undefined,
+    engine_parent_run_id:
+      searchParams.get('engine_parent_run_id') ?? undefined,
+    engine_root_run_id: searchParams.get('engine_root_run_id') ?? undefined,
+    engine_child_key: searchParams.get('engine_child_key') ?? undefined,
+    engine_child_depth: searchParams.get('engine_child_depth') ?? undefined,
     engine_projection_state:
       searchParams.get('engine_projection_state') ?? undefined,
     has_errors: searchParams.get('has_errors') ?? undefined,
@@ -405,9 +457,15 @@ export function parseTracesParams(searchParams: URLSearchParams): TracesFilterSt
     start_time_from: normalized.start_time_from,
     start_time_to: normalized.start_time_to,
     user_id: normalized.user_id,
+    engine_run_id: normalized.engine_run_id,
     engine_instance_key: normalized.engine_instance_key,
     engine_definition_name: normalized.engine_definition_name,
+    engine_definition_version: normalized.engine_definition_version,
     engine_run_status: normalized.engine_run_status,
+    engine_parent_run_id: normalized.engine_parent_run_id,
+    engine_root_run_id: normalized.engine_root_run_id,
+    engine_child_key: normalized.engine_child_key,
+    engine_child_depth: normalized.engine_child_depth,
     engine_projection_state: normalized.engine_projection_state,
     has_errors: normalized.has_errors,
     min_duration_ms: normalized.min_duration_ms,
@@ -501,6 +559,13 @@ export function deriveActiveChips(state: TracesFilterState): Chip[] {
   if (normalized.user_id) {
     chips.push({ key: 'user_id', label: 'User', value: normalized.user_id });
   }
+  if (normalized.engine_run_id) {
+    chips.push({
+      key: 'engine_run_id',
+      label: 'Engine run',
+      value: normalized.engine_run_id,
+    });
+  }
   if (normalized.engine_instance_key) {
     chips.push({
       key: 'engine_instance_key',
@@ -515,11 +580,46 @@ export function deriveActiveChips(state: TracesFilterState): Chip[] {
       value: normalized.engine_definition_name,
     });
   }
+  if (normalized.engine_definition_version) {
+    chips.push({
+      key: 'engine_definition_version',
+      label: 'Engine version',
+      value: normalized.engine_definition_version,
+    });
+  }
   if (normalized.engine_run_status) {
     chips.push({
       key: 'engine_run_status',
       label: 'Engine status',
       value: formatEngineRunStatusLabel(normalized.engine_run_status),
+    });
+  }
+  if (normalized.engine_parent_run_id) {
+    chips.push({
+      key: 'engine_parent_run_id',
+      label: 'Parent run',
+      value: normalized.engine_parent_run_id,
+    });
+  }
+  if (normalized.engine_root_run_id) {
+    chips.push({
+      key: 'engine_root_run_id',
+      label: 'Root run',
+      value: normalized.engine_root_run_id,
+    });
+  }
+  if (normalized.engine_child_key) {
+    chips.push({
+      key: 'engine_child_key',
+      label: 'Child key',
+      value: normalized.engine_child_key,
+    });
+  }
+  if (normalized.engine_child_depth !== undefined) {
+    chips.push({
+      key: 'engine_child_depth',
+      label: 'Child depth',
+      value: String(normalized.engine_child_depth),
     });
   }
   if (normalized.engine_projection_state) {
@@ -565,12 +665,27 @@ export function clearChip(
       return resetOffset({ ...normalized, start_time_to: undefined });
     case 'user_id':
       return resetOffset({ ...normalized, user_id: undefined });
+    case 'engine_run_id':
+      return resetOffset({ ...normalized, engine_run_id: undefined });
     case 'engine_instance_key':
       return resetOffset({ ...normalized, engine_instance_key: undefined });
     case 'engine_definition_name':
       return resetOffset({ ...normalized, engine_definition_name: undefined });
+    case 'engine_definition_version':
+      return resetOffset({
+        ...normalized,
+        engine_definition_version: undefined,
+      });
     case 'engine_run_status':
       return resetOffset({ ...normalized, engine_run_status: undefined });
+    case 'engine_parent_run_id':
+      return resetOffset({ ...normalized, engine_parent_run_id: undefined });
+    case 'engine_root_run_id':
+      return resetOffset({ ...normalized, engine_root_run_id: undefined });
+    case 'engine_child_key':
+      return resetOffset({ ...normalized, engine_child_key: undefined });
+    case 'engine_child_depth':
+      return resetOffset({ ...normalized, engine_child_depth: undefined });
     case 'engine_projection_state':
       return resetOffset({
         ...normalized,

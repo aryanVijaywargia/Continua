@@ -591,6 +591,8 @@ type EngineRunHistoryResponse struct {
 
 // EngineRunResponse defines model for EngineRunResponse.
 type EngineRunResponse struct {
+	ChildDepth           *int                    `json:"child_depth,omitempty"`
+	ChildKey             *string                 `json:"child_key,omitempty"`
 	CompletedAt          *time.Time              `json:"completed_at,omitempty"`
 	ContinuedFromRunId   *openapi_types.UUID     `json:"continued_from_run_id,omitempty"`
 	ContinuedFromTraceId *string                 `json:"continued_from_trace_id,omitempty"`
@@ -603,15 +605,17 @@ type EngineRunResponse struct {
 	Failure              *EngineFailureSummary   `json:"failure,omitempty"`
 	InstanceId           openapi_types.UUID      `json:"instance_id"`
 	InstanceKey          string                  `json:"instance_key"`
+	ParentRunId          *openapi_types.UUID     `json:"parent_run_id,omitempty"`
 	PendingWork          EnginePendingWork       `json:"pending_work"`
 	ProjectionState      EngineProjectionState   `json:"projection_state"`
 
 	// Result Terminal workflow result payload when available.
-	Result    interface{}        `json:"result,omitempty"`
-	RunId     openapi_types.UUID `json:"run_id"`
-	Status    EngineRunStatus    `json:"status"`
-	UpdatedAt time.Time          `json:"updated_at"`
-	WaitState *EngineWaitState   `json:"wait_state,omitempty"`
+	Result    interface{}         `json:"result,omitempty"`
+	RootRunId *openapi_types.UUID `json:"root_run_id,omitempty"`
+	RunId     openapi_types.UUID  `json:"run_id"`
+	Status    EngineRunStatus     `json:"status"`
+	UpdatedAt time.Time           `json:"updated_at"`
+	WaitState *EngineWaitState    `json:"wait_state,omitempty"`
 }
 
 // EngineRunResultResponse defines model for EngineRunResultResponse.
@@ -634,6 +638,8 @@ type EngineRunStatus string
 
 // EngineRunSummary defines model for EngineRunSummary.
 type EngineRunSummary struct {
+	ChildDepth           *int                    `json:"child_depth,omitempty"`
+	ChildKey             *string                 `json:"child_key,omitempty"`
 	CompletedAt          *time.Time              `json:"completed_at,omitempty"`
 	ContinuedFromRunId   *openapi_types.UUID     `json:"continued_from_run_id,omitempty"`
 	ContinuedFromTraceId *string                 `json:"continued_from_trace_id,omitempty"`
@@ -645,15 +651,17 @@ type EngineRunSummary struct {
 	DefinitionVersion    string                  `json:"definition_version"`
 	Failure              *EngineFailureSummary   `json:"failure,omitempty"`
 	InstanceKey          string                  `json:"instance_key"`
+	ParentRunId          *openapi_types.UUID     `json:"parent_run_id,omitempty"`
 	PendingWork          EnginePendingWork       `json:"pending_work"`
 	ProjectionState      EngineProjectionState   `json:"projection_state"`
 
 	// Result Terminal workflow result payload when available.
-	Result    interface{}        `json:"result,omitempty"`
-	RunId     openapi_types.UUID `json:"run_id"`
-	Status    EngineRunStatus    `json:"status"`
-	UpdatedAt time.Time          `json:"updated_at"`
-	WaitState *EngineWaitState   `json:"wait_state,omitempty"`
+	Result    interface{}         `json:"result,omitempty"`
+	RootRunId *openapi_types.UUID `json:"root_run_id,omitempty"`
+	RunId     openapi_types.UUID  `json:"run_id"`
+	Status    EngineRunStatus     `json:"status"`
+	UpdatedAt time.Time           `json:"updated_at"`
+	WaitState *EngineWaitState    `json:"wait_state,omitempty"`
 }
 
 // EngineSignalRunRequest defines model for EngineSignalRunRequest.
@@ -702,9 +710,13 @@ type EngineStartTrace struct {
 
 // EngineTraceInfo defines model for EngineTraceInfo.
 type EngineTraceInfo struct {
+	ChildDepth        *int                  `json:"child_depth,omitempty"`
+	ChildKey          *string               `json:"child_key,omitempty"`
 	DefinitionName    string                `json:"definition_name"`
 	DefinitionVersion string                `json:"definition_version"`
+	ParentRunId       *openapi_types.UUID   `json:"parent_run_id,omitempty"`
 	ProjectionState   EngineProjectionState `json:"projection_state"`
+	RootRunId         *openapi_types.UUID   `json:"root_run_id,omitempty"`
 	RunId             openapi_types.UUID    `json:"run_id"`
 }
 
@@ -712,6 +724,7 @@ type EngineTraceInfo struct {
 type EngineWaitState struct {
 	ActivityKey          *string                `json:"activity_key,omitempty"`
 	ActivityType         *string                `json:"activity_type,omitempty"`
+	ChildKey             *string                `json:"child_key,omitempty"`
 	DueAt                *time.Time             `json:"due_at,omitempty"`
 	Kind                 *string                `json:"kind,omitempty"`
 	SignalName           *string                `json:"signal_name,omitempty"`
@@ -1222,11 +1235,29 @@ type ListTracesParams struct {
 	// EngineInstanceKey Filter by engine instance key
 	EngineInstanceKey *string `form:"engine_instance_key,omitempty" json:"engine_instance_key,omitempty"`
 
+	// EngineRunId Filter by engine run ID
+	EngineRunId *openapi_types.UUID `form:"engine_run_id,omitempty" json:"engine_run_id,omitempty"`
+
 	// EngineDefinitionName Filter by engine definition name
 	EngineDefinitionName *string `form:"engine_definition_name,omitempty" json:"engine_definition_name,omitempty"`
 
+	// EngineDefinitionVersion Filter by engine definition version
+	EngineDefinitionVersion *string `form:"engine_definition_version,omitempty" json:"engine_definition_version,omitempty"`
+
 	// EngineRunStatus Filter by engine run lifecycle status
 	EngineRunStatus *ListTracesParamsEngineRunStatus `form:"engine_run_status,omitempty" json:"engine_run_status,omitempty"`
+
+	// EngineParentRunId Filter by engine parent run ID
+	EngineParentRunId *openapi_types.UUID `form:"engine_parent_run_id,omitempty" json:"engine_parent_run_id,omitempty"`
+
+	// EngineRootRunId Filter by engine root run ID
+	EngineRootRunId *openapi_types.UUID `form:"engine_root_run_id,omitempty" json:"engine_root_run_id,omitempty"`
+
+	// EngineChildKey Filter by engine child key
+	EngineChildKey *string `form:"engine_child_key,omitempty" json:"engine_child_key,omitempty"`
+
+	// EngineChildDepth Filter by engine child depth
+	EngineChildDepth *int `form:"engine_child_depth,omitempty" json:"engine_child_depth,omitempty"`
 
 	// EngineProjectionState Filter by engine projection state
 	EngineProjectionState *EngineProjectionState `form:"engine_projection_state,omitempty" json:"engine_projection_state,omitempty"`
@@ -1386,6 +1417,14 @@ func (a *EngineWaitState) UnmarshalJSON(b []byte) error {
 		delete(object, "activity_type")
 	}
 
+	if raw, found := object["child_key"]; found {
+		err = json.Unmarshal(raw, &a.ChildKey)
+		if err != nil {
+			return fmt.Errorf("error reading 'child_key': %w", err)
+		}
+		delete(object, "child_key")
+	}
+
 	if raw, found := object["due_at"]; found {
 		err = json.Unmarshal(raw, &a.DueAt)
 		if err != nil {
@@ -1448,6 +1487,13 @@ func (a EngineWaitState) MarshalJSON() ([]byte, error) {
 		object["activity_type"], err = json.Marshal(a.ActivityType)
 		if err != nil {
 			return nil, fmt.Errorf("error marshaling 'activity_type': %w", err)
+		}
+	}
+
+	if a.ChildKey != nil {
+		object["child_key"], err = json.Marshal(a.ChildKey)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'child_key': %w", err)
 		}
 	}
 
@@ -2022,6 +2068,14 @@ func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "engine_run_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_run_id", r.URL.Query(), &params.EngineRunId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_run_id", Err: err})
+		return
+	}
+
 	// ------------- Optional query parameter "engine_definition_name" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "engine_definition_name", r.URL.Query(), &params.EngineDefinitionName)
@@ -2030,11 +2084,51 @@ func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "engine_definition_version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_definition_version", r.URL.Query(), &params.EngineDefinitionVersion)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_definition_version", Err: err})
+		return
+	}
+
 	// ------------- Optional query parameter "engine_run_status" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "engine_run_status", r.URL.Query(), &params.EngineRunStatus)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_run_status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "engine_parent_run_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_parent_run_id", r.URL.Query(), &params.EngineParentRunId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_parent_run_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "engine_root_run_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_root_run_id", r.URL.Query(), &params.EngineRootRunId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_root_run_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "engine_child_key" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_child_key", r.URL.Query(), &params.EngineChildKey)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_child_key", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "engine_child_depth" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_child_depth", r.URL.Query(), &params.EngineChildDepth)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_child_depth", Err: err})
 		return
 	}
 

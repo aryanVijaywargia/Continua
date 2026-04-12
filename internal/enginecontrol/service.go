@@ -228,8 +228,11 @@ func (s *Service) RepairRun(
 		_ = tx.Rollback(ctx)
 	}()
 
-	trace, _, projectionState, err := loadLockedRunTrace(ctx, tx, projectID, runID)
+	trace, run, projectionState, err := loadLockedRunTrace(ctx, tx, projectID, runID)
 	if err != nil {
+		return RepairResult{}, err
+	}
+	if err := tx.BackfillEngineTraceLineage(ctx, trace.ID, &run); err != nil {
 		return RepairResult{}, err
 	}
 
@@ -411,6 +414,9 @@ func ensureTerminalShell(
 ) error {
 	if trace == nil || run == nil {
 		return errors.New("terminal shell requires trace and run")
+	}
+	if err := tx.BackfillEngineTraceLineage(ctx, trace.ID, run); err != nil {
+		return err
 	}
 	completedAt := terminalCompletedAt(run)
 	traceStatus, spanStatus := publicprojection.TerminalStatuses(string(run.Status))

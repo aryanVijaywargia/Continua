@@ -938,6 +938,524 @@ describe('TraceDetailPage', () => {
     expect(screen.getByLabelText('Trace Context')).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('renders the full lineage breadcrumb and navigates to an ancestor trace', async () => {
+    const user = userEvent.setup();
+    const rootTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-root-lineage',
+        name: 'Root Checkout Trace',
+        status: 'COMPLETED',
+        ended_at: '2026-03-14T10:04:00.000Z',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174209',
+        instance_key: 'root-instance',
+        status: 'COMPLETED',
+        projection_state: 'up_to_date',
+        root_run_id: '123e4567-e89b-12d3-a456-426614174209',
+        child_depth: 0,
+        child_key: undefined,
+        parent_run_id: undefined,
+        wait_state: undefined,
+        pending_work: {
+          pending_activity_tasks: 0,
+          pending_inbox_items: 0,
+        },
+      },
+    });
+    const parentTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-parent-lineage',
+        name: 'Parent Approval Trace',
+        status: 'COMPLETED',
+        ended_at: '2026-03-14T10:05:00.000Z',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174210',
+        instance_key: 'parent-instance',
+        status: 'COMPLETED',
+        projection_state: 'up_to_date',
+        root_run_id: rootTraceDetail.engine?.run_id,
+        child_depth: 1,
+        child_key: 'approval',
+        parent_run_id: rootTraceDetail.engine?.run_id,
+        wait_state: undefined,
+        pending_work: {
+          pending_activity_tasks: 0,
+          pending_inbox_items: 0,
+        },
+      },
+    });
+    const childTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-child-lineage',
+        name: 'Charge Card Trace',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174211',
+        instance_key: 'child-instance',
+        parent_run_id: '123e4567-e89b-12d3-a456-426614174210',
+        root_run_id: rootTraceDetail.engine?.run_id,
+        child_key: 'charge-card',
+        child_depth: 2,
+      },
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: (url) => {
+          if (
+            url.searchParams.get('engine_run_id') ===
+            parentTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [parentTraceDetail], total: 1 });
+          }
+          if (
+            url.searchParams.get('engine_run_id') ===
+            rootTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [rootTraceDetail], total: 1 });
+          }
+          if (
+            url.searchParams.get('engine_parent_run_id') ===
+            childTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({
+              traces: [],
+              total: 0,
+            });
+          }
+          if (
+            url.searchParams.get('engine_parent_run_id') ===
+            parentTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [childTraceDetail], total: 1 });
+          }
+          return jsonResponse({ traces: [], total: 0 });
+        },
+        detail: (url) => {
+          const traceId = url.pathname.split('/').at(-1);
+          if (traceId === childTraceDetail.id) {
+            return jsonResponse(childTraceDetail);
+          }
+          if (traceId === parentTraceDetail.id) {
+            return jsonResponse(parentTraceDetail);
+          }
+          if (traceId === rootTraceDetail.id) {
+            return jsonResponse(rootTraceDetail);
+          }
+          return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
+        },
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: (url) => {
+          const traceId = url.pathname.split('/').at(-2);
+          return jsonResponse({
+            events: [],
+            trace_status: traceId === parentTraceDetail.id ? 'COMPLETED' : 'RUNNING',
+            has_more: false,
+          });
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${childTraceDetail.id}`]);
+
+    const breadcrumb = await screen.findByRole('navigation', {
+      name: 'Trace lineage',
+    });
+    const rootLink = within(breadcrumb).getByRole('link', {
+      name: 'Root Checkout Trace',
+    });
+    const parentLink = within(breadcrumb).getByRole('link', {
+      name: 'Parent Approval Trace',
+    });
+    expect(rootLink).toHaveAttribute('href', `/traces/${rootTraceDetail.id}`);
+    expect(parentLink).toHaveAttribute('href', `/traces/${parentTraceDetail.id}`);
+    expect(within(breadcrumb).getByText('Charge Card Trace')).toBeInTheDocument();
+
+    await user.click(parentLink);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Parent Approval Trace' })
+    ).toBeInTheDocument();
+  });
+
+  it('omits the desktop child workflow section when a trace has no children', async () => {
+    const user = userEvent.setup();
+    const rootTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-root-no-children',
+        name: 'Root Trace Without Children',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174219',
+        instance_key: 'root-no-children-instance',
+        parent_run_id: undefined,
+        root_run_id: '123e4567-e89b-12d3-a456-426614174219',
+        child_key: undefined,
+        child_depth: 0,
+      },
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: (url) => {
+          if (
+            url.searchParams.get('engine_parent_run_id') ===
+            rootTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [], total: 0 });
+          }
+          return jsonResponse({ traces: [], total: 0 });
+        },
+        detail: (url) => {
+          const traceId = url.pathname.split('/').at(-1);
+          if (traceId === rootTraceDetail.id) {
+            return jsonResponse(rootTraceDetail);
+          }
+          return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
+        },
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${rootTraceDetail.id}`]);
+    await screen.findByRole('heading', { name: 'Root Trace Without Children' });
+    await user.click(screen.getByRole('button', { name: /Trace Context/i }));
+    const drawer = await screen.findByRole('dialog', { name: 'Trace context' });
+
+    await waitFor(() => {
+      expect(
+        getRequestCallsMatching(/^\/api\/traces$/).some(({ url }) =>
+          url.searchParams.get('engine_parent_run_id') === rootTraceDetail.engine?.run_id
+        )
+      ).toBe(true);
+    });
+    expect(within(drawer).queryByText('Child Workflows')).not.toBeInTheDocument();
+  });
+
+  it('navigates to a child trace from the trace context lineage section', async () => {
+    const user = userEvent.setup();
+    const rootTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-root-lineage',
+        name: 'Checkout Root Trace',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174220',
+        instance_key: 'root-instance',
+        parent_run_id: undefined,
+        root_run_id: '123e4567-e89b-12d3-a456-426614174220',
+        child_key: undefined,
+        child_depth: 0,
+      },
+    });
+    const childTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-child-context',
+        name: 'Refund Child Trace',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174221',
+        instance_key: 'refund-child-instance',
+        parent_run_id: '123e4567-e89b-12d3-a456-426614174220',
+        root_run_id: '123e4567-e89b-12d3-a456-426614174220',
+        child_key: 'refund-order',
+        child_depth: 1,
+      },
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: (url) => {
+          if (
+            url.searchParams.get('engine_parent_run_id') ===
+            rootTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [childTraceDetail], total: 1 });
+          }
+          if (
+            url.searchParams.get('engine_parent_run_id') ===
+            childTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [], total: 0 });
+          }
+          return jsonResponse({ traces: [], total: 0 });
+        },
+        detail: (url) => {
+          const traceId = url.pathname.split('/').at(-1);
+          if (traceId === rootTraceDetail.id) {
+            return jsonResponse(rootTraceDetail);
+          }
+          if (traceId === childTraceDetail.id) {
+            return jsonResponse(childTraceDetail);
+          }
+          return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
+        },
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: (url) => {
+          const traceId = url.pathname.split('/').at(-2);
+          return jsonResponse({
+            events: [],
+            trace_status: traceId === childTraceDetail.id ? 'RUNNING' : 'RUNNING',
+            has_more: false,
+          });
+        },
+      })
+    );
+
+    renderTraceRoutes([`/traces/${rootTraceDetail.id}`]);
+
+    await screen.findByRole('heading', { name: 'Checkout Root Trace' });
+    await user.click(screen.getByRole('button', { name: /Trace Context/i }));
+
+    const childRow = await screen.findByText('refund-order');
+    const childLink = childRow.closest('a');
+    expect(childLink).not.toBeNull();
+    expect(childLink).toHaveAttribute('href', `/traces/${childTraceDetail.id}`);
+
+    await user.click(childRow);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Refund Child Trace' })
+    ).toBeInTheDocument();
+  });
+
+  it('pages through direct child workflows in the trace context lineage section', async () => {
+    const user = userEvent.setup();
+    const rootTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-root-many-children',
+        name: 'Checkout Root With Many Children',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174240',
+        instance_key: 'root-many-children-instance',
+        parent_run_id: undefined,
+        root_run_id: '123e4567-e89b-12d3-a456-426614174240',
+        child_key: undefined,
+        child_depth: 0,
+      },
+    });
+    const childTraceDetails = Array.from({ length: 26 }, (_, index) => {
+      const childNumber = index + 1;
+      return createEngineTraceDetail({
+        traceOverrides: {
+          id: `trace-child-page-${childNumber}`,
+          name: `Paged Child Trace ${childNumber}`,
+        },
+        engineOverrides: {
+          run_id: `123e4567-e89b-12d3-a456-4266141743${String(index).padStart(2, '0')}`,
+          instance_key: `paged-child-${childNumber}`,
+          parent_run_id: rootTraceDetail.engine?.run_id,
+          root_run_id: rootTraceDetail.engine?.run_id,
+          child_key: `paged-child-${childNumber}`,
+          child_depth: 1,
+        },
+      });
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: (url) => {
+          if (
+            url.searchParams.get('engine_parent_run_id') ===
+            rootTraceDetail.engine?.run_id
+          ) {
+            const limit = Number(url.searchParams.get('limit') ?? '20');
+            const offset = Number(url.searchParams.get('offset') ?? '0');
+            return jsonResponse({
+              traces: childTraceDetails.slice(offset, offset + limit),
+              total: childTraceDetails.length,
+            });
+          }
+          return jsonResponse({ traces: [], total: 0 });
+        },
+        detail: (url) => {
+          const traceId = url.pathname.split('/').at(-1);
+          if (traceId === rootTraceDetail.id) {
+            return jsonResponse(rootTraceDetail);
+          }
+          return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
+        },
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${rootTraceDetail.id}`]);
+
+    await screen.findByRole('heading', {
+      name: 'Checkout Root With Many Children',
+    });
+    await user.click(screen.getByRole('button', { name: /Trace Context/i }));
+
+    const drawer = await screen.findByRole('dialog', { name: 'Trace context' });
+    expect(
+      await within(drawer).findByText('Paged Child Trace 26')
+    ).toBeInTheDocument();
+    expect(within(drawer).getByText('26')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        getRequestCallsMatching(/^\/api\/traces$/).some(
+          ({ url }) =>
+            url.searchParams.get('engine_parent_run_id') ===
+              rootTraceDetail.engine?.run_id &&
+            url.searchParams.get('offset') === '20'
+        )
+      ).toBe(true);
+    });
+  });
+
+  it('shows child workflow summary content in the mobile Summary tab', async () => {
+    setMatchMediaMatches(false);
+    const user = userEvent.setup();
+    const rootTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-mobile-lineage',
+        name: 'Mobile Root Trace',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174230',
+        instance_key: 'mobile-parent-instance',
+        parent_run_id: undefined,
+        root_run_id: '123e4567-e89b-12d3-a456-426614174230',
+        child_key: undefined,
+        child_depth: 0,
+      },
+    });
+    const parentTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-mobile-parent',
+        name: 'Mobile Parent Trace',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174231',
+        instance_key: 'mobile-parent-instance',
+        parent_run_id: '123e4567-e89b-12d3-a456-426614174230',
+        root_run_id: '123e4567-e89b-12d3-a456-426614174230',
+        child_key: 'verify-inventory',
+        child_depth: 1,
+      },
+    });
+    const currentTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-mobile-current',
+        name: 'Mobile Current Trace',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174232',
+        instance_key: 'mobile-current-instance',
+        parent_run_id: '123e4567-e89b-12d3-a456-426614174231',
+        root_run_id: '123e4567-e89b-12d3-a456-426614174230',
+        child_key: 'capture-payment',
+        child_depth: 2,
+      },
+    });
+    const childTraceDetail = createEngineTraceDetail({
+      traceOverrides: {
+        id: 'trace-mobile-child',
+        name: 'Mobile Child Trace',
+      },
+      engineOverrides: {
+        run_id: '123e4567-e89b-12d3-a456-426614174233',
+        instance_key: 'mobile-child-instance',
+        parent_run_id: '123e4567-e89b-12d3-a456-426614174232',
+        root_run_id: '123e4567-e89b-12d3-a456-426614174230',
+        child_key: 'ship-order',
+        child_depth: 3,
+      },
+    });
+
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: (url) => {
+          if (
+            url.searchParams.get('engine_run_id') ===
+            parentTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [parentTraceDetail], total: 1 });
+          }
+          if (
+            url.searchParams.get('engine_run_id') ===
+            rootTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [rootTraceDetail], total: 1 });
+          }
+          if (
+            url.searchParams.get('engine_parent_run_id') ===
+            currentTraceDetail.engine?.run_id
+          ) {
+            return jsonResponse({ traces: [childTraceDetail], total: 1 });
+          }
+          return jsonResponse({ traces: [], total: 0 });
+        },
+        detail: (url) => {
+          const traceId = url.pathname.split('/').at(-1);
+          if (traceId === rootTraceDetail.id) {
+            return jsonResponse(rootTraceDetail);
+          }
+          if (traceId === parentTraceDetail.id) {
+            return jsonResponse(parentTraceDetail);
+          }
+          if (traceId === currentTraceDetail.id) {
+            return jsonResponse(currentTraceDetail);
+          }
+          if (traceId === childTraceDetail.id) {
+            return jsonResponse(childTraceDetail);
+          }
+          return jsonResponse({ code: 'not_found', message: 'Resource not found' }, 404);
+        },
+        spans: () => jsonResponse({ spans: [] }),
+        timeline: () =>
+          jsonResponse({
+            events: [],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${currentTraceDetail.id}`]);
+
+    expect(await screen.findByRole('button', { name: 'Summary' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(
+      screen.queryByRole('navigation', { name: 'Trace lineage' })
+    ).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Child Workflows' })).toBeInTheDocument();
+    const summaryLineage = await screen.findByRole('navigation', {
+      name: 'Trace lineage summary',
+    });
+    expect(
+      within(summaryLineage).getByRole('link', { name: 'Mobile Root Trace' })
+    ).toHaveAttribute('href', `/traces/${rootTraceDetail.id}`);
+    expect(
+      within(summaryLineage).getByRole('link', { name: 'Mobile Parent Trace' })
+    ).toHaveAttribute('href', `/traces/${parentTraceDetail.id}`);
+    expect(within(summaryLineage).getByText('Mobile Current Trace')).toBeInTheDocument();
+    expect(screen.getByText('ship-order')).toBeInTheDocument();
+    expect(screen.getByText('Mobile Child Trace')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Trace Context/i }));
+    const sheet = await screen.findByRole('dialog', { name: 'Trace context' });
+    expect(within(sheet).queryByText('Child Workflows')).not.toBeInTheDocument();
+    expect(within(sheet).queryByText('ship-order')).not.toBeInTheDocument();
+  });
+
   it('renders the state tab with a badge and shows span decisions in details', async () => {
     const statefulSpan = createSpan({
       span_id: 'decision-span',

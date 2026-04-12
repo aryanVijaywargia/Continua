@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
+	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 )
 
 type EngineRetentionCandidate struct {
@@ -123,6 +124,57 @@ func (t *Tx) FlipProjectionStateToJournalExpired(ctx context.Context, runID uuid
 
 func (t *Tx) FlipProjectionStateToCatchingUp(ctx context.Context, runID uuid.UUID) (int64, error) {
 	return t.q.FlipProjectionStateToCatchingUp(ctx, pgUUID(runID))
+}
+
+func (t *Tx) BackfillEngineTraceLineage(ctx context.Context, traceID uuid.UUID, run *enginedb.EngineRun) error {
+	if t == nil || run == nil {
+		return errors.New("transaction and run are required")
+	}
+
+	var (
+		parentRunID any
+		rootRunID   any
+		childKey    any
+		childDepth  int32
+	)
+
+	childWorkflow, err := enginedb.New(t.Tx()).GetChildWorkflowByChildInstanceForUpdate(ctx, enginedb.GetChildWorkflowByChildInstanceForUpdateParams{
+		ProjectID:       run.ProjectID,
+		ChildInstanceID: run.InstanceID,
+	})
+	switch {
+	case err == nil:
+		parentRunID = childWorkflow.ParentRunID
+		rootRunID = childWorkflow.RootRunID
+		childKey = childWorkflow.ChildKey
+		childDepth = childWorkflow.ChildDepth
+	case errors.Is(err, pgx.ErrNoRows):
+		if run.ParentRunID.Valid {
+			return fmt.Errorf("engine child workflow not found for child run %s", run.ID)
+		}
+		rootRunID = run.ID
+		childDepth = 0
+	default:
+		return fmt.Errorf("load child workflow lineage: %w", err)
+	}
+
+	commandTag, err := t.tx.Exec(ctx, `
+		UPDATE public.traces
+		SET engine_parent_run_id = $2,
+		    engine_root_run_id = $3,
+		    engine_child_key = $4,
+		    engine_child_depth = $5,
+		    updated_at = NOW(),
+		    version = COALESCE(version, 1) + 1
+		WHERE id = $1
+	`, traceID, parentRunID, rootRunID, childKey, childDepth)
+	if err != nil {
+		return fmt.Errorf("backfill engine trace lineage: %w", err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return fmt.Errorf("backfill engine trace lineage matched zero rows for trace %s", traceID)
+	}
+	return nil
 }
 
 func (t *Tx) EnsureTerminalTraceShell(

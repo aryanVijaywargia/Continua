@@ -30,7 +30,7 @@ WHERE id = (
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type ClaimNextRunParams struct {
@@ -63,6 +63,10 @@ func (q *Queries) ClaimNextRun(ctx context.Context, arg ClaimNextRunParams) (Eng
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -85,7 +89,7 @@ WHERE id = (
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type ClaimNextRunByProjectParams struct {
@@ -119,21 +123,108 @@ func (q *Queries) ClaimNextRunByProject(ctx context.Context, arg ClaimNextRunByP
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
 
-const createRun = `-- name: CreateRun :one
+const createChildRun = `-- name: CreateChildRun :one
 INSERT INTO engine.runs (
     project_id,
     instance_id,
     run_number,
     definition_version,
     ready_at,
-    continued_from_run_id
+    continued_from_run_id,
+    parent_run_id,
+    root_run_id,
+    child_key,
+    child_depth
 )
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
+`
+
+type CreateChildRunParams struct {
+	ProjectID          uuid.UUID   `json:"project_id"`
+	InstanceID         uuid.UUID   `json:"instance_id"`
+	RunNumber          int32       `json:"run_number"`
+	DefinitionVersion  string      `json:"definition_version"`
+	ReadyAt            time.Time   `json:"ready_at"`
+	ContinuedFromRunID pgtype.UUID `json:"continued_from_run_id"`
+	ParentRunID        pgtype.UUID `json:"parent_run_id"`
+	RootRunID          uuid.UUID   `json:"root_run_id"`
+	ChildKey           *string     `json:"child_key"`
+	ChildDepth         int32       `json:"child_depth"`
+}
+
+func (q *Queries) CreateChildRun(ctx context.Context, arg CreateChildRunParams) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, createChildRun,
+		arg.ProjectID,
+		arg.InstanceID,
+		arg.RunNumber,
+		arg.DefinitionVersion,
+		arg.ReadyAt,
+		arg.ContinuedFromRunID,
+		arg.ParentRunID,
+		arg.RootRunID,
+		arg.ChildKey,
+		arg.ChildDepth,
+	)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+		&i.ContinuedFromRunID,
+		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
+	)
+	return i, err
+}
+
+const createRun = `-- name: CreateRun :one
+WITH new_run AS (
+    SELECT gen_random_uuid() AS id
+)
+INSERT INTO engine.runs (
+    id,
+    project_id,
+    instance_id,
+    run_number,
+    definition_version,
+    ready_at,
+    continued_from_run_id,
+    parent_run_id,
+    root_run_id,
+    child_key,
+    child_depth
+)
+SELECT id, $1, $2, $3, $4, $5, $6, NULL, id, NULL, 0
+FROM new_run
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type CreateRunParams struct {
@@ -177,12 +268,16 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (EngineRun
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
 
 const getLatestRunByInstance = `-- name: GetLatestRunByInstance :one
-SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
 WHERE instance_id = $1
 ORDER BY run_number DESC, id DESC
@@ -214,12 +309,16 @@ func (q *Queries) GetLatestRunByInstance(ctx context.Context, instanceID uuid.UU
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
 WHERE id = $1
 `
@@ -249,12 +348,16 @@ func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (EngineRun, error) {
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
 
 const getRunByProjectAndID = `-- name: GetRunByProjectAndID :one
-SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
 WHERE project_id = $1
   AND id = $2
@@ -290,12 +393,16 @@ func (q *Queries) GetRunByProjectAndID(ctx context.Context, arg GetRunByProjectA
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
 
 const getRunByProjectAndIDForUpdate = `-- name: GetRunByProjectAndIDForUpdate :one
-SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
 WHERE project_id = $1
   AND id = $2
@@ -332,12 +439,16 @@ func (q *Queries) GetRunByProjectAndIDForUpdate(ctx context.Context, arg GetRunB
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
 
 const getRunForUpdate = `-- name: GetRunForUpdate :one
-SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
 WHERE id = $1
 FOR UPDATE
@@ -368,12 +479,16 @@ func (q *Queries) GetRunForUpdate(ctx context.Context, id uuid.UUID) (EngineRun,
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
 
 const listRunsByInstance = `-- name: ListRunsByInstance :many
-SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
 WHERE instance_id = $1
 ORDER BY run_number DESC, id DESC
@@ -417,6 +532,10 @@ func (q *Queries) ListRunsByInstance(ctx context.Context, arg ListRunsByInstance
 			&i.CompletedAt,
 			&i.ContinuedFromRunID,
 			&i.ContinuedToRunID,
+			&i.ParentRunID,
+			&i.RootRunID,
+			&i.ChildKey,
+			&i.ChildDepth,
 		); err != nil {
 			return nil, err
 		}
@@ -443,7 +562,7 @@ SET status = 'cancelled',
     updated_at = NOW()
 WHERE id = $1
   AND status = 'running'
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type TransitionRunToCancelledParams struct {
@@ -476,6 +595,10 @@ func (q *Queries) TransitionRunToCancelled(ctx context.Context, arg TransitionRu
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -496,7 +619,7 @@ SET status = 'completed',
 WHERE id = $1
   AND status = 'running'
   AND claimed_by = $2
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type TransitionRunToCompletedParams struct {
@@ -536,6 +659,10 @@ func (q *Queries) TransitionRunToCompleted(ctx context.Context, arg TransitionRu
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -557,7 +684,7 @@ SET status = 'continued_as_new',
 WHERE id = $1
   AND status = 'running'
   AND claimed_by = $2
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type TransitionRunToContinuedAsNewParams struct {
@@ -597,6 +724,10 @@ func (q *Queries) TransitionRunToContinuedAsNew(ctx context.Context, arg Transit
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -617,7 +748,7 @@ SET status = 'failed',
 WHERE id = $1
   AND status = 'running'
   AND claimed_by = $2
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type TransitionRunToFailedParams struct {
@@ -659,6 +790,10 @@ func (q *Queries) TransitionRunToFailed(ctx context.Context, arg TransitionRunTo
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -674,7 +809,7 @@ SET status = 'queued',
     updated_at = NOW()
 WHERE id = $1
   AND status = 'suspended'
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 func (q *Queries) TransitionRunToQueuedFromSuspended(ctx context.Context, id uuid.UUID) (EngineRun, error) {
@@ -702,6 +837,10 @@ func (q *Queries) TransitionRunToQueuedFromSuspended(ctx context.Context, id uui
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -715,7 +854,7 @@ SET status = 'suspended',
     updated_at = NOW()
 WHERE id = $1
   AND status IN ('queued', 'waiting')
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 func (q *Queries) TransitionRunToSuspended(ctx context.Context, id uuid.UUID) (EngineRun, error) {
@@ -743,6 +882,10 @@ func (q *Queries) TransitionRunToSuspended(ctx context.Context, id uuid.UUID) (E
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -761,7 +904,7 @@ SET status = 'terminated',
     updated_at = NOW()
 WHERE id = $1
   AND status IN ('queued', 'running', 'waiting', 'suspended')
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 func (q *Queries) TransitionRunToTerminated(ctx context.Context, id uuid.UUID) (EngineRun, error) {
@@ -789,6 +932,10 @@ func (q *Queries) TransitionRunToTerminated(ctx context.Context, id uuid.UUID) (
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -809,7 +956,7 @@ SET status = 'waiting',
 WHERE id = $1
   AND status = 'running'
   AND claimed_by = $2
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type TransitionRunToWaitingParams struct {
@@ -849,6 +996,10 @@ func (q *Queries) TransitionRunToWaiting(ctx context.Context, arg TransitionRunT
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -860,7 +1011,7 @@ SET status = $2,
     last_error_message = $4,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 type UpdateRunStatusParams struct {
@@ -900,6 +1051,63 @@ func (q *Queries) UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
+	)
+	return i, err
+}
+
+const wakeWaitingChildWorkflowRun = `-- name: WakeWaitingChildWorkflowRun :one
+UPDATE engine.runs
+SET status = 'queued',
+    waiting_for = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    ready_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'waiting'
+  AND waiting_for @> jsonb_build_object('kind', 'child_workflow', 'child_key', $2::text)
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
+`
+
+type WakeWaitingChildWorkflowRunParams struct {
+	ID       uuid.UUID `json:"id"`
+	ChildKey string    `json:"child_key"`
+}
+
+func (q *Queries) WakeWaitingChildWorkflowRun(ctx context.Context, arg WakeWaitingChildWorkflowRunParams) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, wakeWaitingChildWorkflowRun, arg.ID, arg.ChildKey)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+		&i.ContinuedFromRunID,
+		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }
@@ -915,7 +1123,7 @@ SET status = 'queued',
     updated_at = NOW()
 WHERE id = $1
   AND status = 'waiting'
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
 func (q *Queries) WakeWaitingRun(ctx context.Context, id uuid.UUID) (EngineRun, error) {
@@ -943,6 +1151,10 @@ func (q *Queries) WakeWaitingRun(ctx context.Context, id uuid.UUID) (EngineRun, 
 		&i.CompletedAt,
 		&i.ContinuedFromRunID,
 		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
 	)
 	return i, err
 }

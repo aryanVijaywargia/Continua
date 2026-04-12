@@ -33,6 +33,11 @@ export function describeEngineWaitState(
         heading: 'Waiting on signal',
         detail: waitState.signal_name ?? 'Signal receipt',
       };
+    case 'child_workflow':
+      return {
+        heading: 'Waiting on child workflow',
+        detail: waitState.child_key ?? 'Child workflow completion',
+      };
     default:
       return {
         heading: 'Waiting on engine state',
