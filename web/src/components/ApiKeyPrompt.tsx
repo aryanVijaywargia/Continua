@@ -26,7 +26,7 @@ export function ApiKeyPrompt({ onSubmit }: ApiKeyPromptProps) {
     <div className="app-page min-h-full justify-center py-10">
       <div className="app-surface mx-auto w-full max-w-2xl overflow-hidden p-8 sm:p-10">
         <div className="app-overline">Access required</div>
-        <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">
+        <h2 className="mt-4 text-3xl font-black tight-headline text-[var(--continua-text-primary)]">
           Connect this browser to the Continua debugger.
         </h2>
         <p className="mt-4 max-w-xl text-base leading-7 text-[var(--continua-text-secondary)]">
@@ -45,7 +45,7 @@ export function ApiKeyPrompt({ onSubmit }: ApiKeyPromptProps) {
             className="app-input mt-8"
           />
           {error && (
-            <p className="mt-3 text-sm text-red-600 dark:text-red-300">{error}</p>
+            <p className="mt-3 text-sm text-[var(--continua-error)]">{error}</p>
           )}
           <button
             type="submit"

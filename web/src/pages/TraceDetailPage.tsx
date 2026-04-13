@@ -369,7 +369,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
             </Link>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <h1 className="truncate text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">
+              <h1 className="truncate text-3xl font-black tight-headline text-[var(--continua-text-primary)]">
                 {trace.name}
               </h1>
               {trace.engine ? (
@@ -553,7 +553,7 @@ function EngineWaitStateSummary({
   }
 
   return (
-    <section className="mt-4 rounded-[1.25rem] border border-sky-300/40 bg-sky-50/80 px-4 py-3 text-sky-900 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100">
+    <section className="mt-4 rounded-[1rem] border border-sky-300/40 bg-sky-50/80 px-4 py-3 text-sky-900 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold">{summary.heading}</h2>
         <span className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-75">
@@ -749,7 +749,7 @@ function TraceLineageCard({
     <section
       className={
         framed
-          ? 'overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]'
+          ? 'overflow-hidden rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]'
           : 'space-y-4'
       }
     >
@@ -935,7 +935,7 @@ function ChildWorkflowSection({
 
 function DefinitionVersionMismatchBanner() {
   return (
-    <section className="rounded-[1.25rem] border border-amber-300/50 bg-amber-100/70 px-4 py-3 text-sm text-amber-950 shadow-[var(--continua-shadow-soft)] dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100">
+    <section className="rounded-[1rem] border border-amber-300/50 bg-amber-100/70 px-4 py-3 text-sm text-amber-950 shadow-[var(--continua-shadow-soft)] dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100">
       <p className="font-semibold">Definition version mismatch</p>
       <p className="mt-1">
         This run failed because the engine definition version could not be
@@ -1143,7 +1143,7 @@ function TraceDetailsSurface({
           />
         ) : null}
 
-        <div className="min-h-[22rem] overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+        <div className="min-h-[22rem] overflow-hidden rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
           <SpanDetail
             span={selectedSpan}
             breadcrumbPath={selectedBreadcrumbPath}
@@ -1177,7 +1177,7 @@ function TraceHeaderMetric({
         {label}
       </div>
       <div
-        className={`mt-2 text-xl font-semibold tracking-[-0.03em] ${
+        className={`mt-2 text-xl font-black tight-headline ${
           danger ? 'text-red-600 dark:text-red-300' : 'text-[var(--continua-text-primary)]'
         }`}
       >
@@ -1205,7 +1205,7 @@ function TraceContextDrawer({
   trace: TraceDetail;
 }) {
   return (
-    <div className="app-overlay-enter fixed inset-0 z-50 hidden bg-slate-950/35 backdrop-blur-sm lg:block">
+    <div className="app-overlay-enter fixed inset-0 z-50 hidden bg-[#111318]/40 backdrop-blur-sm lg:block">
       <button
         type="button"
         aria-label="Close trace context drawer"
@@ -1252,7 +1252,7 @@ function TraceContextSheet({
   trace: TraceDetail;
 }) {
   return (
-    <div className="app-overlay-enter fixed inset-0 z-50 flex items-end bg-slate-950/45 backdrop-blur-sm lg:hidden">
+    <div className="app-overlay-enter fixed inset-0 z-50 flex items-end bg-[#111318]/50 backdrop-blur-sm lg:hidden">
       <button
         type="button"
         aria-label="Close trace context sheet"
@@ -1303,7 +1303,7 @@ function TraceContextSection({
   trace: TraceDetail;
 }) {
   return (
-    <section className="overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+    <section className="overflow-hidden rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3">
         <button
           type="button"
@@ -1508,7 +1508,7 @@ function RunningStatePanel({
             Running state
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold">{summary.label}</h2>
+            <h2 className="text-base font-bold">{summary.label}</h2>
             <span className="rounded-full border border-current/15 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em]">
               {formatRunningStateBasis(assessment.basis)}
             </span>
@@ -1519,7 +1519,7 @@ function RunningStatePanel({
         {assessment.decisiveSpanId ? (
           <button
             type="button"
-            className="rounded-full border border-current/20 bg-white/70 px-3 py-1.5 text-xs font-medium transition hover:bg-white dark:bg-slate-950/40 dark:hover:bg-slate-950/70"
+            className="rounded-full border border-current/20 bg-[var(--continua-surface-elevated)]/70 px-3 py-1.5 text-xs font-medium transition hover:bg-[var(--continua-surface-elevated)]"
             onClick={() => onSelectSpan(assessment.decisiveSpanId!)}
           >
             Jump to {assessment.decisiveSpanName ?? assessment.decisiveSpanId}
@@ -1607,7 +1607,7 @@ function OpenWaitRow({
   );
 
   return (
-    <div className="rounded-lg border border-current/15 bg-white/60 p-3 dark:bg-slate-950/30">
+    <div className="rounded-lg border border-current/15 bg-[var(--continua-surface)]/60 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">{waitTitle}</div>
@@ -1626,7 +1626,7 @@ function OpenWaitRow({
         {hasNavigableSpan ? (
           <button
             type="button"
-            className="rounded-full border border-current/20 bg-white/70 px-3 py-1.5 text-xs font-medium transition hover:bg-white dark:bg-slate-950/40 dark:hover:bg-slate-950/70"
+            className="rounded-full border border-current/20 bg-[var(--continua-surface-elevated)]/70 px-3 py-1.5 text-xs font-medium transition hover:bg-[var(--continua-surface-elevated)]"
             onClick={() => onSelectSpan(openWait.event.span_id!)}
           >
             Jump to {openWait.event.span_name ?? openWait.event.span_id}
@@ -1727,7 +1727,7 @@ function getRunningStatePanelTone(
     case 'possibly_stalled':
       return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100';
     case 'unknown':
-      return 'border-slate-200 bg-slate-100 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100';
+      return 'border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] text-[var(--continua-text-primary)]';
   }
 }
 
@@ -1745,15 +1745,15 @@ function resolveDeclaredWaitKind(
 
 function renderContextText(value: string | undefined, monospace = false) {
   if (value === undefined) {
-    return <span className="text-sm text-slate-400 dark:text-slate-500">-</span>;
+    return <span className="text-sm text-[var(--continua-text-muted)]">-</span>;
   }
 
   return (
     <span
       className={
         monospace
-          ? 'font-mono text-xs text-slate-900 dark:text-slate-100'
-          : 'text-sm text-slate-900 dark:text-slate-100'
+          ? 'font-mono text-xs text-[var(--continua-text-primary)]'
+          : 'text-sm text-[var(--continua-text-primary)]'
       }
     >
       {value}

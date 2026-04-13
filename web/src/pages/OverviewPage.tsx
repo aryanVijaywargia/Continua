@@ -90,12 +90,12 @@ function OverviewContent() {
   ].some(Boolean);
   return (
     <div className="app-page">
-      <section className="app-surface relative overflow-hidden p-6 sm:p-8">
-        <div className="absolute inset-y-0 right-0 hidden w-[28rem] bg-[radial-gradient(circle_at_top,rgba(47,131,204,0.18),transparent_62%)] lg:block" />
+      <section className="app-surface relative overflow-hidden">
+        <div className="absolute inset-y-0 right-0 hidden w-[28rem] bg-[radial-gradient(circle_at_top,rgba(0,92,171,0.12),transparent_62%)] lg:block" />
         <div className="relative flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
             <div className="app-overline">Operator Overview</div>
-            <h1 className="mt-4 max-w-2xl text-4xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)] sm:text-5xl">
+            <h1 className="mt-4 max-w-2xl text-4xl font-black tight-headline text-[var(--continua-text-primary)] sm:text-5xl">
               Trace the work that matters before it turns into support debt.
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--continua-text-secondary)] sm:text-lg">
@@ -145,11 +145,11 @@ function OverviewContent() {
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <div className="app-surface p-5">
+        <div className="app-surface">
           <div className="app-section-header">
             <div>
               <div className="app-overline">Failures</div>
-              <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+              <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">
                 Recent failed traces
               </h2>
             </div>
@@ -169,11 +169,11 @@ function OverviewContent() {
         </div>
 
         <div className="space-y-5">
-          <div className="app-surface p-5">
+          <div className="app-surface">
             <div className="app-section-header">
               <div>
                 <div className="app-overline">Live work</div>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+                <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">
                   Running traces
                 </h2>
               </div>
@@ -192,11 +192,11 @@ function OverviewContent() {
             />
           </div>
 
-          <div className="app-surface p-5">
+          <div className="app-surface">
             <div className="app-section-header">
               <div>
                 <div className="app-overline">Session workflows</div>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+                <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">
                   Recent sessions
                 </h2>
               </div>
@@ -217,11 +217,11 @@ function OverviewContent() {
         </div>
       </section>
 
-      <section className="app-surface p-5">
+      <section className="app-surface">
         <div className="app-section-header">
           <div>
             <div className="app-overline">Recent activity</div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+            <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">
               Latest traces
             </h2>
           </div>
@@ -256,7 +256,7 @@ function OverviewMetric({
   return (
     <article className="app-metric-panel">
       <div className="app-overline">{label}</div>
-      <div className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">
+      <div className="mt-3 text-3xl font-black tight-headline text-[var(--continua-text-primary)]">
         {value}
       </div>
       <p className="mt-2 text-sm text-[var(--continua-text-muted)]">{hint}</p>
@@ -290,7 +290,7 @@ function TraceActivityList({
   if (traces.length === 0) {
     return (
       <div className="app-empty-state">
-        <h3 className="text-base font-semibold text-[var(--continua-text-primary)]">{emptyTitle}</h3>
+        <h3 className="text-base font-bold text-[var(--continua-text-primary)]">{emptyTitle}</h3>
         <p className="mt-2">{emptyBody}</p>
       </div>
     );
@@ -321,7 +321,7 @@ function TraceActivityList({
                 <span>{trace.status === 'RUNNING' ? 'Live now' : 'Trace complete'}</span>
                 {trace.session_external_id ? <span>{trace.session_external_id}</span> : null}
                 {trace.error_count && trace.error_count > 0 ? (
-                  <span className="text-red-600 dark:text-red-300">{trace.error_count} errors</span>
+                  <span className="text-[var(--continua-error)]">{trace.error_count} errors</span>
                 ) : null}
               </div>
             </div>
@@ -363,7 +363,7 @@ function SessionActivityList({
   if (sessions.length === 0) {
     return (
       <div className="app-empty-state">
-        <h3 className="text-base font-semibold text-[var(--continua-text-primary)]">{emptyTitle}</h3>
+        <h3 className="text-base font-bold text-[var(--continua-text-primary)]">{emptyTitle}</h3>
         <p className="mt-2">{emptyBody}</p>
       </div>
     );

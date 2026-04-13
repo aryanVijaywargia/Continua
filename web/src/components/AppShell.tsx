@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   Menu,
   MoonStar,
-  PanelLeftClose,
   Settings2,
   SunMedium,
   Waypoints,
@@ -30,7 +29,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   {
-    path: '/',
+    path: '/dashboard',
     label: 'Overview',
     detail: 'Snapshot of active traces and sessions',
     icon: LayoutDashboard,
@@ -61,22 +60,13 @@ export function AppShell() {
   const { resolvedTheme, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(() => Boolean(getApiKey()));
-  const activeItem = useMemo(
-    () =>
-      NAV_ITEMS.find((item) =>
-        item.path === '/'
-          ? location.pathname === '/'
-          : location.pathname.startsWith(item.path)
-      ) ?? NAV_ITEMS[0],
-    [location.pathname]
-  );
   const commands = useMemo(
     () => [
       {
         id: 'go-overview',
         title: 'Go to Overview',
         keywords: ['home', 'overview', 'dashboard'],
-        action: () => navigate('/'),
+        action: () => navigate('/dashboard'),
       },
       {
         id: 'go-traces',
@@ -125,167 +115,154 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="app-shell-enter min-h-screen bg-transparent text-[var(--continua-text-primary)]">
-      <div className="flex min-h-screen">
-        <aside className="hidden w-[17rem] shrink-0 border-r border-[var(--continua-border-strong)] bg-[var(--continua-shell-rail)] px-4 py-5 lg:flex lg:flex-col">
-          <ShellBrand />
-          <nav className="mt-8 flex flex-1 flex-col gap-2" aria-label="Primary">
-            {NAV_ITEMS.map((item) => (
-              <ShellNavLink key={item.path} item={item} />
-            ))}
-          </nav>
-          <div className="rounded-[1.25rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4 shadow-[var(--continua-shadow-soft)]">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--continua-text-muted)]">
-              Investigation model
-            </div>
-            <p className="mt-3 text-sm leading-6 text-[var(--continua-text-secondary)]">
-              Triage recent work, then move directly into a trace or session workspace
-              without leaving the shared shell.
-            </p>
-          </div>
-        </aside>
+    <div className="app-shell-enter min-h-screen bg-[var(--continua-app-bg)] text-[var(--continua-text-primary)]">
+      {/* Top Navigation — matches the landing page nav style */}
+      <nav className="fixed top-0 z-50 w-full border-b border-[var(--continua-border-soft)] bg-[var(--continua-shell-topbar)] backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+          {/* Brand */}
+          <div className="flex items-center gap-8">
+            <NavLink to="/" className="text-xl font-black tracking-tighter text-[var(--continua-text-primary)]">
+              Continua
+            </NavLink>
 
-        {mobileOpen ? (
-          <div className="app-overlay-enter fixed inset-0 z-50 lg:hidden">
+            {/* Desktop nav links */}
+            <div className="hidden items-center gap-1 md:flex" role="navigation" aria-label="Primary">
+              {NAV_ITEMS.map((item) => (
+                <ShellNavLink key={item.path} item={item} />
+              ))}
+            </div>
+          </div>
+
+          {/* Right side controls */}
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-2 sm:flex">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--continua-text-secondary)]">
+                <Command className="h-3.5 w-3.5 text-[var(--continua-accent)]" />
+                <span>{hasApiKey ? 'Connected' : 'API key required'}</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-text-primary)] focus:outline-none"
+                aria-label="Toggle theme"
+              >
+                {resolvedTheme === 'dark' ? (
+                  <MoonStar className="h-4 w-4 text-[var(--continua-accent)]" />
+                ) : (
+                  <SunMedium className="h-4 w-4 text-[var(--continua-accent)]" />
+                )}
+                <span className="capitalize">{resolvedTheme}</span>
+              </button>
+
+              <CommandPalette commands={commands} />
+            </div>
+
+            {/* Mobile menu button */}
             <button
               type="button"
-              aria-label="Close navigation overlay"
-              className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
-              onClick={() => setMobileOpen(false)}
-            />
-            <aside className="app-drawer-enter relative flex h-full w-[19rem] max-w-[88vw] flex-col border-r border-[var(--continua-border-strong)] bg-[var(--continua-shell-rail)] px-4 py-5 shadow-2xl">
-              <div className="flex items-center justify-between">
-                <ShellBrand />
-                <button
-                  type="button"
-                  aria-label="Close navigation"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-text-primary)]"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <nav className="mt-8 flex flex-1 flex-col gap-2" aria-label="Mobile primary">
-                {NAV_ITEMS.map((item) => (
-                  <ShellNavLink key={item.path} item={item} />
-                ))}
-              </nav>
-            </aside>
+              aria-label="Open navigation"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] transition hover:text-[var(--continua-text-primary)] md:hidden"
+              onClick={() => setMobileOpen(true)}
+            >
+              <Menu className="h-4 w-4" />
+            </button>
           </div>
-        ) : null}
+        </div>
+      </nav>
 
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-40 border-b border-[var(--continua-border-soft)] bg-[var(--continua-shell-topbar)] px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <button
-                  type="button"
-                  aria-label="Open navigation"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-text-primary)] lg:hidden"
-                  onClick={() => setMobileOpen(true)}
-                >
-                  <Menu className="h-4 w-4" />
-                </button>
-
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--continua-text-muted)]">
-                    {activeItem.label}
-                  </div>
-                  <div className="mt-1 truncate text-sm text-[var(--continua-text-secondary)]">
-                    {activeItem.detail}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-2 text-xs font-medium text-[var(--continua-text-secondary)] shadow-[var(--continua-shadow-soft)]">
-                  <Command className="h-3.5 w-3.5 text-[var(--continua-accent)]" />
-                  <span>{hasApiKey ? 'API key connected' : 'API key required'}</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={toggleTheme}
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-2 text-sm font-medium text-[var(--continua-text-secondary)] shadow-[var(--continua-shadow-soft)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
-                  aria-label="Toggle theme"
-                >
-                  {resolvedTheme === 'dark' ? (
-                    <MoonStar className="h-4 w-4 text-[var(--continua-accent)]" />
-                  ) : (
-                    <SunMedium className="h-4 w-4 text-[var(--continua-accent)]" />
-                  )}
-                  <span className="capitalize">{resolvedTheme}</span>
-                </button>
-
-                <CommandPalette commands={commands} />
-              </div>
+      {/* Mobile drawer overlay */}
+      {mobileOpen ? (
+        <div className="app-overlay-enter fixed inset-0 z-[60] md:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation overlay"
+            className="absolute inset-0 bg-[var(--continua-text-primary)]/50 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="app-drawer-enter relative flex h-full w-[19rem] max-w-[88vw] flex-col border-r border-[var(--continua-border-strong)] bg-[var(--continua-app-bg)] px-6 py-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xl font-black tracking-tighter text-[var(--continua-text-primary)]">
+                Continua
+              </span>
+              <button
+                type="button"
+                aria-label="Close navigation"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] transition hover:text-[var(--continua-text-primary)]"
+                onClick={() => setMobileOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          </header>
 
-          <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-5 sm:px-6 lg:px-8">
-            <Outlet />
-          </main>
-        </div>
-      </div>
-    </div>
-  );
-}
+            <nav className="mt-8 flex flex-1 flex-col gap-1" aria-label="Mobile primary">
+              {NAV_ITEMS.map((item) => (
+                <MobileNavLink key={item.path} item={item} />
+              ))}
+            </nav>
 
-function ShellBrand() {
-  return (
-    <div className="rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)] p-4 shadow-[var(--continua-shadow-soft)]">
-      <div className="flex items-center gap-3">
-        <div className="inline-flex h-11 w-11 items-center justify-center rounded-[1rem] bg-[var(--continua-accent-strong)] text-[var(--continua-accent-contrast)] shadow-[var(--continua-shadow-soft)]">
-          <PanelLeftClose className="h-5 w-5" />
+            <div className="mt-auto flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="flex w-full items-center gap-3 rounded-full border border-[var(--continua-border-soft)] px-4 py-2.5 text-sm font-medium text-[var(--continua-text-secondary)] transition hover:text-[var(--continua-text-primary)]"
+              >
+                {resolvedTheme === 'dark' ? (
+                  <MoonStar className="h-4 w-4 text-[var(--continua-accent)]" />
+                ) : (
+                  <SunMedium className="h-4 w-4 text-[var(--continua-accent)]" />
+                )}
+                <span className="capitalize">{resolvedTheme} mode</span>
+              </button>
+              <CommandPalette commands={commands} />
+            </div>
+          </aside>
         </div>
-        <div className="min-w-0">
-          <div className="truncate text-lg font-semibold tracking-[-0.02em] text-[var(--continua-text-primary)]">
-            Continua
-          </div>
-          <div className="mt-1 text-xs font-medium uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
-            Operator Console
-          </div>
-        </div>
-      </div>
+      ) : null}
+
+      {/* Main content — full width, generous spacing, matching landing page feel */}
+      <main className="mx-auto min-h-screen max-w-7xl px-6 pt-24 pb-16">
+        <Outlet />
+      </main>
     </div>
   );
 }
 
 function ShellNavLink({ item }: { item: NavItem }) {
+  return (
+    <NavLink
+      to={item.path}
+      end={item.path === '/dashboard'}
+      className={({ isActive }) =>
+        `rounded-full px-4 py-2 text-sm font-bold tracking-tight transition ${
+          isActive
+            ? 'border-b-2 border-[var(--continua-text-primary)] text-[var(--continua-text-primary)]'
+            : 'text-[var(--continua-text-muted)] hover:text-[var(--continua-text-primary)]'
+        }`
+      }
+    >
+      {item.label}
+    </NavLink>
+  );
+}
+
+function MobileNavLink({ item }: { item: NavItem }) {
   const Icon = item.icon;
 
   return (
     <NavLink
       to={item.path}
-      end={item.path === '/'}
+      end={item.path === '/dashboard'}
       className={({ isActive }) =>
-        `group flex items-start gap-3 rounded-[1.15rem] border px-3 py-3 transition ${
+        `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition ${
           isActive
-            ? 'border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-primary)] shadow-[var(--continua-shadow-soft)]'
-            : 'border-transparent bg-transparent text-[var(--continua-text-secondary)] hover:border-[var(--continua-border-soft)] hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-primary)]'
+            ? 'bg-[var(--continua-surface-elevated)] text-[var(--continua-text-primary)]'
+            : 'text-[var(--continua-text-muted)] hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-primary)]'
         }`
       }
     >
-      {({ isActive }) => (
-        <>
-          <span
-            className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-              isActive
-                ? 'bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
-                : 'bg-[var(--continua-surface-muted)] text-[var(--continua-text-muted)] group-hover:text-[var(--continua-accent)]'
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold">{item.label}</span>
-            <span className="mt-1 block text-xs leading-5 text-[var(--continua-text-muted)]">
-              {item.detail}
-            </span>
-          </span>
-        </>
-      )}
+      <Icon className="h-4 w-4" />
+      <span>{item.label}</span>
     </NavLink>
   );
 }

@@ -39,7 +39,7 @@ export function SessionComparePage() {
   if (!id) {
     return (
       <div className="flex min-h-full items-center justify-center">
-        <div className="text-red-600 dark:text-red-300">Session ID is required</div>
+        <div className="text-red-600">Session ID is required</div>
       </div>
     );
   }
@@ -77,8 +77,8 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
   if (!baselineTraceId || !candidateTraceId) {
     return (
       <ComparePageShell returnTo={returnTo}>
-        <section className="rounded-[1.5rem] border border-amber-300/40 bg-amber-50/80 p-6 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
-          <h1 className="text-lg font-semibold">Comparison needs two traces</h1>
+        <section className="rounded-[1rem] border border-amber-300/40 bg-amber-50/80 p-6 text-amber-900">
+          <h1 className="text-lg font-bold">Comparison needs two traces</h1>
           <p className="mt-2 text-sm">
             Open this page from a session with both a baseline and candidate trace selected.
           </p>
@@ -131,7 +131,7 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="app-overline">Diff workspace</div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">Span Diff</h2>
+            <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">Span Diff</h2>
             <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
               Ordered baseline-first diff with inline semantic event comparison.
             </p>
@@ -222,7 +222,7 @@ function CompareOverview({
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
             Session Compare
           </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">
+          <h1 className="mt-2 text-3xl font-black tight-headline text-[var(--continua-text-primary)]">
             {comparison.session.external_id}
           </h1>
           {comparison.session.name ? (
@@ -359,16 +359,16 @@ function CompareSpanRow({
 }) {
   const rowToneClass =
     row.diff_status === 'changed'
-      ? 'border-amber-300/35 bg-amber-50/60 dark:border-amber-400/20 dark:bg-amber-400/10'
+      ? 'border-amber-300/35 bg-amber-50/60'
       : row.diff_status === 'baseline_only'
-        ? 'border-rose-300/35 bg-rose-50/60 dark:border-rose-400/20 dark:bg-rose-400/10'
+        ? 'border-rose-300/35 bg-rose-50/60'
         : row.diff_status === 'candidate_only'
-          ? 'border-sky-300/35 bg-sky-50/60 dark:border-sky-400/20 dark:bg-sky-400/10'
+          ? 'border-sky-300/35 bg-sky-50/60'
           : 'border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)]';
 
   return (
     <article
-      className={`rounded-[1.35rem] border p-4 shadow-[var(--continua-shadow-soft)] ${rowToneClass}`}
+      className={`rounded-[1rem] border p-4 shadow-[var(--continua-shadow-soft)] ${rowToneClass}`}
       style={{ marginLeft: `${row.depth * 12}px` }}
     >
       <div className="flex flex-col gap-4">
@@ -495,7 +495,7 @@ function CompareSemanticGroupRow({
         {group.changed_fields.map((field) => (
           <span
             key={field}
-            className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            className="rounded-full bg-[var(--continua-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--continua-text-secondary)]"
           >
             {field}
           </span>
@@ -537,7 +537,7 @@ function CompareSemanticSide({
         {formatRelativeTime(event.timestamp)}
       </p>
       {event.payload ? (
-        <pre className="mt-3 overflow-x-auto rounded-[0.95rem] bg-slate-950 px-3 py-2 text-xs text-slate-100">
+        <pre className="mt-3 overflow-x-auto rounded-[0.95rem] bg-[#111318] px-3 py-2 text-xs text-[#e2e3e9]">
           {JSON.stringify(event.payload, null, 2)}
         </pre>
       ) : null}
@@ -551,8 +551,8 @@ function ComparisonTooLargePanel({
   error: ApiError & { detail: ComparisonTooLargeErrorDetail };
 }) {
   return (
-    <section className="rounded-[1.5rem] border border-amber-300/40 bg-amber-50/80 p-6 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
-      <h1 className="text-lg font-semibold">Comparison exceeds the v1 ceiling</h1>
+    <section className="rounded-[1rem] border border-amber-300/40 bg-amber-50/80 p-6 text-amber-900">
+      <h1 className="text-lg font-bold">Comparison exceeds the v1 ceiling</h1>
       <p className="mt-2 text-sm">{error.message}</p>
       <dl className="mt-4 grid gap-3 md:grid-cols-2">
         <OverviewMetric
@@ -617,12 +617,12 @@ function DiffStatusPill({
 }) {
   const classes =
     diffStatus === 'changed'
-      ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-100'
+      ? 'bg-amber-100 text-amber-900'
       : diffStatus === 'baseline_only'
-        ? 'bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-rose-100'
+        ? 'bg-rose-100 text-rose-900'
         : diffStatus === 'candidate_only'
-          ? 'bg-sky-100 text-sky-900 dark:bg-sky-500/20 dark:text-sky-100'
-          : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-100';
+          ? 'bg-sky-100 text-sky-900'
+          : 'bg-emerald-100 text-emerald-900';
 
   return (
     <span

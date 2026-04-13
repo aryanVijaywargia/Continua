@@ -29,7 +29,7 @@ const kindColors: Record<string, string> = {
   TOOL: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-200',
   CHAIN: 'bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-200',
   AGENT: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-200',
-  CUSTOM: 'bg-gray-100 text-gray-800 dark:bg-slate-800 dark:text-slate-200',
+  CUSTOM: 'bg-gray-100 text-gray-800 dark:bg-[rgba(35,38,48,0.95)] dark:text-[var(--continua-text-secondary)]',
 };
 const EMPTY_SPAN_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
 
@@ -62,7 +62,7 @@ export function SpanTree({
 
   if (rows.length === 0) {
     return (
-      <div className="p-4 text-center text-slate-500 dark:text-slate-400">
+      <div className="p-4 text-center text-[var(--continua-text-muted)]">
         No spans found for this trace.
       </div>
     );
@@ -84,12 +84,12 @@ export function SpanTree({
         const retrySafety = spanAssessments.get(span.span_id) ?? null;
 
         const rowClasses = isSelected
-          ? 'border-blue-200 bg-blue-50 shadow-sm ring-1 ring-blue-200 dark:border-sky-500/50 dark:bg-sky-500/10 dark:ring-sky-500/40'
+          ? 'border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] shadow-sm ring-1 ring-[var(--continua-accent-faint)]'
           : isOnPrimaryPath
             ? 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
             : isFailed
               ? 'border-red-200 bg-red-50/80 dark:border-red-500/40 dark:bg-red-500/10'
-              : 'border-transparent bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/70';
+              : 'border-transparent bg-[var(--continua-surface-elevated)] hover:bg-[var(--continua-surface-muted)]';
 
         return (
           <div
@@ -112,7 +112,7 @@ export function SpanTree({
               {hasChildren ? (
                 <button
                   type="button"
-                  className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--continua-text-muted)] transition hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent)]"
                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} span ${span.name}`}
                   onClick={() => onToggleExpand(span.span_id)}
                 >
@@ -120,7 +120,7 @@ export function SpanTree({
                 </button>
               ) : (
                 <span
-                  className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center text-slate-300 dark:text-slate-600"
+                  className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center text-[var(--continua-text-muted)]"
                   aria-hidden="true"
                 >
                   ·
@@ -148,23 +148,23 @@ export function SpanTree({
                       className={`truncate text-sm font-medium ${
                         isMatch
                           ? 'rounded bg-amber-100 px-1 text-amber-950 dark:bg-amber-500/20 dark:text-amber-100'
-                          : 'text-slate-900 dark:text-slate-100'
+                          : 'text-[var(--continua-text-primary)]'
                       }`}
                     >
                       {span.name}
                     </span>
                     {isSelected ? (
-                      <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700 dark:border-sky-500/40 dark:bg-slate-950 dark:text-sky-300">
+                      <span className="rounded-full border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--continua-accent)]">
                         Selected
                       </span>
                     ) : null}
                     {isOnPrimaryPath ? (
-                      <span className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:border-amber-500/40 dark:bg-slate-950 dark:text-amber-200">
+                      <span className="rounded-full border border-amber-200 bg-[var(--continua-surface-elevated)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:border-amber-500/40 dark:text-amber-200">
                         Failure path
                       </span>
                     ) : null}
                     {isFailed ? (
-                      <span className="rounded-full border border-red-200 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-red-700 dark:border-red-500/40 dark:bg-slate-950 dark:text-red-200">
+                      <span className="rounded-full border border-red-200 bg-[var(--continua-surface-elevated)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--continua-error)] dark:border-red-500/40 dark:text-red-200">
                         Failed
                       </span>
                     ) : null}
@@ -178,13 +178,13 @@ export function SpanTree({
                   </div>
 
                   {errorPreview ? (
-                    <p className="mt-2 text-sm text-red-700 line-clamp-2 dark:text-red-200">
+                    <p className="mt-2 text-sm text-[var(--continua-error)] line-clamp-2">
                       {errorPreview}
                     </p>
                   ) : null}
 
                   {showMetrics ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--continua-text-muted)]">
                       <span>{formatTokens((span.tokens_in ?? 0) + (span.tokens_out ?? 0))} tokens</span>
                       <span>{formatCost(span.cost_usd)}</span>
                     </div>
@@ -192,7 +192,7 @@ export function SpanTree({
 
                   <div
                     id={rowStateId}
-                    className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                    className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--continua-text-muted)]"
                   >
                     <StatusBadge status={span.status} />
                     <span>{formatDuration(span.latency_ms)}</span>

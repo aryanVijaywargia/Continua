@@ -335,7 +335,7 @@ export function renderTraceRoutes(
   const queryClient = createQueryClient();
   const router = createMemoryRouter(
     [
-      { path: '/', element: <OverviewPage /> },
+      { path: '/dashboard', element: <OverviewPage /> },
       { path: '/traces', element: <TracesPage /> },
       { path: '/traces/:id', element: <TraceDetailPage /> },
       { path: '/sessions', element: <SessionsPage /> },
