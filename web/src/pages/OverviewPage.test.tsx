@@ -22,7 +22,7 @@ describe('OverviewPage', () => {
   it('renders snapshot metrics and operator jump actions from existing trace/session endpoints', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
-    renderTraceRoutes(['/']);
+    renderTraceRoutes(['/dashboard']);
 
     expect(
       await screen.findByRole('heading', {
@@ -46,7 +46,7 @@ describe('OverviewPage', () => {
       })
     );
 
-    renderTraceRoutes(['/']);
+    renderTraceRoutes(['/dashboard']);
 
     expect(await screen.findByText(/Overview data is partially unavailable/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Recent failed traces' })).toBeInTheDocument();

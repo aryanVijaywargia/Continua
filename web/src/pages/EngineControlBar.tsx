@@ -288,7 +288,7 @@ export function EngineControlBar({
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="app-overline">Engine controls</div>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+          <h2 className="mt-2 text-xl font-black tight-headline text-[var(--continua-text-primary)]">
             Drive the engine run from the debugger
           </h2>
           <p className="mt-2 text-sm leading-6 text-[var(--continua-text-secondary)]">
@@ -380,7 +380,7 @@ export function EngineControlBar({
                 className="app-input"
               />
               {!signalNameTrimmed ? (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-300">
+                <p className="mt-1 text-xs text-[var(--continua-error)]">
                   Signal name is required.
                 </p>
               ) : null}
@@ -402,7 +402,7 @@ export function EngineControlBar({
                 className="app-input resize-y"
               />
               {parsedSignalPayload.error ? (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-300">
+                <p className="mt-1 text-xs text-[var(--continua-error)]">
                   {parsedSignalPayload.error}
                 </p>
               ) : (
@@ -564,7 +564,7 @@ function EngineControlFeedback({
   return (
     <div
       role={feedback.tone === 'error' ? 'alert' : 'status'}
-      className={`mt-4 rounded-[1.25rem] border px-4 py-3 text-sm ${toneClasses}`}
+      className={`mt-4 rounded-[1rem] border px-4 py-3 text-sm ${toneClasses}`}
     >
       <p className="font-semibold">{feedback.title}</p>
       <p className="mt-1">{feedback.message}</p>
@@ -584,7 +584,7 @@ function ModalShell({
   children: ReactNode;
 }) {
   return (
-    <div className="app-overlay-enter fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
+    <div className="app-overlay-enter fixed inset-0 z-50 flex items-center justify-center bg-[#111318]/45 px-4 backdrop-blur-sm">
       <button
         type="button"
         aria-label={`Close ${title.toLowerCase()} dialog`}
@@ -595,11 +595,11 @@ function ModalShell({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative z-10 w-full max-w-xl rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] p-5 shadow-[var(--continua-shadow-soft)]"
+        className="relative z-10 w-full max-w-xl rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] p-5 shadow-[var(--continua-shadow-soft)]"
       >
         <div className="mb-4">
           <div className="app-overline">Engine action</div>
-          <h3 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+          <h3 className="mt-2 text-xl font-black tight-headline text-[var(--continua-text-primary)]">
             {title}
           </h3>
           <p className="mt-2 text-sm leading-6 text-[var(--continua-text-secondary)]">

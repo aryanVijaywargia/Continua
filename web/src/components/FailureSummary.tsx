@@ -27,8 +27,8 @@ export function FailureSummary({
     traceRetrySafety?.decisiveSpanName ?? traceRetrySafety?.decisiveSpanId ?? 'decisive span';
 
   return (
-    <section className="overflow-hidden rounded-xl border border-red-200 bg-white shadow-sm dark:border-red-500/40 dark:bg-slate-900">
-      <div className="border-b border-red-200 bg-red-50 px-4 py-3 dark:border-red-500/30 dark:bg-red-500/10">
+    <section className="overflow-hidden rounded-[1rem] border border-[var(--continua-error-border)] bg-[var(--continua-surface-elevated)] shadow-sm">
+      <div className="border-b border-red-200 bg-red-50 px-4 py-3">
         <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">
           Failure Summary
         </h2>
@@ -43,18 +43,18 @@ export function FailureSummary({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  <h3 className="text-base font-semibold text-[var(--continua-text-primary)]">
                     {primaryFailedSpan.name}
                   </h3>
-                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white dark:bg-slate-100 dark:text-slate-950">
+                  <span className="rounded-full bg-[var(--continua-text-primary)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--continua-surface-elevated)]">
                     {primaryFailedSpan.kind}
                   </span>
                 </div>
 
                 {summary.errorPreview ? (
-                  <p className="mt-2 text-sm text-slate-700 dark:text-slate-200">{summary.errorPreview}</p>
+                  <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">{summary.errorPreview}</p>
                 ) : (
-                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  <p className="mt-2 text-sm text-[var(--continua-text-muted)]">
                     No inline error preview was available for the primary failed span.
                   </p>
                 )}
@@ -95,7 +95,7 @@ export function FailureSummary({
             ) : null}
 
             <div>
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
                 Failure path
               </div>
               <SpanBreadcrumb
@@ -106,7 +106,7 @@ export function FailureSummary({
           </>
         ) : (
           <>
-            <p className="text-sm text-slate-700 dark:text-slate-200">
+            <p className="text-sm text-[var(--continua-text-secondary)]">
               This trace is marked as failed, but no failed span could be identified
               from the current span data.
             </p>
@@ -137,11 +137,11 @@ export function FailureSummary({
 
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/70">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+    <div className="rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
         {label}
       </div>
-      <div className="mt-2 text-sm font-medium text-slate-900 dark:text-slate-100">{value}</div>
+      <div className="mt-2 text-sm font-medium text-[var(--continua-text-primary)]">{value}</div>
     </div>
   );
 }
@@ -158,9 +158,9 @@ function RetrySafetyPanel({
   onJumpToSpan: (spanId: string) => void;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+    <div className="rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
           Trace retry safety
         </div>
         <RetrySafetyBadge
@@ -169,20 +169,20 @@ function RetrySafetyPanel({
           aria-label={getAccessibleSummary(assessment.classification)}
         />
       </div>
-      <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">
+      <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">
         Advisory only. Retry safety is inferred from recorded effect metadata.
       </p>
-      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+      <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">
         {getReasonExplanation(assessment.reason)}
       </p>
       {decisiveSpanDiffers && assessment.decisiveSpanId ? (
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
+          <p className="text-sm text-[var(--continua-text-secondary)]">
             Determined by failed span <span className="font-medium">{decisiveSpanLabel}</span>.
           </p>
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="inline-flex items-center justify-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--continua-text-secondary)] transition hover:bg-[var(--continua-surface-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
             aria-label={`Jump to decisive span ${decisiveSpanLabel}`}
             onClick={() => onJumpToSpan(assessment.decisiveSpanId!)}
           >

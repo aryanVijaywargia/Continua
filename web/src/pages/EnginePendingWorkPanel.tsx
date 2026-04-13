@@ -21,13 +21,13 @@ export function EnginePendingWorkPanel({
   const waitSummary = describeEngineWaitState(data?.current_wait);
 
   return (
-    <section className="rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] p-4 shadow-[var(--continua-shadow-soft)]">
+    <section className="rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] p-4 shadow-[var(--continua-shadow-soft)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
             Pending work
           </div>
-          <h2 className="mt-2 text-base font-semibold text-[var(--continua-text-primary)]">
+          <h2 className="mt-2 text-base font-bold text-[var(--continua-text-primary)]">
             Engine wait state and queued work
           </h2>
           <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
@@ -57,7 +57,7 @@ export function EnginePendingWorkPanel({
         </div>
       ) : (
         <>
-          <div className="mt-4 rounded-[1.25rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
+          <div className="mt-4 rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
               Current wait
             </div>
@@ -169,7 +169,7 @@ function PendingWorkList<Item>({
   renderItem: (item: Item, key: string) => ReactNode;
 }) {
   return (
-    <div className="rounded-[1.25rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
+    <div className="rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
         {title}
       </div>

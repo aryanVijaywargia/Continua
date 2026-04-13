@@ -48,7 +48,7 @@ export function SettingsPage() {
     <div className="app-page max-w-5xl">
       <section className="app-surface p-6 sm:p-7">
         <div className="app-overline">Local settings</div>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)] sm:text-4xl">
+        <h1 className="mt-3 text-3xl font-black tight-headline text-[var(--continua-text-primary)] sm:text-4xl">
           Configure this browser as an operator workspace.
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
@@ -59,7 +59,7 @@ export function SettingsPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <section className="app-surface p-6">
           <div className="mb-4">
-            <h2 className="text-xl font-semibold text-[var(--continua-text-primary)]">
+            <h2 className="text-xl font-black tight-headline text-[var(--continua-text-primary)]">
               API key
             </h2>
             <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
@@ -119,7 +119,7 @@ export function SettingsPage() {
 
         <section className="app-surface p-6">
           <div className="mb-4">
-            <h2 className="text-xl font-semibold text-[var(--continua-text-primary)]">
+            <h2 className="text-xl font-black tight-headline text-[var(--continua-text-primary)]">
               Theme
             </h2>
             <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">

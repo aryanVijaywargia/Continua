@@ -9,6 +9,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AppShell } from './components/AppShell';
 import { OverviewPage } from './pages/OverviewPage';
+import { LandingPage } from './pages/LandingPage';
 
 const queryClient = new QueryClient();
 
@@ -18,8 +19,9 @@ export function App() {
       <ThemeProvider>
         <BrowserRouter>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route element={<AppShell />}>
-              <Route path="/" element={<OverviewPage />} />
+              <Route path="/dashboard" element={<OverviewPage />} />
               <Route path="/traces" element={<TracesPage />} />
               <Route path="/traces/:id" element={<TraceDetailPage />} />
               <Route path="/sessions" element={<SessionsPage />} />

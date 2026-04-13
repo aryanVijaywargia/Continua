@@ -43,7 +43,7 @@ export function EngineProjectionBanner({
   }
 
   return (
-    <section className={`rounded-[1.25rem] border px-4 py-3 ${banner.className}`}>
+    <section className={`rounded-[1rem] border px-4 py-3 ${banner.className}`}>
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold">{banner.title}</h2>
         <span className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-75">

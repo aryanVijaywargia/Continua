@@ -1,6 +1,9 @@
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/500.css';
-@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/inter/800.css';
+@import '@fontsource/inter/900.css';
 @import '@fontsource/ibm-plex-mono/400.css';
 @import '@fontsource/ibm-plex-mono/500.css';
 
@@ -11,66 +14,80 @@
 @layer base {
   :root {
     color-scheme: light;
-    --continua-font-sans: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    --continua-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --continua-font-mono: 'IBM Plex Mono', 'SFMono-Regular', monospace;
-    --continua-app-bg: #f5f0e7;
-    --continua-shell-rail: rgba(249, 245, 238, 0.9);
-    --continua-shell-topbar: rgba(245, 240, 231, 0.84);
-    --continua-surface: rgba(255, 253, 248, 0.84);
+    --continua-app-bg: #f9f9f9;
+    --continua-shell-rail: rgba(238, 238, 238, 0.92);
+    --continua-shell-topbar: rgba(249, 249, 249, 0.86);
+    --continua-surface: rgba(255, 255, 255, 0.72);
     --continua-surface-elevated: rgba(255, 255, 255, 0.94);
-    --continua-surface-muted: rgba(245, 240, 231, 0.84);
-    --continua-border-soft: rgba(73, 84, 102, 0.1);
-    --continua-border-strong: rgba(73, 84, 102, 0.16);
-    --continua-text-primary: #1f2733;
-    --continua-text-secondary: #435161;
-    --continua-text-muted: #66768a;
-    --continua-accent: #2563eb;
-    --continua-accent-strong: #1d4ed8;
-    --continua-accent-contrast: #f8fbff;
-    --continua-accent-faint: rgba(37, 99, 235, 0.12);
-    --continua-shadow-soft: 0 18px 40px rgba(15, 23, 42, 0.07);
-    --continua-panel-separator: rgba(148, 163, 184, 0.9);
+    --continua-surface-muted: rgba(238, 238, 238, 0.84);
+    --continua-border-soft: rgba(192, 199, 214, 0.28);
+    --continua-border-strong: rgba(112, 119, 133, 0.2);
+    --continua-text-primary: #1b1b1b;
+    --continua-text-secondary: #404753;
+    --continua-text-muted: #707785;
+    --continua-accent: #005cab;
+    --continua-accent-strong: #0075d6;
+    --continua-accent-contrast: #ffffff;
+    --continua-accent-faint: rgba(0, 92, 171, 0.1);
+    --continua-shadow-soft: 0 32px 64px -12px rgba(27, 27, 27, 0.06);
+    --continua-panel-separator: rgba(192, 199, 214, 0.9);
+    --continua-error: #ba1a1a;
+    --continua-error-faint: rgba(186, 26, 26, 0.08);
+    --continua-error-border: rgba(186, 26, 26, 0.24);
+    --continua-secondary: #705d00;
+    --continua-secondary-container: #fcd400;
+    --continua-tertiary: #326800;
+    --continua-tertiary-container: #418400;
     --continua-waterfall-failed-bg: rgba(255, 232, 232, 0.95);
-    --continua-waterfall-failed-border: rgba(248, 113, 113, 0.45);
-    --continua-waterfall-running-bg: rgba(219, 234, 254, 0.95);
-    --continua-waterfall-running-border: rgba(59, 130, 246, 0.4);
-    --continua-waterfall-running-dot: #2563eb;
+    --continua-waterfall-failed-border: rgba(186, 26, 26, 0.35);
+    --continua-waterfall-running-bg: rgba(212, 227, 255, 0.95);
+    --continua-waterfall-running-border: rgba(0, 92, 171, 0.35);
+    --continua-waterfall-running-dot: #0075d6;
     --continua-waterfall-success-bg: rgba(232, 244, 238, 0.95);
     --continua-waterfall-success-border: rgba(52, 211, 153, 0.38);
-    --continua-waterfall-success-selected-bg: rgba(219, 234, 254, 0.95);
-    --continua-waterfall-success-selected-border: rgba(37, 99, 235, 0.45);
-    --continua-waterfall-tick-color: rgba(100, 116, 139, 0.18);
+    --continua-waterfall-success-selected-bg: rgba(212, 227, 255, 0.95);
+    --continua-waterfall-success-selected-border: rgba(0, 92, 171, 0.4);
+    --continua-waterfall-tick-color: rgba(112, 119, 133, 0.18);
   }
 
   html.dark {
     color-scheme: dark;
-    --continua-app-bg: #0d141b;
-    --continua-shell-rail: rgba(14, 22, 31, 0.96);
-    --continua-shell-topbar: rgba(13, 20, 27, 0.86);
-    --continua-surface: rgba(21, 32, 45, 0.82);
-    --continua-surface-elevated: rgba(24, 37, 51, 0.95);
-    --continua-surface-muted: rgba(16, 25, 34, 0.88);
-    --continua-border-soft: rgba(148, 163, 184, 0.12);
-    --continua-border-strong: rgba(148, 163, 184, 0.18);
-    --continua-text-primary: #eef4fb;
-    --continua-text-secondary: #b8c7d7;
-    --continua-text-muted: #7f91a5;
-    --continua-accent: #7dd3fc;
-    --continua-accent-strong: #38bdf8;
-    --continua-accent-contrast: #041018;
-    --continua-accent-faint: rgba(125, 211, 252, 0.14);
-    --continua-shadow-soft: 0 20px 45px rgba(2, 8, 23, 0.38);
+    --continua-app-bg: #111318;
+    --continua-shell-rail: rgba(17, 19, 24, 0.96);
+    --continua-shell-topbar: rgba(17, 19, 24, 0.86);
+    --continua-surface: rgba(28, 30, 36, 0.82);
+    --continua-surface-elevated: rgba(35, 38, 48, 0.95);
+    --continua-surface-muted: rgba(22, 24, 30, 0.88);
+    --continua-border-soft: rgba(192, 199, 214, 0.12);
+    --continua-border-strong: rgba(192, 199, 214, 0.18);
+    --continua-text-primary: #e2e3e9;
+    --continua-text-secondary: #c0c7d6;
+    --continua-text-muted: #8e95a4;
+    --continua-accent: #a5c8ff;
+    --continua-accent-strong: #79b4f5;
+    --continua-accent-contrast: #00315b;
+    --continua-accent-faint: rgba(165, 200, 255, 0.12);
+    --continua-shadow-soft: 0 32px 64px -12px rgba(2, 8, 23, 0.3);
     --continua-panel-separator: rgba(71, 85, 105, 0.95);
-    --continua-waterfall-failed-bg: rgba(127, 29, 29, 0.4);
-    --continua-waterfall-failed-border: rgba(248, 113, 113, 0.4);
-    --continua-waterfall-running-bg: rgba(15, 23, 42, 0.95);
-    --continua-waterfall-running-border: rgba(125, 211, 252, 0.28);
-    --continua-waterfall-running-dot: #93c5fd;
+    --continua-error: #ffb4ab;
+    --continua-error-faint: rgba(255, 180, 171, 0.12);
+    --continua-error-border: rgba(255, 180, 171, 0.24);
+    --continua-secondary: #e9c400;
+    --continua-secondary-container: #544600;
+    --continua-tertiary: #8eda54;
+    --continua-tertiary-container: #255100;
+    --continua-waterfall-failed-bg: rgba(147, 0, 10, 0.35);
+    --continua-waterfall-failed-border: rgba(255, 180, 171, 0.35);
+    --continua-waterfall-running-bg: rgba(0, 28, 58, 0.6);
+    --continua-waterfall-running-border: rgba(165, 200, 255, 0.28);
+    --continua-waterfall-running-dot: #a5c8ff;
     --continua-waterfall-success-bg: rgba(6, 78, 59, 0.38);
     --continua-waterfall-success-border: rgba(110, 231, 183, 0.26);
-    --continua-waterfall-success-selected-bg: rgba(12, 74, 110, 0.54);
-    --continua-waterfall-success-selected-border: rgba(125, 211, 252, 0.38);
-    --continua-waterfall-tick-color: rgba(148, 163, 184, 0.14);
+    --continua-waterfall-success-selected-bg: rgba(0, 49, 91, 0.54);
+    --continua-waterfall-success-selected-border: rgba(165, 200, 255, 0.38);
+    --continua-waterfall-tick-color: rgba(142, 149, 164, 0.14);
   }
 
   html,
@@ -81,9 +98,6 @@
 
   body {
     background-color: var(--continua-app-bg);
-    background-image:
-      radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 24rem),
-      radial-gradient(circle at bottom right, rgba(15, 23, 42, 0.07), transparent 22rem);
     color: var(--continua-text-primary);
     font-family: var(--continua-font-sans);
     @apply antialiased;
@@ -97,7 +111,12 @@
   }
 
   ::selection {
-    background: var(--continua-accent-faint);
+    background: var(--continua-accent-strong);
+    color: #ffffff;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
 }
 
@@ -148,6 +167,20 @@
 }
 
 @layer components {
+  .workflow-step::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -2rem;
+    width: 2rem;
+    height: 2px;
+    background: #e2e2e2;
+  }
+
+  .workflow-step:last-child::after {
+    display: none;
+  }
+
   .app-shell-enter {
     animation: continua-shell-enter 240ms ease-out;
   }
@@ -165,33 +198,37 @@
   }
 
   .app-page {
-    @apply mx-auto flex max-w-[92rem] flex-col gap-6;
+    @apply flex flex-col gap-8;
   }
 
   .app-surface {
-    background: var(--continua-surface);
-    border: 1px solid var(--continua-border-strong);
+    background: var(--continua-surface-elevated);
+    border: 1px solid var(--continua-border-soft);
     box-shadow: var(--continua-shadow-soft);
-    backdrop-filter: blur(18px);
-    @apply rounded-[1.5rem];
+    @apply rounded-xl p-8;
   }
 
   .app-surface-muted {
     background: var(--continua-surface-muted);
     border: 1px solid var(--continua-border-soft);
-    @apply rounded-[1.25rem];
+    @apply rounded-xl;
   }
 
   .app-metric-panel {
-    background: var(--continua-surface);
-    border: 1px solid var(--continua-border-strong);
+    background: var(--continua-surface-elevated);
+    border: 1px solid var(--continua-border-soft);
     box-shadow: var(--continua-shadow-soft);
-    @apply rounded-[1.35rem] p-5;
+    @apply rounded-xl p-8;
+  }
+
+  .tight-headline {
+    letter-spacing: -0.04em;
+    line-height: 1.1;
   }
 
   .app-overline {
     color: var(--continua-text-muted);
-    @apply text-[11px] font-semibold uppercase tracking-[0.22em];
+    @apply text-[10px] font-black uppercase tracking-widest;
   }
 
   .app-section-header {
@@ -200,55 +237,54 @@
 
   .app-inline-link {
     color: var(--continua-accent);
-    @apply text-sm font-medium transition hover:opacity-80;
+    @apply text-sm font-semibold transition hover:opacity-80;
   }
 
   .app-button-primary {
-    background: var(--continua-accent-strong);
-    color: var(--continua-accent-contrast);
-    @apply inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition hover:brightness-110 focus:outline-none focus:ring-2;
-    box-shadow: var(--continua-shadow-soft);
+    background: var(--continua-text-primary);
+    color: var(--continua-app-bg);
+    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-bold transition hover:opacity-90 active:scale-95 focus:outline-none focus:ring-2;
   }
 
   .app-button-secondary {
     background: var(--continua-surface-elevated);
     border: 1px solid var(--continua-border-strong);
     color: var(--continua-text-primary);
-    @apply inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition hover:border-[var(--continua-accent)] hover:text-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)];
+    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-bold transition hover:border-[var(--continua-accent)] hover:text-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)];
   }
 
   .app-button-ghost {
     background: transparent;
     border: 1px solid var(--continua-border-soft);
     color: var(--continua-text-secondary);
-    @apply inline-flex items-center justify-center rounded-full px-3 py-2 text-sm font-medium transition hover:border-[var(--continua-border-strong)] hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)];
+    @apply inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition hover:border-[var(--continua-border-strong)] hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)];
   }
 
   .app-input,
   .app-select {
     background: var(--continua-surface-elevated);
-    border: 1px solid var(--continua-border-strong);
+    border: 1px solid var(--continua-border-soft);
     color: var(--continua-text-primary);
-    @apply w-full rounded-[1rem] px-3 py-2.5 text-sm outline-none transition focus:border-[var(--continua-accent)] focus:ring-2 focus:ring-[var(--continua-accent-faint)];
+    @apply w-full rounded-xl px-4 py-3 text-sm outline-none transition focus:border-[var(--continua-accent)] focus:ring-2 focus:ring-[var(--continua-accent-faint)];
   }
 
   .app-list-row {
     background: var(--continua-surface-elevated);
     border: 1px solid var(--continua-border-soft);
-    @apply flex items-start justify-between gap-3 rounded-[1.2rem] px-4 py-4 transition hover:-translate-y-0.5 hover:border-[var(--continua-border-strong)] hover:bg-[var(--continua-surface)];
+    @apply flex items-start justify-between gap-3 rounded-xl px-5 py-4 transition hover:border-[var(--continua-accent-faint)] hover:bg-[var(--continua-surface)];
   }
 
   .app-empty-state {
     background: var(--continua-surface-muted);
-    border: 1px dashed var(--continua-border-strong);
+    border: 1px dashed var(--continua-border-soft);
     color: var(--continua-text-muted);
-    @apply mt-5 rounded-[1.25rem] px-5 py-10 text-center text-sm;
+    @apply mt-5 rounded-xl px-5 py-10 text-center text-sm;
   }
 
   .app-alert-error {
-    @apply rounded-[1.25rem] border px-4 py-3 text-sm;
-    background: rgba(239, 68, 68, 0.08);
-    border-color: rgba(239, 68, 68, 0.24);
-    color: #b91c1c;
+    @apply rounded-xl border px-4 py-3 text-sm;
+    background: var(--continua-error-faint);
+    border-color: var(--continua-error-border);
+    color: var(--continua-error);
   }
 }

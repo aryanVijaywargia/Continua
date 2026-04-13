@@ -76,7 +76,7 @@ export function WorkspaceShell({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
       <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-3">
         <div className="flex flex-wrap items-center gap-2">
           {MOBILE_TABS.map((tab) => (

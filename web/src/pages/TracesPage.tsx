@@ -325,7 +325,7 @@ function TracesContent() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
             <div className="app-overline">Trace triage</div>
-            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)] sm:text-4xl">
+            <h1 className="mt-3 text-3xl font-black tight-headline text-[var(--continua-text-primary)] sm:text-4xl">
               Find the run, isolate the failure, and jump straight into the workspace.
             </h1>
             <p className="mt-3 text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
@@ -551,10 +551,10 @@ function TracesContent() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-[1.25rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
+          <div className="mt-4 rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-secondary)]">
+                <h2 className="app-overline text-[var(--continua-text-secondary)]">
                   Engine filters
                 </h2>
                 <p className="mt-1 text-sm text-[var(--continua-text-muted)]">
@@ -711,7 +711,7 @@ function TracesContent() {
           </div>
 
           {dateRangeError && (
-            <p className="mt-3 text-sm font-medium text-red-600 dark:text-red-300">{dateRangeError}</p>
+            <p className="mt-3 text-sm font-medium text-[var(--continua-error)]">{dateRangeError}</p>
           )}
       </section>
 
@@ -775,12 +775,12 @@ function TracesContent() {
       ) : traces.length === 0 ? (
         hasActiveFilters ? (
           <div className="app-empty-state">
-            <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">No matching traces</h2>
+            <h2 className="text-lg font-black tight-headline text-[var(--continua-text-primary)]">No matching traces</h2>
             <p className="mt-2">Try broadening the filters or clearing them entirely.</p>
           </div>
         ) : (
           <div className="app-empty-state">
-            <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">No traces yet</h2>
+            <h2 className="text-lg font-black tight-headline text-[var(--continua-text-primary)]">No traces yet</h2>
             <p className="mt-2">Start sending traces from your application to see them here.</p>
           </div>
         )
@@ -788,7 +788,7 @@ function TracesContent() {
         <>
           <section className="app-surface overflow-hidden">
             <div className="flex items-center justify-between border-b border-[var(--continua-border-soft)] px-4 py-3 sm:px-5">
-              <div className="flex items-center gap-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+              <div className="flex items-center gap-4 app-overline">
                 <span>Name</span>
                 <span>Status</span>
                 <span>Duration</span>
@@ -855,7 +855,7 @@ function TraceRow({ trace, returnTo }: TraceRowProps) {
           ) : null}
           <StatusBadge status={trace.status} />
           {trace.error_count && trace.error_count > 0 ? (
-            <span className="inline-flex rounded-full border border-red-300/60 bg-red-100/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-900 dark:border-red-400/25 dark:bg-red-400/10 dark:text-red-100">
+            <span className="inline-flex rounded-full border border-[var(--continua-error-border)] bg-[var(--continua-error-faint)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--continua-error)]">
               {trace.error_count} error{trace.error_count === 1 ? '' : 's'}
             </span>
           ) : null}
@@ -906,7 +906,7 @@ function TraceStat({ label, value }: { label: string; value: string }) {
       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
         {label}
       </div>
-      <div className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+      <div className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">
         {value}
       </div>
     </div>

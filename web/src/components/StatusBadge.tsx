@@ -16,7 +16,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
     FAILED:
       'border border-red-300/60 bg-red-100/80 text-red-900 dark:border-red-400/25 dark:bg-red-400/10 dark:text-red-100',
     SCHEDULED:
-      'border border-slate-300/70 bg-slate-100/80 text-slate-700 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-200',
+      'border border-[var(--continua-border-strong)] bg-[var(--continua-surface-muted)] text-[var(--continua-text-secondary)]',
   };
 
   return (

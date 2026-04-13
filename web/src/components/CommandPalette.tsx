@@ -138,10 +138,10 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
       >
         <span>Command Palette</span>
-        <kbd className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+        <kbd className="rounded-md border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-1.5 py-0.5 text-[11px] text-[var(--continua-text-muted)]">
           {shortcutHint}
         </kbd>
       </button>
@@ -149,14 +149,14 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
       {isOpen ? (
         <div
           data-testid="command-palette-backdrop"
-          className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/45 px-4 py-20 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-[#111318]/50 px-4 py-20 backdrop-blur-sm"
           onClick={() => setIsOpen(false)}
         >
           <div
-            className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            className="w-full max-w-2xl overflow-hidden rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)] shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+            <div className="border-b border-[var(--continua-border-soft)] px-4 py-4">
               <label className="sr-only" htmlFor="command-palette-search">
                 Search commands
               </label>
@@ -176,13 +176,13 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
                     ? `command-option-${filteredCommands[activeIndex].id}`
                     : undefined
                 }
-                className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-900"
+                className="app-input"
               />
             </div>
 
             <div className="max-h-[24rem] overflow-y-auto p-2">
               {filteredCommands.length === 0 ? (
-                <div className="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
+                <div className="px-4 py-12 text-center text-sm text-[var(--continua-text-muted)]">
                   No commands match your search.
                 </div>
               ) : (
@@ -197,10 +197,10 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
                           type="button"
                           role="option"
                           aria-selected={isActive}
-                          className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-sm transition ${
+                          className={`flex w-full items-center justify-between rounded-[0.75rem] px-4 py-3 text-left text-sm transition ${
                             isActive
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                              ? 'bg-[var(--continua-accent-strong)] text-[var(--continua-accent-contrast)]'
+                              : 'text-[var(--continua-text-secondary)] hover:bg-[var(--continua-surface-muted)]'
                           }`}
                           onMouseEnter={() => setActiveIndex(index)}
                           onClick={() => executeCommand(command)}
@@ -209,8 +209,8 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
                           <span
                             className={`text-xs ${
                               isActive
-                                ? 'text-blue-100'
-                                : 'text-slate-400 dark:text-slate-500'
+                                ? 'opacity-70'
+                                : 'text-[var(--continua-text-muted)]'
                             }`}
                           >
                             Enter

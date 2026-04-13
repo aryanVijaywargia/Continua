@@ -48,7 +48,7 @@ export function Navigation() {
         <div className="flex min-h-16 flex-col gap-3 py-3 lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:py-0">
           <div className="flex min-w-0 items-center">
             <Link
-              to="/"
+              to="/dashboard"
               className="flex items-center text-xl font-bold text-slate-900 dark:text-slate-100"
             >
               Continua

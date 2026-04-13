@@ -102,14 +102,14 @@ export function ExecutionWaterfall({
 
   if (rows.length === 0 || !window) {
     return (
-      <section className="flex h-full items-center justify-center rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+      <section className="flex h-full items-center justify-center rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
         <div className="text-sm text-[var(--continua-text-muted)]">No spans available for execution timing.</div>
       </section>
     );
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.5rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
       <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3">
         <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--continua-text-secondary)]">
           Execution Waterfall
@@ -234,7 +234,7 @@ export function ExecutionWaterfall({
                   >
                     <button
                       type="button"
-                      className={`absolute top-1/2 flex h-6 -translate-y-1/2 items-center rounded-full border px-2 text-xs font-medium text-slate-900 transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] dark:text-slate-50`}
+                      className={`absolute top-1/2 flex h-6 -translate-y-1/2 items-center rounded-full border px-2 text-xs font-medium text-[var(--continua-text-primary)] transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]`}
                       style={{
                         left: `${bar.leftPercent}%`,
                         width: `${Math.max(bar.widthPercent, 0.35)}%`,

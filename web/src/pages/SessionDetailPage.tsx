@@ -328,7 +328,7 @@ export function SessionDetailPage() {
 
   if (!id) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center dark:bg-slate-950">
+      <div className="min-h-screen bg-[var(--continua-app-bg)] flex items-center justify-center">
         <div className="text-red-600">Session ID is required</div>
       </div>
     );
@@ -510,8 +510,8 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
 
   if (sessionQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center dark:bg-slate-950">
-        <div className="text-slate-500 dark:text-slate-400">Loading session...</div>
+      <div className="min-h-screen bg-[var(--continua-app-bg)] flex items-center justify-center">
+        <div className="text-[var(--continua-text-muted)]">Loading session...</div>
       </div>
     );
   }
@@ -553,7 +553,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-semibold tracking-[-0.04em] text-[var(--continua-text-primary)]">{session.external_id}</h1>
+                <h1 className="text-3xl font-black tight-headline text-[var(--continua-text-primary)]">{session.external_id}</h1>
                 <CopyButton
                   aria-label="Copy session external ID"
                   value={session.external_id}
@@ -628,7 +628,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="app-overline">Trace browser</div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">Traces</h2>
+            <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">Traces</h2>
             <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
               Sort by started time and preserve table state in the URL.
             </p>
@@ -659,7 +659,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
           </div>
         ) : traces.length === 0 ? (
           <div className="app-empty-state">
-            <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">No traces in this session</h2>
+            <h2 className="text-lg font-bold text-[var(--continua-text-primary)]">No traces in this session</h2>
             <p className="mt-2">
               Traces will appear here as they are ingested for this session.
             </p>
@@ -667,25 +667,25 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
         ) : (
           <>
             <div className="app-surface overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
-                <thead className="bg-slate-50 dark:bg-slate-950/70">
+              <table className="min-w-full divide-y divide-[var(--continua-border-soft)]">
+                <thead className="bg-[var(--continua-surface-muted)]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    <th className="px-6 py-3 text-left app-overline">
                       Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    <th className="px-6 py-3 text-left app-overline">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    <th className="px-6 py-3 text-left app-overline">
                       Duration
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    <th className="px-6 py-3 text-left app-overline">
                       Tokens
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    <th className="px-6 py-3 text-left app-overline">
                       Cost
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    <th className="px-6 py-3 text-left app-overline">
                       <SortableHeader
                         label="Started"
                         isActive={filters.sort_by === 'started_at'}
@@ -695,7 +695,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
+                <tbody className="divide-y divide-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)]">
                   {traces.map((trace) => (
                     <SessionTraceRow
                       assignCompareRole={assignCompareRole}
@@ -764,7 +764,7 @@ function SessionNarrativeSections({
         className="app-surface mb-6 p-6"
       >
         <div className="animate-pulse">
-          <h2 className="text-lg font-semibold text-[var(--continua-text-primary)]">
+          <h2 className="text-lg font-bold text-[var(--continua-text-primary)]">
             Session Narrative
           </h2>
           <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">Loading narrative...</p>
@@ -797,7 +797,7 @@ function SessionNarrativeSections({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="app-overline">Narrative</div>
-            <h2 className="mt-2 text-lg font-semibold text-[var(--continua-text-primary)]">
+            <h2 className="mt-2 text-lg font-bold text-[var(--continua-text-primary)]">
               Session Narrative
             </h2>
             <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
@@ -828,7 +828,7 @@ function SessionNarrativeSections({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="app-overline">Narrative</div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">
+            <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">
               Session Narrative
             </h2>
             <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
@@ -880,7 +880,7 @@ function SessionNarrativeSections({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="app-overline">Lineage</div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--continua-text-primary)]">Storyline</h2>
+            <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">Storyline</h2>
             <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
               Oldest-first trace flow for the narrative that was returned.
             </p>
@@ -888,7 +888,7 @@ function SessionNarrativeSections({
         </div>
 
         {narrative.summary.truncated && (
-          <div className="mt-4 rounded-[1.15rem] border border-amber-300/40 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+          <div className="mt-4 rounded-[1rem] border border-amber-300/40 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
             Narrative limited to the first {narrative.summary.returned_trace_count} traces. The
             table below remains the full browser.
           </div>
@@ -1131,7 +1131,7 @@ function CompareSelectionCard({
   isPending: boolean;
 }) {
   return (
-    <div className="rounded-[1.15rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
+    <div className="rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
       <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
         {label}
       </p>
@@ -1220,9 +1220,9 @@ function NarrativeLineageBadge({ lineage }: { lineage: SessionNarrativeLineage }
   const label = formatLineageLabel(lineage.type);
   const colorClass =
     lineage.type === 'explicit'
-      ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-100'
+      ? 'bg-amber-100 text-amber-900'
       : lineage.type === 'inferred'
-        ? 'bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-100'
+        ? 'bg-sky-100 text-sky-900'
         : 'bg-[var(--continua-surface-muted)] text-[var(--continua-text-secondary)]';
 
   return (
