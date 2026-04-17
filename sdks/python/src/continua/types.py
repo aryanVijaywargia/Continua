@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
 
 class Error(BaseModel):
@@ -99,6 +99,54 @@ class EnginePendingActivityItem(BaseModel):
     status: str
     available_at: AwareDatetime
     attempt_count: int
+
+
+class ActivityType(RootModel[str]):
+    root: str = Field(..., max_length=256, min_length=1)
+
+
+class EngineRemoteActivityClaimRequest(BaseModel):
+    worker_id: str = Field(..., max_length=128, min_length=1)
+    activity_types: list[ActivityType] = Field(..., max_length=50, min_length=1)
+    lease_duration: str | None = Field(
+        None,
+        description="Requested lease duration, e.g. 60s or 5m. The server clamps the effective value.",
+    )
+    max_tasks: int | None = Field(None, ge=1, le=50)
+
+
+class EngineRemoteActivityTask(BaseModel):
+    task_id: UUID
+    activity_key: str
+    activity_type: str
+    input: Any = Field(..., description="Activity input payload (any valid JSON)")
+    lease_expires_at: AwareDatetime
+    effective_lease_duration_ms: int
+
+
+class EngineRemoteActivityClaimResponse(BaseModel):
+    tasks: list[EngineRemoteActivityTask]
+
+
+class EngineRemoteActivityHeartbeatRequest(BaseModel):
+    worker_id: str = Field(..., max_length=128, min_length=1)
+
+
+class EngineRemoteActivityHeartbeatResponse(BaseModel):
+    lease_expires_at: AwareDatetime
+    effective_lease_duration_ms: int
+
+
+class EngineRemoteActivityCompleteRequest(BaseModel):
+    worker_id: str = Field(..., max_length=128, min_length=1)
+    output: Any = Field(..., description="Activity output payload (any valid JSON)")
+
+
+class EngineRemoteActivityFailRequest(BaseModel):
+    worker_id: str = Field(..., max_length=128, min_length=1)
+    error_code: str = Field(..., max_length=128, min_length=1)
+    error_message: str = Field(..., max_length=4096)
+    non_retryable: bool | None = False
 
 
 class EnginePendingTimerItem(BaseModel):

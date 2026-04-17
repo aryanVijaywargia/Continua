@@ -37,6 +37,7 @@ from .exceptions import (
 from .session import SessionContext, get_current_session, session
 from .span import SpanContext, get_current_span, span
 from .trace import TraceContext, get_current_trace, trace
+from .worker import ActivityTaskContext, ActivityWorker, NonRetryableError
 
 __all__ = [
     # Core client
@@ -50,6 +51,8 @@ __all__ = [
     "TraceContext",
     "SpanContext",
     "SessionContext",
+    "ActivityTaskContext",
+    "ActivityWorker",
     # Context getters
     "get_current_trace",
     "get_current_span",
@@ -61,6 +64,7 @@ __all__ = [
     "EngineRunNotFoundError",
     "EngineRunNotTerminalError",
     "EngineRunWaitTimeoutError",
+    "NonRetryableError",
     "RateLimitError",
     "ValidationError",
     "NetworkError",
