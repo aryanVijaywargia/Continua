@@ -157,6 +157,204 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/engine/activities/claim:
+    post:
+      operationId: claimRemoteActivityTasks
+      summary: Claim remote engine activity tasks
+      tags:
+        - Engine
+      parameters:
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineRemoteActivityClaimRequest'
+      responses:
+        '200':
+          description: Claimed remote activity tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRemoteActivityClaimResponse'
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/activities/{id}/heartbeat:
+    post:
+      operationId: heartbeatRemoteActivityTask
+      summary: Renew a remote activity task lease
+      tags:
+        - Engine
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineRemoteActivityHeartbeatRequest'
+      responses:
+        '200':
+          description: Renewed remote activity lease
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRemoteActivityHeartbeatResponse'
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Activity task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Activity task is not currently owned by this remote worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/activities/{id}/complete:
+    post:
+      operationId: completeRemoteActivityTask
+      summary: Complete a remote activity task
+      tags:
+        - Engine
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineRemoteActivityCompleteRequest'
+      responses:
+        '204':
+          description: Activity task completed
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Activity task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Activity task is not currently owned by this remote worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/activities/{id}/fail:
+    post:
+      operationId: failRemoteActivityTask
+      summary: Fail or retry a remote activity task
+      tags:
+        - Engine
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineRemoteActivityFailRequest'
+      responses:
+        '204':
+          description: Activity task failed or requeued
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Activity task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Activity task is not currently owned by this remote worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/engine/instances/{instance_key}:
     get:
       operationId: getEngineInstance
@@ -1346,6 +1544,119 @@ components:
         attempt_count:
           type: integer
           format: int32
+    EngineRemoteActivityClaimRequest:
+      type: object
+      required:
+        - worker_id
+        - activity_types
+      properties:
+        worker_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        activity_types:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 256
+        lease_duration:
+          type: string
+          description: Requested lease duration, e.g. 60s or 5m. The server clamps the effective value.
+        max_tasks:
+          type: integer
+          minimum: 1
+          maximum: 50
+    EngineRemoteActivityTask:
+      type: object
+      required:
+        - task_id
+        - activity_key
+        - activity_type
+        - input
+        - lease_expires_at
+        - effective_lease_duration_ms
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        activity_key:
+          type: string
+        activity_type:
+          type: string
+        input:
+          description: Activity input payload (any valid JSON)
+        lease_expires_at:
+          type: string
+          format: date-time
+        effective_lease_duration_ms:
+          type: integer
+          format: int64
+    EngineRemoteActivityClaimResponse:
+      type: object
+      required:
+        - tasks
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineRemoteActivityTask'
+    EngineRemoteActivityHeartbeatRequest:
+      type: object
+      required:
+        - worker_id
+      properties:
+        worker_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+    EngineRemoteActivityHeartbeatResponse:
+      type: object
+      required:
+        - lease_expires_at
+        - effective_lease_duration_ms
+      properties:
+        lease_expires_at:
+          type: string
+          format: date-time
+        effective_lease_duration_ms:
+          type: integer
+          format: int64
+    EngineRemoteActivityCompleteRequest:
+      type: object
+      required:
+        - worker_id
+        - output
+      properties:
+        worker_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        output:
+          description: Activity output payload (any valid JSON)
+    EngineRemoteActivityFailRequest:
+      type: object
+      required:
+        - worker_id
+        - error_code
+        - error_message
+      properties:
+        worker_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        error_code:
+          type: string
+          minLength: 1
+          maxLength: 128
+        error_message:
+          type: string
+          maxLength: 4096
+        non_retryable:
+          type: boolean
+          default: false
     EnginePendingTimerItem:
       type: object
       required:

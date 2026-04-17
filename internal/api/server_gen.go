@@ -568,6 +568,59 @@ type EnginePurgeResponse struct {
 	RunId           openapi_types.UUID    `json:"run_id"`
 }
 
+// EngineRemoteActivityClaimRequest defines model for EngineRemoteActivityClaimRequest.
+type EngineRemoteActivityClaimRequest struct {
+	ActivityTypes []string `json:"activity_types"`
+
+	// LeaseDuration Requested lease duration, e.g. 60s or 5m. The server clamps the effective value.
+	LeaseDuration *string `json:"lease_duration,omitempty"`
+	MaxTasks      *int    `json:"max_tasks,omitempty"`
+	WorkerId      string  `json:"worker_id"`
+}
+
+// EngineRemoteActivityClaimResponse defines model for EngineRemoteActivityClaimResponse.
+type EngineRemoteActivityClaimResponse struct {
+	Tasks []EngineRemoteActivityTask `json:"tasks"`
+}
+
+// EngineRemoteActivityCompleteRequest defines model for EngineRemoteActivityCompleteRequest.
+type EngineRemoteActivityCompleteRequest struct {
+	// Output Activity output payload (any valid JSON)
+	Output   interface{} `json:"output"`
+	WorkerId string      `json:"worker_id"`
+}
+
+// EngineRemoteActivityFailRequest defines model for EngineRemoteActivityFailRequest.
+type EngineRemoteActivityFailRequest struct {
+	ErrorCode    string `json:"error_code"`
+	ErrorMessage string `json:"error_message"`
+	NonRetryable *bool  `json:"non_retryable,omitempty"`
+	WorkerId     string `json:"worker_id"`
+}
+
+// EngineRemoteActivityHeartbeatRequest defines model for EngineRemoteActivityHeartbeatRequest.
+type EngineRemoteActivityHeartbeatRequest struct {
+	WorkerId string `json:"worker_id"`
+}
+
+// EngineRemoteActivityHeartbeatResponse defines model for EngineRemoteActivityHeartbeatResponse.
+type EngineRemoteActivityHeartbeatResponse struct {
+	EffectiveLeaseDurationMs int64     `json:"effective_lease_duration_ms"`
+	LeaseExpiresAt           time.Time `json:"lease_expires_at"`
+}
+
+// EngineRemoteActivityTask defines model for EngineRemoteActivityTask.
+type EngineRemoteActivityTask struct {
+	ActivityKey              string `json:"activity_key"`
+	ActivityType             string `json:"activity_type"`
+	EffectiveLeaseDurationMs int64  `json:"effective_lease_duration_ms"`
+
+	// Input Activity input payload (any valid JSON)
+	Input          interface{}        `json:"input"`
+	LeaseExpiresAt time.Time          `json:"lease_expires_at"`
+	TaskId         openapi_types.UUID `json:"task_id"`
+}
+
 // EngineRepairReason defines model for EngineRepairReason.
 type EngineRepairReason string
 
@@ -1290,6 +1343,30 @@ type GetTraceEventsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ClaimRemoteActivityTasksParams defines parameters for ClaimRemoteActivityTasks.
+type ClaimRemoteActivityTasksParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+}
+
+// CompleteRemoteActivityTaskParams defines parameters for CompleteRemoteActivityTask.
+type CompleteRemoteActivityTaskParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+}
+
+// FailRemoteActivityTaskParams defines parameters for FailRemoteActivityTask.
+type FailRemoteActivityTaskParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+}
+
+// HeartbeatRemoteActivityTaskParams defines parameters for HeartbeatRemoteActivityTask.
+type HeartbeatRemoteActivityTaskParams struct {
+	// XContinuaEnginePreview Required preview header for mutating engine routes.
+	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+}
+
 // BackfillEngineProjectionsParams defines parameters for BackfillEngineProjections.
 type BackfillEngineProjectionsParams struct {
 	// XContinuaEnginePreview Required preview header for mutating engine routes.
@@ -1360,6 +1437,18 @@ type IngestParams struct {
 	// Any other value is rejected with `400 unsupported_async_version`.
 	XContinuaAsyncVersion *string `json:"X-Continua-Async-Version,omitempty"`
 }
+
+// ClaimRemoteActivityTasksJSONRequestBody defines body for ClaimRemoteActivityTasks for application/json ContentType.
+type ClaimRemoteActivityTasksJSONRequestBody = EngineRemoteActivityClaimRequest
+
+// CompleteRemoteActivityTaskJSONRequestBody defines body for CompleteRemoteActivityTask for application/json ContentType.
+type CompleteRemoteActivityTaskJSONRequestBody = EngineRemoteActivityCompleteRequest
+
+// FailRemoteActivityTaskJSONRequestBody defines body for FailRemoteActivityTask for application/json ContentType.
+type FailRemoteActivityTaskJSONRequestBody = EngineRemoteActivityFailRequest
+
+// HeartbeatRemoteActivityTaskJSONRequestBody defines body for HeartbeatRemoteActivityTask for application/json ContentType.
+type HeartbeatRemoteActivityTaskJSONRequestBody = EngineRemoteActivityHeartbeatRequest
 
 // BackfillEngineProjectionsJSONRequestBody defines body for BackfillEngineProjections for application/json ContentType.
 type BackfillEngineProjectionsJSONRequestBody = EngineProjectionBackfillRequest
@@ -1560,6 +1649,18 @@ type ServerInterface interface {
 	// List spans for a trace
 	// (GET /api/traces/{id}/spans)
 	ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Claim remote engine activity tasks
+	// (POST /v1/engine/activities/claim)
+	ClaimRemoteActivityTasks(w http.ResponseWriter, r *http.Request, params ClaimRemoteActivityTasksParams)
+	// Complete a remote activity task
+	// (POST /v1/engine/activities/{id}/complete)
+	CompleteRemoteActivityTask(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params CompleteRemoteActivityTaskParams)
+	// Fail or retry a remote activity task
+	// (POST /v1/engine/activities/{id}/fail)
+	FailRemoteActivityTask(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params FailRemoteActivityTaskParams)
+	// Renew a remote activity task lease
+	// (POST /v1/engine/activities/{id}/heartbeat)
+	HeartbeatRemoteActivityTask(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params HeartbeatRemoteActivityTaskParams)
 	// Get an engine instance and current run
 	// (GET /v1/engine/instances/{instance_key})
 	GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string)
@@ -1659,6 +1760,30 @@ func (_ Unimplemented) GetTraceEvents(w http.ResponseWriter, r *http.Request, id
 // List spans for a trace
 // (GET /api/traces/{id}/spans)
 func (_ Unimplemented) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Claim remote engine activity tasks
+// (POST /v1/engine/activities/claim)
+func (_ Unimplemented) ClaimRemoteActivityTasks(w http.ResponseWriter, r *http.Request, params ClaimRemoteActivityTasksParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Complete a remote activity task
+// (POST /v1/engine/activities/{id}/complete)
+func (_ Unimplemented) CompleteRemoteActivityTask(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params CompleteRemoteActivityTaskParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Fail or retry a remote activity task
+// (POST /v1/engine/activities/{id}/fail)
+func (_ Unimplemented) FailRemoteActivityTask(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params FailRemoteActivityTaskParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Renew a remote activity task lease
+// (POST /v1/engine/activities/{id}/heartbeat)
+func (_ Unimplemented) HeartbeatRemoteActivityTask(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params HeartbeatRemoteActivityTaskParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2270,6 +2395,233 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListSpansByTrace(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClaimRemoteActivityTasks operation middleware
+func (siw *ServerInterfaceWrapper) ClaimRemoteActivityTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ClaimRemoteActivityTasksParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = XContinuaEnginePreview
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClaimRemoteActivityTasks(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteRemoteActivityTask operation middleware
+func (siw *ServerInterfaceWrapper) CompleteRemoteActivityTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompleteRemoteActivityTaskParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = XContinuaEnginePreview
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteRemoteActivityTask(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FailRemoteActivityTask operation middleware
+func (siw *ServerInterfaceWrapper) FailRemoteActivityTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params FailRemoteActivityTaskParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = XContinuaEnginePreview
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FailRemoteActivityTask(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// HeartbeatRemoteActivityTask operation middleware
+func (siw *ServerInterfaceWrapper) HeartbeatRemoteActivityTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params HeartbeatRemoteActivityTaskParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
+		var XContinuaEnginePreview string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Continua-Engine-Preview", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
+			return
+		}
+
+		params.XContinuaEnginePreview = XContinuaEnginePreview
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.HeartbeatRemoteActivityTask(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3187,6 +3539,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/traces/{id}/spans", wrapper.ListSpansByTrace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/activities/claim", wrapper.ClaimRemoteActivityTasks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/activities/{id}/complete", wrapper.CompleteRemoteActivityTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/activities/{id}/fail", wrapper.FailRemoteActivityTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/engine/activities/{id}/heartbeat", wrapper.HeartbeatRemoteActivityTask)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/engine/instances/{instance_key}", wrapper.GetEngineInstance)

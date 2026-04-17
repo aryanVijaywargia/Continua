@@ -310,6 +310,8 @@ type EngineActivityTask struct {
 	InitialBackoffMs  *int64                   `json:"initial_backoff_ms"`
 	MaxBackoffMs      *int64                   `json:"max_backoff_ms"`
 	BackoffMultiplier *float64                 `json:"backoff_multiplier"`
+	ExecutionTarget   string                   `json:"execution_target"`
+	LeaseDurationMs   *int64                   `json:"lease_duration_ms"`
 }
 
 type EngineChildWorkflow struct {

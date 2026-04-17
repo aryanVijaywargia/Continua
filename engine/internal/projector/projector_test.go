@@ -689,15 +689,16 @@ func TestProjectorPollOnce_TerminatedHistoryProjectsFailureAndCleanup(t *testing
 	})
 
 	if _, err := fixture.store.CreateActivityTask(fixture.ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    fixture.projectID,
-		InstanceID:   fixture.instance.ID,
-		RunID:        fixture.run.ID,
-		HistoryID:    &activityHistory.ID,
-		ActivityKey:  "ship-order",
-		ActivityType: "demo.ship",
-		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
-		AvailableAt:  baseTime.Add(time.Minute),
-		MaxAttempts:  1,
+		ProjectID:       fixture.projectID,
+		InstanceID:      fixture.instance.ID,
+		RunID:           fixture.run.ID,
+		HistoryID:       &activityHistory.ID,
+		ActivityKey:     "ship-order",
+		ActivityType:    "demo.ship",
+		Input:           mustJSON(t, map[string]any{"order_id": "ord-123"}),
+		AvailableAt:     baseTime.Add(time.Minute),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	}); err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
 	}
@@ -1100,14 +1101,15 @@ func TestProjectorPollOnce_ContinuedAsNewProjectsCompletedTerminalShell(t *testi
 	completedAt := time.Now().UTC().Round(time.Microsecond)
 
 	if _, err := fixture.store.CreateActivityTask(fixture.ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    fixture.projectID,
-		InstanceID:   fixture.instance.ID,
-		RunID:        fixture.run.ID,
-		ActivityKey:  "ship-order",
-		ActivityType: "demo.ship",
-		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
-		AvailableAt:  completedAt.Add(-time.Minute),
-		MaxAttempts:  1,
+		ProjectID:       fixture.projectID,
+		InstanceID:      fixture.instance.ID,
+		RunID:           fixture.run.ID,
+		ActivityKey:     "ship-order",
+		ActivityType:    "demo.ship",
+		Input:           mustJSON(t, map[string]any{"order_id": "ord-123"}),
+		AvailableAt:     completedAt.Add(-time.Minute),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	}); err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
 	}
@@ -1244,15 +1246,16 @@ func TestProjectorPollOnce_TerminatedCleanupSkipsAlreadyCompletedActivities(t *t
 		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
 	})
 	activityTask, err := fixture.store.CreateActivityTask(fixture.ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    fixture.projectID,
-		InstanceID:   fixture.instance.ID,
-		RunID:        fixture.run.ID,
-		HistoryID:    &activityHistory.ID,
-		ActivityKey:  "ship-order",
-		ActivityType: "demo.ship",
-		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
-		AvailableAt:  baseTime,
-		MaxAttempts:  1,
+		ProjectID:       fixture.projectID,
+		InstanceID:      fixture.instance.ID,
+		RunID:           fixture.run.ID,
+		HistoryID:       &activityHistory.ID,
+		ActivityKey:     "ship-order",
+		ActivityType:    "demo.ship",
+		Input:           mustJSON(t, map[string]any{"order_id": "ord-123"}),
+		AvailableAt:     baseTime,
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	})
 	if err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)

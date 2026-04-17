@@ -38,30 +38,32 @@ func TestConstraintViolationsMapToErrAlreadyExists(t *testing.T) {
 	}
 
 	_, err = ts.store.CreateActivityTask(ts.ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    projectID,
-		InstanceID:   instance.ID,
-		RunID:        run.ID,
-		HistoryID:    &history.ID,
-		ActivityKey:  "activity-1",
-		ActivityType: "email.send",
-		Input:        []byte(`{"to":"user@example.com"}`),
-		AvailableAt:  time.Now(),
-		MaxAttempts:  1,
+		ProjectID:       projectID,
+		InstanceID:      instance.ID,
+		RunID:           run.ID,
+		HistoryID:       &history.ID,
+		ActivityKey:     "activity-1",
+		ActivityType:    "email.send",
+		Input:           []byte(`{"to":"user@example.com"}`),
+		AvailableAt:     time.Now(),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	})
 	if err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
 	}
 
 	_, err = ts.store.CreateActivityTask(ts.ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    projectID,
-		InstanceID:   instance.ID,
-		RunID:        run.ID,
-		HistoryID:    &history.ID,
-		ActivityKey:  "activity-1",
-		ActivityType: "email.send",
-		Input:        []byte(`{"to":"user@example.com"}`),
-		AvailableAt:  time.Now(),
-		MaxAttempts:  1,
+		ProjectID:       projectID,
+		InstanceID:      instance.ID,
+		RunID:           run.ID,
+		HistoryID:       &history.ID,
+		ActivityKey:     "activity-1",
+		ActivityType:    "email.send",
+		Input:           []byte(`{"to":"user@example.com"}`),
+		AvailableAt:     time.Now(),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	})
 	if !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("expected activity uniqueness error, got %v", err)

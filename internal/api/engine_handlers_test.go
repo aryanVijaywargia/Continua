@@ -2557,27 +2557,29 @@ func TestGetEngineRunPendingWork_ReturnsTypedOpenWorkAndExcludesCancelRows(t *te
 	})
 
 	_, err = engineQueries.CreateActivityTask(ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    projectID,
-		InstanceID:   run.InstanceID,
-		RunID:        runID,
-		HistoryID:    &activityHistoryB.ID,
-		ActivityKey:  "approval-b",
-		ActivityType: "demo.activity",
-		Input:        []byte(`{"step":"b"}`),
-		AvailableAt:  baseTime.Add(2 * time.Minute),
-		MaxAttempts:  1,
+		ProjectID:       projectID,
+		InstanceID:      run.InstanceID,
+		RunID:           runID,
+		HistoryID:       &activityHistoryB.ID,
+		ActivityKey:     "approval-b",
+		ActivityType:    "demo.activity",
+		Input:           []byte(`{"step":"b"}`),
+		AvailableAt:     baseTime.Add(2 * time.Minute),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	})
 	require.NoError(t, err)
 	_, err = engineQueries.CreateActivityTask(ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    projectID,
-		InstanceID:   run.InstanceID,
-		RunID:        runID,
-		HistoryID:    &activityHistoryA.ID,
-		ActivityKey:  "approval-a",
-		ActivityType: "demo.activity",
-		Input:        []byte(`{"step":"a"}`),
-		AvailableAt:  baseTime.Add(1 * time.Minute),
-		MaxAttempts:  1,
+		ProjectID:       projectID,
+		InstanceID:      run.InstanceID,
+		RunID:           runID,
+		HistoryID:       &activityHistoryA.ID,
+		ActivityKey:     "approval-a",
+		ActivityType:    "demo.activity",
+		Input:           []byte(`{"step":"a"}`),
+		AvailableAt:     baseTime.Add(1 * time.Minute),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	})
 	require.NoError(t, err)
 
@@ -3613,15 +3615,16 @@ func createPendingWorkForRun(
 	require.NotEmpty(t, history)
 
 	_, err = engineQueries.CreateActivityTask(ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    projectID,
-		InstanceID:   run.InstanceID,
-		RunID:        runID,
-		HistoryID:    &history[0].ID,
-		ActivityKey:  "approval-task",
-		ActivityType: "demo.activity",
-		Input:        []byte(`{"ok":true}`),
-		AvailableAt:  history[0].CreatedAt,
-		MaxAttempts:  1,
+		ProjectID:       projectID,
+		InstanceID:      run.InstanceID,
+		RunID:           runID,
+		HistoryID:       &history[0].ID,
+		ActivityKey:     "approval-task",
+		ActivityType:    "demo.activity",
+		Input:           []byte(`{"ok":true}`),
+		AvailableAt:     history[0].CreatedAt,
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	})
 	require.NoError(t, err)
 

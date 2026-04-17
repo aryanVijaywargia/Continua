@@ -232,6 +232,7 @@ func (a *Activator) commitDecision(
 			ActivityType:      decision.NewActivity.Scheduled.ActivityType,
 			Input:             decision.NewActivity.Scheduled.Input,
 			AvailableAt:       run.ReadyAt,
+			ExecutionTarget:   decision.NewActivity.Options.ExecutionTarget,
 			MaxAttempts:       decision.NewActivity.Options.MaxAttempts,
 			InitialBackoffMs:  decision.NewActivity.Options.InitialBackoffMS,
 			MaxBackoffMs:      decision.NewActivity.Options.MaxBackoffMS,

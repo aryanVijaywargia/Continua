@@ -15,6 +15,9 @@ func TestNormalizeActivityOptions(t *testing.T) {
 		if normalized.MaxAttempts != 1 {
 			t.Fatalf("expected max_attempts=1, got %d", normalized.MaxAttempts)
 		}
+		if normalized.ExecutionTarget != ActivityExecutionTargetLocal {
+			t.Fatalf("expected execution_target=local, got %q", normalized.ExecutionTarget)
+		}
 		if normalized.InitialBackoffMS != nil || normalized.MaxBackoffMS != nil || normalized.BackoffMultiplier != nil {
 			t.Fatalf("expected empty retry columns for default options, got %+v", normalized)
 		}
@@ -40,6 +43,19 @@ func TestNormalizeActivityOptions(t *testing.T) {
 		}
 		if normalized.BackoffMultiplier == nil || *normalized.BackoffMultiplier != 2.5 {
 			t.Fatalf("expected backoff_multiplier=2.5, got %+v", normalized.BackoffMultiplier)
+		}
+		if normalized.ExecutionTarget != ActivityExecutionTargetLocal {
+			t.Fatalf("expected execution_target=local, got %q", normalized.ExecutionTarget)
+		}
+	})
+
+	t.Run("normalizes execution target", func(t *testing.T) {
+		normalized, err := NormalizeActivityOptions(ActivityOptions{ExecutionTarget: " remote "})
+		if err != nil {
+			t.Fatalf("NormalizeActivityOptions() error = %v", err)
+		}
+		if normalized.ExecutionTarget != ActivityExecutionTargetRemote {
+			t.Fatalf("expected execution_target=remote, got %q", normalized.ExecutionTarget)
 		}
 	})
 
@@ -78,6 +94,10 @@ func TestNormalizeActivityOptions(t *testing.T) {
 					MaxBackoff:        2 * time.Second,
 					BackoffMultiplier: 0.5,
 				}},
+			},
+			{
+				name: "invalid execution target",
+				opts: ActivityOptions{ExecutionTarget: "gpu_cluster"},
 			},
 		}
 

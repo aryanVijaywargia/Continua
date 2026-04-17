@@ -3,7 +3,14 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"math"
+	"strings"
 	"time"
+)
+
+const (
+	ActivityExecutionTargetLocal  = "local"
+	ActivityExecutionTargetRemote = "remote"
 )
 
 type RetryPolicy struct {
@@ -14,7 +21,8 @@ type RetryPolicy struct {
 }
 
 type ActivityOptions struct {
-	RetryPolicy *RetryPolicy
+	RetryPolicy     *RetryPolicy
+	ExecutionTarget string
 }
 
 type NormalizedActivityOptions struct {
@@ -22,6 +30,7 @@ type NormalizedActivityOptions struct {
 	InitialBackoffMS  *int64
 	MaxBackoffMS      *int64
 	BackoffMultiplier *float64
+	ExecutionTarget   string
 }
 
 type nonRetryableError struct {
@@ -55,8 +64,17 @@ func IsNonRetryable(err error) bool {
 }
 
 func NormalizeActivityOptions(opts ActivityOptions) (NormalizedActivityOptions, error) {
+	executionTarget, err := normalizeExecutionTarget(opts.ExecutionTarget)
+	if err != nil {
+		return NormalizedActivityOptions{}, err
+	}
+
+	normalized := NormalizedActivityOptions{
+		MaxAttempts:     1,
+		ExecutionTarget: executionTarget,
+	}
 	if opts.RetryPolicy == nil {
-		return NormalizedActivityOptions{MaxAttempts: 1}, nil
+		return normalized, nil
 	}
 
 	policy := opts.RetryPolicy
@@ -64,9 +82,7 @@ func NormalizeActivityOptions(opts ActivityOptions) (NormalizedActivityOptions, 
 		return NormalizedActivityOptions{}, fmt.Errorf("workflow: retry policy max_attempts must be >= 1")
 	}
 
-	normalized := NormalizedActivityOptions{
-		MaxAttempts: int32(policy.MaxAttempts),
-	}
+	normalized.MaxAttempts = int32(policy.MaxAttempts)
 	if policy.MaxAttempts == 1 {
 		return normalized, nil
 	}
@@ -90,4 +106,38 @@ func NormalizeActivityOptions(opts ActivityOptions) (NormalizedActivityOptions, 
 	multiplier := policy.BackoffMultiplier
 	normalized.BackoffMultiplier = &multiplier
 	return normalized, nil
+}
+
+func normalizeExecutionTarget(target string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(target))
+	if normalized == "" {
+		return ActivityExecutionTargetLocal, nil
+	}
+	switch normalized {
+	case ActivityExecutionTargetLocal, ActivityExecutionTargetRemote:
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("workflow: activity execution_target must be %q or %q", ActivityExecutionTargetLocal, ActivityExecutionTargetRemote)
+	}
+}
+
+func ComputeActivityRetryDelayMS(
+	attemptCount int32,
+	initialBackoffMS *int64,
+	maxBackoffMS *int64,
+	backoffMultiplier *float64,
+) (int64, error) {
+	if attemptCount < 1 {
+		return 0, fmt.Errorf("workflow: activity retry attempt_count must be >= 1")
+	}
+	if initialBackoffMS == nil || maxBackoffMS == nil || backoffMultiplier == nil {
+		return 0, fmt.Errorf("workflow: activity retry policy fields are required")
+	}
+
+	exponent := float64(attemptCount - 1)
+	rawDelayMS := float64(*initialBackoffMS) * math.Pow(*backoffMultiplier, exponent)
+	if maxBackoff := float64(*maxBackoffMS); rawDelayMS > maxBackoff {
+		rawDelayMS = maxBackoff
+	}
+	return int64(math.Ceil(rawDelayMS)), nil
 }

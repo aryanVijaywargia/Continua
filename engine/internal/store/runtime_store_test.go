@@ -55,15 +55,16 @@ func TestActivityTaskCASRejectsStaleClaim(t *testing.T) {
 	history := ts.createHistory(t, projectID, instance.ID, run.ID, 1, "activity.scheduled")
 
 	task, err := ts.store.CreateActivityTask(ts.ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    projectID,
-		InstanceID:   instance.ID,
-		RunID:        run.ID,
-		HistoryID:    &history.ID,
-		ActivityKey:  "activity-1",
-		ActivityType: "demo.echo",
-		Input:        []byte(`{"name":"Ada"}`),
-		AvailableAt:  time.Now().Add(-time.Minute),
-		MaxAttempts:  1,
+		ProjectID:       projectID,
+		InstanceID:      instance.ID,
+		RunID:           run.ID,
+		HistoryID:       &history.ID,
+		ActivityKey:     "activity-1",
+		ActivityType:    "demo.echo",
+		Input:           []byte(`{"name":"Ada"}`),
+		AvailableAt:     time.Now().Add(-time.Minute),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	})
 	if err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
