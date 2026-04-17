@@ -731,6 +731,7 @@ func createRunWithPendingActivityConfig(
 		ActivityType:      cfg.activityType,
 		Input:             mustJSON(t, map[string]string{"step": "work"}),
 		AvailableAt:       time.Now().UTC(),
+		ExecutionTarget:   "local",
 		MaxAttempts:       cfg.maxAttempts,
 		InitialBackoffMs:  cfg.initialBackoffMS,
 		MaxBackoffMs:      cfg.maxBackoffMS,

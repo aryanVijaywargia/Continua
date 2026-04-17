@@ -302,14 +302,15 @@ func TestActivatorContinueAsNewCreatesNewRunAndInheritedTraceShell(t *testing.T)
 	updateProjectedTraceShellFields(t, ctx, db.Pool, run.ID, sessionID)
 
 	if _, err := store.CreateActivityTask(ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    run.ProjectID,
-		InstanceID:   run.InstanceID,
-		RunID:        run.ID,
-		ActivityKey:  "stale-activity",
-		ActivityType: "demo.activity",
-		Input:        mustJSON(t, map[string]any{"order_id": "ord-123"}),
-		AvailableAt:  time.Now().Add(-time.Minute),
-		MaxAttempts:  1,
+		ProjectID:       run.ProjectID,
+		InstanceID:      run.InstanceID,
+		RunID:           run.ID,
+		ActivityKey:     "stale-activity",
+		ActivityType:    "demo.activity",
+		Input:           mustJSON(t, map[string]any{"order_id": "ord-123"}),
+		AvailableAt:     time.Now().Add(-time.Minute),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	}); err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
 	}
@@ -1611,6 +1612,7 @@ func TestActivatorPersistsActivityRetryOptions(t *testing.T) {
 
 			var output map[string]string
 			return ctx.ActivityWithOptions("fetch", "demo.activity", input, &output, publicworkflow.ActivityOptions{
+				ExecutionTarget: publicworkflow.ActivityExecutionTargetRemote,
 				RetryPolicy: &publicworkflow.RetryPolicy{
 					MaxAttempts:       3,
 					InitialBackoff:    1500 * time.Millisecond,
@@ -1652,6 +1654,9 @@ func TestActivatorPersistsActivityRetryOptions(t *testing.T) {
 	}
 	if task.BackoffMultiplier == nil || *task.BackoffMultiplier != 2.5 {
 		t.Fatalf("expected backoff_multiplier=2.5, got %+v", task)
+	}
+	if task.ExecutionTarget != publicworkflow.ActivityExecutionTargetRemote {
+		t.Fatalf("expected execution_target=remote, got %+v", task)
 	}
 }
 
@@ -1708,6 +1713,9 @@ func TestActivatorDefaultsActivityRetryOptionsToSingleAttempt(t *testing.T) {
 	}
 	if task.InitialBackoffMs != nil || task.MaxBackoffMs != nil || task.BackoffMultiplier != nil {
 		t.Fatalf("expected nil backoff columns for Activity(), got %+v", task)
+	}
+	if task.ExecutionTarget != publicworkflow.ActivityExecutionTargetLocal {
+		t.Fatalf("expected execution_target=local, got %+v", task)
 	}
 }
 

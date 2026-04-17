@@ -56,15 +56,16 @@ func TestClaimNextActivityTaskLeaseLifecycle(t *testing.T) {
 	history := ts.createHistory(t, projectID, instance.ID, run.ID, 1, "activity.scheduled")
 
 	task, err := ts.store.CreateActivityTask(ts.ctx, enginedb.CreateActivityTaskParams{
-		ProjectID:    projectID,
-		InstanceID:   instance.ID,
-		RunID:        run.ID,
-		HistoryID:    &history.ID,
-		ActivityKey:  "activity-1",
-		ActivityType: "email.send",
-		Input:        []byte(`{"to":"user@example.com"}`),
-		AvailableAt:  time.Now().Add(-time.Minute),
-		MaxAttempts:  1,
+		ProjectID:       projectID,
+		InstanceID:      instance.ID,
+		RunID:           run.ID,
+		HistoryID:       &history.ID,
+		ActivityKey:     "activity-1",
+		ActivityType:    "email.send",
+		Input:           []byte(`{"to":"user@example.com"}`),
+		AvailableAt:     time.Now().Add(-time.Minute),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
 	})
 	if err != nil {
 		t.Fatalf("CreateActivityTask() error = %v", err)
@@ -97,6 +98,83 @@ func TestClaimNextActivityTaskLeaseLifecycle(t *testing.T) {
 	}
 	if reclaimed.ID != task.ID || reclaimed.AttemptCount != 2 {
 		t.Fatalf("expected reclaimed activity task with attempt_count=2, got id=%s attempts=%d", reclaimed.ID, reclaimed.AttemptCount)
+	}
+}
+
+func TestLocalAndRemoteActivityTaskClaimIsolation(t *testing.T) {
+	ts := newTestStore(t)
+	projectID := uuidOrFatal(t)
+	instance := ts.createInstance(t, projectID, "instance-activity-targets")
+	run := ts.createRun(t, instance, 1)
+	history := ts.createHistory(t, projectID, instance.ID, run.ID, 1, "activity.scheduled")
+
+	remoteTask, err := ts.store.CreateActivityTask(ts.ctx, enginedb.CreateActivityTaskParams{
+		ProjectID:       projectID,
+		InstanceID:      instance.ID,
+		RunID:           run.ID,
+		HistoryID:       &history.ID,
+		ActivityKey:     "remote-activity",
+		ActivityType:    "email.send",
+		Input:           []byte(`{"to":"remote@example.com"}`),
+		AvailableAt:     time.Now().Add(-time.Minute),
+		ExecutionTarget: "remote",
+		MaxAttempts:     1,
+	})
+	if err != nil {
+		t.Fatalf("CreateActivityTask(remote) error = %v", err)
+	}
+	localTask, err := ts.store.CreateActivityTask(ts.ctx, enginedb.CreateActivityTaskParams{
+		ProjectID:       projectID,
+		InstanceID:      instance.ID,
+		RunID:           run.ID,
+		HistoryID:       &history.ID,
+		ActivityKey:     "local-activity",
+		ActivityType:    "email.send",
+		Input:           []byte(`{"to":"local@example.com"}`),
+		AvailableAt:     time.Now().Add(-time.Minute),
+		ExecutionTarget: "local",
+		MaxAttempts:     1,
+	})
+	if err != nil {
+		t.Fatalf("CreateActivityTask(local) error = %v", err)
+	}
+
+	claimedLocal, err := ts.store.ClaimNextActivityTask(ts.ctx, "local-worker", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextActivityTask() error = %v", err)
+	}
+	if claimedLocal.ID != localTask.ID {
+		t.Fatalf("expected local worker to claim local task %s, got %s", localTask.ID, claimedLocal.ID)
+	}
+
+	claimedRemote, err := ts.store.ClaimRemoteActivityTasks(
+		ts.ctx,
+		projectID,
+		"remote-worker",
+		[]string{"email.send"},
+		10,
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("ClaimRemoteActivityTasks() error = %v", err)
+	}
+	if len(claimedRemote) != 1 || claimedRemote[0].ID != remoteTask.ID {
+		t.Fatalf("expected remote worker to claim remote task %s, got %+v", remoteTask.ID, claimedRemote)
+	}
+
+	empty, err := ts.store.ClaimRemoteActivityTasks(
+		ts.ctx,
+		projectID,
+		"remote-worker",
+		[]string{"image.process"},
+		10,
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("ClaimRemoteActivityTasks(unmatched) error = %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("expected unmatched remote type claim to return no tasks, got %+v", empty)
 	}
 }
 

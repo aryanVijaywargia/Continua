@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const cancelOpenActivityTasksByRun = `-- name: CancelOpenActivityTasksByRun :many
@@ -22,7 +23,7 @@ SET status = 'cancelled',
     updated_at = NOW()
 WHERE run_id = $1
   AND status IN ('queued', 'claimed')
-RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 func (q *Queries) CancelOpenActivityTasksByRun(ctx context.Context, runID uuid.UUID) ([]EngineActivityTask, error) {
@@ -59,6 +60,8 @@ func (q *Queries) CancelOpenActivityTasksByRun(ctx context.Context, runID uuid.U
 			&i.InitialBackoffMs,
 			&i.MaxBackoffMs,
 			&i.BackoffMultiplier,
+			&i.ExecutionTarget,
+			&i.LeaseDurationMs,
 		); err != nil {
 			return nil, err
 		}
@@ -76,18 +79,20 @@ SET status = 'claimed',
     claimed_by = $1,
     claimed_at = NOW(),
     lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
+    lease_duration_ms = $2::bigint / 1000,
     attempt_count = attempt_count + 1,
     updated_at = NOW()
 WHERE id = (
     SELECT id
     FROM engine.activity_tasks
-    WHERE (status = 'queued' AND available_at <= NOW())
-       OR (status = 'claimed' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
+    WHERE execution_target = 'local'
+      AND ((status = 'queued' AND available_at <= NOW())
+        OR (status = 'claimed' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()))
     ORDER BY available_at ASC, id ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type ClaimNextActivityTaskParams struct {
@@ -123,6 +128,8 @@ func (q *Queries) ClaimNextActivityTask(ctx context.Context, arg ClaimNextActivi
 		&i.InitialBackoffMs,
 		&i.MaxBackoffMs,
 		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
 	)
 	return i, err
 }
@@ -133,19 +140,21 @@ SET status = 'claimed',
     claimed_by = $1,
     claimed_at = NOW(),
     lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
+    lease_duration_ms = $2::bigint / 1000,
     attempt_count = attempt_count + 1,
     updated_at = NOW()
 WHERE id = (
     SELECT candidate.id
     FROM engine.activity_tasks AS candidate
     WHERE candidate.project_id = $3
+      AND candidate.execution_target = 'local'
       AND ((candidate.status = 'queued' AND candidate.available_at <= NOW())
         OR (candidate.status = 'claimed' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
     ORDER BY candidate.available_at ASC, candidate.id ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type ClaimNextActivityTaskByProjectParams struct {
@@ -182,8 +191,97 @@ func (q *Queries) ClaimNextActivityTaskByProject(ctx context.Context, arg ClaimN
 		&i.InitialBackoffMs,
 		&i.MaxBackoffMs,
 		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
 	)
 	return i, err
+}
+
+const claimRemoteActivityTasks = `-- name: ClaimRemoteActivityTasks :many
+WITH candidates AS (
+    SELECT candidate.id
+    FROM engine.activity_tasks AS candidate
+    WHERE candidate.project_id = $3
+      AND candidate.execution_target = 'remote'
+      AND candidate.activity_type = ANY($4::text[])
+      AND ((candidate.status = 'queued' AND candidate.available_at <= NOW())
+        OR (candidate.status = 'claimed' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
+    ORDER BY candidate.available_at ASC, candidate.id ASC
+    LIMIT $5::int
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE engine.activity_tasks AS task
+SET status = 'claimed',
+    claimed_by = $1,
+    claimed_at = NOW(),
+    lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 millisecond'),
+    lease_duration_ms = $2,
+    attempt_count = task.attempt_count + 1,
+    updated_at = NOW()
+FROM candidates
+WHERE task.id = candidates.id
+RETURNING task.id, task.project_id, task.instance_id, task.run_id, task.history_id, task.activity_key, task.activity_type, task.input, task.output, task.status, task.available_at, task.attempt_count, task.claimed_by, task.claimed_at, task.lease_expires_at, task.last_error_code, task.last_error_message, task.completed_at, task.created_at, task.updated_at, task.max_attempts, task.initial_backoff_ms, task.max_backoff_ms, task.backoff_multiplier, task.execution_target, task.lease_duration_ms
+`
+
+type ClaimRemoteActivityTasksParams struct {
+	ClaimedBy       *string   `json:"claimed_by"`
+	LeaseDurationMs *int64    `json:"lease_duration_ms"`
+	ProjectFilterID uuid.UUID `json:"project_filter_id"`
+	ActivityTypes   []string  `json:"activity_types"`
+	MaxTasks        int32     `json:"max_tasks"`
+}
+
+func (q *Queries) ClaimRemoteActivityTasks(ctx context.Context, arg ClaimRemoteActivityTasksParams) ([]EngineActivityTask, error) {
+	rows, err := q.db.Query(ctx, claimRemoteActivityTasks,
+		arg.ClaimedBy,
+		arg.LeaseDurationMs,
+		arg.ProjectFilterID,
+		arg.ActivityTypes,
+		arg.MaxTasks,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineActivityTask{}
+	for rows.Next() {
+		var i EngineActivityTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.ActivityKey,
+			&i.ActivityType,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.AvailableAt,
+			&i.AttemptCount,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MaxAttempts,
+			&i.InitialBackoffMs,
+			&i.MaxBackoffMs,
+			&i.BackoffMultiplier,
+			&i.ExecutionTarget,
+			&i.LeaseDurationMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const clearActivityTaskHistoryByRun = `-- name: ClearActivityTaskHistoryByRun :execrows
@@ -214,7 +312,7 @@ SET status = 'completed',
 WHERE id = $1
   AND status = 'claimed'
   AND claimed_by = $2
-RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type CompleteActivityTaskParams struct {
@@ -251,6 +349,73 @@ func (q *Queries) CompleteActivityTask(ctx context.Context, arg CompleteActivity
 		&i.InitialBackoffMs,
 		&i.MaxBackoffMs,
 		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
+	)
+	return i, err
+}
+
+const completeRemoteActivityTask = `-- name: CompleteRemoteActivityTask :one
+UPDATE engine.activity_tasks
+SET status = 'completed',
+    output = $1,
+    completed_at = NOW(),
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $2
+  AND project_id = $3
+  AND execution_target = 'remote'
+  AND status = 'claimed'
+  AND claimed_by = $4
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at > NOW()
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
+`
+
+type CompleteRemoteActivityTaskParams struct {
+	Output    []byte    `json:"output"`
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	ClaimedBy *string   `json:"claimed_by"`
+}
+
+func (q *Queries) CompleteRemoteActivityTask(ctx context.Context, arg CompleteRemoteActivityTaskParams) (EngineActivityTask, error) {
+	row := q.db.QueryRow(ctx, completeRemoteActivityTask,
+		arg.Output,
+		arg.ID,
+		arg.ProjectID,
+		arg.ClaimedBy,
+	)
+	var i EngineActivityTask
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunID,
+		&i.HistoryID,
+		&i.ActivityKey,
+		&i.ActivityType,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.AvailableAt,
+		&i.AttemptCount,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxAttempts,
+		&i.InitialBackoffMs,
+		&i.MaxBackoffMs,
+		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
 	)
 	return i, err
 }
@@ -279,13 +444,14 @@ INSERT INTO engine.activity_tasks (
     activity_type,
     input,
     available_at,
+    execution_target,
     max_attempts,
     initial_backoff_ms,
     max_backoff_ms,
     backoff_multiplier
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type CreateActivityTaskParams struct {
@@ -297,6 +463,7 @@ type CreateActivityTaskParams struct {
 	ActivityType      string    `json:"activity_type"`
 	Input             []byte    `json:"input"`
 	AvailableAt       time.Time `json:"available_at"`
+	ExecutionTarget   string    `json:"execution_target"`
 	MaxAttempts       int32     `json:"max_attempts"`
 	InitialBackoffMs  *int64    `json:"initial_backoff_ms"`
 	MaxBackoffMs      *int64    `json:"max_backoff_ms"`
@@ -313,6 +480,7 @@ func (q *Queries) CreateActivityTask(ctx context.Context, arg CreateActivityTask
 		arg.ActivityType,
 		arg.Input,
 		arg.AvailableAt,
+		arg.ExecutionTarget,
 		arg.MaxAttempts,
 		arg.InitialBackoffMs,
 		arg.MaxBackoffMs,
@@ -344,6 +512,8 @@ func (q *Queries) CreateActivityTask(ctx context.Context, arg CreateActivityTask
 		&i.InitialBackoffMs,
 		&i.MaxBackoffMs,
 		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
 	)
 	return i, err
 }
@@ -361,7 +531,7 @@ SET status = 'failed',
 WHERE id = $1
   AND status = 'claimed'
   AND claimed_by = $2
-RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type FailActivityTaskParams struct {
@@ -404,12 +574,82 @@ func (q *Queries) FailActivityTask(ctx context.Context, arg FailActivityTaskPara
 		&i.InitialBackoffMs,
 		&i.MaxBackoffMs,
 		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
+	)
+	return i, err
+}
+
+const failRemoteActivityTask = `-- name: FailRemoteActivityTask :one
+UPDATE engine.activity_tasks
+SET status = 'failed',
+    last_error_code = $1,
+    last_error_message = $2,
+    completed_at = NOW(),
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $3
+  AND project_id = $4
+  AND execution_target = 'remote'
+  AND status = 'claimed'
+  AND claimed_by = $5
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at > NOW()
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
+`
+
+type FailRemoteActivityTaskParams struct {
+	LastErrorCode    *string   `json:"last_error_code"`
+	LastErrorMessage *string   `json:"last_error_message"`
+	ID               uuid.UUID `json:"id"`
+	ProjectID        uuid.UUID `json:"project_id"`
+	ClaimedBy        *string   `json:"claimed_by"`
+}
+
+func (q *Queries) FailRemoteActivityTask(ctx context.Context, arg FailRemoteActivityTaskParams) (EngineActivityTask, error) {
+	row := q.db.QueryRow(ctx, failRemoteActivityTask,
+		arg.LastErrorCode,
+		arg.LastErrorMessage,
+		arg.ID,
+		arg.ProjectID,
+		arg.ClaimedBy,
+	)
+	var i EngineActivityTask
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunID,
+		&i.HistoryID,
+		&i.ActivityKey,
+		&i.ActivityType,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.AvailableAt,
+		&i.AttemptCount,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxAttempts,
+		&i.InitialBackoffMs,
+		&i.MaxBackoffMs,
+		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
 	)
 	return i, err
 }
 
 const getActivityTask = `-- name: GetActivityTask :one
-SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 FROM engine.activity_tasks
 WHERE id = $1
 `
@@ -442,12 +682,61 @@ func (q *Queries) GetActivityTask(ctx context.Context, id uuid.UUID) (EngineActi
 		&i.InitialBackoffMs,
 		&i.MaxBackoffMs,
 		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
+	)
+	return i, err
+}
+
+const getActivityTaskByProjectForUpdate = `-- name: GetActivityTaskByProjectForUpdate :one
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
+FROM engine.activity_tasks
+WHERE id = $1
+  AND project_id = $2
+FOR UPDATE
+`
+
+type GetActivityTaskByProjectForUpdateParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+}
+
+func (q *Queries) GetActivityTaskByProjectForUpdate(ctx context.Context, arg GetActivityTaskByProjectForUpdateParams) (EngineActivityTask, error) {
+	row := q.db.QueryRow(ctx, getActivityTaskByProjectForUpdate, arg.ID, arg.ProjectID)
+	var i EngineActivityTask
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunID,
+		&i.HistoryID,
+		&i.ActivityKey,
+		&i.ActivityType,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.AvailableAt,
+		&i.AttemptCount,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxAttempts,
+		&i.InitialBackoffMs,
+		&i.MaxBackoffMs,
+		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
 	)
 	return i, err
 }
 
 const getActivityTaskByRunAndKey = `-- name: GetActivityTaskByRunAndKey :one
-SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 FROM engine.activity_tasks
 WHERE run_id = $1
   AND activity_key = $2
@@ -486,12 +775,107 @@ func (q *Queries) GetActivityTaskByRunAndKey(ctx context.Context, arg GetActivit
 		&i.InitialBackoffMs,
 		&i.MaxBackoffMs,
 		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
+	)
+	return i, err
+}
+
+const getActivityTaskRemoteConflictState = `-- name: GetActivityTaskRemoteConflictState :one
+SELECT id, project_id, execution_target, status, claimed_by, lease_expires_at, completed_at
+FROM engine.activity_tasks
+WHERE id = $1
+  AND project_id = $2
+`
+
+type GetActivityTaskRemoteConflictStateParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+}
+
+type GetActivityTaskRemoteConflictStateRow struct {
+	ID              uuid.UUID                `json:"id"`
+	ProjectID       uuid.UUID                `json:"project_id"`
+	ExecutionTarget string                   `json:"execution_target"`
+	Status          EngineActivityTaskStatus `json:"status"`
+	ClaimedBy       *string                  `json:"claimed_by"`
+	LeaseExpiresAt  pgtype.Timestamptz       `json:"lease_expires_at"`
+	CompletedAt     pgtype.Timestamptz       `json:"completed_at"`
+}
+
+func (q *Queries) GetActivityTaskRemoteConflictState(ctx context.Context, arg GetActivityTaskRemoteConflictStateParams) (GetActivityTaskRemoteConflictStateRow, error) {
+	row := q.db.QueryRow(ctx, getActivityTaskRemoteConflictState, arg.ID, arg.ProjectID)
+	var i GetActivityTaskRemoteConflictStateRow
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.ExecutionTarget,
+		&i.Status,
+		&i.ClaimedBy,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const heartbeatRemoteActivityTask = `-- name: HeartbeatRemoteActivityTask :one
+UPDATE engine.activity_tasks
+SET lease_expires_at = NOW() + (lease_duration_ms * INTERVAL '1 millisecond'),
+    updated_at = NOW()
+WHERE id = $1
+  AND project_id = $2
+  AND execution_target = 'remote'
+  AND status = 'claimed'
+  AND claimed_by = $3
+  AND lease_duration_ms IS NOT NULL
+  AND lease_duration_ms > 0
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at > NOW()
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
+`
+
+type HeartbeatRemoteActivityTaskParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	ClaimedBy *string   `json:"claimed_by"`
+}
+
+func (q *Queries) HeartbeatRemoteActivityTask(ctx context.Context, arg HeartbeatRemoteActivityTaskParams) (EngineActivityTask, error) {
+	row := q.db.QueryRow(ctx, heartbeatRemoteActivityTask, arg.ID, arg.ProjectID, arg.ClaimedBy)
+	var i EngineActivityTask
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunID,
+		&i.HistoryID,
+		&i.ActivityKey,
+		&i.ActivityType,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.AvailableAt,
+		&i.AttemptCount,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxAttempts,
+		&i.InitialBackoffMs,
+		&i.MaxBackoffMs,
+		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
 	)
 	return i, err
 }
 
 const listActivityTasksByRun = `-- name: ListActivityTasksByRun :many
-SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 FROM engine.activity_tasks
 WHERE run_id = $1
 ORDER BY created_at ASC, id ASC
@@ -531,6 +915,8 @@ func (q *Queries) ListActivityTasksByRun(ctx context.Context, runID uuid.UUID) (
 			&i.InitialBackoffMs,
 			&i.MaxBackoffMs,
 			&i.BackoffMultiplier,
+			&i.ExecutionTarget,
+			&i.LeaseDurationMs,
 		); err != nil {
 			return nil, err
 		}
@@ -543,7 +929,7 @@ func (q *Queries) ListActivityTasksByRun(ctx context.Context, runID uuid.UUID) (
 }
 
 const listCancelledActivityTasksByRun = `-- name: ListCancelledActivityTasksByRun :many
-SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 FROM engine.activity_tasks
 WHERE run_id = $1
   AND status = 'cancelled'
@@ -584,6 +970,8 @@ func (q *Queries) ListCancelledActivityTasksByRun(ctx context.Context, runID uui
 			&i.InitialBackoffMs,
 			&i.MaxBackoffMs,
 			&i.BackoffMultiplier,
+			&i.ExecutionTarget,
+			&i.LeaseDurationMs,
 		); err != nil {
 			return nil, err
 		}
@@ -596,7 +984,7 @@ func (q *Queries) ListCancelledActivityTasksByRun(ctx context.Context, runID uui
 }
 
 const listOpenActivityTasksByRun = `-- name: ListOpenActivityTasksByRun :many
-SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 FROM engine.activity_tasks
 WHERE run_id = $1
   AND status IN ('queued', 'claimed')
@@ -637,6 +1025,8 @@ func (q *Queries) ListOpenActivityTasksByRun(ctx context.Context, runID uuid.UUI
 			&i.InitialBackoffMs,
 			&i.MaxBackoffMs,
 			&i.BackoffMultiplier,
+			&i.ExecutionTarget,
+			&i.LeaseDurationMs,
 		); err != nil {
 			return nil, err
 		}
@@ -659,7 +1049,7 @@ SET status = 'queued',
 WHERE id = $2
   AND status = 'claimed'
   AND claimed_by = $3
-RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type RetryActivityTaskParams struct {
@@ -696,6 +1086,78 @@ func (q *Queries) RetryActivityTask(ctx context.Context, arg RetryActivityTaskPa
 		&i.InitialBackoffMs,
 		&i.MaxBackoffMs,
 		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
+	)
+	return i, err
+}
+
+const retryRemoteActivityTask = `-- name: RetryRemoteActivityTask :one
+UPDATE engine.activity_tasks
+SET status = 'queued',
+    available_at = NOW() + ($1::bigint * INTERVAL '1 millisecond'),
+    last_error_code = $2,
+    last_error_message = $3,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $4
+  AND project_id = $5
+  AND execution_target = 'remote'
+  AND status = 'claimed'
+  AND claimed_by = $6
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at > NOW()
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
+`
+
+type RetryRemoteActivityTaskParams struct {
+	RetryDelayMs     int64     `json:"retry_delay_ms"`
+	LastErrorCode    *string   `json:"last_error_code"`
+	LastErrorMessage *string   `json:"last_error_message"`
+	ID               uuid.UUID `json:"id"`
+	ProjectID        uuid.UUID `json:"project_id"`
+	ClaimedBy        *string   `json:"claimed_by"`
+}
+
+func (q *Queries) RetryRemoteActivityTask(ctx context.Context, arg RetryRemoteActivityTaskParams) (EngineActivityTask, error) {
+	row := q.db.QueryRow(ctx, retryRemoteActivityTask,
+		arg.RetryDelayMs,
+		arg.LastErrorCode,
+		arg.LastErrorMessage,
+		arg.ID,
+		arg.ProjectID,
+		arg.ClaimedBy,
+	)
+	var i EngineActivityTask
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunID,
+		&i.HistoryID,
+		&i.ActivityKey,
+		&i.ActivityType,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.AvailableAt,
+		&i.AttemptCount,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxAttempts,
+		&i.InitialBackoffMs,
+		&i.MaxBackoffMs,
+		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
 	)
 	return i, err
 }

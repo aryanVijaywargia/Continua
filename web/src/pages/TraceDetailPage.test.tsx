@@ -352,9 +352,9 @@ describe('TraceDetailPage', () => {
       await screen.findByRole('heading', { name: 'Drive the engine run from the debugger' })
     ).toBeInTheDocument();
     expect(screen.getByText('Engine wait state and queued work')).toBeInTheDocument();
-    expect(screen.getByText('payments.charge · charge-card')).toBeInTheDocument();
-    expect(screen.getByText('approval-timeout')).toBeInTheDocument();
-    expect(screen.getByText('manual_override')).toBeInTheDocument();
+    expect(await screen.findByText('payments.charge · charge-card')).toBeInTheDocument();
+    expect(await screen.findByText('approval-timeout')).toBeInTheDocument();
+    expect(await screen.findByText('manual_override')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Signal' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Suspend' })).toBeEnabled();

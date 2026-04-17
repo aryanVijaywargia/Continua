@@ -61,4 +61,4 @@ tmp/
 # Claude Code session state (per-user, not shared)
 .claude/hooks/state/
 Study/
-continua
+/continua

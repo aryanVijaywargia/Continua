@@ -64,6 +64,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/engine/activities/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim remote engine activity tasks */
+        post: operations["claimRemoteActivityTasks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/activities/{id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew a remote activity task lease */
+        post: operations["heartbeatRemoteActivityTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/activities/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete a remote activity task */
+        post: operations["completeRemoteActivityTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/engine/activities/{id}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fail or retry a remote activity task */
+        post: operations["failRemoteActivityTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/engine/instances/{instance_key}": {
         parameters: {
             query?: never;
@@ -520,6 +588,49 @@ export interface components {
             available_at: string;
             /** Format: int32 */
             attempt_count: number;
+        };
+        EngineRemoteActivityClaimRequest: {
+            worker_id: string;
+            activity_types: string[];
+            /** @description Requested lease duration, e.g. 60s or 5m. The server clamps the effective value. */
+            lease_duration?: string;
+            max_tasks?: number;
+        };
+        EngineRemoteActivityTask: {
+            /** Format: uuid */
+            task_id: string;
+            activity_key: string;
+            activity_type: string;
+            /** @description Activity input payload (any valid JSON) */
+            input: unknown;
+            /** Format: date-time */
+            lease_expires_at: string;
+            /** Format: int64 */
+            effective_lease_duration_ms: number;
+        };
+        EngineRemoteActivityClaimResponse: {
+            tasks: components["schemas"]["EngineRemoteActivityTask"][];
+        };
+        EngineRemoteActivityHeartbeatRequest: {
+            worker_id: string;
+        };
+        EngineRemoteActivityHeartbeatResponse: {
+            /** Format: date-time */
+            lease_expires_at: string;
+            /** Format: int64 */
+            effective_lease_duration_ms: number;
+        };
+        EngineRemoteActivityCompleteRequest: {
+            worker_id: string;
+            /** @description Activity output payload (any valid JSON) */
+            output: unknown;
+        };
+        EngineRemoteActivityFailRequest: {
+            worker_id: string;
+            error_code: string;
+            error_message: string;
+            /** @default false */
+            non_retryable: boolean;
         };
         EnginePendingTimerItem: {
             /** Format: uuid */
@@ -1388,6 +1499,242 @@ export interface operations {
                 };
             };
             /** @description Duplicate, in-progress, or conflicting request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    claimRemoteActivityTasks: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineRemoteActivityClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Claimed remote activity tasks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineRemoteActivityClaimResponse"];
+                };
+            };
+            /** @description Invalid request or missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    heartbeatRemoteActivityTask: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineRemoteActivityHeartbeatRequest"];
+            };
+        };
+        responses: {
+            /** @description Renewed remote activity lease */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineRemoteActivityHeartbeatResponse"];
+                };
+            };
+            /** @description Invalid request or missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Activity task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Activity task is not currently owned by this remote worker */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    completeRemoteActivityTask: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineRemoteActivityCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Activity task completed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request or missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Activity task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Activity task is not currently owned by this remote worker */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    failRemoteActivityTask: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required preview header for mutating engine routes. */
+                "X-Continua-Engine-Preview": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineRemoteActivityFailRequest"];
+            };
+        };
+        responses: {
+            /** @description Activity task failed or requeued */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request or missing preview header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Activity task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Activity task is not currently owned by this remote worker */
             409: {
                 headers: {
                     [name: string]: unknown;

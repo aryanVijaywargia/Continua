@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -187,16 +186,16 @@ func computeRetryDelayMS(task *enginedb.EngineActivityTask) (int64, error) {
 	if task == nil {
 		return 0, errors.New("activity task is required")
 	}
-	if task.InitialBackoffMs == nil || task.MaxBackoffMs == nil || task.BackoffMultiplier == nil {
-		return 0, fmt.Errorf("activity task %s is missing retry policy fields", task.ID)
+	retryDelayMS, err := publicworkflow.ComputeActivityRetryDelayMS(
+		task.AttemptCount,
+		task.InitialBackoffMs,
+		task.MaxBackoffMs,
+		task.BackoffMultiplier,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("activity task %s retry policy: %w", task.ID, err)
 	}
-
-	exponent := float64(task.AttemptCount - 1)
-	rawDelayMS := float64(*task.InitialBackoffMs) * math.Pow(*task.BackoffMultiplier, exponent)
-	if maxBackoffMS := float64(*task.MaxBackoffMs); rawDelayMS > maxBackoffMS {
-		rawDelayMS = maxBackoffMS
-	}
-	return int64(math.Ceil(rawDelayMS)), nil
+	return retryDelayMS, nil
 }
 
 func (w *Worker) failTask(

@@ -69,6 +69,41 @@ func (o *storeOps) ClaimNextActivityTask(
 	}))
 }
 
+func (o *storeOps) ClaimRemoteActivityTasks(
+	ctx context.Context,
+	projectID uuid.UUID,
+	workerID string,
+	activityTypes []string,
+	maxTasks int32,
+	leaseDuration time.Duration,
+) ([]enginedb.EngineActivityTask, error) {
+	leaseDurationMS := leaseDuration.Milliseconds()
+	return o.q.ClaimRemoteActivityTasks(ctx, enginedb.ClaimRemoteActivityTasksParams{
+		ProjectFilterID: projectID,
+		ClaimedBy:       nullableWorkerID(workerID),
+		ActivityTypes:   activityTypes,
+		MaxTasks:        maxTasks,
+		LeaseDurationMs: &leaseDurationMS,
+	})
+}
+
+func (o *storeOps) HeartbeatRemoteActivityTask(
+	ctx context.Context,
+	projectID uuid.UUID,
+	id uuid.UUID,
+	claimedBy string,
+) (enginedb.EngineActivityTask, error) {
+	task, err := o.q.HeartbeatRemoteActivityTask(ctx, enginedb.HeartbeatRemoteActivityTaskParams{
+		ID:        id,
+		ProjectID: projectID,
+		ClaimedBy: nullableWorkerID(claimedBy),
+	})
+	if err == nil {
+		return task, nil
+	}
+	return enginedb.EngineActivityTask{}, o.classifyRemoteActivityTaskCASMiss(ctx, projectID, id, err)
+}
+
 func (o *storeOps) CompleteActivityTask(
 	ctx context.Context,
 	id uuid.UUID,
@@ -84,6 +119,25 @@ func (o *storeOps) CompleteActivityTask(
 		return task, nil
 	}
 	return enginedb.EngineActivityTask{}, o.classifyActivityTaskCASMiss(ctx, id, err)
+}
+
+func (o *storeOps) CompleteRemoteActivityTask(
+	ctx context.Context,
+	projectID uuid.UUID,
+	id uuid.UUID,
+	claimedBy string,
+	output []byte,
+) (enginedb.EngineActivityTask, error) {
+	task, err := o.q.CompleteRemoteActivityTask(ctx, enginedb.CompleteRemoteActivityTaskParams{
+		ID:        id,
+		ProjectID: projectID,
+		ClaimedBy: nullableWorkerID(claimedBy),
+		Output:    output,
+	})
+	if err == nil {
+		return task, nil
+	}
+	return enginedb.EngineActivityTask{}, o.classifyRemoteActivityTaskCASMiss(ctx, projectID, id, err)
 }
 
 func (o *storeOps) FailActivityTask(
@@ -103,6 +157,50 @@ func (o *storeOps) FailActivityTask(
 		return task, nil
 	}
 	return enginedb.EngineActivityTask{}, o.classifyActivityTaskCASMiss(ctx, id, err)
+}
+
+func (o *storeOps) RetryRemoteActivityTask(
+	ctx context.Context,
+	projectID uuid.UUID,
+	id uuid.UUID,
+	claimedBy string,
+	retryDelayMS int64,
+	errorCode *string,
+	errorMessage *string,
+) (enginedb.EngineActivityTask, error) {
+	task, err := o.q.RetryRemoteActivityTask(ctx, enginedb.RetryRemoteActivityTaskParams{
+		ID:               id,
+		ProjectID:        projectID,
+		ClaimedBy:        nullableWorkerID(claimedBy),
+		RetryDelayMs:     retryDelayMS,
+		LastErrorCode:    errorCode,
+		LastErrorMessage: errorMessage,
+	})
+	if err == nil {
+		return task, nil
+	}
+	return enginedb.EngineActivityTask{}, o.classifyRemoteActivityTaskCASMiss(ctx, projectID, id, err)
+}
+
+func (o *storeOps) FailRemoteActivityTask(
+	ctx context.Context,
+	projectID uuid.UUID,
+	id uuid.UUID,
+	claimedBy string,
+	errorCode *string,
+	errorMessage *string,
+) (enginedb.EngineActivityTask, error) {
+	task, err := o.q.FailRemoteActivityTask(ctx, enginedb.FailRemoteActivityTaskParams{
+		ID:               id,
+		ProjectID:        projectID,
+		ClaimedBy:        nullableWorkerID(claimedBy),
+		LastErrorCode:    errorCode,
+		LastErrorMessage: errorMessage,
+	})
+	if err == nil {
+		return task, nil
+	}
+	return enginedb.EngineActivityTask{}, o.classifyRemoteActivityTaskCASMiss(ctx, projectID, id, err)
 }
 
 func (o *storeOps) RetryActivityTask(
@@ -136,6 +234,26 @@ func (o *storeOps) classifyActivityTaskCASMiss(ctx context.Context, id uuid.UUID
 
 	if _, lookupErr := o.GetActivityTask(ctx, id); lookupErr != nil {
 		return lookupErr
+	}
+	return ErrStaleClaim
+}
+
+func (o *storeOps) classifyRemoteActivityTaskCASMiss(
+	ctx context.Context,
+	projectID uuid.UUID,
+	id uuid.UUID,
+	err error,
+) error {
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return normalizeError(err)
+	}
+
+	_, lookupErr := o.q.GetActivityTaskRemoteConflictState(ctx, enginedb.GetActivityTaskRemoteConflictStateParams{
+		ID:        id,
+		ProjectID: projectID,
+	})
+	if lookupErr != nil {
+		return normalizeError(lookupErr)
 	}
 	return ErrStaleClaim
 }
