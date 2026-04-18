@@ -287,4 +287,87 @@
     border-color: var(--continua-error-border);
     color: var(--continua-error);
   }
+
+  /* ── Hero SVG: stroke-draw animations ── */
+  .hero-draw {
+    stroke-dasharray: 2000;
+    stroke-dashoffset: 2000;
+    animation: hero-draw-in 2.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .hero-draw-d1 {
+    animation-delay: 0.7s;
+  }
+  .hero-draw-d2 {
+    animation-delay: 1.4s;
+  }
+  .hero-draw-d3 {
+    animation-delay: 1s;
+  }
+
+  @keyframes hero-draw-in {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* ── Hero SVG: glow breathing ── */
+  .hero-glow {
+    animation: hero-glow-breathe 3.5s ease-in-out infinite;
+  }
+  .hero-glow-d1 {
+    animation-delay: 0.5s;
+  }
+  .hero-glow-d2 {
+    animation-delay: 1.5s;
+  }
+  .hero-glow-d3 {
+    animation-delay: 2.5s;
+  }
+
+  @keyframes hero-glow-breathe {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  /* ── Scroll-triggered reveal ── */
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .scroll-reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ── Landing code tab active state ── */
+  .code-tab-active {
+    color: #0075d6;
+    border-bottom-color: #0075d6;
+  }
+
+  /* ── Reduced motion: disable all landing animations ── */
+  @media (prefers-reduced-motion: reduce) {
+    .hero-draw {
+      animation: none;
+      stroke-dashoffset: 0;
+      stroke-dasharray: none;
+    }
+    .hero-glow {
+      animation: none;
+      opacity: 0.5;
+    }
+    .scroll-reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
 }
