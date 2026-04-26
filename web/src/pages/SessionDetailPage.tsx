@@ -20,13 +20,13 @@ import {
   type TraceDetail,
   type Trace,
 } from '../api/client';
-import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import {
   buildCanonicalQueryString,
   parseTracesParams,
   serializeTracesParams,
 } from '../utils/tracesSearchParams';
+import { appendProjectToPath } from '../utils/projectSearchParams';
 import {
   calculateDuration,
   formatCost,
@@ -63,14 +63,21 @@ interface CompareSelectedTrace {
   session_id?: string;
 }
 
+interface SessionTraceTableState {
+  project_id?: string;
+  limit: number;
+  offset: number;
+  sort_by?: 'started_at';
+  sort_dir?: 'asc' | 'desc';
+}
+
 function shouldResetOffset(
-  currentState: ReturnType<typeof getSessionTraceTableState>,
-  updates: Partial<ReturnType<typeof getSessionTraceTableState>>
+  currentState: SessionTraceTableState,
+  updates: Partial<SessionTraceTableState>
 ): boolean {
   return Object.entries(updates).some(
     ([key, value]) =>
-      key !== 'offset' &&
-      currentState[key as keyof ReturnType<typeof getSessionTraceTableState>] !== value
+      key !== 'offset' && currentState[key as keyof SessionTraceTableState] !== value
   );
 }
 
@@ -78,11 +85,12 @@ function getSessionTraceTableState(searchParams: URLSearchParams) {
   const parsed = parseTracesParams(searchParams);
 
   return {
+    project_id: parsed.project_id,
     limit: parsed.limit,
     offset: parsed.offset,
     sort_by: parsed.sort_by,
     sort_dir: parsed.sort_dir,
-  };
+  } satisfies SessionTraceTableState;
 }
 
 function canonicalizeCompareState(state: SessionDetailCompareState): SessionDetailCompareState {
@@ -106,11 +114,15 @@ function getSessionCompareState(searchParams: URLSearchParams): SessionDetailCom
 }
 
 function serializeSessionDetailSearchParams(
-  filters: ReturnType<typeof getSessionTraceTableState>,
+  filters: SessionTraceTableState,
   compare: SessionDetailCompareState
 ): URLSearchParams {
   const params = serializeTracesParams(filters);
-  buildCompareSearchParams(compare.baseline_trace_id, compare.candidate_trace_id).forEach(
+  buildCompareSearchParams(
+    filters.project_id,
+    compare.baseline_trace_id,
+    compare.candidate_trace_id
+  ).forEach(
     (value, key) => {
       params.set(key, value);
     }
@@ -134,7 +146,7 @@ function useSessionDetailSearchParams() {
 
   const setFilters = useCallback(
     (
-      updates: Partial<ReturnType<typeof getSessionTraceTableState>>,
+      updates: Partial<SessionTraceTableState>,
       mode: HistoryMode = 'push'
     ) => {
       const next = {
@@ -320,11 +332,6 @@ function detailTraceToCompareSelectedTrace(trace: TraceDetail): CompareSelectedT
 
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { hasApiKey, prompt } = useRequireApiKey();
-
-  if (!hasApiKey) {
-    return prompt;
-  }
 
   if (!id) {
     return (
@@ -353,19 +360,21 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
   const currentSessionDetailSearch = serializeSessionDetailSearchParams(filters, compare).toString();
   const currentSessionDetailUrl = `${location.pathname}${currentSessionDetailSearch ? `?${currentSessionDetailSearch}` : ''}`;
   const isAscending = filters.sort_dir === 'asc';
+  const projectQueryKey = filters.project_id ?? null;
 
   const sessionQuery = useQuery({
-    queryKey: ['session', sessionId],
-    queryFn: () => fetchSession(sessionId),
+    queryKey: ['session', sessionId, projectQueryKey],
+    queryFn: () => fetchSession(sessionId, filters.project_id),
   });
   const narrativeQuery = useQuery({
-    queryKey: ['session-narrative', sessionId],
-    queryFn: () => fetchSessionNarrative(sessionId),
+    queryKey: ['session-narrative', sessionId, projectQueryKey],
+    queryFn: () => fetchSessionNarrative(sessionId, filters.project_id),
     refetchInterval: (query) =>
       (query.state.data?.summary.running_trace_count ?? 0) > 0 ? 30_000 : false,
   });
 
   const traceQueryParams = {
+    project_id: filters.project_id,
     session_id: sessionId,
     limit: filters.limit,
     offset: filters.offset,
@@ -403,13 +412,13 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
         : undefined;
 
   const baselineLookupQuery = useQuery({
-    queryKey: ['trace', compare.baseline_trace_id],
-    queryFn: () => fetchTrace(compare.baseline_trace_id!),
+    queryKey: ['trace', compare.baseline_trace_id, projectQueryKey],
+    queryFn: () => fetchTrace(compare.baseline_trace_id!, filters.project_id),
     enabled: Boolean(compare.baseline_trace_id && !selectedBaselineLoaded),
   });
   const candidateLookupQuery = useQuery({
-    queryKey: ['trace', compare.candidate_trace_id],
-    queryFn: () => fetchTrace(compare.candidate_trace_id!),
+    queryKey: ['trace', compare.candidate_trace_id, projectQueryKey],
+    queryFn: () => fetchTrace(compare.candidate_trace_id!, filters.project_id),
     enabled: Boolean(compare.candidate_trace_id && !selectedCandidateLoaded),
   });
 
@@ -609,6 +618,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
             currentSessionDetailUrl={currentSessionDetailUrl}
             isBaselineLookupPending={isBaselineLookupPending}
             isCandidateLookupPending={isCandidateLookupPending}
+            projectId={filters.project_id}
             sessionId={sessionId}
             swapCompare={swapCompare}
           />
@@ -621,6 +631,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
           isPending={narrativeQuery.isPending && !narrativeQuery.data}
           compare={compare}
           assignCompareRole={assignCompareRole}
+          projectId={filters.project_id}
           setComparePair={setComparePair}
           returnTo={currentSessionDetailUrl}
         />
@@ -701,6 +712,7 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                       assignCompareRole={assignCompareRole}
                       compare={compare}
                       key={trace.id}
+                      projectId={filters.project_id}
                       returnTo={currentSessionDetailUrl}
                       trace={trace}
                     />
@@ -731,6 +743,7 @@ function SessionNarrativeSections({
   isPending,
   compare,
   assignCompareRole,
+  projectId,
   setComparePair,
   returnTo,
 }: {
@@ -740,6 +753,7 @@ function SessionNarrativeSections({
   isPending: boolean;
   compare: SessionDetailCompareState;
   assignCompareRole: (role: CompareRole, traceId: string, mode?: HistoryMode) => void;
+  projectId?: string;
   setComparePair: (baselineTraceId: string, candidateTraceId: string, mode?: HistoryMode) => void;
   returnTo: string;
 }) {
@@ -913,6 +927,7 @@ function SessionNarrativeSections({
                     ? narrativeTraceByExternalId.get(trace.lineage.parent_trace_id)
                     : undefined
                 }
+                projectId={projectId}
                 setComparePair={setComparePair}
                 trace={trace}
                 returnTo={returnTo}
@@ -929,6 +944,7 @@ function StorylineTraceCard({
   compare,
   assignCompareRole,
   parentTrace,
+  projectId,
   setComparePair,
   trace,
   returnTo,
@@ -936,6 +952,7 @@ function StorylineTraceCard({
   compare: SessionDetailCompareState;
   assignCompareRole: (role: CompareRole, traceId: string, mode?: HistoryMode) => void;
   parentTrace?: SessionNarrativeTrace;
+  projectId?: string;
   setComparePair: (baselineTraceId: string, candidateTraceId: string, mode?: HistoryMode) => void;
   trace: SessionNarrativeTrace;
   returnTo: string;
@@ -953,7 +970,7 @@ function StorylineTraceCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              to={`/traces/${trace.id}`}
+              to={appendProjectToPath(`/traces/${trace.id}`, projectId)}
               state={{ returnTo }}
               className="text-sm font-semibold text-[var(--continua-accent)] transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
             >
@@ -1033,6 +1050,7 @@ function CompareBar({
   currentSessionDetailUrl,
   isBaselineLookupPending,
   isCandidateLookupPending,
+  projectId,
   sessionId,
   swapCompare,
 }: {
@@ -1043,10 +1061,15 @@ function CompareBar({
   currentSessionDetailUrl: string;
   isBaselineLookupPending: boolean;
   isCandidateLookupPending: boolean;
+  projectId?: string;
   sessionId: string;
   swapCompare: (mode?: HistoryMode) => void;
 }) {
-  const compareSearch = buildCompareSearchParams(baseline?.id, candidate?.id).toString();
+  const compareSearch = buildCompareSearchParams(
+    projectId,
+    baseline?.id,
+    candidate?.id
+  ).toString();
   const compareHref = compareSearch
     ? `/sessions/${sessionId}/compare?${compareSearch}`
     : `/sessions/${sessionId}/compare`;
@@ -1253,11 +1276,13 @@ function getSemanticSnippet(trace: SessionNarrativeTrace): string | null {
 function SessionTraceRow({
   compare,
   assignCompareRole,
+  projectId,
   trace,
   returnTo,
 }: {
   compare: SessionDetailCompareState;
   assignCompareRole: (role: CompareRole, traceId: string, mode?: HistoryMode) => void;
+  projectId?: string;
   trace: Trace;
   returnTo: string;
 }) {
@@ -1270,7 +1295,7 @@ function SessionTraceRow({
       <td className="px-6 py-4 align-top">
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            to={`/traces/${trace.id}`}
+            to={appendProjectToPath(`/traces/${trace.id}`, projectId)}
             state={{ returnTo }}
             className="text-sm font-semibold text-[var(--continua-accent)] transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
           >

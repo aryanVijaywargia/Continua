@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300" fill="none" stroke-linecap="round" stroke-linejoin="round" font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <radialGradient id="rt-glow" cx="50%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#005cab" stop-opacity="0.10"></stop>
+      <stop offset="62%" stop-color="#005cab" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#rt-glow)"></rect>
+
+  <g transform="translate(200 150)">
+    
+    <circle r="110" stroke="#c0c7d6" stroke-width="1.25" stroke-dasharray="2 5"></circle>
+    
+    <circle r="78" stroke="#005cab" stroke-width="1.5" stroke-dasharray="3 4" opacity="0.55"></circle>
+    
+    <circle r="46" stroke="#0075d6" stroke-width="2"></circle>
+
+    
+    <g stroke="#0075d6" stroke-width="2" fill="none">
+      <path d="M 46 -6 L 46 0 L 52 0"></path>
+    </g>
+    <g stroke="#005cab" stroke-width="1.5" opacity="0.7">
+      <path d="M 78 -8 L 78 0 L 86 0"></path>
+    </g>
+    <g stroke="#c0c7d6" stroke-width="1.25">
+      <path d="M 110 -10 L 110 0 L 120 0"></path>
+    </g>
+
+    
+    <g fill="#c0c7d6">
+      <circle cx="-110" cy="0" r="3"></circle>
+      <circle cx="-77.78" cy="-77.78" r="3"></circle>
+      <circle cx="0" cy="-110" r="3"></circle>
+      <circle cx="77.78" cy="-77.78" r="3"></circle>
+    </g>
+
+    
+    <g transform="translate(-55 -55)">
+      <circle r="8" fill="#ffffff" stroke="#ba1a1a" stroke-width="1.5"></circle>
+      <path d="M -3 -3 L 3 3 M 3 -3 L -3 3" stroke="#ba1a1a" stroke-width="1.5"></path>
+    </g>
+
+    
+    <g transform="translate(55 55)">
+      <circle r="8" fill="#ffffff" stroke="#005cab" stroke-width="1.5"></circle>
+      <path d="M -3 0 L -1 2 L 3 -2" stroke="#005cab" stroke-width="1.5"></path>
+    </g>
+
+    
+    <rect x="-22" y="-18" width="44" height="36" rx="6" fill="#ffffff" stroke="#1b1b1b" stroke-width="1.5"></rect>
+    <path d="M -8 -4 L -2 -4 M -8 0 L 4 0 M -8 4 L 0 4" stroke="#1b1b1b" stroke-width="1.5"></path>
+  </g>
+
+  
+  <g transform="translate(320 250)">
+    <rect x="-38" y="-14" width="76" height="28" rx="14" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+    <text x="0" y="4" text-anchor="middle" font-size="10" font-weight="700" fill="#404753" letter-spacing="1.5">ATTEMPT 3/5</text>
+  </g>
+
+  <text x="40" y="40" font-size="10" font-weight="900" letter-spacing="2" fill="#707785">RETRY &amp; RECOVERY</text>
+</svg>

@@ -1,6 +1,6 @@
 /**
  * API client for the Continua API.
- * Uses fetch with API key header from localStorage.
+ * Uses Auth0 bearer tokens for debugger requests.
  */
 
 import {
@@ -12,10 +12,19 @@ import {
   type FetchSessionsParams,
 } from '../utils/sessionsSearchParams';
 
-const API_KEY_STORAGE_KEY = 'continua_api_key';
-const API_KEY_EVENT_NAME = 'continua:api-key-change';
 const ENGINE_PREVIEW_HEADER = 'X-Continua-Engine-Preview';
 const ENGINE_PREVIEW_HEADER_VALUE = '1';
+const DEFAULT_API_ORIGIN = 'http://localhost';
+const LOCAL_API_KEY_STORAGE_KEY = 'continua_api_key';
+export const LOCAL_API_KEY_CHANGED_EVENT = 'continua:local-api-key-changed';
+
+type AccessTokenProvider = () => Promise<string | null>;
+type SelectedProjectIdProvider = () => string | null;
+
+let accessTokenProvider: AccessTokenProvider | null = null;
+let selectedProjectIdProvider: SelectedProjectIdProvider | null = null;
+let legacyTestToken: string | null = null;
+let publicDemoModeEnabled = false;
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -27,24 +36,47 @@ export type {
 /**
  * Get the stored API key.
  */
+export function setAccessTokenProvider(provider: AccessTokenProvider | null): void {
+  accessTokenProvider = provider;
+}
+
+export function setSelectedProjectIdProvider(
+  provider: SelectedProjectIdProvider | null
+): void {
+  selectedProjectIdProvider = provider;
+}
+
+export function setPublicDemoMode(enabled: boolean): void {
+  publicDemoModeEnabled = enabled;
+}
+
 export function getApiKey(): string | null {
-  return localStorage.getItem(API_KEY_STORAGE_KEY);
+  if (legacyTestToken) {
+    return legacyTestToken;
+  }
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  return window.localStorage.getItem(LOCAL_API_KEY_STORAGE_KEY);
 }
 
-/**
- * Set the API key.
- */
 export function setApiKey(key: string): void {
-  localStorage.setItem(API_KEY_STORAGE_KEY, key);
-  dispatchApiKeyChange();
+  const trimmedKey = key.trim();
+  legacyTestToken = trimmedKey;
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(LOCAL_API_KEY_STORAGE_KEY, trimmedKey);
+    window.dispatchEvent(new Event(LOCAL_API_KEY_CHANGED_EVENT));
+  }
+  setAccessTokenProvider(async () => trimmedKey);
 }
 
-/**
- * Clear the stored API key.
- */
 export function clearApiKey(): void {
-  localStorage.removeItem(API_KEY_STORAGE_KEY);
-  dispatchApiKeyChange();
+  legacyTestToken = null;
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(LOCAL_API_KEY_STORAGE_KEY);
+    window.dispatchEvent(new Event(LOCAL_API_KEY_CHANGED_EVENT));
+  }
+  setAccessTokenProvider(null);
 }
 
 /**
@@ -63,7 +95,10 @@ export class ApiError extends Error {
 }
 
 export function isAuthError(error: unknown): error is ApiError {
-  return error instanceof ApiError && error.status === 401;
+  return (
+    error instanceof ApiError &&
+    (error.status === 401 || error.status === 403)
+  );
 }
 
 export interface ComparisonTooLargeErrorDetail {
@@ -87,43 +122,85 @@ export function isComparisonTooLargeError(
   );
 }
 
-function dispatchApiKeyChange() {
-  if (typeof window === 'undefined') {
-    return;
-  }
+export interface RuntimeAuthConfig {
+  enabled: boolean;
+  domain?: string;
+  client_id?: string;
+  audience?: string;
+  public_demo_enabled?: boolean;
+  public_demo_label?: string;
+}
 
-  window.dispatchEvent(new Event(API_KEY_EVENT_NAME));
+export interface Project {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectList {
+  projects: Project[];
 }
 
 /**
- * Fetch wrapper with API key authentication.
+ * Fetch wrapper with bearer-token authentication.
  */
 export async function fetchAPI<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new ApiError(401, 'missing_api_key', 'API key not configured');
+  const localApiKey = publicDemoModeEnabled ? null : getApiKey();
+
+  if (!accessTokenProvider && !localApiKey && !publicDemoModeEnabled) {
+    throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
 
-  const response = await fetch(path, {
+  let accessToken: string | null = localApiKey;
+  if (accessTokenProvider) {
+    try {
+      accessToken = await accessTokenProvider();
+    } catch (error) {
+      throw new ApiError(
+        401,
+        'token_unavailable',
+        error instanceof Error ? error.message : 'Failed to obtain access token'
+      );
+    }
+  }
+
+  if (!accessToken && !publicDemoModeEnabled) {
+    throw new ApiError(401, 'unauthorized', 'Sign in required');
+  }
+
+  const requestUrl = buildRequestUrl(path);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> | undefined),
+  };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(requestUrl.toString(), {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': apiKey,
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new ApiError(401, 'unauthorized', 'Invalid or missing API key');
-    }
     if (response.status === 404) {
       throw new ApiError(404, 'not_found', 'Resource not found');
     }
-    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    const error = await response
+      .json()
+      .catch(() => ({ message: 'Unknown error', code: 'error' }));
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiError(
+        response.status,
+        error.code || 'auth_error',
+        error.message || 'Authentication failed',
+        error.detail
+      );
+    }
     throw new ApiError(
       response.status,
       error.code || 'error',
@@ -133,6 +210,23 @@ export async function fetchAPI<T>(
   }
 
   return response.json();
+}
+
+function buildRequestUrl(path: string): URL {
+  const baseOrigin =
+    typeof window === 'undefined' ? DEFAULT_API_ORIGIN : window.location.origin;
+  const url = new URL(path, baseOrigin);
+  const selectedProjectId = selectedProjectIdProvider?.();
+
+  if (
+    selectedProjectId &&
+    url.pathname.startsWith('/api/') &&
+    !url.searchParams.has('project_id')
+  ) {
+    url.searchParams.set('project_id', selectedProjectId);
+  }
+
+  return url;
 }
 
 /**
@@ -564,6 +658,26 @@ export interface SessionCompareResponse {
   span_diffs: SpanDiffRow[];
 }
 
+export async function fetchRuntimeAuthConfig(): Promise<RuntimeAuthConfig> {
+  const response = await fetch('/api/auth/config');
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ message: 'Failed to load auth configuration' }));
+    throw new ApiError(
+      response.status,
+      error.code || 'error',
+      error.message || 'Failed to load auth configuration'
+    );
+  }
+
+  return response.json();
+}
+
+export async function fetchProjects(): Promise<ProjectList> {
+  return fetchAPI<ProjectList>('/api/projects');
+}
+
 /**
  * Fetch traces with filters and pagination.
  */
@@ -576,18 +690,35 @@ export async function fetchTraces(params: FetchTracesParams = {}): Promise<Trace
 /**
  * Fetch a single trace by ID.
  */
-export async function fetchTrace(id: string): Promise<TraceDetail> {
-  return fetchAPI<TraceDetail>(`/api/traces/${id}`);
+export async function fetchTrace(
+  id: string,
+  projectId?: string
+): Promise<TraceDetail> {
+  const params = new URLSearchParams();
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return fetchAPI<TraceDetail>(`/api/traces/${id}${query}`);
 }
 
 /**
  * Fetch spans for a trace.
  */
-export async function fetchSpans(traceId: string): Promise<SpanList> {
-  return fetchAPI<SpanList>(`/api/traces/${traceId}/spans`);
+export async function fetchSpans(
+  traceId: string,
+  projectId?: string
+): Promise<SpanList> {
+  const params = new URLSearchParams();
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return fetchAPI<SpanList>(`/api/traces/${traceId}/spans${query}`);
 }
 
 export interface FetchTimelineEventsOptions {
+  project_id?: string;
   after?: string;
   limit?: number;
 }
@@ -601,6 +732,9 @@ export async function fetchTimelineEvents(
 ): Promise<TimelineResponse> {
   const params = new URLSearchParams();
 
+  if (options.project_id) {
+    params.set('project_id', options.project_id);
+  }
   if (options.after) {
     params.set('after', options.after);
   }
@@ -626,26 +760,46 @@ export async function fetchSessions(
 /**
  * Fetch a single session by ID.
  */
-export async function fetchSession(id: string): Promise<Session> {
-  return fetchAPI<Session>(`/api/sessions/${id}`);
+export async function fetchSession(
+  id: string,
+  projectId?: string
+): Promise<Session> {
+  const params = new URLSearchParams();
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return fetchAPI<Session>(`/api/sessions/${id}${query}`);
 }
 
 /**
  * Fetch a session narrative by session ID.
  */
-export async function fetchSessionNarrative(id: string): Promise<SessionNarrative> {
-  return fetchAPI<SessionNarrative>(`/api/sessions/${id}/narrative`);
+export async function fetchSessionNarrative(
+  id: string,
+  projectId?: string
+): Promise<SessionNarrative> {
+  const params = new URLSearchParams();
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return fetchAPI<SessionNarrative>(`/api/sessions/${id}/narrative${query}`);
 }
 
 export async function fetchSessionComparison(
   sessionId: string,
   baselineTraceId: string,
-  candidateTraceId: string
+  candidateTraceId: string,
+  projectId?: string
 ): Promise<SessionCompareResponse> {
   const params = new URLSearchParams({
     baseline_trace_id: baselineTraceId,
     candidate_trace_id: candidateTraceId,
   });
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
 
   return fetchAPI<SessionCompareResponse>(`/api/sessions/${sessionId}/compare?${params.toString()}`);
 }

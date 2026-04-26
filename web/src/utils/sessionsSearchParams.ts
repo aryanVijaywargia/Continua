@@ -4,6 +4,7 @@ export type SessionSortBy = 'created_at' | 'trace_count';
 export type SortDirection = 'asc' | 'desc';
 
 export interface FetchSessionsParams {
+  project_id?: string;
   limit?: number;
   offset?: number;
   q?: string;
@@ -13,6 +14,7 @@ export interface FetchSessionsParams {
 }
 
 export interface SessionsSearchState {
+  project_id?: string;
   limit: number;
   offset: number;
   q?: string;
@@ -32,6 +34,7 @@ type NormalizableSessionsParams = {
 };
 
 const CANONICAL_PARAM_ORDER: Array<keyof FetchSessionsParams> = [
+  'project_id',
   'limit',
   'offset',
   'q',
@@ -68,10 +71,22 @@ function normalizeSortDirection(
   return value === 'asc' || value === 'desc' ? value : undefined;
 }
 
+function normalizeUUID(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidPattern.test(trimmed) ? trimmed.toLowerCase() : undefined;
+}
+
 function normalizeSessionsParams(
   params: NormalizableSessionsParams
 ): NormalizedSessionsParams {
   return {
+    project_id: normalizeUUID(params.project_id),
     limit:
       params.limit === undefined
         ? undefined
@@ -90,6 +105,11 @@ function toQueryEntries(
 ): Array<[keyof FetchSessionsParams, string]> {
   const entries: Array<[keyof FetchSessionsParams, string]> = [];
 
+  if (
+    params.project_id
+  ) {
+    entries.push(['project_id', params.project_id]);
+  }
   if (
     params.limit !== undefined &&
     (options.includeDefaultLimit || params.limit !== DEFAULT_PAGE_SIZE)
@@ -120,6 +140,7 @@ function toQueryEntries(
 
 export function parseSessionsParams(searchParams: URLSearchParams): SessionsSearchState {
   const normalized = normalizeSessionsParams({
+    project_id: searchParams.get('project_id') ?? undefined,
     limit: searchParams.get('limit') ?? undefined,
     offset: searchParams.get('offset') ?? undefined,
     q: searchParams.get('q') ?? undefined,
@@ -130,6 +151,7 @@ export function parseSessionsParams(searchParams: URLSearchParams): SessionsSear
 
   return {
     limit: normalized.limit ?? DEFAULT_PAGE_SIZE,
+    project_id: normalized.project_id,
     offset: normalized.offset,
     q: normalized.q,
     user_id: normalized.user_id,

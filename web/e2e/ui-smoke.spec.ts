@@ -13,7 +13,11 @@ import {
   RUNNING_SESSION_NARRATIVE,
 } from '../src/test/traceFixtures';
 
-const API_KEY = process.env.PLAYWRIGHT_API_KEY ?? 'test-key';
+const E2E_OPERATOR_TOKEN = 'e2e-operator-token';
+const PRIMARY_PROJECT_ID = '11111111-1111-1111-1111-111111111111';
+const SECONDARY_PROJECT_ID = '22222222-2222-2222-2222-222222222222';
+const RUN_LOCALLY_DOCS_URL =
+  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/guides/run-locally.md';
 
 const TRACE_DETAILS = new Map([
   [TRACE_ONE.id, TRACE_DETAIL],
@@ -97,10 +101,15 @@ const TRACE_TIMELINE = {
 };
 
 async function bootstrapOperatorSession(page: Page) {
-  await page.addInitScript((apiKey) => {
-    window.localStorage.setItem('continua_api_key', apiKey);
+  await page.addInitScript((operatorToken) => {
+    const e2eWindow = window as typeof window & {
+      __CONTINUA_E2E_AUTH_BYPASS__?: boolean;
+      __CONTINUA_E2E_AUTH_TOKEN__?: string;
+    };
+    e2eWindow.__CONTINUA_E2E_AUTH_BYPASS__ = true;
+    e2eWindow.__CONTINUA_E2E_AUTH_TOKEN__ = operatorToken;
     window.localStorage.setItem('continua_theme_mode', 'light');
-  }, API_KEY);
+  }, E2E_OPERATOR_TOKEN);
 }
 
 async function fulfillJson(route: Route, data: unknown, status = 200) {
@@ -195,9 +204,55 @@ function filterSessions(url: URL) {
   };
 }
 
-async function mockApiRoutes(page: Page) {
+async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'operator') {
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
+
+    if (url.pathname === '/api/auth/config') {
+      if (mode === 'public-demo') {
+        return fulfillJson(route, {
+          enabled: false,
+          public_demo_enabled: true,
+          public_demo_label: 'Sample data',
+        });
+      }
+
+      return fulfillJson(route, {
+        enabled: true,
+        domain: 'continua.us.auth0.com',
+        client_id: 'e2e-client-id',
+        audience: 'https://continua/e2e',
+      });
+    }
+
+    if (mode === 'operator') {
+      expect(route.request().headers().authorization).toBe(
+        `Bearer ${E2E_OPERATOR_TOKEN}`
+      );
+    }
+
+    if (url.pathname === '/api/projects') {
+      if (mode === 'public-demo') {
+        return fulfillJson(route, { code: 'not_found', message: 'Resource not found' }, 404);
+      }
+
+      return fulfillJson(route, {
+        projects: [
+          {
+            id: PRIMARY_PROJECT_ID,
+            name: 'Primary Project',
+            created_at: '2026-03-14T10:00:00.000Z',
+            updated_at: '2026-03-14T10:00:00.000Z',
+          },
+          {
+            id: SECONDARY_PROJECT_ID,
+            name: 'Secondary Project',
+            created_at: '2026-03-15T10:00:00.000Z',
+            updated_at: '2026-03-15T10:00:00.000Z',
+          },
+        ],
+      });
+    }
 
     if (url.pathname === '/api/traces') {
       return fulfillJson(route, filterTraces(url));
@@ -271,18 +326,53 @@ async function gotoAndCapture(
   });
 }
 
-test.beforeEach(async ({ page }) => {
+test('opens a protected route and switches the selected project', async ({ page }, testInfo) => {
+  const isMobile = testInfo.project.name === 'mobile-chromium';
+  if (!isMobile) {
+    await page.setViewportSize({ width: 1024, height: 900 });
+  }
   await bootstrapOperatorSession(page);
-  await mockApiRoutes(page);
+  await mockApiRoutes(page, 'operator');
+  await page.goto('/traces');
+
+  await expect(
+    page.getByRole('heading', {
+      name: /Find the run, isolate the failure, and jump straight into the workspace/i,
+    })
+  ).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`project_id=${PRIMARY_PROJECT_ID}`));
+
+  if (isMobile) {
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    const projectSwitcher = page.locator('#mobile-project-switcher');
+    await expect(projectSwitcher).toBeVisible();
+    await expect(projectSwitcher).toHaveValue(PRIMARY_PROJECT_ID);
+    await projectSwitcher.selectOption(SECONDARY_PROJECT_ID);
+    await expect(page).toHaveURL(new RegExp(`project_id=${SECONDARY_PROJECT_ID}`));
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await expect(page.locator('#mobile-project-switcher')).toHaveValue(
+      SECONDARY_PROJECT_ID
+    );
+    return;
+  }
+
+  const projectSwitcher = page.locator('#project-switcher');
+  await expect(projectSwitcher).toBeVisible();
+  await expect(projectSwitcher).toHaveValue(PRIMARY_PROJECT_ID);
+  await projectSwitcher.selectOption(SECONDARY_PROJECT_ID);
+  await expect(page).toHaveURL(new RegExp(`project_id=${SECONDARY_PROJECT_ID}`));
+  await expect(projectSwitcher).toHaveValue(SECONDARY_PROJECT_ID);
 });
 
 test('captures overview, traces, sessions, and settings shells', async ({ page }, testInfo) => {
   const prefix = testInfo.project.name;
+  await bootstrapOperatorSession(page);
+  await mockApiRoutes(page, 'operator');
 
   await gotoAndCapture(
     page,
     testInfo,
-    '/',
+    `/dashboard?project_id=${PRIMARY_PROJECT_ID}`,
     () =>
       expect(
         page.getByRole('heading', {
@@ -295,7 +385,7 @@ test('captures overview, traces, sessions, and settings shells', async ({ page }
   await gotoAndCapture(
     page,
     testInfo,
-    '/traces',
+    `/traces?project_id=${PRIMARY_PROJECT_ID}`,
     () =>
       expect(
         page.getByRole('heading', {
@@ -308,7 +398,7 @@ test('captures overview, traces, sessions, and settings shells', async ({ page }
   await gotoAndCapture(
     page,
     testInfo,
-    '/sessions',
+    `/sessions?project_id=${PRIMARY_PROJECT_ID}`,
     () =>
       expect(
         page.getByRole('heading', {
@@ -321,11 +411,11 @@ test('captures overview, traces, sessions, and settings shells', async ({ page }
   await gotoAndCapture(
     page,
     testInfo,
-    '/settings',
+    `/settings?project_id=${PRIMARY_PROJECT_ID}`,
     () =>
       expect(
         page.getByRole('heading', {
-          name: /Configure this browser as an operator workspace/i,
+          name: /Manage your operator session and debugger workspace/i,
         })
       ).toBeVisible(),
     `${prefix}-settings`
@@ -335,11 +425,13 @@ test('captures overview, traces, sessions, and settings shells', async ({ page }
 test('captures trace, session, and compare workspaces', async ({ page }, testInfo) => {
   const prefix = testInfo.project.name;
   const isMobile = testInfo.project.name === 'mobile-chromium';
+  await bootstrapOperatorSession(page);
+  await mockApiRoutes(page, 'operator');
 
   await gotoAndCapture(
     page,
     testInfo,
-    `/traces/${TRACE_ONE.id}`,
+    `/traces/${TRACE_ONE.id}?project_id=${PRIMARY_PROJECT_ID}`,
     () =>
       isMobile
         ? expect(page.getByRole('button', { name: 'Summary' })).toBeVisible()
@@ -350,7 +442,7 @@ test('captures trace, session, and compare workspaces', async ({ page }, testInf
   await gotoAndCapture(
     page,
     testInfo,
-    `/sessions/${SESSION_ID}`,
+    `/sessions/${SESSION_ID}?project_id=${PRIMARY_PROJECT_ID}`,
     () => expect(page.getByRole('heading', { name: 'Traces' })).toBeVisible(),
     `${prefix}-session-detail`
   );
@@ -358,8 +450,54 @@ test('captures trace, session, and compare workspaces', async ({ page }, testInf
   await gotoAndCapture(
     page,
     testInfo,
-    `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
+    `/sessions/${SESSION_ID}/compare?project_id=${PRIMARY_PROJECT_ID}&baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
     () => expect(page.getByRole('heading', { name: 'Span Diff' })).toBeVisible(),
     `${prefix}-session-compare`
   );
+});
+
+test('walks the public demo flow from landing through debugger reads', async ({ page }, testInfo) => {
+  const isMobile = testInfo.project.name === 'mobile-chromium';
+  if (!isMobile) {
+    await page.setViewportSize({ width: 1024, height: 900 });
+  }
+
+  await mockApiRoutes(page, 'public-demo');
+
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Open Demo' }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Run Locally' }).first()).toHaveAttribute(
+    'href',
+    RUN_LOCALLY_DOCS_URL
+  );
+
+  await page.getByRole('link', { name: 'Open Demo' }).first().click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByText(/read-only demo/i)).toBeVisible();
+  await expect(page.getByText(/sample traces/i)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Run locally with your own traces' })).toBeVisible();
+
+  await page.goto('/traces');
+  await expect(
+    page.getByRole('heading', {
+      name: /Find the run, isolate the failure, and jump straight into the workspace/i,
+    })
+  ).toBeVisible();
+  await expect(page.locator('#project-switcher')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+
+  await page.goto(`/traces/${TRACE_ONE.id}`);
+  await expect(
+    isMobile
+      ? page.getByRole('button', { name: 'Summary' })
+      : page.getByRole('heading', { name: 'Execution Waterfall' })
+  ).toBeVisible();
+
+  await page.goto(`/sessions/${SESSION_ID}`);
+  await expect(page.getByRole('heading', { name: 'Traces' })).toBeVisible();
+
+  await page.goto(
+    `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`
+  );
+  await expect(page.getByRole('heading', { name: 'Span Diff' })).toBeVisible();
 });

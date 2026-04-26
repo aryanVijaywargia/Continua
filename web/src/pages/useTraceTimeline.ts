@@ -18,14 +18,20 @@ interface TimelineSnapshot {
   pollCursor: string | null;
 }
 
-export function useTraceTimeline(traceId: string) {
+export function useTraceTimeline(traceId: string, projectId?: string) {
   const [timelineSnapshot, setTimelineSnapshot] = useState<TimelineSnapshot | null>(null);
   const [needsTerminalRefresh, setNeedsTerminalRefresh] = useState(false);
   const queryClient = useQueryClient();
+  const projectQueryKey = projectId ?? null;
+
+  useEffect(() => {
+    setTimelineSnapshot(null);
+    setNeedsTerminalRefresh(false);
+  }, [traceId, projectQueryKey]);
 
   const timelineBootstrapQuery = useQuery({
-    queryKey: ['timeline', traceId, 'bootstrap'],
-    queryFn: () => fetchFullTimelineSnapshot(traceId),
+    queryKey: ['timeline', traceId, projectQueryKey, 'bootstrap'],
+    queryFn: () => fetchFullTimelineSnapshot(traceId, projectId),
     refetchOnWindowFocus: false,
   });
 
@@ -43,9 +49,16 @@ export function useTraceTimeline(traceId: string) {
     !needsTerminalRefresh;
 
   const timelinePollQuery = useQuery({
-    queryKey: ['timeline', traceId, 'poll', timelineSnapshot?.pollCursor ?? 'head'],
+    queryKey: [
+      'timeline',
+      traceId,
+      projectQueryKey,
+      'poll',
+      timelineSnapshot?.pollCursor ?? 'head',
+    ],
     queryFn: () =>
       fetchTimelineEvents(traceId, {
+        project_id: projectId,
         after: timelineSnapshot?.pollCursor ?? undefined,
         limit: TIMELINE_PAGE_LIMIT,
       }),
@@ -63,8 +76,8 @@ export function useTraceTimeline(traceId: string) {
 
     if (pollResult.trace_status !== 'RUNNING') {
       void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['trace', traceId] }),
-        queryClient.invalidateQueries({ queryKey: ['spans', traceId] }),
+        queryClient.invalidateQueries({ queryKey: ['trace', traceId, projectQueryKey] }),
+        queryClient.invalidateQueries({ queryKey: ['spans', traceId, projectQueryKey] }),
       ]);
       setNeedsTerminalRefresh(true);
     }
@@ -80,11 +93,17 @@ export function useTraceTimeline(traceId: string) {
         pollCursor: pollResult.poll_cursor ?? current.pollCursor,
       };
     });
-  }, [queryClient, timelinePollQuery.data, traceId]);
+  }, [projectQueryKey, queryClient, timelinePollQuery.data, traceId]);
 
   const timelineTerminalRefreshQuery = useQuery({
-    queryKey: ['timeline', traceId, 'terminal-refresh', needsTerminalRefresh],
-    queryFn: () => fetchFullTimelineSnapshot(traceId),
+    queryKey: [
+      'timeline',
+      traceId,
+      projectQueryKey,
+      'terminal-refresh',
+      needsTerminalRefresh,
+    ],
+    queryFn: () => fetchFullTimelineSnapshot(traceId, projectId),
     enabled: needsTerminalRefresh,
     refetchOnWindowFocus: false,
     retry: false,
@@ -117,7 +136,10 @@ export function useTraceTimeline(traceId: string) {
   };
 }
 
-async function fetchFullTimelineSnapshot(traceId: string): Promise<TimelineSnapshot> {
+async function fetchFullTimelineSnapshot(
+  traceId: string,
+  projectId?: string
+): Promise<TimelineSnapshot> {
   let after: string | undefined;
   let hasMore = true;
   let pollCursor: string | null = null;
@@ -126,6 +148,7 @@ async function fetchFullTimelineSnapshot(traceId: string): Promise<TimelineSnaps
 
   while (hasMore) {
     const page = await fetchTimelineEvents(traceId, {
+      project_id: projectId,
       after,
       limit: TIMELINE_PAGE_LIMIT,
     });

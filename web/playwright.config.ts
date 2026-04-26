@@ -1,5 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const previewPort = process.env.PLAYWRIGHT_PORT ?? '4173';
+const localBaseURL = `http://127.0.0.1:${previewPort}`;
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? localBaseURL;
+const webServer = process.env.PLAYWRIGHT_BASE_URL
+  ? undefined
+  : {
+      command: `pnpm build && pnpm exec vite preview --host 127.0.0.1 --port ${previewPort} --strictPort`,
+      url: localBaseURL,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    };
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -8,16 +20,10 @@ export default defineConfig({
   },
   reporter: 'list',
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000',
+    baseURL,
     trace: 'retain-on-failure',
   },
-  webServer: {
-    command:
-      'pnpm build && pnpm exec vite preview --host 127.0.0.1 --port 3000 --strictPort',
-    url: 'http://127.0.0.1:3000',
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer,
   projects: [
     {
       name: 'desktop-chromium',

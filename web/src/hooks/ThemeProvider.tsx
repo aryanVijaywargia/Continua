@@ -1,46 +1,57 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  THEME_STORAGE_KEY,
   ThemeContext,
+  THEME_STORAGE_KEY,
   type ResolvedTheme,
   type ThemeMode,
 } from './themeContext';
+import { useMediaQuery } from './useMediaQuery';
 
-const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)';
+const DARK_MODE_MEDIA_QUERY = '(prefers-color-scheme: dark)';
+
+function readInitialMode(): ThemeMode {
+  if (typeof window === 'undefined') {
+    return 'system';
+  }
+
+  const storedMode = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (storedMode === 'light' || storedMode === 'dark' || storedMode === 'system') {
+    return storedMode;
+  }
+
+  return 'system';
+}
+
+function resolveTheme(mode: ThemeMode, prefersDark: boolean): ResolvedTheme {
+  if (mode === 'system') {
+    return prefersDark ? 'dark' : 'light';
+  }
+
+  return mode;
+}
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>(() => readStoredThemeMode());
-  const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
-    getSystemPrefersDark()
-  );
+  const prefersDark = useMediaQuery(DARK_MODE_MEDIA_QUERY);
+  const [mode, setMode] = useState<ThemeMode>(readInitialMode);
+  const resolvedTheme = resolveTheme(mode, prefersDark);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    if (typeof window === 'undefined') {
       return;
     }
 
-    const mediaQuery = window.matchMedia(SYSTEM_THEME_QUERY);
-    const handleChange = (event: MediaQueryListEvent) => {
-      setSystemPrefersDark(event.matches);
-    };
-
-    mediaQuery.addEventListener('change', handleChange);
-
-    return () => {
-      mediaQuery.removeEventListener('change', handleChange);
-    };
-  }, []);
-
-  const resolvedTheme = resolveTheme(mode, systemPrefersDark);
-
-  useEffect(() => {
-    localStorage.setItem(THEME_STORAGE_KEY, mode);
+    window.localStorage.setItem(THEME_STORAGE_KEY, mode);
   }, [mode]);
 
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.toggle('dark', resolvedTheme === 'dark');
     root.dataset.theme = resolvedTheme;
+    root.classList.toggle('dark', resolvedTheme === 'dark');
+
+    return () => {
+      delete root.dataset.theme;
+      root.classList.remove('dark');
+    };
   }, [resolvedTheme]);
 
   const value = useMemo(
@@ -49,43 +60,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       resolvedTheme,
       setMode,
       toggleTheme: () => {
-        setMode((currentMode) => {
-          const currentResolvedTheme = resolveTheme(currentMode, systemPrefersDark);
-          return currentResolvedTheme === 'dark' ? 'light' : 'dark';
-        });
+        setMode((currentMode) =>
+          resolveTheme(currentMode, prefersDark) === 'dark' ? 'light' : 'dark'
+        );
       },
     }),
-    [mode, resolvedTheme, systemPrefersDark]
+    [mode, prefersDark, resolvedTheme]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
-}
-
-function readStoredThemeMode(): ThemeMode {
-  if (typeof window === 'undefined') {
-    return 'system';
-  }
-
-  const storedMode = localStorage.getItem(THEME_STORAGE_KEY);
-  return isThemeMode(storedMode) ? storedMode : 'system';
-}
-
-function getSystemPrefersDark(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return false;
-  }
-
-  return window.matchMedia(SYSTEM_THEME_QUERY).matches;
-}
-
-function resolveTheme(mode: ThemeMode, systemPrefersDark: boolean): ResolvedTheme {
-  if (mode === 'system') {
-    return systemPrefersDark ? 'dark' : 'light';
-  }
-
-  return mode;
-}
-
-function isThemeMode(value: string | null): value is ThemeMode {
-  return value === 'system' || value === 'light' || value === 'dark';
 }

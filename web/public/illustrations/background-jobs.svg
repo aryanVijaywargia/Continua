@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300" fill="none" stroke-linecap="round" stroke-linejoin="round" font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <radialGradient id="bj-glow" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#005cab" stop-opacity="0.10"></stop>
+      <stop offset="62%" stop-color="#005cab" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#bj-glow)"></rect>
+
+  
+  <g transform="translate(80 150)">
+    <rect x="-32" y="-32" width="64" height="64" rx="8" fill="#1b1b1b"></rect>
+    <g stroke="#ffffff" stroke-width="1.5" fill="none">
+      <rect x="-14" y="-14" width="28" height="10" rx="2"></rect>
+      <rect x="-14" y="-2" width="28" height="10" rx="2"></rect>
+      <circle cx="-8" cy="-9" r="1.5" fill="#0075d6" stroke="none"></circle>
+      <circle cx="-8" cy="3" r="1.5" fill="#418400" stroke="none"></circle>
+      <rect x="-14" y="10" width="28" height="6" rx="2" stroke-opacity="0.3"></rect>
+    </g>
+    <text x="0" y="52" text-anchor="middle" font-size="9" font-weight="900" letter-spacing="1.5" fill="#707785">DISPATCHER</text>
+  </g>
+
+  
+  <g stroke="#c0c7d6" stroke-width="1.25" fill="none">
+    <path d="M 112 130 Q 180 90, 260 90"></path>
+    <path d="M 112 140 Q 180 130, 260 130"></path>
+    <path d="M 112 160 Q 180 170, 260 170"></path>
+    <path d="M 112 170 Q 180 210, 260 210"></path>
+  </g>
+  
+  <path d="M 112 150 Q 180 150, 260 150" stroke="#0075d6" stroke-width="2" fill="none"></path>
+
+  
+  <g font-family="IBM Plex Mono, monospace" font-size="9">
+    
+    <g transform="translate(290 90)">
+      <rect x="-28" y="-14" width="76" height="28" rx="6" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+      <circle cx="-18" cy="0" r="3" fill="#418400"></circle>
+      <text x="-10" y="3" fill="#404753">worker-01</text>
+    </g>
+    
+    <g transform="translate(290 130)">
+      <rect x="-28" y="-14" width="76" height="28" rx="6" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+      <circle cx="-18" cy="0" r="3" fill="#418400"></circle>
+      <text x="-10" y="3" fill="#404753">worker-02</text>
+    </g>
+    
+    <g transform="translate(290 170)">
+      <rect x="-28" y="-14" width="76" height="28" rx="6" fill="#ffffff" stroke="#0075d6" stroke-width="1.5"></rect>
+      <circle cx="-18" cy="0" r="3" fill="#0075d6"></circle>
+      <text x="-10" y="3" fill="#1b1b1b" font-weight="700">worker-03</text>
+    </g>
+    
+    <g transform="translate(290 210)">
+      <rect x="-28" y="-14" width="76" height="28" rx="6" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+      <circle cx="-18" cy="0" r="3" fill="#c0c7d6"></circle>
+      <text x="-10" y="3" fill="#707785">worker-04</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(180 150)">
+    <rect x="-6" y="-5" width="12" height="10" rx="2" fill="#0075d6"></rect>
+  </g>
+
+  
+  <g transform="translate(80 230)">
+    <rect x="-38" y="-10" width="76" height="20" rx="10" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+    <text x="0" y="4" text-anchor="middle" font-size="9" font-weight="700" fill="#404753" letter-spacing="1">7 IN FLIGHT</text>
+  </g>
+
+  <text x="40" y="40" font-size="10" font-weight="900" letter-spacing="2" fill="#707785">RESILIENT BACKGROUND JOBS</text>
+</svg>

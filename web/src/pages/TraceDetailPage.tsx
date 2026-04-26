@@ -40,7 +40,6 @@ import {
   WorkspaceShell,
 } from '../components/WorkspaceShell';
 import { useMediaQuery } from '../hooks/useMediaQuery';
-import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { useTraceDetailSearchParams } from '../hooks/useTraceDetailSearchParams';
 import { useWorkspaceState } from '../hooks/useWorkspaceState';
 import type { RetrySafetyAssessment } from '../utils/retrySafety';
@@ -76,6 +75,10 @@ import {
 } from '../utils/reasoning';
 import { serializeSpanParam } from '../utils/traceDetailSearchParams';
 import {
+  appendProjectToPath,
+  getProjectIdFromSearchParams,
+} from '../utils/projectSearchParams';
+import {
   computeOpenWaits,
   type OpenWait,
   type WaitStallAssessment,
@@ -100,11 +103,6 @@ function queryErrorMessage(error: unknown): string {
 
 export function TraceDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { hasApiKey, prompt } = useRequireApiKey();
-
-  if (!hasApiKey) {
-    return prompt;
-  }
 
   if (!id) {
     return <TraceDetailEmptyState>Trace ID is required.</TraceDetailEmptyState>;
@@ -125,20 +123,24 @@ interface TraceDetailContentProps {
 function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY);
   const location = useLocation();
+  const currentProjectId = getProjectIdFromSearchParams(
+    new URLSearchParams(location.search)
+  );
+  const projectQueryKey = currentProjectId ?? null;
   const { spanParam, setSpanParam } = useTraceDetailSearchParams();
   const [activeMobileTab, setActiveMobileTab] =
     useState<MobileWorkspaceTabId>('summary');
   const [isTraceContextOpen, setIsTraceContextOpen] = useState(false);
   const switchToInspectorDetailsRef = useRef<(() => void) | null>(null);
   const traceQuery = useQuery({
-    queryKey: ['trace', traceId],
-    queryFn: () => fetchTrace(traceId),
+    queryKey: ['trace', traceId, projectQueryKey],
+    queryFn: () => fetchTrace(traceId, currentProjectId),
   });
-  const timeline = useTraceTimeline(traceId);
+  const timeline = useTraceTimeline(traceId, currentProjectId);
   const liveTraceStatus = timeline.traceStatus ?? traceQuery.data?.status ?? null;
   const spansQuery = useQuery({
-    queryKey: ['spans', traceId],
-    queryFn: () => fetchSpans(traceId),
+    queryKey: ['spans', traceId, projectQueryKey],
+    queryFn: () => fetchSpans(traceId, currentProjectId),
     refetchInterval:
       liveTraceStatus === 'RUNNING' ? TIMELINE_POLL_INTERVAL_MS : false,
     refetchOnWindowFocus: false,
@@ -149,15 +151,21 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     queryKey: [
       'trace-lineage-ancestors',
       traceId,
+      projectQueryKey,
       trace?.engine?.run_id ?? null,
       trace?.engine?.parent_run_id ?? null,
     ],
-    queryFn: () => fetchTraceLineageAncestors(trace!),
+    queryFn: () => fetchTraceLineageAncestors(trace!, currentProjectId),
     enabled: Boolean(trace?.engine?.parent_run_id),
   });
   const childTracesQuery = useQuery({
-    queryKey: ['trace-lineage-children', traceId, trace?.engine?.run_id ?? null],
-    queryFn: () => fetchDirectChildTraces(trace!.engine!.run_id),
+    queryKey: [
+      'trace-lineage-children',
+      traceId,
+      projectQueryKey,
+      trace?.engine?.run_id ?? null,
+    ],
+    queryFn: () => fetchDirectChildTraces(trace!.engine!.run_id, currentProjectId),
     enabled: Boolean(trace?.engine?.run_id),
   });
   const pendingWorkQuery = useEnginePendingWork(
@@ -346,6 +354,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
         hasChildTracesError={childTracesQuery.isError}
         lineageChain={lineageChain}
         lineageLoading={lineageAncestorsQuery.isLoading}
+        projectId={currentProjectId}
         returnTo={returnTo}
         showLineageSummary
         showEmptyChildren={Boolean(trace.engine?.parent_run_id)}
@@ -398,6 +407,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
               <TraceLineageBreadcrumb
                 chain={lineageChain}
                 isLoading={lineageAncestorsQuery.isLoading}
+                projectId={currentProjectId}
                 returnTo={returnTo}
                 trace={trace}
               />
@@ -408,7 +418,10 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
               <div className="mt-4 flex flex-wrap gap-2 text-sm">
                 {trace.engine.continued_from_trace_id ? (
                   <Link
-                    to={`/traces/${trace.engine.continued_from_trace_id}`}
+                    to={appendProjectToPath(
+                      `/traces/${trace.engine.continued_from_trace_id}`,
+                      currentProjectId
+                    )}
                     state={{ returnTo }}
                     className="inline-flex items-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-1.5 font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-accent)]"
                   >
@@ -417,7 +430,10 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
                 ) : null}
                 {trace.engine.continued_to_trace_id ? (
                   <Link
-                    to={`/traces/${trace.engine.continued_to_trace_id}`}
+                    to={appendProjectToPath(
+                      `/traces/${trace.engine.continued_to_trace_id}`,
+                      currentProjectId
+                    )}
                     state={{ returnTo }}
                     className="inline-flex items-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-1.5 font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-accent)]"
                   >
@@ -522,6 +538,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
           childTracesLoading={childTracesQuery.isLoading}
           hasLineageError={childTracesQuery.isError}
           onClose={() => setIsTraceContextOpen(false)}
+          projectId={currentProjectId}
           returnTo={returnTo}
           trace={trace}
         />
@@ -534,6 +551,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
           childTracesLoading={childTracesQuery.isLoading}
           hasLineageError={childTracesQuery.isError}
           onClose={() => setIsTraceContextOpen(false)}
+          projectId={currentProjectId}
           returnTo={returnTo}
           trace={trace}
         />
@@ -568,11 +586,13 @@ function EngineWaitStateSummary({
 function TraceLineageBreadcrumb({
   chain,
   isLoading,
+  projectId,
   returnTo,
   trace,
 }: {
   chain: Trace[];
   isLoading: boolean;
+  projectId?: string;
   returnTo: string;
   trace: TraceDetail;
 }) {
@@ -610,7 +630,7 @@ function TraceLineageBreadcrumb({
                   </span>
                 ) : (
                   <Link
-                    to={`/traces/${lineageTrace.id}`}
+                    to={appendProjectToPath(`/traces/${lineageTrace.id}`, projectId)}
                     state={{ returnTo }}
                     className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-1.5 font-medium text-[var(--continua-text-secondary)] transition hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-accent)]"
                   >
@@ -630,7 +650,10 @@ function TraceLineageBreadcrumb({
   );
 }
 
-async function fetchTraceLineageAncestors(trace: TraceDetail): Promise<Trace[]> {
+async function fetchTraceLineageAncestors(
+  trace: TraceDetail,
+  projectId?: string
+): Promise<Trace[]> {
   const engine = trace.engine;
   if (!engine?.run_id || !engine.parent_run_id) {
     return [];
@@ -650,6 +673,7 @@ async function fetchTraceLineageAncestors(trace: TraceDetail): Promise<Trace[]> 
     visitedRunIds.add(parentRunId);
 
     const page = await fetchTraces({
+      project_id: projectId,
       engine_run_id: parentRunId,
       limit: 1,
     });
@@ -665,12 +689,16 @@ async function fetchTraceLineageAncestors(trace: TraceDetail): Promise<Trace[]> 
   return ancestors.reverse();
 }
 
-async function fetchDirectChildTraces(parentRunId: string): Promise<Trace[]> {
+async function fetchDirectChildTraces(
+  parentRunId: string,
+  projectId?: string
+): Promise<Trace[]> {
   const traces: Trace[] = [];
   let offset = 0;
 
   for (;;) {
     const page = await fetchTraces({
+      project_id: projectId,
       engine_parent_run_id: parentRunId,
       limit: CHILD_TRACES_PAGE_SIZE,
       offset,
@@ -715,6 +743,7 @@ function TraceLineageCard({
   hasChildTracesError,
   lineageChain,
   lineageLoading,
+  projectId,
   returnTo,
   showEmptyChildren = false,
   showLineageSummary = false,
@@ -726,6 +755,7 @@ function TraceLineageCard({
   hasChildTracesError: boolean;
   lineageChain: Trace[];
   lineageLoading: boolean;
+  projectId?: string;
   returnTo: string;
   showEmptyChildren?: boolean;
   showLineageSummary?: boolean;
@@ -769,6 +799,7 @@ function TraceLineageCard({
           <TraceLineageSummaryBreadcrumb
             chain={lineageChain}
             isLoading={lineageLoading}
+            projectId={projectId}
             returnTo={returnTo}
             trace={trace}
           />
@@ -777,6 +808,7 @@ function TraceLineageCard({
           childTraces={childTraces}
           isError={hasChildTracesError}
           isLoading={childTracesLoading}
+          projectId={projectId}
           returnTo={returnTo}
           showEmptyState={showEmptyChildren}
         />
@@ -788,11 +820,13 @@ function TraceLineageCard({
 function TraceLineageSummaryBreadcrumb({
   chain,
   isLoading,
+  projectId,
   returnTo,
   trace,
 }: {
   chain: Trace[];
   isLoading: boolean;
+  projectId?: string;
   returnTo: string;
   trace: TraceDetail;
 }) {
@@ -830,7 +864,7 @@ function TraceLineageSummaryBreadcrumb({
                   </span>
                 ) : (
                   <Link
-                    to={`/traces/${lineageTrace.id}`}
+                    to={appendProjectToPath(`/traces/${lineageTrace.id}`, projectId)}
                     state={{ returnTo }}
                     className="inline-flex max-w-full items-center rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-2 font-medium text-[var(--continua-accent)] transition hover:border-[var(--continua-border-strong)] hover:opacity-80"
                   >
@@ -854,12 +888,14 @@ function ChildWorkflowSection({
   childTraces,
   isError,
   isLoading,
+  projectId,
   returnTo,
   showEmptyState,
 }: {
   childTraces: Trace[];
   isError: boolean;
   isLoading: boolean;
+  projectId?: string;
   returnTo: string;
   showEmptyState: boolean;
 }) {
@@ -899,7 +935,7 @@ function ChildWorkflowSection({
           {childTraces.map((childTrace) => (
             <Link
               key={childTrace.id}
-              to={`/traces/${childTrace.id}`}
+              to={appendProjectToPath(`/traces/${childTrace.id}`, projectId)}
               state={{ returnTo }}
               className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-3 py-3 transition hover:border-[var(--continua-border-strong)] hover:bg-[var(--continua-surface-elevated)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent)]"
             >
@@ -1193,6 +1229,7 @@ function TraceContextDrawer({
   childTracesLoading,
   hasLineageError,
   onClose,
+  projectId,
   returnTo,
   trace,
 }: {
@@ -1201,6 +1238,7 @@ function TraceContextDrawer({
   childTracesLoading: boolean;
   hasLineageError: boolean;
   onClose: () => void;
+  projectId?: string;
   returnTo: string;
   trace: TraceDetail;
 }) {
@@ -1225,6 +1263,7 @@ function TraceContextDrawer({
           hasLineageError={hasLineageError}
           onToggle={onClose}
           open
+          projectId={projectId}
           returnTo={returnTo}
           showLineage
           trace={trace}
@@ -1240,6 +1279,7 @@ function TraceContextSheet({
   childTracesLoading,
   hasLineageError,
   onClose,
+  projectId,
   returnTo,
   trace,
 }: {
@@ -1248,6 +1288,7 @@ function TraceContextSheet({
   childTracesLoading: boolean;
   hasLineageError: boolean;
   onClose: () => void;
+  projectId?: string;
   returnTo: string;
   trace: TraceDetail;
 }) {
@@ -1272,6 +1313,7 @@ function TraceContextSheet({
           hasLineageError={hasLineageError}
           onToggle={onClose}
           open
+          projectId={projectId}
           returnTo={returnTo}
           showLineage={false}
           trace={trace}
@@ -1288,6 +1330,7 @@ function TraceContextSection({
   hasLineageError,
   onToggle,
   open,
+  projectId,
   returnTo,
   showLineage,
   trace,
@@ -1298,6 +1341,7 @@ function TraceContextSection({
   hasLineageError: boolean;
   onToggle: () => void;
   open: boolean;
+  projectId?: string;
   returnTo: string;
   showLineage: boolean;
   trace: TraceDetail;
@@ -1346,7 +1390,7 @@ function TraceContextSection({
               label="Session"
               value={trace.session_id ? (
                 <Link
-                  to={`/sessions/${trace.session_id}`}
+                  to={appendProjectToPath(`/sessions/${trace.session_id}`, projectId)}
                   className="inline-flex flex-col text-left text-[var(--continua-accent)] hover:opacity-80"
                 >
                   <span className="text-sm font-medium text-[var(--continua-text-primary)]">
@@ -1402,6 +1446,7 @@ function TraceContextSection({
               hasChildTracesError={hasLineageError}
               lineageChain={EMPTY_TRACES}
               lineageLoading={false}
+              projectId={projectId}
               returnTo={returnTo}
               trace={trace}
             />

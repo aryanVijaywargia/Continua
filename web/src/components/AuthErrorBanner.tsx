@@ -1,12 +1,15 @@
-import { Link } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 
 interface AuthErrorBannerProps {
   message?: string;
 }
 
 export function AuthErrorBanner({
-  message = 'Your API key is missing, expired, or invalid.',
+  message = 'Your operator session is missing, expired, or invalid.',
 }: AuthErrorBannerProps) {
+  const location = useLocation();
+  const retryHref = `${location.pathname}${location.search}`;
+
   return (
     <div
       role="alert"
@@ -19,12 +22,12 @@ export function AuthErrorBanner({
           </p>
           <p className="mt-1 text-sm">{message}</p>
         </div>
-        <Link
-          to="/settings"
+        <a
+          href={retryHref}
           className="inline-flex items-center justify-center rounded-full border border-amber-300 bg-[var(--continua-surface-elevated)] px-4 py-2 text-sm font-bold text-amber-900 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300 dark:border-amber-400/40 dark:text-amber-100 dark:hover:bg-[var(--continua-surface-muted)]"
         >
-          Go to Settings
-        </Link>
+          Sign in again
+        </a>
       </div>
     </div>
   );

@@ -53,8 +53,12 @@ export function useTracesSearchParams() {
   );
 
   const clearAll = useCallback(() => {
-    setSearchParams(new URLSearchParams(), { replace: false });
-  }, [setSearchParams]);
+    const next = new URLSearchParams();
+    if (filters.project_id) {
+      next.set('project_id', filters.project_id);
+    }
+    setSearchParams(next, { replace: false });
+  }, [filters.project_id, setSearchParams]);
 
   const clearChip = useCallback(
     (key: ChipKey, mode: HistoryMode = 'push') => {

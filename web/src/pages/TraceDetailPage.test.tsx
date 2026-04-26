@@ -490,7 +490,7 @@ describe('TraceDetailPage', () => {
     expect(signalCalls).toHaveLength(1);
     expect(signalCalls[0]?.init?.headers).toMatchObject({
       'X-Continua-Engine-Preview': '1',
-      'X-API-Key': 'test-key',
+      Authorization: 'Bearer test-key',
     });
     expect(signalCalls[0]?.init?.body).toBe(
       JSON.stringify({
@@ -584,7 +584,7 @@ describe('TraceDetailPage', () => {
     expect(purgeCalls).toHaveLength(1);
     expect(purgeCalls[0]?.init?.headers).toMatchObject({
       'X-Continua-Engine-Preview': '1',
-      'X-API-Key': 'test-key',
+      Authorization: 'Bearer test-key',
     });
     expect(purgeCalls[0]?.init?.body).toBe(JSON.stringify({ mode: 'full' }));
   });
@@ -842,9 +842,9 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
-    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Sign in again' })).toHaveAttribute(
       'href',
-      '/settings'
+      `/traces/${TRACE_ONE.id}`
     );
   });
 
@@ -862,9 +862,9 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
-    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Sign in again' })).toHaveAttribute(
       'href',
-      '/settings'
+      `/traces/${TRACE_ONE.id}`
     );
     expect(screen.getByRole('heading', { name: 'Execution Waterfall' })).toBeInTheDocument();
   });
@@ -1063,10 +1063,10 @@ describe('TraceDetailPage', () => {
     const breadcrumb = await screen.findByRole('navigation', {
       name: 'Trace lineage',
     });
-    const rootLink = within(breadcrumb).getByRole('link', {
+    const rootLink = await within(breadcrumb).findByRole('link', {
       name: 'Root Checkout Trace',
     });
-    const parentLink = within(breadcrumb).getByRole('link', {
+    const parentLink = await within(breadcrumb).findByRole('link', {
       name: 'Parent Approval Trace',
     });
     expect(rootLink).toHaveAttribute('href', `/traces/${rootTraceDetail.id}`);
@@ -2811,7 +2811,7 @@ describe('TraceDetailPage', () => {
 
     await act(async () => {
       await view.queryClient.invalidateQueries({
-        queryKey: ['timeline', TRACE_ONE.id, 'bootstrap'],
+        queryKey: ['timeline', TRACE_ONE.id, null, 'bootstrap'],
       });
     });
 
@@ -3542,7 +3542,7 @@ describe('TraceDetailPage', () => {
 
     await act(async () => {
       await view.queryClient.refetchQueries({
-        queryKey: ['timeline', TRACE_ONE.id, 'poll'],
+        queryKey: ['timeline', TRACE_ONE.id, null, 'poll'],
       });
     });
 
@@ -3625,7 +3625,7 @@ describe('TraceDetailPage', () => {
 
     await act(async () => {
       await view.queryClient.refetchQueries({
-        queryKey: ['timeline', TRACE_ONE.id, 'poll'],
+        queryKey: ['timeline', TRACE_ONE.id, null, 'poll'],
       });
     });
 

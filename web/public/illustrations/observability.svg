@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300" fill="none" stroke-linecap="round" stroke-linejoin="round" font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <radialGradient id="ob-glow" cx="30%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#005cab" stop-opacity="0.10"></stop>
+      <stop offset="62%" stop-color="#005cab" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#ob-glow)"></rect>
+
+  
+  <rect x="40" y="80" width="320" height="160" rx="14" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+
+  
+  <g stroke="#c0c7d6" stroke-width="1" font-family="IBM Plex Mono, monospace" font-size="8" fill="#707785">
+    <line x1="64" y1="106" x2="336" y2="106"></line>
+    <text x="64" y="100">0ms</text>
+    <text x="132" y="100">250</text>
+    <text x="200" y="100">500</text>
+    <text x="268" y="100">750</text>
+    <text x="336" y="100" text-anchor="end">1000</text>
+  </g>
+
+  
+  <g font-family="IBM Plex Mono, monospace" font-size="9" fill="#404753">
+    
+    <text x="62" y="130" text-anchor="end">workflow.root</text>
+    <rect x="66" y="122" width="266" height="14" rx="4" fill="#0075d6" fill-opacity="0.2" stroke="#0075d6" stroke-width="1"></rect>
+
+    
+    <text x="62" y="152" text-anchor="end">step.research</text>
+    <rect x="74" y="144" width="82" height="14" rx="4" fill="#418400" fill-opacity="0.15" stroke="#418400" stroke-width="1"></rect>
+
+    
+    <text x="62" y="174" text-anchor="end">llm.generate</text>
+    <rect x="164" y="166" width="100" height="14" rx="4" fill="#005cab" fill-opacity="0.18" stroke="#005cab" stroke-width="1"></rect>
+    <circle cx="172" cy="173" r="2.5" fill="#005cab"></circle>
+
+    
+    <text x="62" y="196" text-anchor="end">tool.search</text>
+    <rect x="176" y="188" width="32" height="14" rx="4" fill="#ba1a1a" fill-opacity="0.12" stroke="#ba1a1a" stroke-width="1"></rect>
+
+    
+    <text x="62" y="218" text-anchor="end">step.finalize</text>
+    <rect x="272" y="210" width="56" height="14" rx="4" fill="#418400" fill-opacity="0.15" stroke="#418400" stroke-width="1"></rect>
+  </g>
+
+  
+  <g transform="translate(215 173)">
+    <circle r="28" fill="#ffffff" fill-opacity="0.88" stroke="#1b1b1b" stroke-width="2"></circle>
+    <line x1="20" y1="20" x2="38" y2="38" stroke="#1b1b1b" stroke-width="3" stroke-linecap="round"></line>
+    
+    <g>
+      <rect x="-18" y="-9" width="28" height="3" rx="1" fill="#005cab"></rect>
+      <rect x="-18" y="-3" width="18" height="3" rx="1" fill="#005cab" fill-opacity="0.5"></rect>
+      <rect x="-18" y="3" width="22" height="3" rx="1" fill="#005cab" fill-opacity="0.7"></rect>
+    </g>
+  </g>
+
+  <text x="40" y="60" font-size="10" font-weight="900" letter-spacing="2" fill="#707785">OBSERVABILITY</text>
+</svg>

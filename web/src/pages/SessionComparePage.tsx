@@ -16,13 +16,16 @@ import {
   type SessionCompareResponse,
   type SpanDiffRow,
 } from '../api/client';
-import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { formatCost, formatDuration, formatRelativeTime, formatTokens } from '../utils/format';
 import {
   buildCompareSearchParams,
   getCompareReturnToDestination,
   normalizeCompareTraceIdParam,
 } from './sessionCompareUtils';
+import {
+  appendProjectToPath,
+  normalizeProjectId,
+} from '../utils/projectSearchParams';
 
 function queryErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -30,11 +33,6 @@ function queryErrorMessage(error: unknown): string {
 
 export function SessionComparePage() {
   const { id } = useParams<{ id: string }>();
-  const { hasApiKey, prompt } = useRequireApiKey();
-
-  if (!hasApiKey) {
-    return prompt;
-  }
 
   if (!id) {
     return (
@@ -54,9 +52,14 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
 
   const baselineTraceId = normalizeCompareTraceIdParam(searchParams.get('baseline_trace_id'));
   const candidateTraceIdRaw = normalizeCompareTraceIdParam(searchParams.get('candidate_trace_id'));
+  const projectId = normalizeProjectId(searchParams.get('project_id'));
   const candidateTraceId =
     candidateTraceIdRaw && candidateTraceIdRaw !== baselineTraceId ? candidateTraceIdRaw : undefined;
-  const canonicalSearch = buildCompareSearchParams(baselineTraceId, candidateTraceId).toString();
+  const canonicalSearch = buildCompareSearchParams(
+    projectId,
+    baselineTraceId,
+    candidateTraceId
+  ).toString();
   const currentCompareUrl = `${location.pathname}${canonicalSearch ? `?${canonicalSearch}` : ''}`;
   const returnTo = getCompareReturnToDestination(location.state, sessionId, searchParams);
 
@@ -69,8 +72,20 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
   }, [canonicalSearch, searchParams, setSearchParams]);
 
   const comparisonQuery = useQuery({
-    queryKey: ['session-compare', sessionId, baselineTraceId, candidateTraceId],
-    queryFn: () => fetchSessionComparison(sessionId, baselineTraceId!, candidateTraceId!),
+    queryKey: [
+      'session-compare',
+      sessionId,
+      projectId ?? null,
+      baselineTraceId,
+      candidateTraceId,
+    ],
+    queryFn: () =>
+      fetchSessionComparison(
+        sessionId,
+        baselineTraceId!,
+        candidateTraceId!,
+        projectId
+      ),
     enabled: Boolean(baselineTraceId && candidateTraceId),
   });
 
@@ -125,7 +140,11 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
 
   return (
     <ComparePageShell returnTo={returnTo}>
-      <CompareOverview comparison={comparisonQuery.data} currentCompareUrl={currentCompareUrl} />
+      <CompareOverview
+        comparison={comparisonQuery.data}
+        currentCompareUrl={currentCompareUrl}
+        projectId={projectId}
+      />
 
       <section className="app-surface p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -175,6 +194,7 @@ function SessionCompareContent({ sessionId }: { sessionId: string }) {
                         [rowKey]: !current[rowKey],
                       }))
                     }
+                    projectId={projectId}
                     row={row}
                     traces={comparisonQuery.data}
                   />
@@ -211,9 +231,11 @@ function ComparePageShell({
 function CompareOverview({
   comparison,
   currentCompareUrl,
+  projectId,
 }: {
   comparison: SessionCompareResponse;
   currentCompareUrl: string;
+  projectId?: string;
 }) {
   return (
     <section className="app-surface sticky top-[4.9rem] z-10 p-6">
@@ -237,11 +259,13 @@ function CompareOverview({
           <CompareTraceCard
             currentCompareUrl={currentCompareUrl}
             label="Baseline"
+            projectId={projectId}
             trace={comparison.baseline}
           />
           <CompareTraceCard
             currentCompareUrl={currentCompareUrl}
             label="Candidate"
+            projectId={projectId}
             trace={comparison.candidate}
           />
         </div>
@@ -288,10 +312,12 @@ function CompareOverview({
 
 function CompareTraceCard({
   label,
+  projectId,
   trace,
   currentCompareUrl,
 }: {
   label: string;
+  projectId?: string;
   trace: SessionCompareResponse['baseline'];
   currentCompareUrl: string;
 }) {
@@ -304,7 +330,7 @@ function CompareTraceCard({
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Link
-              to={`/traces/${trace.id}`}
+              to={appendProjectToPath(`/traces/${trace.id}`, projectId)}
               state={{ returnTo: currentCompareUrl }}
               className="inline-block text-sm font-semibold text-[var(--continua-accent)] hover:opacity-80"
             >
@@ -349,6 +375,7 @@ function CompareSpanRow({
   hasSemanticContent,
   onToggleExpanded,
   currentCompareUrl,
+  projectId,
 }: {
   row: SpanDiffRow;
   traces: SessionCompareResponse;
@@ -356,6 +383,7 @@ function CompareSpanRow({
   hasSemanticContent: boolean;
   onToggleExpanded: () => void;
   currentCompareUrl: string;
+  projectId?: string;
 }) {
   const rowToneClass =
     row.diff_status === 'changed'
@@ -398,12 +426,14 @@ function CompareSpanRow({
           <CompareSpanSide
             currentCompareUrl={currentCompareUrl}
             label="Baseline"
+            projectId={projectId}
             span={row.baseline_span}
             traceId={traces.baseline.id}
           />
           <CompareSpanSide
             currentCompareUrl={currentCompareUrl}
             label="Candidate"
+            projectId={projectId}
             span={row.candidate_span}
             traceId={traces.candidate.id}
           />
@@ -428,11 +458,13 @@ function CompareSpanRow({
 
 function CompareSpanSide({
   label,
+  projectId,
   span,
   traceId,
   currentCompareUrl,
 }: {
   label: string;
+  projectId?: string;
   span: CompareSpanSummary | null;
   traceId: string;
   currentCompareUrl: string;
@@ -453,7 +485,10 @@ function CompareSpanSide({
             {label}
           </p>
           <Link
-            to={`/traces/${traceId}?span=${encodeURIComponent(span.span_id)}`}
+            to={appendProjectToPath(
+              `/traces/${traceId}?span=${encodeURIComponent(span.span_id)}`,
+              projectId
+            )}
             state={{ returnTo: currentCompareUrl }}
             className="mt-2 inline-block text-sm font-semibold text-[var(--continua-accent)] hover:opacity-80"
           >

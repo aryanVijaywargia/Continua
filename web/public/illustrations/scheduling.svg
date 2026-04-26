@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300" fill="none" stroke-linecap="round" stroke-linejoin="round" font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <radialGradient id="sc-glow" cx="42%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#005cab" stop-opacity="0.10"></stop>
+      <stop offset="62%" stop-color="#005cab" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#sc-glow)"></rect>
+
+  
+  <g transform="translate(150 150)">
+    <circle r="76" fill="#ffffff" stroke="#1b1b1b" stroke-width="1.5"></circle>
+    
+    <g stroke="#1b1b1b" stroke-width="1.5">
+      <line x1="0" y1="-76" x2="0" y2="-66"></line>
+      <line x1="0" y1="66" x2="0" y2="76"></line>
+      <line x1="-76" y1="0" x2="-66" y2="0"></line>
+      <line x1="66" y1="0" x2="76" y2="0"></line>
+    </g>
+    
+    <g stroke="#c0c7d6" stroke-width="1">
+      <line x1="38" y1="-65.8" x2="33" y2="-57.2"></line>
+      <line x1="65.8" y1="-38" x2="57.2" y2="-33"></line>
+      <line x1="65.8" y1="38" x2="57.2" y2="33"></line>
+      <line x1="38" y1="65.8" x2="33" y2="57.2"></line>
+      <line x1="-38" y1="65.8" x2="-33" y2="57.2"></line>
+      <line x1="-65.8" y1="38" x2="-57.2" y2="33"></line>
+      <line x1="-65.8" y1="-38" x2="-57.2" y2="-33"></line>
+      <line x1="-38" y1="-65.8" x2="-33" y2="-57.2"></line>
+    </g>
+    
+    <path d="M 0 -60 A 60 60 0 0 1 52 30" stroke="#0075d6" stroke-width="3" fill="none"></path>
+    
+    <line x1="0" y1="0" x2="0" y2="-44" stroke="#1b1b1b" stroke-width="2.5"></line>
+    <line x1="0" y1="0" x2="52" y2="30" stroke="#0075d6" stroke-width="2"></line>
+    <circle r="4" fill="#1b1b1b"></circle>
+    
+    <text x="0" y="56" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="1.5" fill="#707785">NEXT RUN 14:22</text>
+  </g>
+
+  
+  <g transform="translate(280 80)">
+    <text x="0" y="-10" font-size="9" font-weight="900" letter-spacing="2" fill="#707785">QUEUE</text>
+    <g font-family="IBM Plex Mono, ui-monospace, monospace">
+      
+      <rect x="0" y="0" width="100" height="32" rx="6" fill="#ffffff" stroke="#0075d6" stroke-width="1.5"></rect>
+      <circle cx="14" cy="16" r="3" fill="#0075d6"></circle>
+      <text x="26" y="14" font-size="10" font-weight="700" fill="#1b1b1b">14:22</text>
+      <text x="26" y="25" font-size="8" fill="#707785">billing.retry</text>
+
+      <rect x="0" y="40" width="100" height="32" rx="6" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+      <circle cx="14" cy="56" r="3" fill="#c0c7d6"></circle>
+      <text x="26" y="54" font-size="10" font-weight="700" fill="#1b1b1b">14:30</text>
+      <text x="26" y="65" font-size="8" fill="#707785">email.digest</text>
+
+      <rect x="0" y="80" width="100" height="32" rx="6" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+      <circle cx="14" cy="96" r="3" fill="#c0c7d6"></circle>
+      <text x="26" y="94" font-size="10" font-weight="700" fill="#1b1b1b">15:00</text>
+      <text x="26" y="105" font-size="8" fill="#707785">index.rebuild</text>
+
+      <rect x="0" y="120" width="100" height="32" rx="6" fill="#ffffff" stroke="#c0c7d6" stroke-width="1" stroke-dasharray="2 3"></rect>
+      <circle cx="14" cy="136" r="3" fill="#c0c7d6"></circle>
+      <text x="26" y="134" font-size="10" font-weight="700" fill="#1b1b1b">16:00</text>
+      <text x="26" y="145" font-size="8" fill="#707785">backup.nightly</text>
+    </g>
+  </g>
+
+  <text x="40" y="40" font-size="10" font-weight="900" letter-spacing="2" fill="#707785">SCHEDULING</text>
+</svg>
