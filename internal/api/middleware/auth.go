@@ -10,45 +10,98 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/continua-ai/continua/internal/config"
 	"github.com/continua-ai/continua/internal/store"
 )
 
 // contextKey is a custom type for context keys to avoid collisions.
 type contextKey string
 
-// ProjectIDKey is the context key for the project ID.
-const ProjectIDKey contextKey = "project_id"
+// Context keys used by auth middleware.
+const (
+	ProjectIDKey       contextKey = "project_id"
+	AuthModeKey        contextKey = "auth_mode"
+	OperatorEmailKey   contextKey = "operator_email"
+	OperatorSubjectKey contextKey = "operator_subject"
+)
 
-// APIKeyAuth creates middleware that validates API keys and injects project ID into context.
-// It extracts the API key from either:
-// - X-API-Key header
-// - Authorization: Bearer <key> header
+// AuthMode identifies how a request was authenticated.
+type AuthMode string
+
+const (
+	AuthModeAPIKey     AuthMode = "api_key"
+	AuthModeOperator   AuthMode = "operator"
+	AuthModePublicDemo AuthMode = "public_demo"
+)
+
+type routeProtection int
+
+const (
+	routeProtectionPublic routeProtection = iota
+	routeProtectionAPIKeyOnly
+	routeProtectionComposite
+)
+
+// Authenticator validates API keys and Auth0 bearer tokens for incoming routes.
+type Authenticator struct {
+	store      *store.Store
+	auth0      *auth0Authenticator
+	publicDemo *publicDemoAccess
+}
+
+type publicDemoAccess struct {
+	projectID uuid.UUID
+}
+
+// NewAuthenticator creates the route-aware authenticator for API handlers.
+func NewAuthenticator(s *store.Store, cfg *config.Config) (*Authenticator, error) {
+	authenticator := &Authenticator{
+		store: s,
+	}
+	if cfg != nil && cfg.Auth0.Enabled {
+		auth0Authenticator, err := newAuth0Authenticator(&cfg.Auth0)
+		if err != nil {
+			return nil, err
+		}
+		authenticator.auth0 = auth0Authenticator
+	}
+	if cfg != nil && cfg.PublicDemo.Enabled {
+		authenticator.publicDemo = &publicDemoAccess{
+			projectID: cfg.PublicDemo.ProjectID,
+		}
+	}
+	return authenticator, nil
+}
+
+// APIKeyAuth preserves the legacy API-key-only middleware for handlers and tests
+// that only need project-scoped authentication.
 func APIKeyAuth(s *store.Store) func(http.Handler) http.Handler {
+	authenticator := &Authenticator{store: s}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			apiKey := extractAPIKey(r)
-			if apiKey == "" {
-				writeAuthError(w, http.StatusUnauthorized, "missing_api_key", "API key required")
-				return
-			}
+			authenticator.serveAPIKeyOnly(next, w, r)
+		})
+	}
+}
 
-			// Hash the API key for lookup
-			keyHash := hashAPIKey(apiKey)
-
-			// Look up project by API key hash
-			project, err := s.GetProjectByAPIKey(r.Context(), keyHash)
-			if err != nil {
-				if store.IsNotFound(err) {
-					writeAuthError(w, http.StatusUnauthorized, "invalid_api_key", "Invalid API key")
+// Middleware enforces public, API-key-only, or composite auth behavior by route.
+func (a *Authenticator) Middleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch classifyRouteProtection(r.URL.Path) {
+			case routeProtectionPublic:
+				next.ServeHTTP(w, r)
+			case routeProtectionAPIKeyOnly:
+				a.serveAPIKeyOnly(next, w, r)
+			case routeProtectionComposite:
+				if a.publicDemo != nil && isPublicDemoReadRequest(r.Method, r.URL.Path) {
+					a.servePublicDemoRead(next, w, r)
 					return
 				}
-				writeAuthError(w, http.StatusInternalServerError, "internal_error", "Failed to validate API key")
-				return
+				a.serveComposite(next, w, r)
+			default:
+				a.serveAPIKeyOnly(next, w, r)
 			}
-
-			// Inject project ID into context
-			ctx := context.WithValue(r.Context(), ProjectIDKey, project.ID)
-			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -60,26 +113,242 @@ func GetProjectID(ctx context.Context) (uuid.UUID, bool) {
 	return id, ok
 }
 
+// GetAuthMode extracts the authentication mode from the request context.
+func GetAuthMode(ctx context.Context) (AuthMode, bool) {
+	mode, ok := ctx.Value(AuthModeKey).(AuthMode)
+	if ok {
+		return mode, true
+	}
+	if _, ok := GetProjectID(ctx); ok {
+		return AuthModeAPIKey, true
+	}
+	return "", false
+}
+
+// GetOperatorEmail extracts the authenticated operator email from the request context.
+func GetOperatorEmail(ctx context.Context) (string, bool) {
+	email, ok := ctx.Value(OperatorEmailKey).(string)
+	return email, ok
+}
+
+// GetOperatorSubject extracts the authenticated operator subject from the request context.
+func GetOperatorSubject(ctx context.Context) (string, bool) {
+	subject, ok := ctx.Value(OperatorSubjectKey).(string)
+	return subject, ok
+}
+
+func (a *Authenticator) serveAPIKeyOnly(next http.Handler, w http.ResponseWriter, r *http.Request) {
+	apiKey := extractAPIKey(r)
+	if apiKey == "" {
+		writeAuthError(w, http.StatusUnauthorized, "missing_api_key", "API key required")
+		return
+	}
+
+	ctx, ok := a.apiKeyContext(r.Context(), apiKey, w)
+	if !ok {
+		return
+	}
+
+	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (a *Authenticator) serveComposite(next http.Handler, w http.ResponseWriter, r *http.Request) {
+	if apiKey := strings.TrimSpace(r.Header.Get("X-API-Key")); apiKey != "" {
+		ctx, ok := a.apiKeyContext(r.Context(), apiKey, w)
+		if !ok {
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+		return
+	}
+
+	bearerToken := extractBearerToken(r)
+	if bearerToken == "" {
+		writeAuthError(w, http.StatusUnauthorized, "missing_credentials", "Authentication required")
+		return
+	}
+
+	if !looksLikeJWT(bearerToken) {
+		ctx, ok := a.apiKeyContext(r.Context(), bearerToken, w)
+		if !ok {
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+		return
+	}
+
+	if a.auth0 == nil {
+		writeAuthError(
+			w,
+			http.StatusServiceUnavailable,
+			"operator_auth_unavailable",
+			"Operator authentication is not configured",
+		)
+		return
+	}
+
+	identity, authErr := a.auth0.Authenticate(r.Context(), bearerToken)
+	if authErr != nil {
+		writeAuthError(w, authErr.Status, authErr.Code, authErr.Message)
+		return
+	}
+
+	ctx := context.WithValue(r.Context(), AuthModeKey, AuthModeOperator)
+	ctx = context.WithValue(ctx, OperatorEmailKey, identity.Email)
+	ctx = context.WithValue(ctx, OperatorSubjectKey, identity.Subject)
+	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (a *Authenticator) servePublicDemoRead(next http.Handler, w http.ResponseWriter, r *http.Request) {
+	if a.publicDemo == nil {
+		a.serveComposite(next, w, r)
+		return
+	}
+
+	ctx := context.WithValue(r.Context(), ProjectIDKey, a.publicDemo.projectID)
+	ctx = context.WithValue(ctx, AuthModeKey, AuthModePublicDemo)
+	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (a *Authenticator) apiKeyContext(
+	ctx context.Context,
+	apiKey string,
+	w http.ResponseWriter,
+) (context.Context, bool) {
+	project, err := a.store.GetProjectByAPIKey(ctx, hashAPIKey(apiKey))
+	if err != nil {
+		if store.IsNotFound(err) {
+			writeAuthError(w, http.StatusUnauthorized, "invalid_api_key", "Invalid API key")
+			return nil, false
+		}
+		writeAuthError(w, http.StatusInternalServerError, "internal_error", "Failed to validate API key")
+		return nil, false
+	}
+
+	ctx = context.WithValue(ctx, ProjectIDKey, project.ID)
+	ctx = context.WithValue(ctx, AuthModeKey, AuthModeAPIKey)
+	return ctx, true
+}
+
+func classifyRouteProtection(path string) routeProtection {
+	switch {
+	case path == "/api/auth/config":
+		return routeProtectionPublic
+	case strings.HasPrefix(path, "/v1/ingest"):
+		return routeProtectionAPIKeyOnly
+	case isEngineAPIKeyOnlyRoute(path):
+		return routeProtectionAPIKeyOnly
+	case strings.HasPrefix(path, "/api/"), isEngineRunScopedRoute(path):
+		return routeProtectionComposite
+	default:
+		return routeProtectionAPIKeyOnly
+	}
+}
+
+func isEngineAPIKeyOnlyRoute(path string) bool {
+	switch {
+	case path == "/v1/engine/activities/claim":
+		return true
+	case strings.HasPrefix(path, "/v1/engine/activities/") &&
+		(strings.HasSuffix(path, "/heartbeat") ||
+			strings.HasSuffix(path, "/complete") ||
+			strings.HasSuffix(path, "/fail")):
+		return true
+	case path == "/v1/engine/runs":
+		return true
+	case path == "/v1/engine/projections/backfill":
+		return true
+	case strings.HasPrefix(path, "/v1/engine/instances/"):
+		return true
+	default:
+		return false
+	}
+}
+
+func isEngineRunScopedRoute(path string) bool {
+	if !strings.HasPrefix(path, "/v1/engine/runs/") {
+		return false
+	}
+
+	return strings.TrimPrefix(path, "/v1/engine/runs/") != ""
+}
+
+func isPublicDemoReadRequest(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+
+	switch {
+	case path == "/api/traces":
+		return true
+	case matchesPathPattern(path, "/api/traces/{id}"):
+		return true
+	case matchesPathPattern(path, "/api/traces/{id}/spans"):
+		return true
+	case matchesPathPattern(path, "/api/traces/{id}/events"):
+		return true
+	case path == "/api/sessions":
+		return true
+	case matchesPathPattern(path, "/api/sessions/{id}"):
+		return true
+	case matchesPathPattern(path, "/api/sessions/{id}/narrative"):
+		return true
+	case matchesPathPattern(path, "/api/sessions/{id}/compare"):
+		return true
+	default:
+		return false
+	}
+}
+
+func matchesPathPattern(path, pattern string) bool {
+	pathParts := strings.Split(strings.Trim(path, "/"), "/")
+	patternParts := strings.Split(strings.Trim(pattern, "/"), "/")
+	if len(pathParts) != len(patternParts) {
+		return false
+	}
+
+	for i, patternPart := range patternParts {
+		if strings.HasPrefix(patternPart, "{") && strings.HasSuffix(patternPart, "}") {
+			if pathParts[i] == "" {
+				return false
+			}
+			continue
+		}
+		if pathParts[i] != patternPart {
+			return false
+		}
+	}
+	return true
+}
+
 // extractAPIKey extracts the API key from the request headers.
 // Checks X-API-Key header first, then Authorization: Bearer.
 func extractAPIKey(r *http.Request) string {
-	// Check X-API-Key header first
-	if key := r.Header.Get("X-API-Key"); key != "" {
+	if key := strings.TrimSpace(r.Header.Get("X-API-Key")); key != "" {
 		return key
 	}
+	return extractBearerToken(r)
+}
 
-	// Check Authorization: Bearer header
-	auth := r.Header.Get("Authorization")
+func extractBearerToken(r *http.Request) string {
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
+		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 	}
-
 	return ""
+}
+
+func looksLikeJWT(token string) bool {
+	return strings.Count(token, ".") == 2
 }
 
 // hashAPIKey hashes an API key using SHA-256.
 func hashAPIKey(apiKey string) string {
-	hash := sha256.Sum256([]byte(apiKey))
+	return hashKeyMaterial(apiKey)
+}
+
+func hashKeyMaterial(value string) string {
+	hash := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(hash[:])
 }
 

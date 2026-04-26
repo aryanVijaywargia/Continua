@@ -231,7 +231,7 @@ func TestRemoteActivityRoutesRequireAuthAndPreview(t *testing.T) {
 		ApiKeyHash: hashTestAPIKey(apiKey),
 	})
 	require.NoError(t, err)
-	handler := NewRouter(server, platformStore)
+	handler := newAuthenticatedRouter(t, server, platformStore)
 	body := []byte(`{"worker_id":"worker-a","activity_types":["email.send"]}`)
 
 	t.Run("missing api key is rejected before handler", func(t *testing.T) {

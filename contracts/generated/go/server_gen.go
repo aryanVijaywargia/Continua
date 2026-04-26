@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	ApiKeyScopes = "apiKey.Scopes"
+	ApiKeyScopes      = "apiKey.Scopes"
+	Auth0BearerScopes = "auth0Bearer.Scopes"
 )
 
 // Defines values for BatchStatusResponseStatus.
@@ -306,6 +307,20 @@ const (
 	ListTracesParamsEngineRunStatusTerminated     ListTracesParamsEngineRunStatus = "terminated"
 	ListTracesParamsEngineRunStatusWaiting        ListTracesParamsEngineRunStatus = "waiting"
 )
+
+// AuthConfig defines model for AuthConfig.
+type AuthConfig struct {
+	Audience *string `json:"audience,omitempty"`
+	ClientId *string `json:"client_id,omitempty"`
+	Domain   *string `json:"domain,omitempty"`
+	Enabled  bool    `json:"enabled"`
+
+	// PublicDemoEnabled Whether the deployment exposes a public read-only demo console.
+	PublicDemoEnabled *bool `json:"public_demo_enabled,omitempty"`
+
+	// PublicDemoLabel Display label for the public demo banner shown in the debugger shell.
+	PublicDemoLabel *string `json:"public_demo_label,omitempty"`
+}
 
 // BatchStatusResponse defines model for BatchStatusResponse.
 type BatchStatusResponse struct {
@@ -923,6 +938,19 @@ type IngestTraceInput struct {
 // IngestTraceInputStatus defines model for IngestTraceInput.Status.
 type IngestTraceInputStatus string
 
+// Project defines model for Project.
+type Project struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// ProjectList defines model for ProjectList.
+type ProjectList struct {
+	Projects []Project `json:"projects"`
+}
+
 // SemanticDiffGroup defines model for SemanticDiffGroup.
 type SemanticDiffGroup struct {
 	BaselineEvent  *CompareSemanticSummary   `json:"baseline_event"`
@@ -1228,10 +1256,15 @@ type TraceList struct {
 	Traces []Trace `json:"traces"`
 }
 
+// SelectedProjectId defines model for SelectedProjectId.
+type SelectedProjectId = openapi_types.UUID
+
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
-	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Limit     *int               `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset    *int               `form:"offset,omitempty" json:"offset,omitempty"`
 
 	// Q Search sessions by external ID or name
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
@@ -1252,14 +1285,30 @@ type ListSessionsParamsSortBy string
 // ListSessionsParamsSortDir defines parameters for ListSessions.
 type ListSessionsParamsSortDir string
 
+// GetSessionParams defines parameters for GetSession.
+type GetSessionParams struct {
+	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
 // GetSessionCompareParams defines parameters for GetSessionCompare.
 type GetSessionCompareParams struct {
+	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	ProjectId        *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 	BaselineTraceId  openapi_types.UUID `form:"baseline_trace_id" json:"baseline_trace_id"`
 	CandidateTraceId openapi_types.UUID `form:"candidate_trace_id" json:"candidate_trace_id"`
 }
 
+// GetSessionNarrativeParams defines parameters for GetSessionNarrative.
+type GetSessionNarrativeParams struct {
+	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
 // ListTracesParams defines parameters for ListTraces.
 type ListTracesParams struct {
+	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	ProjectId *SelectedProjectId  `form:"project_id,omitempty" json:"project_id,omitempty"`
 	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset    *int                `form:"offset,omitempty" json:"offset,omitempty"`
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
@@ -1334,13 +1383,28 @@ type ListTracesParamsStatus string
 // ListTracesParamsEngineRunStatus defines parameters for ListTraces.
 type ListTracesParamsEngineRunStatus string
 
+// GetTraceParams defines parameters for GetTrace.
+type GetTraceParams struct {
+	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
 // GetTraceEventsParams defines parameters for GetTraceEvents.
 type GetTraceEventsParams struct {
+	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
+
 	// After Opaque cursor returned by a previous timeline response
 	After *string `form:"after,omitempty" json:"after,omitempty"`
 
 	// Limit Maximum number of timeline events to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListSpansByTraceParams defines parameters for ListSpansByTrace.
+type ListSpansByTraceParams struct {
+	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
 // ClaimRemoteActivityTasksParams defines parameters for ClaimRemoteActivityTasks.
@@ -1625,30 +1689,36 @@ func (a EngineWaitState) MarshalJSON() ([]byte, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Get Auth0 runtime configuration for the debugger
+	// (GET /api/auth/config)
+	GetAuthConfig(w http.ResponseWriter, r *http.Request)
+	// List projects visible to the authenticated debugger operator
+	// (GET /api/projects)
+	ListProjects(w http.ResponseWriter, r *http.Request)
 	// List sessions
 	// (GET /api/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
 	// Get a session by ID
 	// (GET /api/sessions/{id})
-	GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionParams)
 	// Compare two traces within a session
 	// (GET /api/sessions/{id}/compare)
 	GetSessionCompare(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionCompareParams)
 	// Get a session narrative by ID
 	// (GET /api/sessions/{id}/narrative)
-	GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionNarrativeParams)
 	// List traces
 	// (GET /api/traces)
 	ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams)
 	// Get a trace by ID
 	// (GET /api/traces/{id})
-	GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceParams)
 	// List timeline events for a trace
 	// (GET /api/traces/{id}/events)
 	GetTraceEvents(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceEventsParams)
 	// List spans for a trace
 	// (GET /api/traces/{id}/spans)
-	ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params ListSpansByTraceParams)
 	// Claim remote engine activity tasks
 	// (POST /v1/engine/activities/claim)
 	ClaimRemoteActivityTasks(w http.ResponseWriter, r *http.Request, params ClaimRemoteActivityTasksParams)
@@ -1715,6 +1785,18 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// Get Auth0 runtime configuration for the debugger
+// (GET /api/auth/config)
+func (_ Unimplemented) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List projects visible to the authenticated debugger operator
+// (GET /api/projects)
+func (_ Unimplemented) ListProjects(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // List sessions
 // (GET /api/sessions)
 func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams) {
@@ -1723,7 +1805,7 @@ func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request, para
 
 // Get a session by ID
 // (GET /api/sessions/{id})
-func (_ Unimplemented) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (_ Unimplemented) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1735,7 +1817,7 @@ func (_ Unimplemented) GetSessionCompare(w http.ResponseWriter, r *http.Request,
 
 // Get a session narrative by ID
 // (GET /api/sessions/{id}/narrative)
-func (_ Unimplemented) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (_ Unimplemented) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionNarrativeParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1747,7 +1829,7 @@ func (_ Unimplemented) ListTraces(w http.ResponseWriter, r *http.Request, params
 
 // Get a trace by ID
 // (GET /api/traces/{id})
-func (_ Unimplemented) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (_ Unimplemented) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1759,7 +1841,7 @@ func (_ Unimplemented) GetTraceEvents(w http.ResponseWriter, r *http.Request, id
 
 // List spans for a trace
 // (GET /api/traces/{id}/spans)
-func (_ Unimplemented) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (_ Unimplemented) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params ListSpansByTraceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1892,6 +1974,42 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// GetAuthConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAuthConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSessions operation middleware
 func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
 
@@ -1899,12 +2017,22 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSessionsParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
 
 	// ------------- Optional query parameter "limit" -------------
 
@@ -1981,12 +2109,25 @@ func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Req
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSessionParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetSession(w, r, id)
+		siw.Handler.GetSession(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2012,12 +2153,22 @@ func (siw *ServerInterfaceWrapper) GetSessionCompare(w http.ResponseWriter, r *h
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSessionCompareParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
 
 	// ------------- Required query parameter "baseline_trace_id" -------------
 
@@ -2076,12 +2227,25 @@ func (siw *ServerInterfaceWrapper) GetSessionNarrative(w http.ResponseWriter, r 
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSessionNarrativeParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetSessionNarrative(w, r, id)
+		siw.Handler.GetSessionNarrative(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2098,12 +2262,22 @@ func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Req
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListTracesParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
 
 	// ------------- Optional query parameter "limit" -------------
 
@@ -2308,12 +2482,25 @@ func (siw *ServerInterfaceWrapper) GetTrace(w http.ResponseWriter, r *http.Reque
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTraceParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTrace(w, r, id)
+		siw.Handler.GetTrace(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2339,12 +2526,22 @@ func (siw *ServerInterfaceWrapper) GetTraceEvents(w http.ResponseWriter, r *http
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTraceEventsParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
 
 	// ------------- Optional query parameter "after" -------------
 
@@ -2389,12 +2586,25 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSpansByTraceParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListSpansByTrace(w, r, id)
+		siw.Handler.ListSpansByTrace(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2778,6 +2988,8 @@ func (siw *ServerInterfaceWrapper) GetEngineRun(w http.ResponseWriter, r *http.R
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2808,6 +3020,8 @@ func (siw *ServerInterfaceWrapper) CancelEngineRun(w http.ResponseWriter, r *htt
 	}
 
 	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -2868,6 +3082,8 @@ func (siw *ServerInterfaceWrapper) GetEngineRunHistory(w http.ResponseWriter, r 
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2918,6 +3134,8 @@ func (siw *ServerInterfaceWrapper) GetEngineRunPendingWork(w http.ResponseWriter
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2948,6 +3166,8 @@ func (siw *ServerInterfaceWrapper) PurgeEngineRun(w http.ResponseWriter, r *http
 	}
 
 	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3008,6 +3228,8 @@ func (siw *ServerInterfaceWrapper) RepairEngineRun(w http.ResponseWriter, r *htt
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3067,6 +3289,8 @@ func (siw *ServerInterfaceWrapper) GetEngineRunResult(w http.ResponseWriter, r *
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3097,6 +3321,8 @@ func (siw *ServerInterfaceWrapper) ResumeEngineRun(w http.ResponseWriter, r *htt
 	}
 
 	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3157,6 +3383,8 @@ func (siw *ServerInterfaceWrapper) SignalEngineRun(w http.ResponseWriter, r *htt
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3216,6 +3444,8 @@ func (siw *ServerInterfaceWrapper) SuspendEngineRun(w http.ResponseWriter, r *ht
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3274,6 +3504,8 @@ func (siw *ServerInterfaceWrapper) TerminateEngineRun(w http.ResponseWriter, r *
 	}
 
 	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3516,6 +3748,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/auth/config", wrapper.GetAuthConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/projects", wrapper.ListProjects)
+	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/sessions", wrapper.ListSessions)
 	})

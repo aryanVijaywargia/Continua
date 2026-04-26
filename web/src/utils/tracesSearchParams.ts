@@ -59,6 +59,7 @@ export function formatEngineProjectionStateLabel(
 }
 
 export interface FetchTracesParams {
+  project_id?: string;
   limit?: number;
   offset?: number;
   session_id?: string;
@@ -84,6 +85,7 @@ export interface FetchTracesParams {
 }
 
 export interface TracesFilterState {
+  project_id?: string;
   limit: number;
   offset: number;
   session_id?: string;
@@ -140,6 +142,7 @@ const ISO_DATE_TIME_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const CANONICAL_PARAM_ORDER: Array<keyof FetchTracesParams> = [
+  'project_id',
   'limit',
   'offset',
   'session_id',
@@ -276,6 +279,7 @@ function normalizeTracesParams(
   params: NormalizableTracesParams
 ): NormalizedTracesParams {
   return {
+    project_id: normalizeUUID(params.project_id),
     limit:
       params.limit === undefined
         ? undefined
@@ -314,6 +318,11 @@ function toQueryEntries(
 ): Array<[keyof FetchTracesParams, string]> {
   const entries: Array<[keyof FetchTracesParams, string]> = [];
 
+  if (
+    params.project_id
+  ) {
+    entries.push(['project_id', params.project_id]);
+  }
   if (
     params.limit !== undefined &&
     (options.includeDefaultLimit || params.limit !== DEFAULT_PAGE_SIZE)
@@ -418,6 +427,7 @@ function parseLocalDate(date: string): Date | null {
 
 export function parseTracesParams(searchParams: URLSearchParams): TracesFilterState {
   const normalized = normalizeTracesParams({
+    project_id: searchParams.get('project_id') ?? undefined,
     limit: searchParams.get('limit') ?? undefined,
     offset: searchParams.get('offset') ?? undefined,
     session_id: searchParams.get('session_id') ?? undefined,
@@ -448,6 +458,7 @@ export function parseTracesParams(searchParams: URLSearchParams): TracesFilterSt
 
   return {
     limit: normalized.limit ?? DEFAULT_PAGE_SIZE,
+    project_id: normalized.project_id,
     offset: normalized.offset,
     session_id: normalized.session_id,
     q: normalized.q,

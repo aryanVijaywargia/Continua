@@ -10,26 +10,37 @@ import { ThemeProvider } from './hooks/ThemeProvider';
 import { AppShell } from './components/AppShell';
 import { OverviewPage } from './pages/OverviewPage';
 import { LandingPage } from './pages/LandingPage';
+import {
+  Auth0RuntimeProvider,
+  ConsoleRoute,
+  useRuntimeAuthState,
+} from './auth/runtime';
 
 const queryClient = new QueryClient();
 
 export function App() {
+  const auth = useRuntimeAuthState();
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route element={<AppShell />}>
-              <Route path="/dashboard" element={<OverviewPage />} />
-              <Route path="/traces" element={<TracesPage />} />
-              <Route path="/traces/:id" element={<TraceDetailPage />} />
-              <Route path="/sessions" element={<SessionsPage />} />
-              <Route path="/sessions/:id" element={<SessionDetailPage />} />
-              <Route path="/sessions/:id/compare" element={<SessionComparePage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
-          </Routes>
+          <Auth0RuntimeProvider auth={auth}>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route element={<ConsoleRoute auth={auth} />}>
+                <Route element={<AppShell />}>
+                  <Route path="/dashboard" element={<OverviewPage />} />
+                  <Route path="/traces" element={<TracesPage />} />
+                  <Route path="/traces/:id" element={<TraceDetailPage />} />
+                  <Route path="/sessions" element={<SessionsPage />} />
+                  <Route path="/sessions/:id" element={<SessionDetailPage />} />
+                  <Route path="/sessions/:id/compare" element={<SessionComparePage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Route>
+              </Route>
+            </Routes>
+          </Auth0RuntimeProvider>
         </BrowserRouter>
       </ThemeProvider>
     </QueryClientProvider>

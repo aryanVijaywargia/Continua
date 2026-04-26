@@ -119,9 +119,9 @@ describe('SessionDetailPage', () => {
     renderTraceRoutes([`/sessions/${SESSION_ID}`]);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
-    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Sign in again' })).toHaveAttribute(
       'href',
-      '/settings'
+      `/sessions/${SESSION_ID}`
     );
   });
 

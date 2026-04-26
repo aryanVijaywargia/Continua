@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/internal/api/middleware"
@@ -121,12 +122,78 @@ func normalizeLimit(limitParam *int, defaultLimit, maxLimit int32) int32 {
 }
 
 func projectIDOrUnauthorized(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	projectID, ok := middleware.GetProjectID(r.Context())
-	if !ok {
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
+	if !ok || selectedProjectID == nil {
+		return uuid.Nil, false
+	}
+	return *selectedProjectID, true
+}
+
+func (s *Server) engineRunProjectIDOrUnauthorized(
+	w http.ResponseWriter,
+	r *http.Request,
+	runID openapi_types.UUID,
+) (uuid.UUID, bool) {
+	if projectID, ok := middleware.GetProjectID(r.Context()); ok {
+		return projectID, true
+	}
+
+	authMode, ok := middleware.GetAuthMode(r.Context())
+	if !ok || authMode != middleware.AuthModeOperator {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
 		return uuid.Nil, false
 	}
-	return projectID, true
+	if s.engineControl == nil {
+		http.NotFound(w, r)
+		return uuid.Nil, false
+	}
+
+	run, err := s.engineControl.engine.GetRun(r.Context(), runID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "not_found", "engine run not found")
+			return uuid.Nil, false
+		}
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to resolve engine run")
+		return uuid.Nil, false
+	}
+
+	return run.ProjectID, true
+}
+
+func selectedProjectIDFromRequest(w http.ResponseWriter, r *http.Request) (*uuid.UUID, bool) {
+	if projectID, ok := middleware.GetProjectID(r.Context()); ok {
+		return &projectID, true
+	}
+
+	authMode, ok := middleware.GetAuthMode(r.Context())
+	if !ok || authMode != middleware.AuthModeOperator {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
+		return nil, false
+	}
+
+	rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+	if rawProjectID == "" {
+		writeError(
+			w,
+			http.StatusBadRequest,
+			"missing_project_id",
+			"project_id is required for operator requests",
+		)
+		return nil, false
+	}
+
+	projectID, err := uuid.Parse(rawProjectID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_project_id", "project_id must be a valid UUID")
+		return nil, false
+	}
+
+	return &projectID, true
+}
+
+func projectMatchesSelection(selectedProjectID *uuid.UUID, entityProjectID uuid.UUID) bool {
+	return selectedProjectID == nil || *selectedProjectID == entityProjectID
 }
 
 func traceSortDirectionFromParams(params *ListTracesParams) store.SortDirection {
@@ -334,7 +401,12 @@ func apiBatchStatus(status *ingest.BatchStatus) BatchStatusResponse {
 	return resp
 }
 
-func (s *Server) getScopedTrace(ctx context.Context, w http.ResponseWriter, projectID, traceID openapi_types.UUID) (store.TraceRead, bool) {
+func (s *Server) getScopedTrace(
+	ctx context.Context,
+	w http.ResponseWriter,
+	selectedProjectID *uuid.UUID,
+	traceID openapi_types.UUID,
+) (store.TraceRead, bool) {
 	trace, err := s.store.GetTrace(ctx, traceID)
 	if store.IsNotFound(err) {
 		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
@@ -344,7 +416,7 @@ func (s *Server) getScopedTrace(ctx context.Context, w http.ResponseWriter, proj
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get trace")
 		return store.TraceRead{}, false
 	}
-	if trace.ProjectID != projectID {
+	if !projectMatchesSelection(selectedProjectID, trace.ProjectID) {
 		writeError(w, http.StatusNotFound, "not_found", "Trace not found")
 		return store.TraceRead{}, false
 	}

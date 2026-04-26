@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300" fill="none" stroke-linecap="round" stroke-linejoin="round" font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <radialGradient id="tl-glow" cx="50%" cy="35%" r="55%">
+      <stop offset="0%" stop-color="#005cab" stop-opacity="0.10"></stop>
+      <stop offset="62%" stop-color="#005cab" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#tl-glow)"></rect>
+
+  
+  <line x1="60" y1="180" x2="340" y2="180" stroke="#1b1b1b" stroke-width="1.5"></line>
+  
+  <g font-family="IBM Plex Mono, monospace" font-size="8" fill="#707785">
+    <g stroke="#c0c7d6" stroke-width="1">
+      <line x1="60" y1="180" x2="60" y2="186"></line>
+      <line x1="130" y1="180" x2="130" y2="186"></line>
+      <line x1="200" y1="180" x2="200" y2="186"></line>
+      <line x1="270" y1="180" x2="270" y2="186"></line>
+      <line x1="340" y1="180" x2="340" y2="186"></line>
+    </g>
+    <text x="60" y="200" text-anchor="middle">START</text>
+    <text x="130" y="200" text-anchor="middle">100</text>
+    <text x="200" y="200" text-anchor="middle">250</text>
+    <text x="270" y="200" text-anchor="middle">500</text>
+    <text x="340" y="200" text-anchor="middle">NOW</text>
+  </g>
+
+  
+  <rect x="60" y="130" width="280" height="28" rx="14" fill="#ffffff" stroke="#c0c7d6" stroke-width="1"></rect>
+
+  
+  <rect x="60" y="130" width="110" height="28" rx="14" fill="#418400" fill-opacity="0.12" stroke="none"></rect>
+  
+  <rect x="170" y="130" width="80" height="28" fill="#0075d6" fill-opacity="0.18" stroke="none"></rect>
+
+  
+  <g stroke="#c0c7d6" stroke-width="1.25">
+    <line x1="110" y1="130" x2="110" y2="158"></line>
+    <line x1="170" y1="130" x2="170" y2="158"></line>
+    <line x1="250" y1="130" x2="250" y2="158"></line>
+  </g>
+
+  
+  <g transform="translate(250 144)">
+    <line x1="0" y1="-20" x2="0" y2="40" stroke="#0075d6" stroke-width="2"></line>
+    <polygon points="-4,-20 4,-20 0,-26" fill="#0075d6"></polygon>
+    <g transform="translate(0 52)">
+      <rect x="-22" y="-9" width="44" height="18" rx="9" fill="#0075d6"></rect>
+      <text x="0" y="4" text-anchor="middle" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">NOW</text>
+    </g>
+  </g>
+
+  
+  <g>
+    
+    <circle cx="60" cy="144" r="8" fill="#ffffff" stroke="#418400" stroke-width="2"></circle>
+    <path d="M 56 144 L 59 147 L 64 141" stroke="#418400" stroke-width="2" fill="none"></path>
+    
+    <circle cx="110" cy="144" r="8" fill="#ffffff" stroke="#418400" stroke-width="2"></circle>
+    <path d="M 106 144 L 109 147 L 114 141" stroke="#418400" stroke-width="2" fill="none"></path>
+    
+    <circle cx="170" cy="144" r="8" fill="#0075d6"></circle>
+    <circle cx="170" cy="144" r="12" fill="none" stroke="#0075d6" stroke-opacity="0.25" stroke-width="2"></circle>
+    
+    <circle cx="250" cy="144" r="8" fill="#ffffff" stroke="#c0c7d6" stroke-width="1.5" stroke-dasharray="2 2"></circle>
+    <circle cx="340" cy="144" r="8" fill="#ffffff" stroke="#c0c7d6" stroke-width="1.5" stroke-dasharray="2 2"></circle>
+  </g>
+
+  
+  <g font-size="9" font-weight="600" fill="#404753" text-anchor="middle">
+    <text x="60" y="115">validate</text>
+    <text x="110" y="115">enrich</text>
+    <text x="170" y="115" fill="#005cab" font-weight="700">process</text>
+    <text x="250" y="115">settle</text>
+    <text x="340" y="115">notify</text>
+  </g>
+
+  <text x="40" y="40" font-size="10" font-weight="900" letter-spacing="2" fill="#707785">EXECUTION TIMELINE</text>
+</svg>

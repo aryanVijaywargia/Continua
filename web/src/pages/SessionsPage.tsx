@@ -9,11 +9,11 @@ import {
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { PaginationControls } from '../components/PaginationControls';
 import { SortableHeader } from '../components/SortableHeader';
-import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import { useSessionsSearchParams } from '../hooks/useSessionsSearchParams';
 import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import { buildSessionsQueryString } from '../utils/sessionsSearchParams';
 import { formatRelativeTime } from '../utils/format';
+import { appendProjectToPath } from '../utils/projectSearchParams';
 
 const DEBOUNCE_MS = 300;
 const EMPTY_SESSIONS: Session[] = [];
@@ -23,12 +23,6 @@ function normalizeDraft(value: string): string {
 }
 
 export function SessionsPage() {
-  const { hasApiKey, prompt } = useRequireApiKey();
-
-  if (!hasApiKey) {
-    return prompt;
-  }
-
   return <SessionsContent />;
 }
 
@@ -305,6 +299,7 @@ function SessionsContent() {
               {sessions.map((session) => (
                 <SessionRow
                   key={session.id}
+                  projectId={filters.project_id}
                   returnTo={currentListUrl}
                   session={session}
                 />
@@ -328,9 +323,11 @@ function SessionsContent() {
 }
 
 function SessionRow({
+  projectId,
   session,
   returnTo,
 }: {
+  projectId?: string;
   session: Session;
   returnTo: string;
 }) {
@@ -339,7 +336,7 @@ function SessionRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-3">
           <Link
-            to={`/sessions/${session.id}`}
+            to={appendProjectToPath(`/sessions/${session.id}`, projectId)}
             state={{ returnTo }}
             className="truncate text-sm font-semibold text-[var(--continua-text-primary)] transition hover:text-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
           >

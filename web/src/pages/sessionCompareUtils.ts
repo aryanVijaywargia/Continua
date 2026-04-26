@@ -1,3 +1,5 @@
+import { normalizeProjectId } from '../utils/projectSearchParams';
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -13,10 +15,15 @@ export function normalizeCompareTraceIdParam(
 }
 
 export function buildCompareSearchParams(
+  projectId?: string,
   baselineTraceId?: string,
   candidateTraceId?: string
 ): URLSearchParams {
   const params = new URLSearchParams();
+  const normalizedProjectId = normalizeProjectId(projectId);
+  if (normalizedProjectId) {
+    params.set('project_id', normalizedProjectId);
+  }
   if (baselineTraceId) {
     params.set('baseline_trace_id', baselineTraceId);
   }
@@ -41,9 +48,11 @@ export function getCompareReturnToDestination(
     return state.returnTo;
   }
 
+  const projectId = normalizeProjectId(searchParams.get('project_id'));
   const baselineTraceId = normalizeCompareTraceIdParam(searchParams.get('baseline_trace_id'));
   const candidateTraceId = normalizeCompareTraceIdParam(searchParams.get('candidate_trace_id'));
   const params = buildCompareSearchParams(
+    projectId,
     baselineTraceId,
     candidateTraceId && candidateTraceId !== baselineTraceId ? candidateTraceId : undefined
   );

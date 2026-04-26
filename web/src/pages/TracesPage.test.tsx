@@ -143,9 +143,9 @@ describe('TracesPage', () => {
     renderTraceRoutes(['/traces']);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or missing API key');
-    expect(screen.getByRole('link', { name: 'Go to Settings' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Sign in again' })).toHaveAttribute(
       'href',
-      '/settings'
+      '/traces'
     );
   });
 
@@ -238,6 +238,30 @@ describe('TracesPage', () => {
     await user.type(searchInput, 'errors');
     await user.keyboard('{Enter}');
     await waitForListFetch('?limit=20&q=errors');
+  });
+
+  it('replaces history entries for debounced text filters', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    const { router } = renderTraceRoutes(['/dashboard', '/traces'], {
+      initialIndex: 1,
+    });
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+
+    const searchInput = screen.getByLabelText('Search');
+    await user.type(searchInput, 'latency');
+    await waitForDebounce();
+    await waitForListFetch('?limit=20&q=latency');
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    await screen.findByRole('heading', {
+      name: /Trace the work that matters before it turns into support debt/i,
+    });
+    expect(router.state.location.pathname).toBe('/dashboard');
   });
 
   it('commits engine filters with lowercase query values and removable chips', async () => {
@@ -604,6 +628,9 @@ describe('TracesPage', () => {
     const userIdInput = screen.getByLabelText('User ID');
     const minDurationInput = screen.getByLabelText('Min Duration (ms)');
     const hasErrorsCheckbox = screen.getByLabelText('Only show traces with errors');
+    const collapseFilters = screen.getByRole('button', {
+      name: 'Collapse filters',
+    });
     const toggleEngineFilters = screen.getByRole('button', {
       name: 'Show engine filters',
     });
@@ -617,13 +644,7 @@ describe('TracesPage', () => {
     const hasErrorsQuickFilter = screen.getByRole('button', { name: 'Has errors' });
 
     await user.tab();
-    expect(allTracesQuickFilter).toHaveFocus();
-    await user.tab();
-    expect(failedQuickFilter).toHaveFocus();
-    await user.tab();
-    expect(runningQuickFilter).toHaveFocus();
-    await user.tab();
-    expect(hasErrorsQuickFilter).toHaveFocus();
+    expect(collapseFilters).toHaveFocus();
     await user.tab();
     expect(searchInput).toHaveFocus();
     await user.tab();
@@ -641,6 +662,14 @@ describe('TracesPage', () => {
     await user.tab();
     expect(toggleEngineFilters).toHaveFocus();
     await user.tab();
+    expect(allTracesQuickFilter).toHaveFocus();
+    await user.tab();
+    expect(failedQuickFilter).toHaveFocus();
+    await user.tab();
+    expect(runningQuickFilter).toHaveFocus();
+    await user.tab();
+    expect(hasErrorsQuickFilter).toHaveFocus();
+    await user.tab();
     expect(clearSearch).toHaveFocus();
     await user.tab();
     expect(clearErrors).toHaveFocus();
@@ -655,18 +684,17 @@ describe('TracesPage', () => {
   });
 
   it('rehydrates draft text inputs on back and forward navigation', async () => {
-    const user = userEvent.setup();
     fetchMock.mockImplementation(buildFetchHandler());
 
     const { router } = renderTraceRoutes(['/traces?q=alpha']);
     const searchInput = (await screen.findByLabelText('Search')) as HTMLInputElement;
     expect(searchInput.value).toBe('alpha');
 
-    await user.clear(searchInput);
-    await user.type(searchInput, 'beta');
-    await waitForDebounce();
+    await act(async () => {
+      await router.navigate('/traces?q=beta');
+    });
     await waitFor(() => {
-      expect(router.state.location.search).toBe('?q=beta');
+      expect(searchInput.value).toBe('beta');
     });
 
     await act(async () => {

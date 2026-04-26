@@ -3,19 +3,25 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Config holds the application configuration.
 // For Phase 2, configuration is loaded from environment variables only.
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Ingest   IngestConfig
-	Engine   EngineConfig
-	Jobs     JobsConfig
+	Server     ServerConfig
+	Database   DatabaseConfig
+	Ingest     IngestConfig
+	Engine     EngineConfig
+	Jobs       JobsConfig
+	Auth0      Auth0Config
+	PublicDemo PublicDemoConfig
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -49,6 +55,22 @@ type EngineConfig struct {
 	PublicAPIEnabled         bool
 	ProjectionRetentionAfter time.Duration
 	HistoryRetentionAfter    time.Duration
+}
+
+// Auth0Config holds hosted operator authentication settings.
+type Auth0Config struct {
+	Enabled       bool
+	Domain        string
+	ClientID      string
+	Audience      string
+	AllowedEmails []string
+}
+
+// PublicDemoConfig controls the hosted public portfolio demo mode.
+type PublicDemoConfig struct {
+	Enabled   bool
+	ProjectID uuid.UUID
+	Label     string
 }
 
 // Address returns the server address in host:port format.
@@ -122,6 +144,17 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	publicDemoConfig, err := loadPublicDemoConfig()
+	if err != nil {
+		return nil, err
+	}
+	auth0Config := Auth0Config{}
+	if !publicDemoConfig.Enabled {
+		auth0Config, err = loadAuth0Config()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return &Config{
 		Server: ServerConfig{
@@ -147,7 +180,142 @@ func Load() (*Config, error) {
 			MaintenanceWorkers: maintenanceWorkers,
 			DefaultWorkers:     defaultWorkers,
 		},
+		Auth0:      auth0Config,
+		PublicDemo: publicDemoConfig,
 	}, nil
+}
+
+func loadPublicDemoConfig() (PublicDemoConfig, error) {
+	enabled, err := loadBool("PUBLIC_DEMO_ENABLED", false)
+	if err != nil {
+		return PublicDemoConfig{}, err
+	}
+
+	if !enabled {
+		return PublicDemoConfig{}, nil
+	}
+
+	rawProjectID := strings.TrimSpace(os.Getenv("PUBLIC_DEMO_PROJECT_ID"))
+	if rawProjectID == "" {
+		return PublicDemoConfig{}, errors.New("PUBLIC_DEMO_PROJECT_ID is required when PUBLIC_DEMO_ENABLED is true")
+	}
+
+	projectID, err := uuid.Parse(rawProjectID)
+	if err != nil {
+		return PublicDemoConfig{}, fmt.Errorf("PUBLIC_DEMO_PROJECT_ID must be a valid UUID: %w", err)
+	}
+
+	label := strings.TrimSpace(os.Getenv("PUBLIC_DEMO_LABEL"))
+	if label == "" {
+		label = "Sample data"
+	}
+
+	return PublicDemoConfig{
+		Enabled:   true,
+		ProjectID: projectID,
+		Label:     label,
+	}, nil
+}
+
+func loadAuth0Config() (Auth0Config, error) {
+	rawDomain := strings.TrimSpace(os.Getenv("AUTH0_DOMAIN"))
+	rawClientID := strings.TrimSpace(os.Getenv("AUTH0_CLIENT_ID"))
+	rawAudience := strings.TrimSpace(os.Getenv("AUTH0_AUDIENCE"))
+	rawAllowedEmails := strings.TrimSpace(os.Getenv("AUTH0_ALLOWED_EMAILS"))
+
+	anySet := rawDomain != "" || rawClientID != "" || rawAudience != "" || rawAllowedEmails != ""
+	if !anySet {
+		return Auth0Config{}, nil
+	}
+
+	missing := make([]string, 0, 4)
+	if rawDomain == "" {
+		missing = append(missing, "AUTH0_DOMAIN")
+	}
+	if rawClientID == "" {
+		missing = append(missing, "AUTH0_CLIENT_ID")
+	}
+	if rawAudience == "" {
+		missing = append(missing, "AUTH0_AUDIENCE")
+	}
+	if rawAllowedEmails == "" {
+		missing = append(missing, "AUTH0_ALLOWED_EMAILS")
+	}
+	if len(missing) > 0 {
+		return Auth0Config{}, fmt.Errorf("partial Auth0 configuration: missing %s", strings.Join(missing, ", "))
+	}
+
+	domain, err := normalizeAuth0Domain(rawDomain)
+	if err != nil {
+		return Auth0Config{}, err
+	}
+	allowedEmails, err := parseAllowedEmails(rawAllowedEmails)
+	if err != nil {
+		return Auth0Config{}, err
+	}
+
+	return Auth0Config{
+		Enabled:       true,
+		Domain:        domain,
+		ClientID:      rawClientID,
+		Audience:      rawAudience,
+		AllowedEmails: allowedEmails,
+	}, nil
+}
+
+func normalizeAuth0Domain(raw string) (string, error) {
+	candidate := raw
+	if !strings.Contains(candidate, "://") {
+		candidate = "https://" + candidate
+	}
+
+	parsed, err := url.Parse(candidate)
+	if err != nil {
+		return "", fmt.Errorf("AUTH0_DOMAIN must be a valid domain: %w", err)
+	}
+	if parsed.Host == "" {
+		return "", errors.New("AUTH0_DOMAIN must include a host")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", errors.New("AUTH0_DOMAIN must not include a path")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("AUTH0_DOMAIN must not include query or fragment components")
+	}
+
+	return parsed.Host, nil
+}
+
+func parseAllowedEmails(raw string) ([]string, error) {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n'
+	})
+	if len(parts) == 0 {
+		return nil, errors.New("AUTH0_ALLOWED_EMAILS must include at least one email address")
+	}
+
+	seen := make(map[string]struct{}, len(parts))
+	emails := make([]string, 0, len(parts))
+	for _, part := range parts {
+		email := strings.ToLower(strings.TrimSpace(part))
+		if email == "" {
+			continue
+		}
+		if !strings.Contains(email, "@") {
+			return nil, fmt.Errorf("AUTH0_ALLOWED_EMAILS contains an invalid email address: %s", part)
+		}
+		if _, ok := seen[email]; ok {
+			continue
+		}
+		seen[email] = struct{}{}
+		emails = append(emails, email)
+	}
+
+	if len(emails) == 0 {
+		return nil, errors.New("AUTH0_ALLOWED_EMAILS must include at least one email address")
+	}
+
+	return emails, nil
 }
 
 func loadBool(key string, defaultValue bool) (bool, error) {

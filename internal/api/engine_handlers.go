@@ -69,7 +69,7 @@ func (s *Server) StartEngineRun(w http.ResponseWriter, r *http.Request, _ StartE
 }
 
 func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -88,7 +88,7 @@ func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runID open
 }
 
 func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ CancelEngineRunParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -107,7 +107,7 @@ func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runID o
 }
 
 func (s *Server) TerminateEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ TerminateEngineRunParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -126,7 +126,7 @@ func (s *Server) TerminateEngineRun(w http.ResponseWriter, r *http.Request, runI
 }
 
 func (s *Server) SuspendEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ SuspendEngineRunParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -145,7 +145,7 @@ func (s *Server) SuspendEngineRun(w http.ResponseWriter, r *http.Request, runID 
 }
 
 func (s *Server) ResumeEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ ResumeEngineRunParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -164,7 +164,7 @@ func (s *Server) ResumeEngineRun(w http.ResponseWriter, r *http.Request, runID o
 }
 
 func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, params GetEngineRunHistoryParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -192,7 +192,7 @@ func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, run
 }
 
 func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -211,7 +211,7 @@ func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runI
 }
 
 func (s *Server) PurgeEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ PurgeEngineRunParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -235,7 +235,7 @@ func (s *Server) PurgeEngineRun(w http.ResponseWriter, r *http.Request, runID op
 }
 
 func (s *Server) RepairEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ RepairEngineRunParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -284,7 +284,7 @@ func (s *Server) BackfillEngineProjections(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}
@@ -303,7 +303,7 @@ func (s *Server) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) SignalEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ SignalEngineRunParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
 	if !ok {
 		return
 	}

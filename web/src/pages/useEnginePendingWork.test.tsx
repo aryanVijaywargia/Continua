@@ -94,12 +94,14 @@ describe('useEnginePendingWork', () => {
 
     expect(queryClient.getQueryState(['enginePendingWork', 'run-1'])).toBeDefined();
     expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/v1/engine/runs/run-1/pending-work');
+    expect(
+      new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost').pathname
+    ).toBe('/v1/engine/runs/run-1/pending-work');
     expect(
       (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
     ).toMatchObject({
       'Content-Type': 'application/json',
-      'X-API-Key': 'test-key',
+      Authorization: 'Bearer test-key',
     });
     expect(
       ((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers as Record<

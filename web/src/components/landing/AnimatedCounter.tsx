@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 interface AnimatedCounterProps {
   /** Target number to count up to (e.g. 12.4, 250, 4800) */
@@ -23,12 +24,25 @@ export function AnimatedCounter({
   duration = 1800,
 }: AnimatedCounterProps) {
   const ref = useRef<HTMLSpanElement>(null);
+  const prefersReducedMotion = useMediaQuery(
+    '(prefers-reduced-motion: reduce)'
+  );
   const [value, setValue] = useState(0);
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
+    if (prefersReducedMotion) {
+      setValue(Number(end.toFixed(decimals)));
+      setStarted(true);
+      return;
+    }
+
     const el = ref.current;
     if (!el) return;
+    if (typeof IntersectionObserver !== 'function') {
+      setStarted(true);
+      return;
+    }
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -42,12 +56,15 @@ export function AnimatedCounter({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [decimals, end, prefersReducedMotion]);
 
   useEffect(() => {
-    if (!started) return;
+    if (!started || prefersReducedMotion) {
+      return;
+    }
 
     const startTime = performance.now();
+    let animationFrameId = 0;
 
     function tick(now: number) {
       const elapsed = now - startTime;
@@ -55,15 +72,23 @@ export function AnimatedCounter({
       // Ease-out cubic: decelerates smoothly
       const eased = 1 - Math.pow(1 - progress, 3);
       setValue(Number((end * eased).toFixed(decimals)));
-      if (progress < 1) requestAnimationFrame(tick);
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(tick);
+      }
     }
 
-    requestAnimationFrame(tick);
-  }, [started, end, duration, decimals]);
+    animationFrameId = requestAnimationFrame(tick);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [started, end, duration, decimals, prefersReducedMotion]);
+
+  const displayValue = prefersReducedMotion || started ? value : 0;
 
   return (
     <span ref={ref}>
-      {started ? value : 0}
+      {displayValue}
       {suffix}
     </span>
   );

@@ -9,47 +9,60 @@ import {
 } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { StatusBadge } from '../components/StatusBadge';
-import { useRequireApiKey } from '../hooks/useRequireApiKey';
 import {
   formatCost,
   formatRelativeTime,
   formatTokens,
 } from '../utils/format';
+import {
+  appendProjectToPath,
+  getProjectIdFromSearchParams,
+} from '../utils/projectSearchParams';
 
 const OVERVIEW_TRACE_LIMIT = 6;
 const OVERVIEW_SESSION_LIMIT = 6;
 
 export function OverviewPage() {
-  const { hasApiKey, prompt } = useRequireApiKey();
-
-  if (!hasApiKey) {
-    return prompt;
-  }
-
   return <OverviewContent />;
 }
 
 function OverviewContent() {
   const location = useLocation();
   const returnTo = `${location.pathname}${location.search}`;
+  const currentProjectId = getProjectIdFromSearchParams(
+    new URLSearchParams(location.search)
+  );
+  const projectQueryKey = currentProjectId ?? null;
   const recentTracesQuery = useQuery({
-    queryKey: ['overview', 'recent-traces'],
-    queryFn: () => fetchTraces({ limit: OVERVIEW_TRACE_LIMIT }),
+    queryKey: ['overview', 'recent-traces', projectQueryKey],
+    queryFn: () =>
+      fetchTraces({ project_id: currentProjectId, limit: OVERVIEW_TRACE_LIMIT }),
     placeholderData: keepPreviousData,
   });
   const failedTracesQuery = useQuery({
-    queryKey: ['overview', 'failed-traces'],
-    queryFn: () => fetchTraces({ limit: OVERVIEW_TRACE_LIMIT, status: 'failed' }),
+    queryKey: ['overview', 'failed-traces', projectQueryKey],
+    queryFn: () =>
+      fetchTraces({
+        project_id: currentProjectId,
+        limit: OVERVIEW_TRACE_LIMIT,
+        status: 'failed',
+      }),
     placeholderData: keepPreviousData,
   });
   const runningTracesQuery = useQuery({
-    queryKey: ['overview', 'running-traces'],
-    queryFn: () => fetchTraces({ limit: OVERVIEW_TRACE_LIMIT, status: 'running' }),
+    queryKey: ['overview', 'running-traces', projectQueryKey],
+    queryFn: () =>
+      fetchTraces({
+        project_id: currentProjectId,
+        limit: OVERVIEW_TRACE_LIMIT,
+        status: 'running',
+      }),
     placeholderData: keepPreviousData,
   });
   const sessionsQuery = useQuery({
-    queryKey: ['overview', 'sessions'],
-    queryFn: () => fetchSessions({ limit: OVERVIEW_SESSION_LIMIT }),
+    queryKey: ['overview', 'sessions', projectQueryKey],
+    queryFn: () =>
+      fetchSessions({ project_id: currentProjectId, limit: OVERVIEW_SESSION_LIMIT }),
     placeholderData: keepPreviousData,
   });
 
@@ -105,10 +118,16 @@ function OverviewContent() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Link to="/traces" className="app-button-primary">
+            <Link
+              to={appendProjectToPath('/traces', currentProjectId)}
+              className="app-button-primary"
+            >
               Open traces
             </Link>
-            <Link to="/sessions" className="app-button-secondary">
+            <Link
+              to={appendProjectToPath('/sessions', currentProjectId)}
+              className="app-button-secondary"
+            >
               Open sessions
             </Link>
           </div>
@@ -153,7 +172,10 @@ function OverviewContent() {
                 Recent failed traces
               </h2>
             </div>
-            <Link to="/traces?status=failed" className="app-inline-link">
+            <Link
+              to={appendProjectToPath('/traces?status=failed', currentProjectId)}
+              className="app-inline-link"
+            >
               View all failed traces
             </Link>
           </div>
@@ -164,6 +186,7 @@ function OverviewContent() {
               emptyBody="Failures will surface here as soon as they happen."
               errorMessage={failedTracesError}
               isLoading={failedTracesQuery.isPending && !failedTracesQuery.data}
+              projectId={currentProjectId}
               returnTo={returnTo}
             />
         </div>
@@ -177,7 +200,10 @@ function OverviewContent() {
                   Running traces
                 </h2>
               </div>
-              <Link to="/traces?status=running" className="app-inline-link">
+              <Link
+                to={appendProjectToPath('/traces?status=running', currentProjectId)}
+                className="app-inline-link"
+              >
                 Open live triage
               </Link>
             </div>
@@ -188,6 +214,7 @@ function OverviewContent() {
               emptyBody="When executions are in flight they show up here."
               errorMessage={runningTracesError}
               isLoading={runningTracesQuery.isPending && !runningTracesQuery.data}
+              projectId={currentProjectId}
               returnTo={returnTo}
             />
           </div>
@@ -200,7 +227,10 @@ function OverviewContent() {
                   Recent sessions
                 </h2>
               </div>
-              <Link to="/sessions" className="app-inline-link">
+              <Link
+                to={appendProjectToPath('/sessions', currentProjectId)}
+                className="app-inline-link"
+              >
                 Open session index
               </Link>
             </div>
@@ -211,6 +241,7 @@ function OverviewContent() {
               emptyBody="Sessions appear when traces are grouped under a shared session identifier."
               errorMessage={sessionsError}
               isLoading={sessionsQuery.isPending && !sessionsQuery.data}
+              projectId={currentProjectId}
               returnTo={returnTo}
             />
           </div>
@@ -237,6 +268,7 @@ function OverviewContent() {
           emptyBody="Start ingesting spans or run the demo flow to populate the debugger."
           errorMessage={recentTracesError}
           isLoading={recentTracesQuery.isPending && !recentTracesQuery.data}
+          projectId={currentProjectId}
           returnTo={returnTo}
         />
       </section>
@@ -270,6 +302,7 @@ function TraceActivityList({
   emptyBody,
   errorMessage,
   isLoading,
+  projectId,
   returnTo,
 }: {
   traces: Trace[];
@@ -277,6 +310,7 @@ function TraceActivityList({
   emptyBody: string;
   errorMessage: string | null;
   isLoading: boolean;
+  projectId?: string;
   returnTo: string;
 }) {
   if (isLoading) {
@@ -304,7 +338,7 @@ function TraceActivityList({
         return (
           <Link
             key={trace.id}
-            to={`/traces/${trace.id}`}
+            to={appendProjectToPath(`/traces/${trace.id}`, projectId)}
             state={{ returnTo }}
             className="app-list-row group"
           >
@@ -343,6 +377,7 @@ function SessionActivityList({
   emptyBody,
   errorMessage,
   isLoading,
+  projectId,
   returnTo,
 }: {
   sessions: Session[];
@@ -350,6 +385,7 @@ function SessionActivityList({
   emptyBody: string;
   errorMessage: string | null;
   isLoading: boolean;
+  projectId?: string;
   returnTo: string;
 }) {
   if (isLoading) {
@@ -374,7 +410,7 @@ function SessionActivityList({
       {sessions.map((session) => (
         <Link
           key={session.id}
-          to={`/sessions/${session.id}`}
+          to={appendProjectToPath(`/sessions/${session.id}`, projectId)}
           state={{ returnTo }}
           className="app-list-row group"
         >

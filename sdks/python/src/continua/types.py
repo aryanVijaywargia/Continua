@@ -10,9 +10,35 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
 
+class AuthConfig(BaseModel):
+    enabled: bool
+    domain: str | None = None
+    client_id: str | None = None
+    audience: str | None = None
+    public_demo_enabled: bool | None = Field(
+        None,
+        description="Whether the deployment exposes a public read-only demo console.",
+    )
+    public_demo_label: str | None = Field(
+        None,
+        description="Display label for the public demo banner shown in the debugger shell.",
+    )
+
+
 class Error(BaseModel):
     code: str
     message: str
+
+
+class Project(BaseModel):
+    id: UUID
+    name: str
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class ProjectList(BaseModel):
+    projects: list[Project]
 
 
 class SizeError(BaseModel):
