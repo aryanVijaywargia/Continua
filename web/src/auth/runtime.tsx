@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import {
   createContext,
@@ -412,6 +413,7 @@ function Auth0ProtectedOutlet() {
 
 export function useOperatorAuth(): ReturnType<typeof useAuth0> {
   const runtimeAuth = useRuntimeAuth();
+  const auth0 = useAuth0();
 
   if (isE2EAuthBypassEnabled()) {
     return {
@@ -429,13 +431,6 @@ export function useOperatorAuth(): ReturnType<typeof useAuth0> {
     } as ReturnType<typeof useAuth0>;
   }
 
-  let auth0: ReturnType<typeof useAuth0> | null = null;
-  try {
-    auth0 = useAuth0();
-  } catch {
-    auth0 = null;
-  }
-
   if (runtimeAuth.public_demo_enabled) {
     return unauthenticatedOperatorAuth();
   }
@@ -448,11 +443,7 @@ export function useOperatorAuth(): ReturnType<typeof useAuth0> {
     return unauthenticatedOperatorAuth();
   }
 
-  if (auth0) {
-    return auth0;
-  }
-
-  return unauthenticatedOperatorAuth();
+  return auth0;
 }
 
 function localApiKeyOperatorAuth(localApiKey: string): ReturnType<typeof useAuth0> {
