@@ -5,6 +5,15 @@
 
 AI agent observability debugger and operator console.
 
+## Hosted Demo Vs Local Self-Host
+
+Continua now supports two distinct deployment modes:
+
+- **Public portfolio demo**: public landing page plus a read-only seeded debugger demo
+- **Private operator console**: authenticated debugger for real traces and sessions
+
+The hosted portfolio site is intentionally sample-data only. For real usage with your own traces, run Continua locally or deploy a separate private environment.
+
 ## Current Product Surface
 
 Continua's implemented product path today is:
@@ -19,10 +28,11 @@ Python SDK / custom client
 ```
 
 The current web surface includes:
-- `/` overview built from existing trace and session endpoints
+- `/` landing page
+- `/dashboard` overview built from existing trace and session endpoints
 - `/traces` and `/traces/:id` for trace triage and investigation
 - `/sessions`, `/sessions/:id`, and `/sessions/:id/compare` for workflow-level investigation
-- `/settings` for local API-key and theme controls
+- `/settings` for operator session and theme controls
 
 ## Quick Start
 
@@ -34,9 +44,10 @@ The current web surface includes:
 make dev           # Start Postgres via docker compose
 make dev-server    # Start the Go server
 make dev-web       # Start the Vite web app
+make seed-demo     # Rebuild the seeded public demo project through ingest
 
-# Open the operator console
-# http://localhost:3000
+# Read the local run guide
+# docs/guides/run-locally.md
 ```
 
 ## Architecture
@@ -61,6 +72,7 @@ make test                      # Go + JS tests
 make lint                      # Go + JS lint
 pnpm --filter web test         # Frontend Vitest suites
 pnpm --filter web test:e2e     # Playwright UI smoke coverage
+make seed-demo                 # Reset and repopulate the public demo dataset
 make help                      # Show all make targets
 ```
 

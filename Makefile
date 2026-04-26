@@ -5,7 +5,7 @@
 
 .PHONY: all setup generate build build-engine test test-go test-js lint lint-go lint-js \
         dev dev-server dev-web clean help migrate migrate-down docker docker-build \
-        docker-up docker-down e2e
+        docker-up docker-down e2e seed-demo
 
 # Default target
 all: generate build
@@ -107,6 +107,10 @@ test-all: test test-integration ## Run all tests including integration
 e2e: ## Run E2E tests (requires running server and database)
 	@echo "==> Running E2E tests..."
 	cd sdks/python && uv run python examples/e2e_demo.py
+
+seed-demo: ## Reset and repopulate the public demo dataset through ingest
+	@echo "==> Seeding public demo data..."
+	./scripts/seed-demo.sh
 
 # ============================================================================
 # Linting

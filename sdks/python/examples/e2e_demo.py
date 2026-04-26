@@ -39,6 +39,11 @@ API_URL = (
     or "http://localhost:8080"
 ).rstrip("/")
 API_KEY = os.environ.get("CONTINUA_API_KEY", "")
+PRINT_API_KEY = os.environ.get("CONTINUA_PRINT_API_KEY", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 DEMO_RUN_ID = os.environ.get(
     "CONTINUA_DEMO_RUN_ID",
     datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -200,10 +205,10 @@ def resolve_api_key() -> str:
     Fresh local databases accept `default` after the hash-fix migration.
     Older persisted dev volumes may still use `test-api-key-12345`.
     """
-    candidates = []
     if API_KEY:
-        candidates.append(API_KEY)
-    candidates.extend(["default", "test-api-key-12345"])
+        candidates = [API_KEY]
+    else:
+        candidates = ["default", "test-api-key-12345"]
 
     seen = set()
     deduped_candidates = []
@@ -216,18 +221,48 @@ def resolve_api_key() -> str:
         for candidate in deduped_candidates:
             try:
                 response = client.get(
-                    f"{API_URL}/api/traces",
+                    f"{API_URL}/api/projects",
                     headers={"X-API-Key": candidate},
-                    params={"limit": 1, "offset": 0},
                 )
             except httpx.RequestError:
                 continue
 
-            if response.status_code == 200:
-                return candidate
+            if response.status_code != 200:
+                continue
+
+            expected_project_id = (
+                os.environ.get("CONTINUA_DEMO_PROJECT_ID")
+                or os.environ.get("PUBLIC_DEMO_PROJECT_ID")
+                or ""
+            ).strip()
+            if expected_project_id:
+                try:
+                    payload = response.json()
+                except ValueError:
+                    continue
+                project_ids = {
+                    str(project.get("id", ""))
+                    for project in payload.get("projects", [])
+                    if isinstance(project, dict)
+                }
+                if expected_project_id not in project_ids:
+                    continue
+
+            return candidate
+
+    if API_KEY:
+        raise RuntimeError("CONTINUA_API_KEY was provided but did not validate against the API server")
 
     tried = ", ".join(deduped_candidates)
     raise RuntimeError(f"Could not resolve a working API key. Tried: {tried}")
+
+
+def printable_api_key(api_key: str) -> str:
+    if PRINT_API_KEY:
+        return api_key
+    if not api_key:
+        return "<unset>"
+    return "<redacted>"
 
 
 def fetch_json(
@@ -328,7 +363,7 @@ def main():
     print("Continua SDK End-to-End Demo")
     print("=" * 60)
     print(f"API URL: {API_URL}")
-    print(f"API key: {API_KEY}")
+    print(f"API key: {printable_api_key(API_KEY)}")
     print(f"Demo run ID: {DEMO_RUN_ID}")
     print(f"Time: {datetime.now().isoformat()}")
     print()
@@ -388,13 +423,15 @@ def main():
         print("SUCCESS: E2E demo completed!")
         print("\nNext steps:")
         print("  1. Open http://localhost:3000/traces in your browser")
-        print(f"  2. Enter API key: {API_KEY}")
+        print("  2. Enter your local project API key")
         print("  3. Open /sessions to see the new session groups")
         print(f"  4. Look for session IDs starting with demo-sdk-{DEMO_RUN_ID}")
     else:
         print("WARNING: Demo completed but verification failed")
         print(f"Check that the server is running on {API_URL}")
     print("=" * 60)
+    if not success:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
