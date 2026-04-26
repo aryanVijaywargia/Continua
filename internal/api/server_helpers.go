@@ -122,7 +122,7 @@ func normalizeLimit(limitParam *int, defaultLimit, maxLimit int32) int32 {
 }
 
 func projectIDOrUnauthorized(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
 	if !ok || selectedProjectID == nil {
 		return uuid.Nil, false
 	}
@@ -148,7 +148,7 @@ func (s *Server) engineRunProjectIDOrUnauthorized(
 		return uuid.Nil, false
 	}
 
-	run, err := s.engineControl.engine.GetRun(r.Context(), uuid.UUID(runID))
+	run, err := s.engineControl.engine.GetRun(r.Context(), runID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "not_found", "engine run not found")
@@ -161,43 +161,26 @@ func (s *Server) engineRunProjectIDOrUnauthorized(
 	return run.ProjectID, true
 }
 
-func selectedProjectIDFromRequest(
-	w http.ResponseWriter,
-	r *http.Request,
-	required bool,
-) (*uuid.UUID, bool) {
+func selectedProjectIDFromRequest(w http.ResponseWriter, r *http.Request) (*uuid.UUID, bool) {
 	if projectID, ok := middleware.GetProjectID(r.Context()); ok {
 		return &projectID, true
 	}
 
 	authMode, ok := middleware.GetAuthMode(r.Context())
-	if !ok {
-		if required {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
-			return nil, false
-		}
-		return nil, true
-	}
-	if authMode != middleware.AuthModeOperator {
-		if required {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
-			return nil, false
-		}
-		return nil, true
+	if !ok || authMode != middleware.AuthModeOperator {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
+		return nil, false
 	}
 
 	rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
 	if rawProjectID == "" {
-		if required {
-			writeError(
-				w,
-				http.StatusBadRequest,
-				"missing_project_id",
-				"project_id is required for operator requests",
-			)
-			return nil, false
-		}
-		return nil, true
+		writeError(
+			w,
+			http.StatusBadRequest,
+			"missing_project_id",
+			"project_id is required for operator requests",
+		)
+		return nil, false
 	}
 
 	projectID, err := uuid.Parse(rawProjectID)

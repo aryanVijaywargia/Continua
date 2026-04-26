@@ -137,7 +137,7 @@ func newRetentionFixture(t *testing.T) *retentionFixture {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	s := store.New(pool)
-	cleanupRetentionFixtureData(t, ctx, s)
+	cleanupRetentionFixtureData(ctx, t, s)
 
 	return &retentionFixture{
 		ctx:       ctx,
@@ -151,7 +151,7 @@ func retentionFixtureCompletedAt() time.Time {
 	return time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Round(time.Microsecond)
 }
 
-func cleanupRetentionFixtureData(t *testing.T, ctx context.Context, s *store.Store) {
+func cleanupRetentionFixtureData(ctx context.Context, t *testing.T, s *store.Store) {
 	t.Helper()
 
 	_, err := s.Pool().Exec(ctx, `

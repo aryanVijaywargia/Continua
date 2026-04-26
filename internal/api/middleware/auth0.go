@@ -62,7 +62,7 @@ func (e *operatorAuthError) Unwrap() error {
 	return e.Err
 }
 
-func newAuth0Authenticator(cfg config.Auth0Config) (*auth0Authenticator, error) {
+func newAuth0Authenticator(cfg *config.Auth0Config) (*auth0Authenticator, error) {
 	issuerURL, err := url.Parse("https://" + cfg.Domain + "/")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Auth0 issuer URL: %w", err)
@@ -229,7 +229,7 @@ func (a *auth0Authenticator) fetchUserInfo(
 	ctx context.Context,
 	accessToken string,
 ) (*auth0UserInfo, *operatorAuthError) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, a.userInfoURL, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, a.userInfoURL, http.NoBody)
 	if err != nil {
 		return nil, &operatorAuthError{
 			Status:  http.StatusInternalServerError,

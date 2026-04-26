@@ -59,7 +59,7 @@ func NewAuthenticator(s *store.Store, cfg *config.Config) (*Authenticator, error
 		store: s,
 	}
 	if cfg != nil && cfg.Auth0.Enabled {
-		auth0Authenticator, err := newAuth0Authenticator(cfg.Auth0)
+		auth0Authenticator, err := newAuth0Authenticator(&cfg.Auth0)
 		if err != nil {
 			return nil, err
 		}

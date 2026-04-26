@@ -64,7 +64,7 @@ func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params Lis
 
 // GetSession returns a session by ID.
 func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetSessionParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -90,7 +90,7 @@ func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_t
 
 // GetSessionNarrative returns a session narrative by ID.
 func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetSessionNarrativeParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -129,7 +129,7 @@ func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id 
 
 // GetSessionCompare returns a deterministic comparison for two traces in a session.
 func (s *Server) GetSessionCompare(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionCompareParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
 	if !ok {
 		return
 	}

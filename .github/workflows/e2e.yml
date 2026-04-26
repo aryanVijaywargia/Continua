@@ -83,7 +83,6 @@ jobs:
           uv run python examples/e2e_demo.py
         env:
           CONTINUA_API_URL: http://localhost:8081
-          CONTINUA_API_KEY: test-api-key-12345
 
       - name: Stop server
         if: always()

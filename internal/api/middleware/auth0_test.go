@@ -38,7 +38,7 @@ func TestAuth0AuthenticateRejectsMissingEmail(t *testing.T) {
 
 	authenticator := &auth0Authenticator{
 		validateToken: func(context.Context, string) (any, error) {
-			return validatedAuth0Claims("google-oauth2|operator", "", time.Now().Add(time.Hour)), nil
+			return validatedAuth0Claims("", time.Now().Add(time.Hour)), nil
 		},
 		httpClient:    userInfoServer.Client(),
 		userInfoURL:   userInfoServer.URL,
@@ -56,7 +56,7 @@ func TestAuth0AuthenticateRejectsMissingEmail(t *testing.T) {
 func TestAuth0AuthenticateRejectsNonAllowlistedEmail(t *testing.T) {
 	authenticator := &auth0Authenticator{
 		validateToken: func(context.Context, string) (any, error) {
-			return validatedAuth0Claims("google-oauth2|operator", "outside@example.com", time.Now().Add(time.Hour)), nil
+			return validatedAuth0Claims("outside@example.com", time.Now().Add(time.Hour)), nil
 		},
 		allowedEmails: map[string]struct{}{"operator@example.com": {}},
 	}
@@ -72,7 +72,7 @@ func TestAuth0AuthenticateRejectsNonAllowlistedEmail(t *testing.T) {
 func TestAuth0AuthenticateAcceptsAllowlistedEmail(t *testing.T) {
 	authenticator := &auth0Authenticator{
 		validateToken: func(context.Context, string) (any, error) {
-			return validatedAuth0Claims("google-oauth2|operator", "Operator@Example.com", time.Now().Add(time.Hour)), nil
+			return validatedAuth0Claims("Operator@Example.com", time.Now().Add(time.Hour)), nil
 		},
 		allowedEmails: map[string]struct{}{"operator@example.com": {}},
 	}
@@ -98,7 +98,7 @@ func TestAuth0AuthenticateCachesResolvedUserInfoEmail(t *testing.T) {
 	authenticator := &auth0Authenticator{
 		validateToken: func(context.Context, string) (any, error) {
 			validateCalls++
-			return validatedAuth0Claims("google-oauth2|operator", "", time.Now().Add(time.Hour)), nil
+			return validatedAuth0Claims("", time.Now().Add(time.Hour)), nil
 		},
 		httpClient:    userInfoServer.Client(),
 		userInfoURL:   userInfoServer.URL,
@@ -115,13 +115,13 @@ func TestAuth0AuthenticateCachesResolvedUserInfoEmail(t *testing.T) {
 	assert.Equal(t, 1, userInfoCalls)
 }
 
-func validatedAuth0Claims(subject string, email string, expiry time.Time) *validator.ValidatedClaims {
+func validatedAuth0Claims(email string, expiry time.Time) *validator.ValidatedClaims {
 	return &validator.ValidatedClaims{
 		CustomClaims: &auth0CustomClaims{
 			Email: email,
 		},
 		RegisteredClaims: validator.RegisteredClaims{
-			Subject: subject,
+			Subject: "google-oauth2|operator",
 			Expiry:  expiry.Unix(),
 		},
 	}

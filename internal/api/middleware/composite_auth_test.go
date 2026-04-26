@@ -100,11 +100,7 @@ func TestCompositeAuthRejectsNonAllowlistedOperatorOnDebuggerRoutes(t *testing.T
 	authenticator := &Authenticator{
 		auth0: &auth0Authenticator{
 			validateToken: func(context.Context, string) (any, error) {
-				return validatedAuth0Claims(
-					"google-oauth2|operator",
-					"outside@example.com",
-					time.Now().Add(time.Hour),
-				), nil
+				return validatedAuth0Claims("outside@example.com", time.Now().Add(time.Hour)), nil
 			},
 			allowedEmails: map[string]struct{}{"operator@example.com": {}},
 		},
@@ -128,11 +124,7 @@ func TestCompositeAuthAcceptsAllowlistedOperatorBearerOnDebuggerRoutes(t *testin
 	authenticator := &Authenticator{
 		auth0: &auth0Authenticator{
 			validateToken: func(context.Context, string) (any, error) {
-				return validatedAuth0Claims(
-					"google-oauth2|operator",
-					"Operator@Example.com",
-					time.Now().Add(time.Hour),
-				), nil
+				return validatedAuth0Claims("Operator@Example.com", time.Now().Add(time.Hour)), nil
 			},
 			allowedEmails: map[string]struct{}{"operator@example.com": {}},
 		},
@@ -169,7 +161,7 @@ func TestCompositeAuthAcceptsLegacyAPIKeyBearerFallbackOnDebuggerRoutes(t *testi
 	platformStore := store.New(pool)
 
 	apiKey := "legacy-debugger-key-" + uuid.NewString()
-	project := createCompositeAuthProject(t, ctx, platformStore, apiKey)
+	project := createCompositeAuthProject(ctx, t, platformStore, apiKey)
 	authenticator := &Authenticator{store: platformStore}
 
 	var receivedMode AuthMode
@@ -242,8 +234,8 @@ func TestCompositeAuthStillRejectsProjectListWithoutCredentialsInPublicDemo(t *t
 }
 
 func createCompositeAuthProject(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	platformStore *store.Store,
 	apiKey string,
 ) platform.Project {

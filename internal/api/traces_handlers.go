@@ -84,7 +84,7 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 
 // GetTrace returns a trace by ID.
 func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetTraceParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -124,7 +124,7 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 
 // ListSpansByTrace returns spans for a trace.
 func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ ListSpansByTraceParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -152,7 +152,7 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 
 // GetTraceEvents returns merged explicit and synthetic timeline events for a trace.
 func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceEventsParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
 	if !ok {
 		return
 	}

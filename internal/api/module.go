@@ -1,10 +1,11 @@
 package api
 
 import (
+	"go.uber.org/fx"
+
 	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/config"
 	"github.com/continua-ai/continua/internal/store"
-	"go.uber.org/fx"
 )
 
 // Module provides API handlers for the application.
