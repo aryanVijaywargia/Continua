@@ -83,13 +83,13 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 }
 
 // GetTrace returns a trace by ID.
-func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetTraceParams) {
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
 	if !ok {
 		return
 	}
 
-	trace, ok := s.getScopedTrace(r.Context(), w, projectID, id)
+	trace, ok := s.getScopedTrace(r.Context(), w, selectedProjectID, id)
 	if !ok {
 		return
 	}
@@ -103,7 +103,11 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 		}
 
 		if readLiveEngineSummary {
-			summary, err := s.engineControl.ReadRunSummary(r.Context(), projectID, uuid.UUID(trace.EngineRunID.Bytes))
+			summary, err := s.engineControl.ReadRunSummary(
+				r.Context(),
+				trace.ProjectID,
+				uuid.UUID(trace.EngineRunID.Bytes),
+			)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "internal_error", "Failed to read engine summary")
 				return
@@ -119,13 +123,13 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 }
 
 // ListSpansByTrace returns spans for a trace.
-func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ ListSpansByTraceParams) {
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
 	if !ok {
 		return
 	}
 
-	if _, ok := s.getScopedTrace(r.Context(), w, projectID, id); !ok {
+	if _, ok := s.getScopedTrace(r.Context(), w, selectedProjectID, id); !ok {
 		return
 	}
 
@@ -148,12 +152,12 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 
 // GetTraceEvents returns merged explicit and synthetic timeline events for a trace.
 func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceEventsParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
 	if !ok {
 		return
 	}
 
-	trace, ok := s.getScopedTrace(r.Context(), w, projectID, id)
+	trace, ok := s.getScopedTrace(r.Context(), w, selectedProjectID, id)
 	if !ok {
 		return
 	}

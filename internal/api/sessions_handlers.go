@@ -63,8 +63,8 @@ func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params Lis
 }
 
 // GetSession returns a session by ID.
-func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetSessionParams) {
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
 	if !ok {
 		return
 	}
@@ -79,7 +79,7 @@ func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_t
 		return
 	}
 
-	if sessionWithCount.ProjectID != projectID {
+	if !projectMatchesSelection(selectedProjectID, sessionWithCount.ProjectID) {
 		writeError(w, http.StatusNotFound, "not_found", "Session not found")
 		return
 	}
@@ -89,13 +89,32 @@ func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_t
 }
 
 // GetSessionNarrative returns a session narrative by ID.
-func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetSessionNarrativeParams) {
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
 	if !ok {
 		return
 	}
 
-	narrative, err := s.store.BuildSessionNarrative(r.Context(), projectID, id, sessionNarrativeTraceLimit)
+	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), id)
+	if store.IsNotFound(err) {
+		writeError(w, http.StatusNotFound, "not_found", "Session not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session narrative")
+		return
+	}
+	if !projectMatchesSelection(selectedProjectID, sessionWithCount.ProjectID) {
+		writeError(w, http.StatusNotFound, "not_found", "Session not found")
+		return
+	}
+
+	narrative, err := s.store.BuildSessionNarrative(
+		r.Context(),
+		sessionWithCount.ProjectID,
+		id,
+		sessionNarrativeTraceLimit,
+	)
 	if store.IsNotFound(err) {
 		writeError(w, http.StatusNotFound, "not_found", "Session not found")
 		return
@@ -110,14 +129,28 @@ func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id 
 
 // GetSessionCompare returns a deterministic comparison for two traces in a session.
 func (s *Server) GetSessionCompare(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionCompareParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	selectedProjectID, ok := selectedProjectIDFromRequest(w, r, true)
 	if !ok {
+		return
+	}
+
+	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), id)
+	if store.IsNotFound(err) {
+		writeError(w, http.StatusNotFound, "not_found", "Session or trace not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session comparison")
+		return
+	}
+	if !projectMatchesSelection(selectedProjectID, sessionWithCount.ProjectID) {
+		writeError(w, http.StatusNotFound, "not_found", "Session or trace not found")
 		return
 	}
 
 	comparison, err := s.store.BuildSessionComparison(
 		r.Context(),
-		projectID,
+		sessionWithCount.ProjectID,
 		id,
 		params.BaselineTraceId,
 		params.CandidateTraceId,
@@ -155,7 +188,11 @@ func (s *Server) GetSessionCompare(w http.ResponseWriter, r *http.Request, id op
 		return
 	}
 
-	if err := s.normalizeComparisonProjectionState(r.Context(), projectID, &comparison); err != nil {
+	if err := s.normalizeComparisonProjectionState(
+		r.Context(),
+		sessionWithCount.ProjectID,
+		&comparison,
+	); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session comparison")
 		return
 	}

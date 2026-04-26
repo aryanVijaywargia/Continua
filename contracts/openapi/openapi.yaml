@@ -12,6 +12,7 @@ servers:
     description: Relative path (works with any host)
 
 security:
+  - auth0Bearer: []
   - apiKey: []
 
 paths:
@@ -27,6 +28,8 @@ paths:
         Supports idempotent processing via batch_key.
         Maximum request body size is 5MB.
       tags: [Ingest]
+      security:
+        - apiKey: []
       parameters:
         - name: sync
           in: query
@@ -86,6 +89,8 @@ paths:
       summary: Get ingest batch status
       description: Poll the processing status of an ingest batch.
       tags: [Ingest]
+      security:
+        - apiKey: []
       parameters:
         - name: id
           in: path
@@ -118,6 +123,8 @@ paths:
       operationId: startEngineRun
       summary: Start an engine workflow run
       tags: [Engine]
+      security:
+        - apiKey: []
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
@@ -168,6 +175,8 @@ paths:
       operationId: claimRemoteActivityTasks
       summary: Claim remote engine activity tasks
       tags: [Engine]
+      security:
+        - apiKey: []
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
@@ -206,6 +215,8 @@ paths:
       operationId: heartbeatRemoteActivityTask
       summary: Renew a remote activity task lease
       tags: [Engine]
+      security:
+        - apiKey: []
       parameters:
         - name: id
           in: path
@@ -262,6 +273,8 @@ paths:
       operationId: completeRemoteActivityTask
       summary: Complete a remote activity task
       tags: [Engine]
+      security:
+        - apiKey: []
       parameters:
         - name: id
           in: path
@@ -314,6 +327,8 @@ paths:
       operationId: failRemoteActivityTask
       summary: Fail or retry a remote activity task
       tags: [Engine]
+      security:
+        - apiKey: []
       parameters:
         - name: id
           in: path
@@ -366,6 +381,8 @@ paths:
       operationId: getEngineInstance
       summary: Get an engine instance and current run
       tags: [Engine]
+      security:
+        - apiKey: []
       parameters:
         - name: instance_key
           in: path
@@ -663,6 +680,8 @@ paths:
         `journal_expired` filters return zero eligible rows because those states
         are not valid backfill targets.
       tags: [Engine]
+      security:
+        - apiKey: []
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
@@ -956,12 +975,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/auth/config:
+    get:
+      operationId: getAuthConfig
+      summary: Get Auth0 runtime configuration for the debugger
+      tags: [Auth]
+      security: []
+      responses:
+        '200':
+          description: Runtime Auth0 bootstrap configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthConfig'
+
+  /api/projects:
+    get:
+      operationId: listProjects
+      summary: List projects visible to the authenticated debugger operator
+      tags: [Projects]
+      responses:
+        '200':
+          description: List of visible projects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectList'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/traces:
     get:
       operationId: listTraces
       summary: List traces
       tags: [Traces]
       parameters:
+        - $ref: '#/components/parameters/SelectedProjectId'
         - name: limit
           in: query
           schema:
@@ -1090,7 +1143,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TraceList'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1108,6 +1161,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
       responses:
         '200':
           description: Trace details
@@ -1116,7 +1170,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TraceDetail'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1140,6 +1194,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
       responses:
         '200':
           description: List of spans
@@ -1148,7 +1203,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SpanList'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1172,6 +1227,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
         - name: after
           in: query
           description: Opaque cursor returned by a previous timeline response
@@ -1199,7 +1255,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1217,6 +1273,7 @@ paths:
       summary: List sessions
       tags: [Sessions]
       parameters:
+        - $ref: '#/components/parameters/SelectedProjectId'
         - name: limit
           in: query
           schema:
@@ -1257,7 +1314,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SessionList'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1275,6 +1332,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
       responses:
         '200':
           description: Session details
@@ -1283,7 +1341,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Session'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1307,6 +1365,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
       responses:
         '200':
           description: Session narrative details
@@ -1315,7 +1374,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SessionNarrativeResponse'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1339,6 +1398,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
         - name: baseline_trace_id
           in: query
           required: true
@@ -1365,7 +1425,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1384,14 +1444,46 @@ paths:
                 $ref: '#/components/schemas/ComparisonTooLargeError'
 
 components:
+  parameters:
+    SelectedProjectId:
+      name: project_id
+      in: query
+      description: Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+      schema:
+        type: string
+        format: uuid
   securitySchemes:
     apiKey:
       type: apiKey
       in: header
       name: X-API-Key
       description: API key for authentication
+    auth0Bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Auth0 access token for debugger operator authentication
 
   schemas:
+    AuthConfig:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        domain:
+          type: string
+        client_id:
+          type: string
+        audience:
+          type: string
+        public_demo_enabled:
+          type: boolean
+          description: Whether the deployment exposes a public read-only demo console.
+        public_demo_label:
+          type: string
+          description: Display label for the public demo banner shown in the debugger shell.
+
     Error:
       type: object
       required: [code, message]
@@ -1400,6 +1492,31 @@ components:
           type: string
         message:
           type: string
+
+    Project:
+      type: object
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProjectList:
+      type: object
+      required: [projects]
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
 
     SizeError:
       type: object

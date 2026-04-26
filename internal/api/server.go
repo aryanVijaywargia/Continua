@@ -22,6 +22,8 @@ type Server struct {
 	engineControl          *engineControlService
 	engineSharedControl    *enginecontrol.Service
 	enginePublicAPIEnabled bool
+	auth0Config            config.Auth0Config
+	publicDemoConfig       config.PublicDemoConfig
 }
 
 // NewServer creates a new API server with the given dependencies.
@@ -43,6 +45,8 @@ func newConfiguredServer(
 	server.engineSharedControl = shared
 	if cfg != nil {
 		server.enginePublicAPIEnabled = cfg.Engine.PublicAPIEnabled
+		server.auth0Config = cfg.Auth0
+		server.publicDemoConfig = cfg.PublicDemo
 	}
 	return server
 }

@@ -21,7 +21,7 @@ import (
 
 func TestRetentionWorker_Stage1OnlyPurgesProjectionDetail(t *testing.T) {
 	fixture := newRetentionFixture(t)
-	completedAt := time.Now().UTC().Add(-96 * time.Hour).Round(time.Microsecond)
+	completedAt := retentionFixtureCompletedAt()
 
 	record := fixture.seedCompletedRun(t, completedAt, "up_to_date")
 	worker := NewRetentionWorker(fixture.store, enginecontrol.NewService(fixture.store), 24*time.Hour, 0)
@@ -36,7 +36,7 @@ func TestRetentionWorker_Stage1OnlyPurgesProjectionDetail(t *testing.T) {
 
 func TestRetentionWorker_BothStagesPromoteToJournalExpiredAndSkipExistingJournalExpired(t *testing.T) {
 	fixture := newRetentionFixture(t)
-	completedAt := time.Now().UTC().Add(-96 * time.Hour).Round(time.Microsecond)
+	completedAt := retentionFixtureCompletedAt()
 
 	promoted := fixture.seedCompletedRun(t, completedAt, "up_to_date")
 	skipped := fixture.seedCompletedRun(t, completedAt.Add(-time.Minute), "journal_expired")
@@ -85,7 +85,7 @@ func TestRetentionWorker_AdvisoryLockStaysBoundToHeldConnection(t *testing.T) {
 
 func TestRetentionWorker_RestartAfterProjectionPurgePromotesToJournalExpiredOnce(t *testing.T) {
 	fixture := newRetentionFixture(t)
-	completedAt := time.Now().UTC().Add(-96 * time.Hour).Round(time.Microsecond)
+	completedAt := retentionFixtureCompletedAt()
 	record := fixture.seedCompletedRun(t, completedAt, "up_to_date")
 
 	control := enginecontrol.NewService(fixture.store)
@@ -137,6 +137,7 @@ func newRetentionFixture(t *testing.T) *retentionFixture {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	s := store.New(pool)
+	cleanupRetentionFixtureData(t, ctx, s)
 
 	return &retentionFixture{
 		ctx:       ctx,
@@ -144,6 +145,20 @@ func newRetentionFixture(t *testing.T) *retentionFixture {
 		engine:    enginedb.New(pool),
 		projectID: testutil.CreateTestProject(t, ctx, s.Queries()),
 	}
+}
+
+func retentionFixtureCompletedAt() time.Time {
+	return time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Round(time.Microsecond)
+}
+
+func cleanupRetentionFixtureData(t *testing.T, ctx context.Context, s *store.Store) {
+	t.Helper()
+
+	_, err := s.Pool().Exec(ctx, `
+		DELETE FROM traces
+		WHERE engine_instance_key LIKE 'retention-instance-%'
+	`)
+	require.NoError(t, err)
 }
 
 func (f *retentionFixture) seedCompletedRun(

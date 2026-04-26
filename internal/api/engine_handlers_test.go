@@ -93,7 +93,7 @@ func TestNewRouter_DisabledEngineRoutesReturn404BeforeAuth(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, uuid.Nil, project.ID)
 
-	handler := NewRouter(server, platformStore)
+	handler := newAuthenticatedRouter(t, server, platformStore)
 	runID := uuid.NewString()
 
 	testCases := []struct {
@@ -136,7 +136,7 @@ func TestNewRouter_EnabledEngineRoutesStillAuthenticate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	handler := NewRouter(server, platformStore)
+	handler := newAuthenticatedRouter(t, server, platformStore)
 	req := httptest.NewRequest(http.MethodGet, "/v1/engine/runs/"+uuid.NewString(), nil)
 	req.Header.Set("X-API-Key", "invalid-key")
 	rec := httptest.NewRecorder()
@@ -562,6 +562,25 @@ func TestEngineHandlers_ReadSignalCancelAndTraceSurfaces(t *testing.T) {
 	terminalSignalRec := invokeSignalEngineRun(t, server, projectID, runID, EngineSignalRunRequest{SignalName: "ignored"})
 	require.Equal(t, http.StatusConflict, terminalSignalRec.Code)
 	assert.Equal(t, "run_terminal", decodeJSONBody[Error](t, terminalSignalRec).Code)
+}
+
+func TestGetEngineRun_OperatorDoesNotRequireProjectID(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-operator-run",
+		RequestKey:        "req-operator-run",
+	}))
+
+	rec := invokeGetEngineRunAsOperator(t, server, start.RunId)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[EngineRunResponse](t, rec)
+	assert.Equal(t, start.RunId, resp.RunId)
+	assert.Equal(t, "instance-operator-run", resp.InstanceKey)
 }
 
 func TestEngineHandlers_ExposeContinuationChainAcrossReadSurfaces(t *testing.T) {
@@ -1111,7 +1130,7 @@ func TestTerminateEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testin
 		RequestKey:        "terminate-router-request",
 	}))
 
-	router := NewRouter(server, platformStore)
+	router := newAuthenticatedRouter(t, server, platformStore)
 	req := httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+start.RunId.String()+"/terminate", nil)
 	req.Header.Set("X-API-Key", apiKey)
 	rec := httptest.NewRecorder()
@@ -1122,7 +1141,7 @@ func TestTerminateEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testin
 	assert.Equal(t, "preview_header_required", decodeJSONBody[Error](t, rec).Code)
 
 	server.enginePublicAPIEnabled = false
-	router = NewRouter(server, platformStore)
+	router = newAuthenticatedRouter(t, server, platformStore)
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+start.RunId.String()+"/terminate", nil)
 	req.Header.Set("X-API-Key", apiKey)
@@ -1372,7 +1391,7 @@ func TestSuspendResumeEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *te
 		RequestKey:        "suspend-router-request",
 	}))
 
-	router := NewRouter(server, platformStore)
+	router := newAuthenticatedRouter(t, server, platformStore)
 	req := httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+start.RunId.String()+"/suspend", nil)
 	req.Header.Set("X-API-Key", apiKey)
 	rec := httptest.NewRecorder()
@@ -1381,7 +1400,7 @@ func TestSuspendResumeEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *te
 	assert.Equal(t, "preview_header_required", decodeJSONBody[Error](t, rec).Code)
 
 	server.enginePublicAPIEnabled = false
-	router = NewRouter(server, platformStore)
+	router = newAuthenticatedRouter(t, server, platformStore)
 	req = httptest.NewRequest(http.MethodPost, "/v1/engine/runs/"+start.RunId.String()+"/resume", nil)
 	req.Header.Set("X-API-Key", apiKey)
 	req.Header.Set(enginePreviewHeader, "1")
@@ -2697,7 +2716,7 @@ func TestGetEngineRunPendingWork_ReturnsPureSignalWaitWithoutPreviewHeader(t *te
 		RequestKey:        "pending-router-request",
 	}))
 
-	router := NewRouter(routerServer, platformStore)
+	router := newAuthenticatedRouter(t, routerServer, platformStore)
 	req := httptest.NewRequest(http.MethodGet, "/v1/engine/runs/"+routerStart.RunId.String()+"/pending-work", nil)
 	req.Header.Set("X-API-Key", apiKey)
 	recorder := httptest.NewRecorder()
@@ -3099,6 +3118,19 @@ func invokeGetEngineRun(t *testing.T, server *Server, projectID, runID uuid.UUID
 	rec := httptest.NewRecorder()
 
 	server.GetEngineRun(rec, req, runID)
+	return rec
+}
+
+func invokeGetEngineRunAsOperator(t *testing.T, server *Server, runID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/engine/runs/"+runID.String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	rec := httptest.NewRecorder()
+
+	server.GetEngineRun(rec, req.WithContext(reqCtx), runID)
 	return rec
 }
 

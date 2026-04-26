@@ -216,25 +216,52 @@ func (t *Tx) EnsureTerminalRootSpanShell(
 	statusMessage *string,
 ) error {
 	commandTag, err := t.tx.Exec(ctx, `
-		UPDATE public.spans
-		SET status = $3,
-		    end_time = $4::timestamptz,
-		    output = $5::jsonb,
-		    status_message = $6::text,
+		INSERT INTO public.spans (
+		    project_id,
+		    trace_id,
+		    span_id,
+		    name,
+		    type,
+		    status,
+		    status_message,
+		    level,
+		    start_time,
+		    end_time,
+		    output,
+		    depth
+		)
+		SELECT
+		    traces.project_id,
+		    traces.id,
+		    $2,
+		    COALESCE(traces.name, 'Engine run'),
+		    'chain',
+		    $3,
+		    $6::text,
+		    'default',
+		    COALESCE(traces.start_time, $4::timestamptz),
+		    $4::timestamptz,
+		    $5::jsonb,
+		    0
+		FROM public.traces AS traces
+		WHERE traces.id = $1
+		ON CONFLICT (trace_id, span_id) DO UPDATE
+		SET status = EXCLUDED.status,
+		    end_time = EXCLUDED.end_time,
+		    output = EXCLUDED.output,
+		    status_message = EXCLUDED.status_message,
 		    duration_ms = CASE
-		        WHEN $4::timestamptz IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
-		        ELSE duration_ms
+		        WHEN EXCLUDED.end_time IS NOT NULL THEN EXTRACT(EPOCH FROM (EXCLUDED.end_time - public.spans.start_time)) * 1000
+		        ELSE public.spans.duration_ms
 		    END,
 		    updated_at = NOW(),
-		    version = COALESCE(version, 1) + 1
-		WHERE trace_id = $1
-		  AND span_id = $2
+		    version = COALESCE(public.spans.version, 1) + 1
 	`, traceID, spanID, status, completedAt, output, statusMessage)
 	if err != nil {
 		return fmt.Errorf("ensure terminal root span shell: %w", err)
 	}
 	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("ensure terminal root span shell matched zero rows for trace %s span %s", traceID, spanID)
+		return fmt.Errorf("ensure terminal root span shell found no trace %s for span %s", traceID, spanID)
 	}
 	return nil
 }

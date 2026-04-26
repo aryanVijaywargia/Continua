@@ -388,6 +388,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Auth0 runtime configuration for the debugger */
+        get: operations["getAuthConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List projects visible to the authenticated debugger operator */
+        get: operations["listProjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/traces": {
         parameters: {
             query?: never;
@@ -528,9 +562,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AuthConfig: {
+            enabled: boolean;
+            domain?: string;
+            client_id?: string;
+            audience?: string;
+            /** @description Whether the deployment exposes a public read-only demo console. */
+            public_demo_enabled?: boolean;
+            /** @description Display label for the public demo banner shown in the debugger shell. */
+            public_demo_label?: string;
+        };
         Error: {
             code: string;
             message: string;
+        };
+        Project: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ProjectList: {
+            projects: components["schemas"]["Project"][];
         };
         /** @description Error response for 413 Payload Too Large */
         SizeError: {
@@ -1330,7 +1386,10 @@ export interface components {
         };
     };
     responses: never;
-    parameters: never;
+    parameters: {
+        /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+        SelectedProjectId: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -2428,9 +2487,60 @@ export interface operations {
             };
         };
     };
+    getAuthConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Auth0 bootstrap configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthConfig"];
+                };
+            };
+        };
+    };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of visible projects */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectList"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listTraces: {
         parameters: {
             query?: {
+                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                project_id?: components["parameters"]["SelectedProjectId"];
                 limit?: number;
                 offset?: number;
                 session_id?: string;
@@ -2488,7 +2598,7 @@ export interface operations {
                     "application/json": components["schemas"]["TraceList"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2501,7 +2611,10 @@ export interface operations {
     };
     getTrace: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                project_id?: components["parameters"]["SelectedProjectId"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -2519,7 +2632,7 @@ export interface operations {
                     "application/json": components["schemas"]["TraceDetail"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2541,7 +2654,10 @@ export interface operations {
     };
     listSpansByTrace: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                project_id?: components["parameters"]["SelectedProjectId"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -2559,7 +2675,7 @@ export interface operations {
                     "application/json": components["schemas"]["SpanList"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2582,6 +2698,8 @@ export interface operations {
     getTraceEvents: {
         parameters: {
             query?: {
+                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                project_id?: components["parameters"]["SelectedProjectId"];
                 /** @description Opaque cursor returned by a previous timeline response */
                 after?: string;
                 /** @description Maximum number of timeline events to return */
@@ -2613,7 +2731,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2636,6 +2754,8 @@ export interface operations {
     listSessions: {
         parameters: {
             query?: {
+                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                project_id?: components["parameters"]["SelectedProjectId"];
                 limit?: number;
                 offset?: number;
                 /** @description Search sessions by external ID or name */
@@ -2662,7 +2782,7 @@ export interface operations {
                     "application/json": components["schemas"]["SessionList"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2675,7 +2795,10 @@ export interface operations {
     };
     getSession: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                project_id?: components["parameters"]["SelectedProjectId"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -2693,7 +2816,7 @@ export interface operations {
                     "application/json": components["schemas"]["Session"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2715,7 +2838,10 @@ export interface operations {
     };
     getSessionNarrative: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                project_id?: components["parameters"]["SelectedProjectId"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -2733,7 +2859,7 @@ export interface operations {
                     "application/json": components["schemas"]["SessionNarrativeResponse"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2756,6 +2882,8 @@ export interface operations {
     getSessionCompare: {
         parameters: {
             query: {
+                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                project_id?: components["parameters"]["SelectedProjectId"];
                 baseline_trace_id: string;
                 candidate_trace_id: string;
             };
@@ -2785,7 +2913,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;

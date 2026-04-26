@@ -74,6 +74,15 @@ func traceToAPI(t *store.TraceRead) Trace {
 	return trace
 }
 
+func projectToAPI(project *platform.Project) Project {
+	return Project{
+		Id:        project.ID,
+		Name:      project.Name,
+		CreatedAt: project.CreatedAt,
+		UpdatedAt: project.UpdatedAt,
+	}
+}
+
 // traceDetailToAPI converts a database trace to the detail API schema by
 // composing the summary mapper output with debugger-specific fields.
 // NOTE: oapi-codegen currently flattens TraceDetail's allOf shape, so any new

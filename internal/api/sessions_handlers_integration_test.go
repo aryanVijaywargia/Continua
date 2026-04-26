@@ -110,6 +110,115 @@ func TestGetSession_ProjectScopingReturns404(t *testing.T) {
 	assert.Equal(t, "not_found", resp.Code)
 }
 
+func TestListSessions_OperatorSelectedProjectReturnsOnlyThatProject(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectAID := testutil.CreateTestProject(t, ctx, q)
+	projectBID := testutil.CreateTestProject(t, ctx, q)
+	base := time.Date(2026, 3, 9, 13, 0, 0, 0, time.UTC)
+
+	sessionA := createSessionRecord(t, ctx, s, projectAID, "operator-a", "Operator A", "user-a", base)
+	_ = createSessionRecord(t, ctx, s, projectBID, "operator-b", "Operator B", "user-b", base.Add(time.Hour))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions?project_id="+projectAID.String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	rec := httptest.NewRecorder()
+
+	server.ListSessions(rec, req.WithContext(reqCtx), ListSessionsParams{})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[SessionList](t, rec)
+	assert.Equal(t, 1, resp.Total)
+	require.Len(t, resp.Sessions, 1)
+	assert.Equal(t, sessionA.ID, resp.Sessions[0].Id)
+}
+
+func TestListSessions_PublicDemoIgnoresProjectIDQueryParam(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	demoProjectID := testutil.CreateTestProject(t, ctx, q)
+	otherProjectID := testutil.CreateTestProject(t, ctx, q)
+	base := time.Date(2026, 3, 9, 13, 0, 0, 0, time.UTC)
+
+	sessionA := createSessionRecord(t, ctx, s, demoProjectID, "demo-a", "Demo A", "user-a", base)
+	_ = createSessionRecord(t, ctx, s, otherProjectID, "other-b", "Other B", "user-b", base.Add(time.Hour))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions?project_id="+otherProjectID.String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.ProjectIDKey, demoProjectID)
+	reqCtx = context.WithValue(reqCtx, middleware.AuthModeKey, middleware.AuthModePublicDemo)
+	rec := httptest.NewRecorder()
+
+	server.ListSessions(rec, req.WithContext(reqCtx), ListSessionsParams{})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[SessionList](t, rec)
+	assert.Equal(t, 1, resp.Total)
+	require.Len(t, resp.Sessions, 1)
+	assert.Equal(t, sessionA.ID, resp.Sessions[0].Id)
+}
+
+func TestGetSession_PublicDemoRejectsSessionOutsideDemoProject(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	demoProjectID := testutil.CreateTestProject(t, ctx, q)
+	otherProjectID := testutil.CreateTestProject(t, ctx, q)
+
+	session := createSessionRecord(
+		t,
+		ctx,
+		s,
+		otherProjectID,
+		"other-demo-session",
+		"Other Demo Session",
+		"user-42",
+		time.Date(2026, 3, 9, 14, 0, 0, 0, time.UTC),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+session.ID.String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.ProjectIDKey, demoProjectID)
+	reqCtx = context.WithValue(reqCtx, middleware.AuthModeKey, middleware.AuthModePublicDemo)
+	rec := httptest.NewRecorder()
+
+	server.GetSession(rec, req.WithContext(reqCtx), session.ID, GetSessionParams{})
+	require.Equal(t, http.StatusNotFound, rec.Code)
+
+	resp := decodeJSONBody[Error](t, rec)
+	assert.Equal(t, "not_found", resp.Code)
+}
+
+func TestGetSession_OperatorRequiresSelectedProjectID(t *testing.T) {
+	pool := testutil.TestDB(t)
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	sessionID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+sessionID.String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	rec := httptest.NewRecorder()
+
+	server.GetSession(rec, req.WithContext(reqCtx), sessionID, GetSessionParams{})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	resp := decodeJSONBody[Error](t, rec)
+	assert.Equal(t, "missing_project_id", resp.Code)
+}
+
 func TestGetSessionNarrative_MissingSessionReturns404(t *testing.T) {
 	pool := testutil.TestDB(t)
 	s := store.New(pool)
@@ -201,7 +310,7 @@ func invokeGetSession(t *testing.T, server *Server, projectID, sessionID uuid.UU
 	ctx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
 	rec := httptest.NewRecorder()
 
-	server.GetSession(rec, req.WithContext(ctx), sessionID)
+	server.GetSession(rec, req.WithContext(ctx), sessionID, GetSessionParams{})
 
 	return rec
 }
@@ -213,7 +322,7 @@ func invokeGetSessionNarrative(t *testing.T, server *Server, projectID, sessionI
 	ctx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
 	rec := httptest.NewRecorder()
 
-	server.GetSessionNarrative(rec, req.WithContext(ctx), sessionID)
+	server.GetSessionNarrative(rec, req.WithContext(ctx), sessionID, GetSessionNarrativeParams{})
 
 	return rec
 }

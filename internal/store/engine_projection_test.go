@@ -30,7 +30,7 @@ func TestListProjectionRetentionCandidates_IncludesContinuedAsNewRuns(t *testing
 	})
 	require.NoError(t, err)
 
-	completedAt := time.Now().UTC().Add(-2 * time.Hour).Round(time.Microsecond)
+	completedAt := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Round(time.Microsecond)
 	run, err := engineQueries.CreateRun(ctx, enginedb.CreateRunParams{
 		ProjectID:          projectID,
 		InstanceID:         instance.ID,
@@ -74,11 +74,13 @@ func TestListProjectionRetentionCandidates_IncludesContinuedAsNewRuns(t *testing
 	`, trace.ID, run.ID, completedAt)
 	require.NoError(t, err)
 
-	projectionCandidates, err := s.ListProjectionRetentionCandidates(ctx, time.Now().UTC(), 10)
+	beforeRetentionWindow := completedAt.Add(time.Second)
+
+	projectionCandidates, err := s.ListProjectionRetentionCandidates(ctx, beforeRetentionWindow, 10)
 	require.NoError(t, err)
 	require.True(t, containsEngineRetentionCandidate(projectionCandidates, projectID, run.ID, trace.ID))
 
-	historyCandidates, err := s.ListHistoryRetentionCandidates(ctx, time.Now().UTC(), 10)
+	historyCandidates, err := s.ListHistoryRetentionCandidates(ctx, beforeRetentionWindow, 10)
 	require.NoError(t, err)
 	require.True(t, containsEngineRetentionCandidate(historyCandidates, projectID, run.ID, trace.ID))
 }
