@@ -1,0 +1,155 @@
+<svg width="2400" height="600" viewBox="0 0 2400 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bannerTitle bannerDesc">
+  <title id="bannerTitle">Continua — self-hosted debugging for AI agent runs</title>
+  <desc id="bannerDesc">Continua banner showing the wordmark, tagline, and an abstract span-waterfall motif representing the trace debugger.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="2400" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="logoGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="barTeal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="barViolet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+    <linearGradient id="barAmber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#FBBF24"/>
+    </linearGradient>
+    <linearGradient id="barRose" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F43F5E"/>
+      <stop offset="1" stop-color="#FB7185"/>
+    </linearGradient>
+    <linearGradient id="barSlate" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#64748B"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#FFFFFF" stroke-opacity="0.035"/>
+    </pattern>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="22" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="2400" height="600" fill="url(#bgGrad)"/>
+  <rect width="2400" height="600" fill="url(#grid)"/>
+
+  <!-- ambient glows -->
+  <circle cx="120" cy="540" r="320" fill="#6366F1" opacity="0.14"/>
+  <circle cx="2240" cy="80" r="320" fill="#2DD4BF" opacity="0.12"/>
+
+  <!-- logo glyph (scaled from web/public/logo.svg, neutral colors) -->
+  <g transform="translate(140 130) scale(1.5)">
+    <circle cx="32" cy="32" r="28" stroke="url(#logoGrad)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="118 30 22 6" stroke-dashoffset="-32" fill="none"/>
+    <path d="M 46 18 A 18 18 0 1 0 46 46" stroke="url(#logoGrad)" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+    <circle cx="46" cy="18" r="3.25" fill="url(#logoGrad)"/>
+    <circle cx="46" cy="46" r="3.25" fill="url(#logoGrad)"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="270" y="200" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="128" font-weight="800" letter-spacing="-3">Continua</text>
+
+  <!-- tagline -->
+  <text x="142" y="290" fill="#CBD5E1" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="40" font-weight="500">Self-hosted debugging for AI agent runs.</text>
+
+  <!-- subtag -->
+  <text x="142" y="346" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="26">Trace, inspect, and compare executions — from ingest to UI, on your own infrastructure.</text>
+
+  <!-- pill chips -->
+  <g font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="22" font-weight="600">
+    <g transform="translate(142 400)">
+      <rect width="178" height="50" rx="25" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="26" cy="25" r="6" fill="#2DD4BF"/>
+      <text x="46" y="33" fill="#E2E8F0">Self-hosted</text>
+    </g>
+    <g transform="translate(338 400)">
+      <rect width="178" height="50" rx="25" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="26" cy="25" r="6" fill="#A78BFA"/>
+      <text x="46" y="33" fill="#E2E8F0">Open source</text>
+    </g>
+    <g transform="translate(534 400)">
+      <rect width="120" height="50" rx="25" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="26" cy="25" r="6" fill="#F59E0B"/>
+      <text x="46" y="33" fill="#E2E8F0">MIT</text>
+    </g>
+    <g transform="translate(672 400)">
+      <rect width="252" height="50" rx="25" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="26" cy="25" r="6" fill="#60A5FA"/>
+      <text x="46" y="33" fill="#E2E8F0">Go · Postgres · React</text>
+    </g>
+  </g>
+
+  <!-- ingest -> store -> process -> inspect mini-strip -->
+  <g font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="20" font-weight="600" fill="#94A3B8">
+    <text x="142" y="528">INGEST</text>
+    <text x="320" y="528">PERSIST</text>
+    <text x="510" y="528">PROCESS</text>
+    <text x="710" y="528">INSPECT</text>
+  </g>
+  <g stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-dasharray="1 6">
+    <path d="M236 521 L308 521"/>
+    <path d="M420 521 L498 521"/>
+    <path d="M614 521 L698 521"/>
+  </g>
+
+  <!-- right-side waterfall motif: stylized trace span bars inside a "window" -->
+  <g transform="translate(1340 100)">
+    <rect width="920" height="400" rx="20" fill="#0B1220" stroke="#1E293B"/>
+    <!-- title bar -->
+    <rect width="920" height="56" rx="20" fill="#0F172A"/>
+    <circle cx="32" cy="28" r="7" fill="#F87171"/>
+    <circle cx="56" cy="28" r="7" fill="#FBBF24"/>
+    <circle cx="80" cy="28" r="7" fill="#34D399"/>
+    <text x="120" y="35" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">trace · agent-run · 2.4s</text>
+    <!-- waterfall ruler -->
+    <g stroke="#1E293B" stroke-width="1">
+      <line x1="40" y1="92" x2="880" y2="92"/>
+      <line x1="40" y1="92" x2="40" y2="368"/>
+    </g>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#475569">
+      <text x="40" y="84">0s</text>
+      <text x="250" y="84">0.6s</text>
+      <text x="460" y="84">1.2s</text>
+      <text x="670" y="84">1.8s</text>
+      <text x="850" y="84">2.4s</text>
+    </g>
+    <!-- span rows -->
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#CBD5E1">
+      <!-- root -->
+      <rect x="60" y="110" width="800" height="18" rx="4" fill="url(#barSlate)"/>
+      <text x="68" y="124" fill="#0B1220" font-weight="700">agent.run</text>
+      <!-- plan -->
+      <rect x="80" y="146" width="180" height="18" rx="4" fill="url(#barTeal)"/>
+      <text x="88" y="160" fill="#0B1220" font-weight="700">plan</text>
+      <!-- retrieve -->
+      <rect x="270" y="182" width="240" height="18" rx="4" fill="url(#barViolet)"/>
+      <text x="278" y="196" fill="#0B1220" font-weight="700">retrieve.docs</text>
+      <!-- model call -->
+      <rect x="520" y="218" width="200" height="18" rx="4" fill="url(#barAmber)"/>
+      <text x="528" y="232" fill="#0B1220" font-weight="700">model.invoke</text>
+      <!-- tool call -->
+      <rect x="730" y="254" width="100" height="18" rx="4" fill="url(#barTeal)"/>
+      <text x="738" y="268" fill="#0B1220" font-weight="700">tool.search</text>
+      <!-- retry / failure -->
+      <rect x="520" y="290" width="260" height="18" rx="4" fill="url(#barRose)"/>
+      <text x="528" y="304" fill="#0B1220" font-weight="700">model.invoke · retry</text>
+      <!-- decision -->
+      <rect x="780" y="326" width="80" height="18" rx="4" fill="url(#barAmber)"/>
+      <text x="788" y="340" fill="#0B1220" font-weight="700">decide</text>
+    </g>
+  </g>
+</svg>
+</content>
+</invoke>

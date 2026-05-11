@@ -1,0 +1,114 @@
+<svg width="2400" height="1000" viewBox="0 0 2400 1000" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="evTitle evDesc">
+  <title id="evTitle">Continua event semantics</title>
+  <desc id="evDesc">The eleven implemented event types the debugger renders: log, error, exception, message, metric, custom, state_change, decision, effect, wait, and snapshot_marker.</desc>
+
+  <defs>
+    <linearGradient id="evBg" x1="0" y1="0" x2="2400" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <pattern id="evGrid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#FFFFFF" stroke-opacity="0.03"/>
+    </pattern>
+  </defs>
+
+  <rect width="2400" height="1000" fill="url(#evBg)"/>
+  <rect width="2400" height="1000" fill="url(#evGrid)"/>
+
+  <text x="120" y="120" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="-1.5">Event semantics</text>
+  <text x="120" y="172" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="26">Debugger-facing signals — not replay primitives. See docs/event-conventions.md.</text>
+
+  <!-- 4 columns x 3 rows = 12 slots, only 11 used; last slot blank for breathing room -->
+  <g font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <!-- Row 1 -->
+    <g transform="translate(120 240)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#60A5FA"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">log</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Operational log line tied to a span.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">default level: info</text>
+    </g>
+    <g transform="translate(700 240)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#FB7185"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">error</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Explicit failure signal without exception details.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">default level: error</text>
+    </g>
+    <g transform="translate(1280 240)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#F87171"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">exception</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Captured exception with structured metadata.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">exception_type · message · traceback</text>
+    </g>
+    <g transform="translate(1860 240)">
+      <rect width="420" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#A78BFA"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">message</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Lightweight narrative milestone.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">default level: info</text>
+    </g>
+
+    <!-- Row 2 -->
+    <g transform="translate(120 460)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#22D3EE"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">metric</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Numeric measurement attached to a span.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">metric_name · metric_value · unit</text>
+    </g>
+    <g transform="translate(700 460)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#64748B"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">custom</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Domain-specific event that does not fit another type.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">ad-hoc payload</text>
+    </g>
+    <g transform="translate(1280 460)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#2DD4BF"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">state_change</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Observable state transition for the State view.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">key · namespace · old_value · new_value</text>
+    </g>
+    <g transform="translate(1860 460)">
+      <rect width="420" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#F59E0B"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">decision</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Branch point with a chosen outcome.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">question · chosen · reasoning</text>
+    </g>
+
+    <!-- Row 3 -->
+    <g transform="translate(120 680)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#8B5CF6"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">effect</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">External side effect, tool call, or model invocation.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">effect_kind · idempotent · idempotency_key</text>
+    </g>
+    <g transform="translate(700 680)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#FBBF24"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">wait</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Blocked or deferred progress awaiting resolution.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">wait_kind · phase · resolution</text>
+    </g>
+    <g transform="translate(1280 680)">
+      <rect width="540" height="190" rx="20" fill="#0B1220" stroke="#1E293B"/>
+      <circle cx="46" cy="46" r="10" fill="#34D399"/>
+      <text x="80" y="56" fill="#F8FAFC" font-size="32" font-weight="700">snapshot_marker</text>
+      <text x="40" y="110" fill="#94A3B8" font-size="20">Debugger milestone with a compact label.</text>
+      <text x="40" y="146" fill="#64748B" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">marker_kind · label</text>
+    </g>
+    <g transform="translate(1860 680)">
+      <rect width="420" height="190" rx="20" fill="#0B1220" stroke="#1E293B" stroke-dasharray="6 6"/>
+      <text x="40" y="56" fill="#475569" font-size="22" font-weight="700" letter-spacing="3">11 TYPES</text>
+      <text x="40" y="110" fill="#64748B" font-size="20">Use the type that best fits the signal.</text>
+      <text x="40" y="146" fill="#475569" font-size="18">See event conventions →</text>
+    </g>
+  </g>
+</svg>
+</content>
+</invoke>

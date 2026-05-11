@@ -1,0 +1,143 @@
+<svg width="2400" height="1350" viewBox="0 0 2400 1350" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ingestTitle ingestDesc">
+  <title id="ingestTitle">Continua ingest flow</title>
+  <desc id="ingestDesc">From SDK request through API key auth, validation, idempotent batch claim, sync or async write paths, River workers, durable storage, batch polling, and debugger reads.</desc>
+
+  <defs>
+    <linearGradient id="ingBg" x1="0" y1="0" x2="2400" y2="1350" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <pattern id="ingGrid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#FFFFFF" stroke-opacity="0.03"/>
+    </pattern>
+    <marker id="ingArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+    </marker>
+  </defs>
+
+  <rect width="2400" height="1350" fill="url(#ingBg)"/>
+  <rect width="2400" height="1350" fill="url(#ingGrid)"/>
+
+  <text x="120" y="140" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="64" font-weight="800" letter-spacing="-1.5">Ingest flow</text>
+  <text x="120" y="200" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="30">Authenticated, idempotent batches with both sync and durable async paths.</text>
+
+  <g font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <g transform="translate(120 320)">
+      <rect width="320" height="200" rx="22" fill="#0B1220" stroke="#1E293B"/>
+      <rect x="0" y="0" width="320" height="56" rx="22" fill="#0F172A"/>
+      <text x="24" y="38" fill="#94A3B8" font-size="20" font-weight="700">01 · CLIENT</text>
+      <text x="24" y="98" fill="#F8FAFC" font-size="28" font-weight="700">SDK request</text>
+      <text x="24" y="138" fill="#94A3B8" font-size="20">POST /v1/ingest</text>
+      <text x="24" y="168" fill="#64748B" font-size="18">JSON body, 5MB cap</text>
+    </g>
+    <g transform="translate(500 320)">
+      <rect width="320" height="200" rx="22" fill="#0B1220" stroke="#1E293B"/>
+      <rect x="0" y="0" width="320" height="56" rx="22" fill="#0F172A"/>
+      <text x="24" y="38" fill="#94A3B8" font-size="20" font-weight="700">02 · AUTH</text>
+      <text x="24" y="98" fill="#F8FAFC" font-size="28" font-weight="700">API key</text>
+      <text x="24" y="138" fill="#94A3B8" font-size="20">resolves project_id</text>
+      <text x="24" y="168" fill="#64748B" font-size="18">scoped to request ctx</text>
+    </g>
+    <g transform="translate(880 320)">
+      <rect width="320" height="200" rx="22" fill="#0B1220" stroke="#1E293B"/>
+      <rect x="0" y="0" width="320" height="56" rx="22" fill="#0F172A"/>
+      <text x="24" y="38" fill="#94A3B8" font-size="20" font-weight="700">03 · VALIDATE</text>
+      <text x="24" y="98" fill="#F8FAFC" font-size="28" font-weight="700">Payload check</text>
+      <text x="24" y="138" fill="#94A3B8" font-size="20">DTO normalization</text>
+      <text x="24" y="168" fill="#64748B" font-size="18">shared processor path</text>
+    </g>
+    <g transform="translate(1260 320)">
+      <rect width="320" height="200" rx="22" fill="#0B1220" stroke="#1E293B"/>
+      <rect x="0" y="0" width="320" height="56" rx="22" fill="#0F172A"/>
+      <text x="24" y="38" fill="#94A3B8" font-size="20" font-weight="700">04 · BATCH</text>
+      <text x="24" y="98" fill="#F8FAFC" font-size="28" font-weight="700">Idempotent claim</text>
+      <text x="24" y="138" fill="#94A3B8" font-size="20">batch_key dedupe</text>
+      <text x="24" y="168" fill="#64748B" font-size="18">ingest_batches row</text>
+    </g>
+    <g transform="translate(1640 320)">
+      <rect width="320" height="200" rx="22" fill="#0B1220" stroke="#1E293B"/>
+      <rect x="0" y="0" width="320" height="56" rx="22" fill="#0F172A"/>
+      <text x="24" y="38" fill="#94A3B8" font-size="20" font-weight="700">05 · ROUTE</text>
+      <text x="24" y="98" fill="#F8FAFC" font-size="28" font-weight="700">Sync or async</text>
+      <text x="24" y="138" fill="#94A3B8" font-size="20">sync=true → inline</text>
+      <text x="24" y="168" fill="#64748B" font-size="18">async v2 → durable</text>
+    </g>
+    <g transform="translate(2020 320)">
+      <rect width="320" height="200" rx="22" fill="#0B1220" stroke="#1E293B"/>
+      <rect x="0" y="0" width="320" height="56" rx="22" fill="#0F172A"/>
+      <text x="24" y="38" fill="#94A3B8" font-size="20" font-weight="700">06 · STORE</text>
+      <text x="24" y="98" fill="#F8FAFC" font-size="28" font-weight="700">Postgres write</text>
+      <text x="24" y="138" fill="#94A3B8" font-size="20">traces · spans · events</text>
+      <text x="24" y="168" fill="#64748B" font-size="18">rollups follow async</text>
+    </g>
+  </g>
+
+  <g stroke="#475569" stroke-width="3" fill="none" stroke-linecap="round" marker-end="url(#ingArrow)">
+    <line x1="440" y1="420" x2="498" y2="420"/>
+    <line x1="820" y1="420" x2="878" y2="420"/>
+    <line x1="1200" y1="420" x2="1258" y2="420"/>
+    <line x1="1580" y1="420" x2="1638" y2="420"/>
+    <line x1="1960" y1="420" x2="2018" y2="420"/>
+  </g>
+
+  <g font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <g transform="translate(120 620)">
+      <rect width="2220" height="220" rx="24" fill="#0B1220" stroke="#1E293B"/>
+      <rect x="0" y="0" width="10" height="220" rx="5" fill="#2DD4BF"/>
+      <text x="40" y="60" fill="#2DD4BF" font-size="24" font-weight="700">SYNC PATH</text>
+      <text x="40" y="100" fill="#F8FAFC" font-size="30" font-weight="700">Inline write before response</text>
+      <text x="40" y="138" fill="#94A3B8" font-size="22">200 OK · batch.status = succeeded · read-after-write safe</text>
+      <text x="40" y="174" fill="#64748B" font-size="20">Choose when integration code reads ingested data immediately afterwards.</text>
+
+      <g transform="translate(1280 50)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#CBD5E1">
+        <rect width="900" height="130" rx="14" fill="#06121F" stroke="#1E293B"/>
+        <text x="20" y="36" fill="#94A3B8">POST /v1/ingest?sync=true</text>
+        <text x="20" y="68" fill="#2DD4BF">→ validate → batch claim → inline write</text>
+        <text x="20" y="100" fill="#22D3EE">← 200 OK { batch_id, status: "succeeded" }</text>
+      </g>
+    </g>
+
+    <g transform="translate(120 880)">
+      <rect width="2220" height="280" rx="24" fill="#0B1220" stroke="#1E293B"/>
+      <rect x="0" y="0" width="10" height="280" rx="5" fill="#A78BFA"/>
+      <text x="40" y="60" fill="#A78BFA" font-size="24" font-weight="700">ASYNC PATH</text>
+      <text x="40" y="100" fill="#F8FAFC" font-size="30" font-weight="700">202 accepted · River workers complete the write</text>
+      <text x="40" y="138" fill="#94A3B8" font-size="22">Durable batch row · X-Continua-Async-Version: 2 · poll /v1/ingest/batches/&#123;id&#125;</text>
+      <text x="40" y="174" fill="#FB7185" font-size="20">Not read-after-write. Use sync, or wait_for_batch() before reading.</text>
+
+      <g transform="translate(40 200)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="18" fill="#E2E8F0">
+        <g>
+          <rect width="240" height="48" rx="24" fill="#0F172A" stroke="#1E293B"/>
+          <circle cx="24" cy="24" r="6" fill="#A78BFA"/>
+          <text x="44" y="32">ingest worker</text>
+        </g>
+        <g transform="translate(260 0)">
+          <rect width="240" height="48" rx="24" fill="#0F172A" stroke="#1E293B"/>
+          <circle cx="24" cy="24" r="6" fill="#60A5FA"/>
+          <text x="44" y="32">rollup worker</text>
+        </g>
+        <g transform="translate(520 0)">
+          <rect width="240" height="48" rx="24" fill="#0F172A" stroke="#1E293B"/>
+          <circle cx="24" cy="24" r="6" fill="#F59E0B"/>
+          <text x="44" y="32">cleanup worker</text>
+        </g>
+      </g>
+
+      <g transform="translate(1280 50)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#CBD5E1">
+        <rect width="900" height="180" rx="14" fill="#06121F" stroke="#1E293B"/>
+        <text x="20" y="36" fill="#94A3B8">POST /v1/ingest  (X-Continua-Async-Version: 2)</text>
+        <text x="20" y="68" fill="#A78BFA">← 202 Accepted { batch_id, status: "queued" }</text>
+        <text x="20" y="100" fill="#94A3B8">GET /v1/ingest/batches/&#123;id&#125;   (poll)</text>
+        <text x="20" y="132" fill="#22D3EE">← 200 OK { status: "succeeded", trace_count, span_count }</text>
+        <text x="20" y="164" fill="#64748B">client.wait_for_batch(batch_id) does this in the Python SDK</text>
+      </g>
+    </g>
+  </g>
+
+  <g font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect x="120" y="1220" width="2220" height="64" rx="18" fill="#0B1220" stroke="#1E293B"/>
+    <text x="152" y="1262" fill="#CBD5E1" font-size="22">client  →  auth  →  validate  →  batch claim  →  sync write or async accept  →  Postgres  →  debugger read APIs</text>
+  </g>
+</svg>
+</content>
+</invoke>

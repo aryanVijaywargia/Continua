@@ -1,0 +1,139 @@
+<svg width="2400" height="1350" viewBox="0 0 2400 1350" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="featTitle featDesc">
+  <title id="featTitle">Continua features at a glance</title>
+  <desc id="featDesc">Four feature tiles illustrating the implemented surfaces: Ingest, Persist, Inspect, and Compare. Illustrations are abstract, not screenshots of the running app.</desc>
+
+  <defs>
+    <linearGradient id="featBg" x1="0" y1="0" x2="2400" y2="1350" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <pattern id="featGrid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#FFFFFF" stroke-opacity="0.03"/>
+    </pattern>
+  </defs>
+
+  <rect width="2400" height="1350" fill="url(#featBg)"/>
+  <rect width="2400" height="1350" fill="url(#featGrid)"/>
+
+  <text x="120" y="140" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="64" font-weight="800" letter-spacing="-1.5">Built for agent debugging</text>
+  <text x="120" y="200" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="30">Four surfaces. One Go binary. Postgres-backed. Local-first.</text>
+
+  <!-- Tile 1: INGEST -->
+  <g transform="translate(120 300)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="1080" height="460" rx="28" fill="#0B1220" stroke="#1E293B"/>
+    <text x="40" y="76" fill="#2DD4BF" font-size="22" font-weight="700" letter-spacing="3">01 · INGEST</text>
+    <text x="40" y="136" fill="#F8FAFC" font-size="44" font-weight="800">Authenticated REST batches</text>
+    <text x="40" y="180" fill="#94A3B8" font-size="22">Idempotent batch_key, sync or durable async, project-scoped API key.</text>
+
+    <!-- code preview -->
+    <g transform="translate(40 220)">
+      <rect width="1000" height="220" rx="16" fill="#06121F" stroke="#1E293B"/>
+      <rect width="1000" height="36" rx="16" fill="#0F172A"/>
+      <circle cx="22" cy="18" r="5" fill="#F87171"/>
+      <circle cx="40" cy="18" r="5" fill="#FBBF24"/>
+      <circle cx="58" cy="18" r="5" fill="#34D399"/>
+      <text x="80" y="22" fill="#64748B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14">POST /v1/ingest</text>
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">
+        <text x="20" y="76" fill="#94A3B8">curl -X POST http://localhost:8080/v1/ingest \</text>
+        <text x="20" y="106" fill="#94A3B8">  -H "Authorization: Bearer $API_KEY" \</text>
+        <text x="20" y="136" fill="#94A3B8">  -H "X-Continua-Async-Version: 2" \</text>
+        <text x="20" y="166" fill="#94A3B8">  -d '{ "traces": [ ... ], "spans": [ ... ] }'</text>
+        <text x="20" y="196" fill="#A78BFA">← 202 Accepted { batch_id, status: "queued" }</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Tile 2: PERSIST -->
+  <g transform="translate(1240 300)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="1040" height="460" rx="28" fill="#0B1220" stroke="#1E293B"/>
+    <text x="40" y="76" fill="#60A5FA" font-size="22" font-weight="700" letter-spacing="3">02 · PERSIST</text>
+    <text x="40" y="136" fill="#F8FAFC" font-size="44" font-weight="800">Postgres + River jobs</text>
+    <text x="40" y="180" fill="#94A3B8" font-size="22">Projects, sessions, traces, spans, span_events — plus rollups and cleanup.</text>
+
+    <!-- entity stack -->
+    <g transform="translate(40 220)">
+      <rect width="960" height="60" rx="14" fill="#0F172A" stroke="#1E293B"/>
+      <text x="24" y="38" fill="#E2E8F0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">projects</text>
+      <text x="900" y="38" fill="#475569" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="16">root</text>
+
+      <rect y="76" width="960" height="60" rx="14" fill="#0F172A" stroke="#1E293B"/>
+      <text x="24" y="114" fill="#E2E8F0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">sessions</text>
+      <text x="880" y="114" fill="#475569" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="16">workflow</text>
+
+      <rect y="152" width="960" height="60" rx="14" fill="#0F172A" stroke="#1E293B"/>
+      <text x="24" y="190" fill="#E2E8F0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">traces</text>
+      <text x="884" y="190" fill="#475569" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="16">run</text>
+
+      <rect y="228" width="960" height="60" rx="14" fill="#0F172A" stroke="#1E293B"/>
+      <text x="24" y="266" fill="#E2E8F0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20">spans · span_events</text>
+      <text x="864" y="266" fill="#475569" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="16">timeline</text>
+    </g>
+  </g>
+
+  <!-- Tile 3: INSPECT -->
+  <g transform="translate(120 800)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="1080" height="460" rx="28" fill="#0B1220" stroke="#1E293B"/>
+    <text x="40" y="76" fill="#F59E0B" font-size="22" font-weight="700" letter-spacing="3">03 · INSPECT</text>
+    <text x="40" y="136" fill="#F8FAFC" font-size="44" font-weight="800">Failure-first trace debugger</text>
+    <text x="40" y="180" fill="#94A3B8" font-size="22">Span tree, execution waterfall, payload inspector, merged polling timeline.</text>
+
+    <!-- waterfall preview -->
+    <g transform="translate(40 220)">
+      <rect width="1000" height="220" rx="16" fill="#06121F" stroke="#1E293B"/>
+      <rect width="1000" height="36" rx="16" fill="#0F172A"/>
+      <text x="20" y="22" fill="#64748B" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14">execution waterfall · /traces/:id</text>
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#0B1220">
+        <rect x="20" y="60" width="940" height="20" rx="4" fill="#475569"/><text x="28" y="74" font-weight="700">agent.run</text>
+        <rect x="40" y="92" width="220" height="20" rx="4" fill="#2DD4BF"/><text x="48" y="106" font-weight="700">plan</text>
+        <rect x="270" y="92" width="300" height="20" rx="4" fill="#A78BFA"/><text x="278" y="106" font-weight="700">retrieve.docs</text>
+        <rect x="580" y="92" width="240" height="20" rx="4" fill="#F59E0B"/><text x="588" y="106" font-weight="700">model.invoke</text>
+        <rect x="830" y="92" width="120" height="20" rx="4" fill="#22D3EE"/><text x="838" y="106" font-weight="700">tool.search</text>
+        <rect x="40" y="124" width="380" height="20" rx="4" fill="#FB7185"/><text x="48" y="138" font-weight="700">model.invoke · retry</text>
+        <rect x="430" y="124" width="160" height="20" rx="4" fill="#F59E0B"/><text x="438" y="138" font-weight="700">decide</text>
+        <rect x="600" y="124" width="280" height="20" rx="4" fill="#A78BFA"/><text x="608" y="138" font-weight="700">tool.write</text>
+        <rect x="40" y="156" width="640" height="20" rx="4" fill="#475569"/><text x="48" y="170" fill="#CBD5E1" font-weight="700">timeline · merged events</text>
+        <rect x="690" y="156" width="270" height="20" rx="4" fill="#FB7185"/><text x="698" y="170" font-weight="700">error · context_lost</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Tile 4: COMPARE -->
+  <g transform="translate(1240 800)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="1040" height="460" rx="28" fill="#0B1220" stroke="#1E293B"/>
+    <text x="40" y="76" fill="#A78BFA" font-size="22" font-weight="700" letter-spacing="3">04 · COMPARE</text>
+    <text x="40" y="136" fill="#F8FAFC" font-size="44" font-weight="800">Baseline vs candidate</text>
+    <text x="40" y="180" fill="#94A3B8" font-size="22">Diff two terminal traces from the same session — spans, timing, decisions.</text>
+
+    <!-- two columns -->
+    <g transform="translate(40 220)">
+      <g>
+        <rect width="460" height="220" rx="16" fill="#06121F" stroke="#1E293B"/>
+        <rect width="460" height="36" rx="16" fill="#0F172A"/>
+        <text x="20" y="22" fill="#2DD4BF" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14">baseline_trace_id</text>
+        <g>
+          <rect x="20" y="60" width="420" height="20" rx="4" fill="#475569"/>
+          <rect x="40" y="92" width="160" height="20" rx="4" fill="#2DD4BF"/>
+          <rect x="210" y="92" width="200" height="20" rx="4" fill="#A78BFA"/>
+          <rect x="40" y="124" width="260" height="20" rx="4" fill="#F59E0B"/>
+          <rect x="40" y="156" width="380" height="20" rx="4" fill="#22D3EE"/>
+          <rect x="40" y="188" width="140" height="20" rx="4" fill="#475569"/>
+        </g>
+      </g>
+      <g transform="translate(500 0)">
+        <rect width="460" height="220" rx="16" fill="#06121F" stroke="#1E293B"/>
+        <rect width="460" height="36" rx="16" fill="#0F172A"/>
+        <text x="20" y="22" fill="#FB7185" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14">candidate_trace_id</text>
+        <g>
+          <rect x="20" y="60" width="420" height="20" rx="4" fill="#475569"/>
+          <rect x="40" y="92" width="180" height="20" rx="4" fill="#2DD4BF"/>
+          <rect x="230" y="92" width="160" height="20" rx="4" fill="#FB7185"/>
+          <rect x="40" y="124" width="220" height="20" rx="4" fill="#FB7185"/>
+          <rect x="40" y="156" width="320" height="20" rx="4" fill="#22D3EE"/>
+          <rect x="40" y="188" width="240" height="20" rx="4" fill="#A78BFA"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>
+</content>
+</invoke>

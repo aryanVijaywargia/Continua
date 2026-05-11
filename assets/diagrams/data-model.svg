@@ -1,0 +1,150 @@
+<svg width="2400" height="1200" viewBox="0 0 2400 1200" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="dataTitle dataDesc">
+  <title id="dataTitle">Continua data model</title>
+  <desc id="dataDesc">Entity-relationship diagram showing projects, ingest_batches, sessions, traces, spans, and span_events with key columns and external identifiers.</desc>
+
+  <defs>
+    <linearGradient id="dmBg" x1="0" y1="0" x2="2400" y2="1200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <pattern id="dmGrid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#FFFFFF" stroke-opacity="0.03"/>
+    </pattern>
+    <marker id="dmDot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6">
+      <circle cx="5" cy="5" r="4" fill="#64748B"/>
+    </marker>
+  </defs>
+
+  <rect width="2400" height="1200" fill="url(#dmBg)"/>
+  <rect width="2400" height="1200" fill="url(#dmGrid)"/>
+
+  <text x="120" y="140" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="64" font-weight="800" letter-spacing="-1.5">Data model</text>
+  <text x="120" y="200" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="30">Project-scoped, with internal UUIDs and stable external identifiers.</text>
+
+  <!-- Entity helper styles via reused groups -->
+  <!-- projects -->
+  <g transform="translate(120 320)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="380" height="220" rx="20" fill="#0B1220" stroke="#1E293B"/>
+    <rect width="380" height="56" rx="20" fill="#0F172A"/>
+    <text x="24" y="38" fill="#2DD4BF" font-size="22" font-weight="700">projects</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">
+      <text x="24" y="98">id  (uuid, pk)</text>
+      <text x="24" y="130">name</text>
+      <text x="24" y="162">api_key  (project scope)</text>
+      <text x="24" y="194">created_at</text>
+    </g>
+  </g>
+
+  <!-- ingest_batches -->
+  <g transform="translate(120 620)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="380" height="260" rx="20" fill="#0B1220" stroke="#1E293B"/>
+    <rect width="380" height="56" rx="20" fill="#0F172A"/>
+    <text x="24" y="38" fill="#A78BFA" font-size="22" font-weight="700">ingest_batches</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">
+      <text x="24" y="98">id  (uuid, pk)</text>
+      <text x="24" y="130">project_id  → projects.id</text>
+      <text x="24" y="162">batch_key  (idempotent)</text>
+      <text x="24" y="194">status  (queued/succeeded)</text>
+      <text x="24" y="226">trace_count · span_count</text>
+    </g>
+  </g>
+
+  <!-- sessions -->
+  <g transform="translate(660 320)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="380" height="220" rx="20" fill="#0B1220" stroke="#1E293B"/>
+    <rect width="380" height="56" rx="20" fill="#0F172A"/>
+    <text x="24" y="38" fill="#60A5FA" font-size="22" font-weight="700">sessions</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">
+      <text x="24" y="98">id  (uuid, pk)</text>
+      <text x="24" y="130">project_id  → projects.id</text>
+      <text x="24" y="162">external_id  (user-facing)</text>
+      <text x="24" y="194">created_at</text>
+    </g>
+  </g>
+
+  <!-- traces -->
+  <g transform="translate(1200 320)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="420" height="260" rx="20" fill="#0B1220" stroke="#1E293B"/>
+    <rect width="420" height="56" rx="20" fill="#0F172A"/>
+    <text x="24" y="38" fill="#F59E0B" font-size="22" font-weight="700">traces</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">
+      <text x="24" y="98">id  (uuid, pk)</text>
+      <text x="24" y="130">project_id  → projects.id</text>
+      <text x="24" y="162">session_id  → sessions.id</text>
+      <text x="24" y="194">trace_id  (external)</text>
+      <text x="24" y="226">status · started_at · ended_at</text>
+    </g>
+  </g>
+
+  <!-- spans -->
+  <g transform="translate(1780 320)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="480" height="260" rx="20" fill="#0B1220" stroke="#1E293B"/>
+    <rect width="480" height="56" rx="20" fill="#0F172A"/>
+    <text x="24" y="38" fill="#22D3EE" font-size="22" font-weight="700">spans</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">
+      <text x="24" y="98">id  (uuid, pk)</text>
+      <text x="24" y="130">trace_id  → traces.id</text>
+      <text x="24" y="162">span_id  (external)</text>
+      <text x="24" y="194">parent_span_id  (external)</text>
+      <text x="24" y="226">name · kind · input · output</text>
+    </g>
+  </g>
+
+  <!-- span_events -->
+  <g transform="translate(1780 660)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="480" height="220" rx="20" fill="#0B1220" stroke="#1E293B"/>
+    <rect width="480" height="56" rx="20" fill="#0F172A"/>
+    <text x="24" y="38" fill="#FB7185" font-size="22" font-weight="700">span_events</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">
+      <text x="24" y="98">id  (uuid, pk)</text>
+      <text x="24" y="130">span_id  → spans.id</text>
+      <text x="24" y="162">type  (log/error/decision/...)</text>
+      <text x="24" y="194">payload · occurred_at</text>
+    </g>
+  </g>
+
+  <!-- engine schema (foundation only) -->
+  <g transform="translate(660 660)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="960" height="220" rx="20" fill="#0B1220" stroke="#1E293B" stroke-dasharray="6 4"/>
+    <rect width="960" height="56" rx="20" fill="#0F172A"/>
+    <text x="24" y="38" fill="#A78BFA" font-size="22" font-weight="700">engine schema  ·  foundation only</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">
+      <text x="24" y="98">engine.instances · engine.runs · engine.history</text>
+      <text x="24" y="130">engine.inbox · engine.activity_tasks</text>
+      <text x="24" y="162">engine.request_dedupe · engine.projection_checkpoints</text>
+      <text x="24" y="194" fill="#64748B" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">No public execution API or debugger runtime yet.</text>
+    </g>
+  </g>
+
+  <!-- relationships -->
+  <g stroke="#64748B" stroke-width="3" fill="none" stroke-linecap="round">
+    <!-- projects -> ingest_batches -->
+    <path d="M310 540 L 310 620" stroke-dasharray="0"/>
+    <!-- projects -> sessions -->
+    <path d="M500 430 L 660 430"/>
+    <!-- sessions -> traces -->
+    <path d="M1040 430 L 1200 430"/>
+    <!-- traces -> spans -->
+    <path d="M1620 430 L 1780 430"/>
+    <!-- spans -> span_events -->
+    <path d="M2020 580 L 2020 660"/>
+    <!-- ingest_batches -> traces (writes) -->
+    <path d="M500 700 C 800 700 900 470 1200 470" stroke-dasharray="6 6"/>
+  </g>
+
+  <!-- legend -->
+  <g transform="translate(120 990)" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
+    <rect width="2160" height="120" rx="20" fill="#0B1220" stroke="#1E293B"/>
+    <g font-size="20" fill="#CBD5E1">
+      <circle cx="36" cy="40" r="8" fill="#2DD4BF"/><text x="56" y="46">project scope</text>
+      <circle cx="220" cy="40" r="8" fill="#60A5FA"/><text x="240" y="46">workflow</text>
+      <circle cx="380" cy="40" r="8" fill="#F59E0B"/><text x="400" y="46">run</text>
+      <circle cx="500" cy="40" r="8" fill="#22D3EE"/><text x="520" y="46">tree</text>
+      <circle cx="620" cy="40" r="8" fill="#FB7185"/><text x="640" y="46">timeline</text>
+      <circle cx="800" cy="40" r="8" fill="#A78BFA"/><text x="820" y="46">durable batch / engine foundation</text>
+    </g>
+    <text x="36" y="90" fill="#94A3B8" font-size="20">External identifiers (external_id, trace_id, span_id, parent_span_id) are the IDs SDKs send and the debugger surfaces in URLs.</text>
+  </g>
+</svg>
+</content>
+</invoke>
