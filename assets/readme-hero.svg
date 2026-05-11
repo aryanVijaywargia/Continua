@@ -1,0 +1,51 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Continua operator console overview</title>
+  <desc id="desc">A premium README hero graphic showing the Continua ingest, persistence, jobs, API, and debugger console path.</desc>
+  <rect width="1600" height="900" rx="0" fill="#0B1020"/>
+  <path d="M0 0H1600V900H0V0Z" fill="url(#grid)"/>
+  <circle cx="1360" cy="160" r="280" fill="#2DD4BF" opacity="0.12"/>
+  <circle cx="250" cy="760" r="340" fill="#8B5CF6" opacity="0.11"/>
+  <rect x="96" y="96" width="1408" height="708" rx="32" fill="#111827" stroke="#263244"/>
+  <rect x="96" y="96" width="1408" height="84" rx="32" fill="#0F172A"/>
+  <circle cx="142" cy="138" r="10" fill="#F87171"/>
+  <circle cx="174" cy="138" r="10" fill="#FBBF24"/>
+  <circle cx="206" cy="138" r="10" fill="#34D399"/>
+  <text x="252" y="147" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="24">continua local operator console</text>
+
+  <text x="156" y="274" fill="#F8FAFC" font-family="Inter, Arial, sans-serif" font-size="74" font-weight="800">Debug AI agent runs</text>
+  <text x="156" y="340" fill="#CBD5E1" font-family="Inter, Arial, sans-serif" font-size="34">Trace, inspect, and compare executions from ingest to UI.</text>
+
+  <g transform="translate(156 420)">
+    <rect width="250" height="134" rx="20" fill="#101827" stroke="#2DD4BF"/>
+    <text x="28" y="46" fill="#2DD4BF" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">01 Ingest</text>
+    <text x="28" y="86" fill="#E2E8F0" font-family="Inter, Arial, sans-serif" font-size="24">REST batches</text>
+  </g>
+  <g transform="translate(452 420)">
+    <rect width="250" height="134" rx="20" fill="#101827" stroke="#60A5FA"/>
+    <text x="28" y="46" fill="#60A5FA" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">02 Store</text>
+    <text x="28" y="86" fill="#E2E8F0" font-family="Inter, Arial, sans-serif" font-size="24">Postgres</text>
+  </g>
+  <g transform="translate(748 420)">
+    <rect width="250" height="134" rx="20" fill="#101827" stroke="#A78BFA"/>
+    <text x="28" y="46" fill="#A78BFA" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">03 Process</text>
+    <text x="28" y="86" fill="#E2E8F0" font-family="Inter, Arial, sans-serif" font-size="24">River jobs</text>
+  </g>
+  <g transform="translate(1044 420)">
+    <rect width="250" height="134" rx="20" fill="#101827" stroke="#F59E0B"/>
+    <text x="28" y="46" fill="#F59E0B" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">04 Inspect</text>
+    <text x="28" y="86" fill="#E2E8F0" font-family="Inter, Arial, sans-serif" font-size="24">React debugger</text>
+  </g>
+
+  <path d="M410 487H444" stroke="#475569" stroke-width="4" stroke-linecap="round"/>
+  <path d="M706 487H740" stroke="#475569" stroke-width="4" stroke-linecap="round"/>
+  <path d="M1002 487H1036" stroke="#475569" stroke-width="4" stroke-linecap="round"/>
+
+  <rect x="156" y="642" width="1138" height="76" rx="18" fill="#0B1220" stroke="#223047"/>
+  <text x="188" y="690" fill="#CBD5E1" font-family="Inter, Arial, sans-serif" font-size="25">Python SDK or custom client -> authenticated ingest -> durable storage -> debugger read APIs</text>
+
+  <defs>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#FFFFFF" stroke-opacity="0.035"/>
+    </pattern>
+  </defs>
+</svg>

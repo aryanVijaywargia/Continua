@@ -1,0 +1,11 @@
+flowchart LR
+  client["Python SDK or custom client"]
+  ingest["Authenticated REST ingest"]
+  postgres[("Postgres")]
+  jobs["River background jobs"]
+  readapi["REST read APIs"]
+  ui["Embedded React debugger"]
+
+  client --> ingest --> postgres
+  postgres --> jobs --> postgres
+  postgres --> readapi --> ui

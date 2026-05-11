@@ -1,0 +1,54 @@
+erDiagram
+  projects ||--o{ ingest_batches : "owns"
+  projects ||--o{ sessions : "owns"
+  projects ||--o{ traces : "owns"
+  sessions ||--o{ traces : "groups"
+  traces ||--o{ spans : "contains"
+  spans ||--o{ span_events : "emits"
+
+  projects {
+    uuid id PK
+    string name
+    string api_key
+    timestamptz created_at
+  }
+  ingest_batches {
+    uuid id PK
+    uuid project_id FK
+    string batch_key
+    string status
+    int trace_count
+    int span_count
+  }
+  sessions {
+    uuid id PK
+    uuid project_id FK
+    string external_id
+    timestamptz created_at
+  }
+  traces {
+    uuid id PK
+    uuid project_id FK
+    uuid session_id FK
+    string trace_id
+    string status
+    timestamptz started_at
+    timestamptz ended_at
+  }
+  spans {
+    uuid id PK
+    uuid trace_id FK
+    string span_id
+    string parent_span_id
+    string name
+    string kind
+    jsonb input
+    jsonb output
+  }
+  span_events {
+    uuid id PK
+    uuid span_id FK
+    string type
+    jsonb payload
+    timestamptz occurred_at
+  }
