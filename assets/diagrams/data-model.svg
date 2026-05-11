@@ -146,5 +146,3 @@
     <text x="36" y="90" fill="#94A3B8" font-size="20">External identifiers (external_id, trace_id, span_id, parent_span_id) are the IDs SDKs send and the debugger surfaces in URLs.</text>
   </g>
 </svg>
-</content>
-</invoke>

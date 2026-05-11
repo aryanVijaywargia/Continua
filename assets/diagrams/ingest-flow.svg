@@ -139,5 +139,3 @@
     <text x="152" y="1262" fill="#CBD5E1" font-size="22">client  →  auth  →  validate  →  batch claim  →  sync write or async accept  →  Postgres  →  debugger read APIs</text>
   </g>
 </svg>
-</content>
-</invoke>

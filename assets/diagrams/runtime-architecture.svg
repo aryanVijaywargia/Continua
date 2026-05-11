@@ -175,5 +175,3 @@
     <text x="192" y="1282" fill="#CBD5E1" font-size="22">Python SDK or custom client  →  authenticated REST ingest  →  Postgres  →  River background jobs  →  REST read APIs  →  embedded React debugger</text>
   </g>
 </svg>
-</content>
-</invoke>
