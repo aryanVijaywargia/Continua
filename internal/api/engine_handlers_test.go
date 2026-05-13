@@ -1471,7 +1471,7 @@ func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t
 	)
 	defer engineServe.stop(t)
 
-	timerAt := time.Now().Add(1 * time.Second).UTC()
+	timerAt := time.Now().Add(5 * time.Second).UTC()
 	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
 		DefinitionName:    "darklaunch.demo",
 		DefinitionVersion: "v1",
@@ -1488,7 +1488,7 @@ func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t
 	})
 
 	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
-	waitForDueTimerRun(t, ctx, engineQueries, projectID, start.RunId)
+	waitForDueTimerRun(ctx, t, engineQueries, projectID, start.RunId)
 	require.Equal(t, http.StatusOK, invokeResumeEngineRun(t, server, projectID, start.RunId).Code)
 
 	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
@@ -3816,8 +3816,8 @@ func waitForActivityTask(
 }
 
 func waitForDueTimerRun(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	engineQueries *enginedb.Queries,
 	projectID uuid.UUID,
 	runID uuid.UUID,
