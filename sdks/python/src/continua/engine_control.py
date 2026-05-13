@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from typing import Any
+from typing import Any, TypeVar
 from uuid import UUID
 
 import httpx
@@ -41,6 +41,7 @@ from .types import (
 )
 
 _PREVIEW_HEADERS = {"X-Continua-Engine-Preview": "1"}
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class EngineControlClient:
@@ -171,7 +172,7 @@ class EngineControlClient:
         *,
         mode: EnginePurgeMode | str,
     ) -> EnginePurgeResponse:
-        request = EnginePurgeRequest(mode=mode)
+        request = EnginePurgeRequest.model_validate({"mode": mode})
         return self._request_model(
             "POST",
             f"/v1/engine/runs/{run_id}/purge",
@@ -199,14 +200,16 @@ class EngineControlClient:
         engine_run_status: EngineRunStatus | str | None = None,
         engine_projection_state: EngineProjectionState | str | None = None,
     ) -> EngineProjectionBackfillResponse:
-        request = EngineProjectionBackfillRequest(
-            dry_run=dry_run,
-            limit=limit,
-            older_than=older_than,
-            engine_instance_key=engine_instance_key,
-            engine_definition_name=engine_definition_name,
-            engine_run_status=engine_run_status,
-            engine_projection_state=engine_projection_state,
+        request = EngineProjectionBackfillRequest.model_validate(
+            {
+                "dry_run": dry_run,
+                "limit": limit,
+                "older_than": older_than,
+                "engine_instance_key": engine_instance_key,
+                "engine_definition_name": engine_definition_name,
+                "engine_run_status": engine_run_status,
+                "engine_projection_state": engine_projection_state,
+            }
         )
         return self._request_model(
             "POST",
@@ -308,12 +311,12 @@ class EngineControlClient:
         self,
         method: str,
         path: str,
-        model: type[BaseModel],
+        model: type[ModelT],
         *,
         json: Any | None = None,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
-    ) -> BaseModel:
+    ) -> ModelT:
         response = self._request(method, path, json=json, params=params, headers=headers)
         return model.model_validate(response.json())
 

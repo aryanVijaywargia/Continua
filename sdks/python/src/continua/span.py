@@ -17,7 +17,9 @@ _current_span: ContextVar[SpanContext | None] = ContextVar(
     "current_span", default=None
 )
 
-SpanKind = Literal["llm", "tool", "agent", "chain", "retrieval", "embedding", "generation", "default"]
+SpanKind = Literal[
+    "llm", "tool", "agent", "chain", "retrieval", "embedding", "generation", "default"
+]
 _MAX_EVENT_SEQUENCE = 2_147_483_647
 
 

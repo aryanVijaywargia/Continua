@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -424,7 +424,7 @@ class ActivityWorker:
 
         previous: dict[signal.Signals, signal.Handlers] = {}
         for sig in (signal.SIGINT, signal.SIGTERM):
-            previous[sig] = signal.getsignal(sig)
+            previous[sig] = cast(signal.Handlers, signal.getsignal(sig))
 
             def handler(_signum: int, _frame: object) -> None:
                 self.stop()

@@ -1,24 +1,56 @@
 # Continua SDK for Python
 
-Python SDK for the Continua AI Agent Observability Platform.
+Python SDK for sending AI agent traces, spans, sessions, events, and engine control
+requests to Continua.
 
 ## Installation
 
 ```bash
-pip install continua
+pip install continua-sdk
 ```
 
 ## Quick Start
 
+Initialize the client once at process startup:
+
+```python
+from continua import Continua, span, trace
+
+Continua.init(
+    api_key="your-api-key",
+    endpoint="https://api.your-continua-host.com",
+    ingest_mode="server_default",  # or "sync", "async_v2"
+)
+
+
+@trace(name="answer_question")
+def answer_question(question: str) -> str:
+    with span("retrieve_context", kind="tool") as s:
+        s.set_input({"question": question})
+        context = "retrieved context"
+        s.set_output({"context": context})
+
+    with span("call_model", kind="llm") as s:
+        s.set_input({"question": question, "context": context})
+        answer = "model answer"
+        s.set_output({"answer": answer})
+        return answer
+```
+
+For a local or self-hosted Continua server, point the SDK at your server URL:
+
 ```python
 from continua import Continua
 
-client = Continua(
-    api_key="your-api-key",
+Continua.init(
+    api_key="dev-api-key",
     endpoint="http://localhost:8080",
-    ingest_mode="server_default",  # or "sync", "async_v2"
 )
 ```
+
+This package is the client library only. It sends data to a hosted or
+self-hosted Continua server; it does not install or run the Go server,
+Postgres, River workers, or debugger UI.
 
 ## Async Ingest Modes
 
@@ -35,12 +67,25 @@ result = client.wait_for_batch(batch_id, timeout=30, poll_interval=0.5)
 ## Development
 
 ```bash
-# Install with dev dependencies
+# From sdks/python
 uv sync
 
-# Run tests
 uv run pytest
 
-# Type check
 uv run mypy src/
+
+uv build
 ```
+
+## Publishing
+
+The Python package is published from this directory:
+
+```bash
+cd sdks/python
+uv build
+uv publish
+```
+
+Prefer PyPI Trusted Publishing in CI for repeatable releases once the project is
+ready for public distribution.

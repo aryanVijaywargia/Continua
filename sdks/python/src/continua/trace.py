@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import functools
 import uuid
+from collections.abc import Callable
 from contextvars import ContextVar
 from datetime import datetime, timezone
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from .client import _get_client_if_initialized
 from .session import get_current_session
@@ -58,6 +59,8 @@ class TraceContext:
         """
         self.trace_id = str(uuid.uuid4())
         self.name = name
+        self.session_id: str | None
+        self.user_id: str | None
 
         # Inherit from session context if not explicitly provided
         current_session = get_current_session()
