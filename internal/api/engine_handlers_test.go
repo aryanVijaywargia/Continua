@@ -1471,6 +1471,7 @@ func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t
 	)
 	defer engineServe.stop(t)
 
+	timerAt := time.Now().Add(1 * time.Second).UTC()
 	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
 		DefinitionName:    "darklaunch.demo",
 		DefinitionVersion: "v1",
@@ -1478,7 +1479,7 @@ func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t
 		RequestKey:        "req-suspend-timer",
 		Input: map[string]any{
 			"name":     "Timer",
-			"timer_at": time.Now().Add(2 * time.Second).UTC().Format(time.RFC3339Nano),
+			"timer_at": timerAt.Format(time.RFC3339Nano),
 		},
 	}))
 
@@ -1487,7 +1488,7 @@ func TestSuspendResumeEngineRun_TimerFiresDuringSuspensionAndProcessesOnResume(t
 	})
 
 	require.Equal(t, http.StatusOK, invokeSuspendEngineRun(t, server, projectID, start.RunId).Code)
-	time.Sleep(2500 * time.Millisecond)
+	waitForDueTimerRun(t, ctx, engineQueries, projectID, start.RunId)
 	require.Equal(t, http.StatusOK, invokeResumeEngineRun(t, server, projectID, start.RunId).Code)
 
 	waitForEngineRun(t, server, projectID, start.RunId, func(run EngineRunResponse) bool {
@@ -3812,6 +3813,31 @@ func waitForActivityTask(
 	}
 	t.Fatalf("timed out waiting for activity task predicate, last task = %+v", last)
 	return enginedb.EngineActivityTask{}
+}
+
+func waitForDueTimerRun(
+	t *testing.T,
+	ctx context.Context,
+	engineQueries *enginedb.Queries,
+	projectID uuid.UUID,
+	runID uuid.UUID,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(20 * time.Second)
+	var last []pgtype.UUID
+	for time.Now().Before(deadline) {
+		dueRunIDs, err := engineQueries.ListDueTimerRunIDsByProject(ctx, projectID)
+		require.NoError(t, err)
+		last = dueRunIDs
+		for _, dueRunID := range dueRunIDs {
+			if dueRunID.Valid && dueRunID.Bytes == runID {
+				return
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for due timer inbox item for run %s, last due run IDs = %+v", runID, last)
 }
 
 func historyEventTypes(rows []enginedb.EngineHistory) []string {
