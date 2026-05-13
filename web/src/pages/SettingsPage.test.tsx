@@ -51,8 +51,11 @@ describe('SettingsPage', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'Manage your operator session and debugger workspace.',
+        name: 'Settings',
       })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Auth is handled through Auth0. Theme controls and sign-out stay here.')
     ).toBeInTheDocument();
     expect(screen.getByText('operator@continua.dev')).toBeInTheDocument();
     expect(screen.getByText('Continua Operator')).toBeInTheDocument();

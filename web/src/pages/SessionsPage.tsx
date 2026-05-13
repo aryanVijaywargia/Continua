@@ -1,22 +1,31 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import {
-  fetchSessions,
-  isAuthError,
-  type Session,
-} from '../api/client';
+import { Download } from 'lucide-react';
+import { fetchSessions, isAuthError, type Session } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
+import {
+  Btn,
+  Chip,
+  DataTable,
+  FilterBar,
+  PageHeader,
+  SearchInput,
+  Td,
+  Th,
+  Tr,
+} from '../components/DebuggerKit';
 import { PaginationControls } from '../components/PaginationControls';
-import { SortableHeader } from '../components/SortableHeader';
 import { useSessionsSearchParams } from '../hooks/useSessionsSearchParams';
 import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import { buildSessionsQueryString } from '../utils/sessionsSearchParams';
 import { formatRelativeTime } from '../utils/format';
 import { appendProjectToPath } from '../utils/projectSearchParams';
+import { downloadJsonFile } from '../utils/downloadJson';
 
 const DEBOUNCE_MS = 300;
 const EMPTY_SESSIONS: Session[] = [];
+const USER_SEARCH_PREFIX = 'user:';
 
 function normalizeDraft(value: string): string {
   return value.trim();
@@ -30,34 +39,40 @@ function SessionsContent() {
   const location = useLocation();
   const { filters, setFilters, clearAll } = useSessionsSearchParams();
   const [searchDraft, setSearchDraft] = useState(filters.q ?? '');
-  const [userIdDraft, setUserIdDraft] = useState(filters.user_id ?? '');
   const isSearchActive = Boolean(filters.q);
   const currentListUrl = `${location.pathname}${location.search}`;
 
   useEffect(() => {
-    setSearchDraft(filters.q ?? '');
-  }, [filters.q]);
+    if (filters.q) {
+      setSearchDraft(filters.q);
+      return;
+    }
 
-  useEffect(() => {
-    setUserIdDraft(filters.user_id ?? '');
-  }, [filters.user_id]);
+    setSearchDraft(filters.user_id ? `${USER_SEARCH_PREFIX}${filters.user_id}` : '');
+  }, [filters.q, filters.user_id]);
 
   const commitSearch = useCallback(
     (value: string) => {
-      setFilters({ q: normalizeDraft(value) || undefined }, 'replace');
-    },
-    [setFilters]
-  );
+      const normalizedValue = normalizeDraft(value);
+      if (normalizedValue.toLowerCase().startsWith(USER_SEARCH_PREFIX)) {
+        const userId = normalizeDraft(normalizedValue.slice(USER_SEARCH_PREFIX.length));
+        setFilters({ q: undefined, user_id: userId || undefined }, 'replace');
+        return;
+      }
 
-  const commitUserId = useCallback(
-    (value: string) => {
-      setFilters({ user_id: normalizeDraft(value) || undefined }, 'replace');
+      setFilters({ q: normalizedValue || undefined }, 'replace');
     },
     [setFilters]
   );
 
   useEffect(() => {
-    if (normalizeDraft(searchDraft) === (filters.q ?? '')) {
+    const committedSearchDraft = filters.q
+      ? filters.q
+      : filters.user_id
+        ? `${USER_SEARCH_PREFIX}${filters.user_id}`
+        : '';
+
+    if (normalizeDraft(searchDraft) === committedSearchDraft) {
       return;
     }
 
@@ -66,19 +81,7 @@ function SessionsContent() {
     }, DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [commitSearch, filters.q, searchDraft]);
-
-  useEffect(() => {
-    if (normalizeDraft(userIdDraft) === (filters.user_id ?? '')) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      commitUserId(userIdDraft);
-    }, DEBOUNCE_MS);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [commitUserId, filters.user_id, userIdDraft]);
+  }, [commitSearch, filters.q, filters.user_id, searchDraft]);
 
   const handleCreatedSortToggle = useCallback(() => {
     if (isSearchActive) {
@@ -125,6 +128,17 @@ function SessionsContent() {
   const sessions = sessionsQuery.data?.sessions ?? EMPTY_SESSIONS;
   const total = sessionsQuery.data?.total ?? 0;
   const hasFilters = Boolean(filters.q || filters.user_id);
+  const filterCount = Number(Boolean(filters.q)) + Number(Boolean(filters.user_id));
+  const handleExport = useCallback(() => {
+    downloadJsonFile('continua-sessions.json', {
+      exported_at: new Date().toISOString(),
+      source: currentListUrl,
+      filters,
+      total,
+      count: sessions.length,
+      sessions,
+    });
+  }, [currentListUrl, filters, sessions, total]);
 
   useEffect(() => {
     if (sessions.length !== 0 || total === 0 || filters.offset === 0) {
@@ -138,105 +152,48 @@ function SessionsContent() {
   }, [filters.limit, filters.offset, sessions.length, setFilters, total]);
 
   return (
-    <div className="app-page">
-      <section className="app-surface p-6 sm:p-7">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="app-overline">Session workflows</div>
-            <h1 className="mt-3 text-3xl font-black tight-headline text-[var(--continua-text-primary)] sm:text-4xl">
-              Follow a user journey across multiple traces without losing narrative context.
-            </h1>
-            <p className="mt-3 text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
-              Search sessions by external ID, filter by user, and sort for scale.
-            </p>
-          </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PageHeader
+        actions={
+          <Btn kind="secondary" leadingIcon={Download} size="sm" onClick={handleExport}>
+            Export
+          </Btn>
+        }
+        description="Group multi-trace user journeys to follow narrative context across runs."
+        title="Sessions"
+      />
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <SessionStat label="Sessions" value={String(total)} />
-            <SessionStat
-              label="Loaded"
-              value={String(sessions.length)}
-            />
-            <SessionStat
-              label="Scoped user"
-              value={filters.user_id ? '1' : 'All'}
-            />
-          </div>
-        </div>
-      </section>
+      <FilterBar
+        count={filterCount}
+        onClear={clearAll}
+        right={
+          <span className="text-[11.5px] text-[var(--c-text-muted)]">
+            {total} sessions
+            {sessionsQuery.isFetching && !sessionsQuery.isPending ? ' · refreshing' : ''}
+          </span>
+        }
+      >
+        <SearchInput
+          aria-label="Search"
+          value={searchDraft}
+          onChange={(event) => setSearchDraft(event.target.value)}
+          onClear={() => {
+            setSearchDraft('');
+            setFilters({ q: undefined, user_id: undefined }, 'push');
+          }}
+          placeholder="Search by external ID or user…"
+        />
+        {filters.q && filters.user_id ? (
+          <Chip
+            closeLabel="Clear User filter"
+            onClose={() => setFilters({ user_id: undefined }, 'push')}
+          >
+            <span>user:</span> <span>{filters.user_id}</span>
+          </Chip>
+        ) : null}
+      </FilterBar>
 
-      <section className="app-surface sticky top-[4.9rem] z-20 p-4 sm:p-5">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <QuickFilterButton
-              active={!filters.user_id}
-              label="All users"
-              onClick={() => setFilters({ user_id: undefined }, 'push')}
-            />
-            <QuickFilterButton
-              active={Boolean(filters.q)}
-              label="Search active"
-              onClick={() => {
-                if (filters.q) {
-                  setFilters({ q: undefined }, 'push');
-                }
-              }}
-            />
-            <div className="ml-auto text-sm text-[var(--continua-text-muted)]">
-              <span>{total} total</span>
-              {sessionsQuery.isFetching && !sessionsQuery.isPending ? <span className="ml-2">Refreshing…</span> : null}
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label
-                htmlFor="session-search"
-                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
-              >
-                Search
-              </label>
-              <input
-                id="session-search"
-                type="text"
-                value={searchDraft}
-                onChange={(event) => setSearchDraft(event.target.value)}
-                placeholder="Search external ID or name"
-                className="app-input"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="session-user-id"
-                className="mb-1 block text-sm font-medium text-[var(--continua-text-secondary)]"
-              >
-                User ID
-              </label>
-              <input
-                id="session-user-id"
-                type="text"
-                value={userIdDraft}
-                onChange={(event) => setUserIdDraft(event.target.value)}
-                placeholder="Filter by exact user"
-                className="app-input"
-              />
-            </div>
-          </div>
-
-          {hasFilters && (
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={clearAll}
-                className="app-button-secondary"
-              >
-                Clear filters
-              </button>
-            </div>
-          )}
-      </section>
-
-      {sessionsQuery.error && (
+      {sessionsQuery.error ? (
         isAuthError(sessionsQuery.error) ? (
           <AuthErrorBanner
             message={
@@ -246,20 +203,20 @@ function SessionsContent() {
             }
           />
         ) : (
-          <div className="app-alert-error">
+          <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
             Error loading sessions:{' '}
             {sessionsQuery.error instanceof Error
               ? sessionsQuery.error.message
               : 'Unknown error'}
           </div>
         )
-      )}
+      ) : null}
 
       {sessionsQuery.isPending && !sessionsQuery.data ? (
         <div className="app-empty-state">Loading sessions...</div>
       ) : sessions.length === 0 ? (
         <div className="app-empty-state">
-          <h2 className="text-lg font-black tight-headline text-[var(--continua-text-primary)]">
+          <h2 className="text-base font-semibold text-[var(--c-text-primary)]">
             {hasFilters ? 'No matching sessions' : 'No sessions yet'}
           </h2>
           <p className="mt-2">
@@ -270,32 +227,42 @@ function SessionsContent() {
         </div>
       ) : (
         <>
-          <section className="app-surface overflow-hidden">
-            <div className="flex items-center justify-between border-b border-[var(--continua-border-soft)] px-4 py-3 sm:px-5">
-              <div className="flex items-center gap-4 app-overline">
-                <span>Session</span>
-                <span>User</span>
-                <span>Name</span>
-              </div>
-              <div className="flex items-center gap-3 app-overline">
-                <SortableHeader
-                  label="Traces"
-                  isActive={filters.sort_by === 'trace_count'}
-                  isAscending={filters.sort_dir === 'asc'}
-                  isDisabled={isSearchActive}
-                  onClick={handleTraceCountSortToggle}
-                />
-                <SortableHeader
-                  label="Created"
-                  isActive={filters.sort_by === 'created_at'}
-                  isAscending={filters.sort_dir === 'asc'}
-                  isDisabled={isSearchActive}
-                  onClick={handleCreatedSortToggle}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3 p-4 sm:p-5">
+          <DataTable>
+            <colgroup>
+              <col className="w-[26%]" />
+              <col className="w-[22%]" />
+              <col className="w-[26%]" />
+              <col className="w-[90px]" />
+              <col className="w-[130px]" />
+              <col className="w-[130px]" />
+            </colgroup>
+            <thead>
+              <tr>
+                <Th>Session</Th>
+                <Th>User</Th>
+                <Th>Name</Th>
+                <Th
+                  align="right"
+                  sortable={!isSearchActive}
+                  sortActive={filters.sort_by === 'trace_count'}
+                  sortDir={filters.sort_dir}
+                  onSort={handleTraceCountSortToggle}
+                >
+                  Traces
+                </Th>
+                <Th align="right">Last active</Th>
+                <Th
+                  align="right"
+                  sortable={!isSearchActive}
+                  sortActive={filters.sort_by === 'created_at'}
+                  sortDir={filters.sort_dir}
+                  onSort={handleCreatedSortToggle}
+                >
+                  Created
+                </Th>
+              </tr>
+            </thead>
+            <tbody>
               {sessions.map((session) => (
                 <SessionRow
                   key={session.id}
@@ -304,18 +271,19 @@ function SessionsContent() {
                   session={session}
                 />
               ))}
-            </div>
-          </section>
-
-          <PaginationControls
-            offset={filters.offset}
-            pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
-            total={total}
-            currentItemCount={sessions.length}
-            onOffsetChange={(offset) => setFilters({ offset }, 'push')}
-            onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
-            onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
-          />
+            </tbody>
+          </DataTable>
+          <div className="border-t border-[var(--c-border)] px-6 py-2">
+            <PaginationControls
+              offset={filters.offset}
+              pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
+              total={total}
+              currentItemCount={sessions.length}
+              onOffsetChange={(offset) => setFilters({ offset }, 'push')}
+              onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
+              onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
+            />
+          </div>
         </>
       )}
     </div>
@@ -324,90 +292,42 @@ function SessionsContent() {
 
 function SessionRow({
   projectId,
-  session,
   returnTo,
+  session,
 }: {
   projectId?: string;
-  session: Session;
   returnTo: string;
+  session: Session;
 }) {
+  const sessionPath = appendProjectToPath(`/sessions/${session.id}`, projectId);
+
   return (
-    <article className="app-list-row">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            to={appendProjectToPath(`/sessions/${session.id}`, projectId)}
-            state={{ returnTo }}
-            className="truncate text-sm font-semibold text-[var(--continua-text-primary)] transition hover:text-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
-          >
+    <Tr>
+      <Td>
+        <Link
+          to={sessionPath}
+          state={{ returnTo }}
+          className="flex min-w-0 flex-col gap-0.5 hover:text-[var(--c-accent-text)]"
+        >
+          <span className="truncate font-mono text-[12.5px] font-medium text-[var(--c-text-primary)]">
             {session.external_id}
-          </Link>
-          <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--continua-text-secondary)]">
-            {session.trace_count ?? 0} traces
           </span>
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--continua-text-muted)]">
-          <span>{session.user_id || 'No user ID'}</span>
-          <span>{session.name || 'Unnamed session'}</span>
-          <span>Created {formatRelativeTime(session.created_at)}</span>
-          <span className="font-mono">{session.id}</span>
-        </div>
-      </div>
-
-      <div className="grid shrink-0 gap-3 text-right text-xs sm:grid-cols-2 sm:text-sm">
-        <MetricColumn label="Traces" value={String(session.trace_count ?? 0)} />
-        <MetricColumn label="Created" value={formatRelativeTime(session.created_at)} />
-      </div>
-    </article>
-  );
-}
-
-function MetricColumn({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-[5.25rem]">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--continua-text-muted)]">
-        {label}
-      </div>
-      <div className="mt-1 text-xs font-medium text-[var(--continua-text-primary)] sm:text-sm">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function SessionStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="app-surface-muted px-4 py-3">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
-        {label}
-      </div>
-      <div className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function QuickFilterButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        active
-          ? 'inline-flex items-center rounded-full border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] px-3 py-1.5 text-sm font-medium text-[var(--continua-accent)]'
-          : 'app-button-ghost'
-      }
-    >
-      {label}
-    </button>
+          <span className="truncate font-mono text-[10.5px] text-[var(--c-text-muted)]">
+            {session.id}
+          </span>
+        </Link>
+      </Td>
+      <Td mono>{session.user_id || 'No user ID'}</Td>
+      <Td>{session.name || 'Unnamed session'}</Td>
+      <Td align="right" mono>
+        {session.trace_count ?? 0}
+      </Td>
+      <Td align="right" dim>
+        {formatRelativeTime(session.created_at)}
+      </Td>
+      <Td align="right" dim>
+        {formatRelativeTime(session.created_at)}
+      </Td>
+    </Tr>
   );
 }

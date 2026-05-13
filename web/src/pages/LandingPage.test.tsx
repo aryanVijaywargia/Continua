@@ -45,14 +45,13 @@ describe('LandingPage', () => {
       'href',
       '#open-source'
     );
-    expect(screen.getByRole('link', { name: 'Open Console' })).toHaveAttribute(
-      'href',
-      '/dashboard'
-    );
+    for (const link of screen.getAllByRole('link', { name: 'Open Console' })) {
+      expect(link).toHaveAttribute('href', '/dashboard');
+    }
     expect(
       screen.getByRole('link', { name: /See how it works/i })
     ).toHaveAttribute('href', '#how-it-works');
-    expect(screen.getByRole('link', { name: /Star on GitHub/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /View GitHub/i })).toHaveAttribute(
       'href',
       GITHUB_REPO_URL
     );
@@ -64,6 +63,9 @@ describe('LandingPage', () => {
       'href',
       '#'
     );
+    expect(screen.getByText(/Python SDK helpers/i)).toBeInTheDocument();
+    expect(screen.queryByText(/TypeScript SDK/i)).not.toBeInTheDocument();
+    expect(document.body).toHaveTextContent(/from continua import Continua, span, trace/i);
   });
 
   it('keeps section navigation available on mobile', () => {

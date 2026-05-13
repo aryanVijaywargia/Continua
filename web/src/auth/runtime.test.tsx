@@ -123,6 +123,19 @@ describe('runtime auth', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/config');
   });
 
+  it('falls back to local API-key mode when auth config is unavailable on localhost', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    render(<RuntimeAuthProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status')).toHaveTextContent('ready');
+    });
+    expect(screen.getByTestId('auth-enabled')).toHaveTextContent('false');
+    expect(screen.getByTestId('auth-domain')).toHaveTextContent('');
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/config');
+  });
+
   it('allows public demo console routes without triggering Auth0 login', () => {
     auth0State.isAuthenticated = false;
 

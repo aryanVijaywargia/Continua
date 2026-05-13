@@ -11,6 +11,7 @@ import {
   clearApiKey,
   setApiKey,
 } from '../api/client';
+import { downloadJsonFile } from '../utils/downloadJson';
 import { localDateToISOEnd, localDateToISOStart } from '../utils/tracesSearchParams';
 import {
   SESSION_ID,
@@ -26,6 +27,10 @@ import {
   renderTraceRoutes,
   resetTestEntityCounter,
 } from './testUtils';
+
+vi.mock('../utils/downloadJson', () => ({
+  downloadJsonFile: vi.fn(),
+}));
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -64,6 +69,7 @@ async function waitForDebounce() {
 beforeEach(() => {
   resetTestEntityCounter();
   fetchMock = vi.fn();
+  vi.mocked(downloadJsonFile).mockReset();
   vi.stubGlobal('fetch', fetchMock);
   localStorage.clear();
   setApiKey('test-key');
@@ -94,7 +100,7 @@ describe('TracesPage', () => {
     await waitFor(() => {
       expect(countTraceDetailRequests()).toBe(0);
     });
-    expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Clear \(/ })).not.toBeInTheDocument();
   });
 
   it('shows an engine badge for engine-backed traces', async () => {
@@ -122,6 +128,32 @@ describe('TracesPage', () => {
 
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
     expect(screen.getByText('Engine')).toBeInTheDocument();
+  });
+
+  it('exports the current trace page as JSON', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes(['/traces?q=checkout&limit=50']);
+
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Export' }));
+
+    expect(downloadJsonFile).toHaveBeenCalledWith(
+      'continua-traces.json',
+      expect.objectContaining({
+        source: '/traces?limit=50&q=checkout',
+        total: 2,
+        count: 2,
+        filters: expect.objectContaining({
+          q: 'checkout',
+          limit: 50,
+        }),
+        traces: expect.arrayContaining([
+          expect.objectContaining({ id: TRACE_ONE.id }),
+        ]),
+      })
+    );
   });
 
   it('keeps non-engine trace rows visually unchanged', async () => {
@@ -170,7 +202,7 @@ describe('TracesPage', () => {
     );
 
     expect(screen.getByLabelText('Search')).toHaveValue('checkout');
-    expect(screen.getByLabelText('Status')).toHaveValue('failed');
+    expect(screen.getByLabelText('Filter Failed traces')).toBeChecked();
     expect(screen.getByLabelText('Start Date')).toHaveValue('2026-03-10');
     expect(screen.getByLabelText('End Date')).toHaveValue('2026-03-12');
     expect(screen.getByLabelText('User ID')).toHaveValue('user-123');
@@ -178,17 +210,13 @@ describe('TracesPage', () => {
     expect(screen.getByLabelText('Only show traces with errors')).toBeChecked();
   });
 
-  it('keeps engine filters collapsed by default and auto-expands them from the URL', async () => {
+  it('renders engine filters in the facet panel and rehydrates them from the URL', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
     const firstView = renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Show engine filters' })
-    ).toHaveAttribute('aria-expanded', 'false');
-    expect(
-      screen.queryByLabelText('Engine Instance Key')
-    ).not.toBeInTheDocument();
+    expect(screen.getByText('No engine definitions')).toBeInTheDocument();
+    expect(screen.getByLabelText('Engine Instance Key')).toHaveValue('');
     firstView.unmount();
 
     renderTraceRoutes([
@@ -200,12 +228,7 @@ describe('TracesPage', () => {
       '?limit=20&engine_definition_name=checkout&engine_run_status=waiting&engine_projection_state=summary_only'
     );
 
-    expect(
-      screen.getByRole('button', { name: 'Hide engine filters' })
-    ).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByLabelText('Engine Definition Name')).toHaveValue(
-      'checkout'
-    );
+    expect(screen.getByLabelText('Filter checkout engine definition')).toBeChecked();
     expect(screen.getByLabelText('Engine Status')).toHaveValue('waiting');
     expect(screen.getByLabelText('Projection State')).toHaveValue(
       'summary_only'
@@ -258,9 +281,7 @@ describe('TracesPage', () => {
       await router.navigate(-1);
     });
 
-    await screen.findByRole('heading', {
-      name: /Trace the work that matters before it turns into support debt/i,
-    });
+    await screen.findByRole('heading', { name: 'Trace volume' });
     expect(router.state.location.pathname).toBe('/dashboard');
   });
 
@@ -270,8 +291,6 @@ describe('TracesPage', () => {
 
     renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Show engine filters' }));
 
     fetchMock.mockClear();
     const instanceKeyInput = screen.getByLabelText('Engine Instance Key');
@@ -306,7 +325,7 @@ describe('TracesPage', () => {
     );
   });
 
-  it('does not commit text filters on blur before debounce elapses', async () => {
+  it('commits text filters after debounce even if focus moves away', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(buildFetchHandler());
 
@@ -320,8 +339,8 @@ describe('TracesPage', () => {
     fireEvent.blur(userIdInput);
     await waitForDebounce();
 
-    expect(getTraceListRequests()).toHaveLength(0);
-    expect(router.state.location.search).toBe('');
+    await waitForListFetch('?limit=20&user_id=owner-42');
+    expect(router.state.location.search).toBe('?user_id=owner-42');
   });
 
   it('commits min duration after debounce and on Enter', async () => {
@@ -345,7 +364,7 @@ describe('TracesPage', () => {
     await waitForListFetch('?limit=20&min_duration_ms=2400');
   });
 
-  it('does not commit min duration on blur before debounce elapses', async () => {
+  it('commits min duration after debounce even if focus moves away', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(buildFetchHandler());
 
@@ -359,8 +378,8 @@ describe('TracesPage', () => {
     fireEvent.blur(minDurationInput);
     await waitForDebounce();
 
-    expect(getTraceListRequests()).toHaveLength(0);
-    expect(router.state.location.search).toBe('');
+    await waitForListFetch('?limit=20&min_duration_ms=1500');
+    expect(router.state.location.search).toBe('?min_duration_ms=1500');
   });
 
   it('composes filters and resets pagination when a filter changes', async () => {
@@ -381,7 +400,7 @@ describe('TracesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Next page' }));
     await waitForListFetch('?limit=20&offset=20');
 
-    await user.selectOptions(screen.getByLabelText('Status'), 'running');
+    await user.click(screen.getByLabelText('Filter Running traces'));
     await waitForListFetch('?limit=20&status=running');
     await waitFor(() => {
       expect(router.state.location.search).toBe('?status=running');
@@ -466,7 +485,7 @@ describe('TracesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Clear Session filter' }));
     await waitForListFetch('?limit=20&has_errors=true');
 
-    await user.click(screen.getByRole('button', { name: 'Clear all' }));
+    await user.click(screen.getByRole('button', { name: 'Clear (1)' }));
     await waitForListFetch('?limit=20');
     await waitFor(() => {
       expect(router.state.location.search).toBe('');
@@ -516,7 +535,7 @@ describe('TracesPage', () => {
     renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Status'), 'running');
+    await user.click(screen.getByLabelText('Filter Running traces'));
 
     expect(screen.getByText('Checkout Trace')).toBeInTheDocument();
     expect(screen.getByText('Refreshing…')).toBeInTheDocument();
@@ -542,7 +561,7 @@ describe('TracesPage', () => {
 
     renderTraceRoutes(['/traces?q=missing']);
     expect(await screen.findByText('No matching traces')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Clear all' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear (1)' })).toBeInTheDocument();
   });
 
   it('preserves API response ordering when rendering rows', async () => {
@@ -612,8 +631,7 @@ describe('TracesPage', () => {
     );
   });
 
-  it('keeps controls and chip dismiss buttons keyboard reachable with visible focus classes', async () => {
-    const user = userEvent.setup();
+  it('keeps dense filter controls and chip dismiss buttons reachable with visible focus classes', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
     renderTraceRoutes([
@@ -622,65 +640,33 @@ describe('TracesPage', () => {
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
     const searchInput = screen.getByLabelText('Search');
-    const statusSelect = screen.getByLabelText('Status');
+    const statusCheckbox = screen.getByLabelText('Filter Failed traces');
     const startDate = screen.getByLabelText('Start Date');
     const endDate = screen.getByLabelText('End Date');
     const userIdInput = screen.getByLabelText('User ID');
     const minDurationInput = screen.getByLabelText('Min Duration (ms)');
     const hasErrorsCheckbox = screen.getByLabelText('Only show traces with errors');
-    const collapseFilters = screen.getByRole('button', {
-      name: 'Collapse filters',
-    });
-    const toggleEngineFilters = screen.getByRole('button', {
-      name: 'Show engine filters',
-    });
+    const engineInstanceInput = screen.getByLabelText('Engine Instance Key');
     const clearSearch = screen.getByRole('button', { name: 'Clear Search filter' });
     const clearErrors = screen.getByRole('button', { name: 'Clear Errors filter' });
     const clearSession = screen.getByRole('button', { name: 'Clear Session filter' });
-    const clearAll = screen.getByRole('button', { name: 'Clear all' });
-    const allTracesQuickFilter = screen.getByRole('button', { name: 'All traces' });
-    const failedQuickFilter = screen.getByRole('button', { name: 'Failed' });
-    const runningQuickFilter = screen.getByRole('button', { name: 'Running' });
-    const hasErrorsQuickFilter = screen.getByRole('button', { name: 'Has errors' });
-
-    await user.tab();
-    expect(collapseFilters).toHaveFocus();
-    await user.tab();
-    expect(searchInput).toHaveFocus();
-    await user.tab();
-    expect(statusSelect).toHaveFocus();
-    await user.tab();
-    expect(startDate).toHaveFocus();
-    await user.tab();
-    expect(endDate).toHaveFocus();
-    await user.tab();
-    expect(userIdInput).toHaveFocus();
-    await user.tab();
-    expect(minDurationInput).toHaveFocus();
-    await user.tab();
-    expect(hasErrorsCheckbox).toHaveFocus();
-    await user.tab();
-    expect(toggleEngineFilters).toHaveFocus();
-    await user.tab();
-    expect(allTracesQuickFilter).toHaveFocus();
-    await user.tab();
-    expect(failedQuickFilter).toHaveFocus();
-    await user.tab();
-    expect(runningQuickFilter).toHaveFocus();
-    await user.tab();
-    expect(hasErrorsQuickFilter).toHaveFocus();
-    await user.tab();
-    expect(clearSearch).toHaveFocus();
-    await user.tab();
-    expect(clearErrors).toHaveFocus();
-    await user.tab();
-    expect(clearSession).toHaveFocus();
-    await user.tab();
-    expect(clearAll).toHaveFocus();
+    const clearAll = screen.getByRole('button', { name: 'Clear (3)' });
+    expect(searchInput).toBeEnabled();
+    expect(statusCheckbox).toBeEnabled();
+    expect(startDate).toBeEnabled();
+    expect(endDate).toBeEnabled();
+    expect(userIdInput).toBeEnabled();
+    expect(minDurationInput).toBeEnabled();
+    expect(hasErrorsCheckbox).toBeEnabled();
+    expect(engineInstanceInput).toBeEnabled();
+    expect(clearSearch).toBeEnabled();
+    expect(clearErrors).toBeEnabled();
+    expect(clearSession).toBeEnabled();
+    expect(clearAll).toBeEnabled();
 
     expect(searchInput).toHaveClass('app-input');
     expect(clearSearch.className).toContain('focus:ring-2');
-    expect(clearAll).toHaveClass('app-button-secondary');
+    expect(clearAll.className).toContain('focus:ring-2');
   });
 
   it('rehydrates draft text inputs on back and forward navigation', async () => {
@@ -779,13 +765,14 @@ describe('TracesPage', () => {
     expect(screen.getAllByText('Started').length).toBeGreaterThan(0);
   });
 
-  it('renders session external ID first on trace rows', async () => {
+  it('renders trace ID as the secondary trace row identifier', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
     renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
-    expect(screen.getByText('conv-checkout-123')).toBeInTheDocument();
+    expect(screen.getByText(TRACE_ONE.id)).toBeInTheDocument();
+    expect(screen.queryByText('conv-checkout-123')).not.toBeInTheDocument();
     expect(screen.queryByText(SESSION_ID)).not.toBeInTheDocument();
   });
 });

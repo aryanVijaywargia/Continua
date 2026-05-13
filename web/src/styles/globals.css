@@ -16,6 +16,8 @@
     color-scheme: light;
     --continua-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --continua-font-mono: 'IBM Plex Mono', 'SFMono-Regular', monospace;
+    --font-sans: var(--continua-font-sans);
+    --font-mono: var(--continua-font-mono);
     --continua-app-bg: #f9f9f9;
     --continua-shell-rail: rgba(238, 238, 238, 0.92);
     --continua-shell-topbar: rgba(249, 249, 249, 0.86);
@@ -50,6 +52,103 @@
     --continua-waterfall-success-selected-bg: rgba(212, 227, 255, 0.95);
     --continua-waterfall-success-selected-border: rgba(0, 92, 171, 0.4);
     --continua-waterfall-tick-color: rgba(112, 119, 133, 0.18);
+    --c-app-bg: #fcfcfc;
+    --c-sidebar-bg: #f7f7f8;
+    --c-surface: #ffffff;
+    --c-surface-elevated: #ffffff;
+    --c-surface-muted: #f4f4f5;
+    --c-table-head-bg: #fafafa;
+    --c-row-hover-bg: rgba(0, 0, 0, 0.025);
+    --c-row-selected-bg: rgba(0, 92, 171, 0.06);
+    --c-nav-active-bg: rgba(0, 0, 0, 0.05);
+    --c-nav-hover-bg: rgba(0, 0, 0, 0.03);
+    --c-kbd-bg: rgba(0, 0, 0, 0.025);
+    --c-border: rgba(17, 24, 39, 0.09);
+    --c-border-subtle: rgba(17, 24, 39, 0.05);
+    --c-border-strong: rgba(17, 24, 39, 0.16);
+    --c-text-primary: #0f172a;
+    --c-text-secondary: #475569;
+    --c-text-muted: #94a3b8;
+    --c-text-inverse: #fcfcfc;
+    --c-accent: #0075d6;
+    --c-accent-text: #005cab;
+    --c-accent-faint: rgba(0, 117, 214, 0.08);
+    --c-accent-border: rgba(0, 117, 214, 0.25);
+    --c-blue: #2563eb;
+    --c-blue-text: #1d4ed8;
+    --c-blue-faint: rgba(37, 99, 235, 0.08);
+    --c-blue-border: rgba(37, 99, 235, 0.22);
+    --c-green: #059669;
+    --c-green-text: #047857;
+    --c-green-faint: rgba(5, 150, 105, 0.08);
+    --c-green-border: rgba(5, 150, 105, 0.22);
+    --c-red: #dc2626;
+    --c-red-text: #b91c1c;
+    --c-red-faint: rgba(220, 38, 38, 0.08);
+    --c-red-border: rgba(220, 38, 38, 0.22);
+    --c-amber: #d97706;
+    --c-amber-text: #b45309;
+    --c-amber-faint: rgba(217, 119, 6, 0.08);
+    --c-amber-border: rgba(217, 119, 6, 0.22);
+    --c-muted: #94a3b8;
+    --c-muted-text: #64748b;
+    --c-bar-success: #10b981;
+    --c-bar-success-bg: rgba(16, 185, 129, 0.14);
+    --c-bar-running: #3b82f6;
+    --c-bar-running-bg: rgba(59, 130, 246, 0.14);
+    --c-bar-failed: #ef4444;
+    --c-bar-failed-bg: rgba(239, 68, 68, 0.14);
+    --c-bar-tick: rgba(15, 23, 42, 0.06);
+  }
+
+  html.dark {
+    --c-app-bg: #0a0b0f;
+    --c-sidebar-bg: #0c0e13;
+    --c-surface: #111318;
+    --c-surface-elevated: #161922;
+    --c-surface-muted: #15171d;
+    --c-table-head-bg: #0e1015;
+    --c-row-hover-bg: rgba(255, 255, 255, 0.025);
+    --c-row-selected-bg: rgba(122, 174, 255, 0.06);
+    --c-nav-active-bg: rgba(255, 255, 255, 0.06);
+    --c-nav-hover-bg: rgba(255, 255, 255, 0.03);
+    --c-kbd-bg: rgba(255, 255, 255, 0.04);
+    --c-border: rgba(255, 255, 255, 0.08);
+    --c-border-subtle: rgba(255, 255, 255, 0.04);
+    --c-border-strong: rgba(255, 255, 255, 0.16);
+    --c-text-primary: #e2e3e9;
+    --c-text-secondary: #a1a8b8;
+    --c-text-muted: #6b7280;
+    --c-text-inverse: #0a0b0f;
+    --c-accent: #7aaeff;
+    --c-accent-text: #93b8ff;
+    --c-accent-faint: rgba(122, 174, 255, 0.1);
+    --c-accent-border: rgba(122, 174, 255, 0.25);
+    --c-blue: #60a5fa;
+    --c-blue-text: #93c5fd;
+    --c-blue-faint: rgba(96, 165, 250, 0.1);
+    --c-blue-border: rgba(96, 165, 250, 0.25);
+    --c-green: #34d399;
+    --c-green-text: #6ee7b7;
+    --c-green-faint: rgba(52, 211, 153, 0.1);
+    --c-green-border: rgba(52, 211, 153, 0.22);
+    --c-red: #f87171;
+    --c-red-text: #fca5a5;
+    --c-red-faint: rgba(248, 113, 113, 0.1);
+    --c-red-border: rgba(248, 113, 113, 0.22);
+    --c-amber: #fbbf24;
+    --c-amber-text: #fcd34d;
+    --c-amber-faint: rgba(251, 191, 36, 0.1);
+    --c-amber-border: rgba(251, 191, 36, 0.22);
+    --c-muted: #6b7280;
+    --c-muted-text: #9ca3af;
+    --c-bar-success: #34d399;
+    --c-bar-success-bg: rgba(52, 211, 153, 0.18);
+    --c-bar-running: #60a5fa;
+    --c-bar-running-bg: rgba(96, 165, 250, 0.18);
+    --c-bar-failed: #f87171;
+    --c-bar-failed-bg: rgba(248, 113, 113, 0.18);
+    --c-bar-tick: rgba(255, 255, 255, 0.08);
   }
 
 
@@ -60,9 +159,10 @@
   }
 
   body {
-    background-color: var(--continua-app-bg);
-    color: var(--continua-text-primary);
+    background-color: var(--c-app-bg);
+    color: var(--c-text-primary);
     font-family: var(--continua-font-sans);
+    font-size: 13px;
     @apply antialiased;
   }
 
@@ -92,6 +192,18 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes continua-pulse {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.85);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2);
   }
 }
 
@@ -144,6 +256,18 @@
     display: none;
   }
 
+  @media (min-width: 768px) {
+    .marketing-workflow-step::after {
+      content: '';
+      position: absolute;
+      top: 48px;
+      right: -61px;
+      width: 48px;
+      height: 2px;
+      background: #e2e2e2;
+    }
+  }
+
   .app-shell-enter {
     animation: continua-shell-enter 240ms ease-out;
   }
@@ -161,27 +285,27 @@
   }
 
   .app-page {
-    @apply flex flex-col gap-8;
+    @apply flex min-h-0 flex-1 flex-col;
   }
 
   .app-surface {
-    background: var(--continua-surface-elevated);
-    border: 1px solid var(--continua-border-soft);
-    box-shadow: var(--continua-shadow-soft);
-    @apply rounded-xl p-8;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    box-shadow: none;
+    @apply rounded-md p-6;
   }
 
   .app-surface-muted {
-    background: var(--continua-surface-muted);
-    border: 1px solid var(--continua-border-soft);
-    @apply rounded-xl;
+    background: var(--c-surface-muted);
+    border: 1px solid var(--c-border);
+    @apply rounded-md;
   }
 
   .app-metric-panel {
-    background: var(--continua-surface-elevated);
-    border: 1px solid var(--continua-border-soft);
-    box-shadow: var(--continua-shadow-soft);
-    @apply rounded-xl p-8;
+    background: var(--c-surface);
+    border-right: 1px solid var(--c-border);
+    box-shadow: none;
+    @apply rounded-none p-4;
   }
 
   .tight-headline {
@@ -190,7 +314,7 @@
   }
 
   .app-overline {
-    color: var(--continua-text-muted);
+    color: var(--c-text-muted);
     @apply text-[10px] font-black uppercase tracking-widest;
   }
 
@@ -204,44 +328,44 @@
   }
 
   .app-button-primary {
-    background: var(--continua-text-primary);
-    color: var(--continua-app-bg);
-    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-bold transition hover:opacity-90 active:scale-95 focus:outline-none focus:ring-2;
+    background: var(--c-text-primary);
+    color: var(--c-app-bg);
+    @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-semibold transition hover:opacity-90 active:scale-95 focus:outline-none focus:ring-2;
   }
 
   .app-button-secondary {
-    background: var(--continua-surface-elevated);
-    border: 1px solid var(--continua-border-strong);
-    color: var(--continua-text-primary);
-    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-bold transition hover:border-[var(--continua-accent)] hover:text-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)];
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    color: var(--c-text-primary);
+    @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition hover:border-[var(--c-border-strong)] hover:text-[var(--c-accent-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)];
   }
 
   .app-button-ghost {
     background: transparent;
-    border: 1px solid var(--continua-border-soft);
-    color: var(--continua-text-secondary);
-    @apply inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition hover:border-[var(--continua-border-strong)] hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)];
+    border: 1px solid transparent;
+    color: var(--c-text-secondary);
+    @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition hover:bg-[var(--c-nav-hover-bg)] hover:text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)];
   }
 
   .app-input,
   .app-select {
-    background: var(--continua-surface-elevated);
-    border: 1px solid var(--continua-border-soft);
-    color: var(--continua-text-primary);
-    @apply w-full rounded-xl px-4 py-3 text-sm outline-none transition focus:border-[var(--continua-accent)] focus:ring-2 focus:ring-[var(--continua-accent-faint)];
+    background: var(--c-app-bg);
+    border: 1px solid var(--c-border);
+    color: var(--c-text-primary);
+    @apply w-full rounded-md px-3 py-2 text-sm outline-none transition focus:border-[var(--c-accent)] focus:ring-2 focus:ring-[var(--c-accent-faint)];
   }
 
   .app-list-row {
-    background: var(--continua-surface-elevated);
-    border: 1px solid var(--continua-border-soft);
-    @apply flex items-start justify-between gap-3 rounded-xl px-5 py-4 transition hover:border-[var(--continua-accent-faint)] hover:bg-[var(--continua-surface)];
+    background: transparent;
+    border-bottom: 1px solid var(--c-border-subtle);
+    @apply flex items-start justify-between gap-3 rounded-none px-4 py-3 transition hover:bg-[var(--c-row-hover-bg)];
   }
 
   .app-empty-state {
-    background: var(--continua-surface-muted);
-    border: 1px dashed var(--continua-border-soft);
-    color: var(--continua-text-muted);
-    @apply mt-5 rounded-xl px-5 py-10 text-center text-sm;
+    background: var(--c-surface-muted);
+    border: 1px dashed var(--c-border);
+    color: var(--c-text-muted);
+    @apply m-5 rounded-md px-5 py-10 text-center text-sm;
   }
 
   .app-alert-error {

@@ -108,6 +108,7 @@ async function bootstrapOperatorSession(page: Page) {
     };
     e2eWindow.__CONTINUA_E2E_AUTH_BYPASS__ = true;
     e2eWindow.__CONTINUA_E2E_AUTH_TOKEN__ = operatorToken;
+    window.localStorage.setItem('continua_api_key', operatorToken);
     window.localStorage.setItem('continua_theme_mode', 'light');
   }, E2E_OPERATOR_TOKEN);
 }
@@ -118,6 +119,12 @@ async function fulfillJson(route: Route, data: unknown, status = 200) {
     contentType: 'application/json',
     body: JSON.stringify(data),
   });
+}
+
+function expectOperatorAuthHeader(route: Route) {
+  expect(route.request().headers().authorization).toBe(
+    `Bearer ${E2E_OPERATOR_TOKEN}`
+  );
 }
 
 function filterTraces(url: URL) {
@@ -226,9 +233,7 @@ async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'ope
     }
 
     if (mode === 'operator') {
-      expect(route.request().headers().authorization).toBe(
-        `Bearer ${E2E_OPERATOR_TOKEN}`
-      );
+      expectOperatorAuthHeader(route);
     }
 
     if (url.pathname === '/api/projects') {
@@ -335,28 +340,24 @@ test('opens a protected route and switches the selected project', async ({ page 
   await mockApiRoutes(page, 'operator');
   await page.goto('/traces');
 
-  await expect(
-    page.getByRole('heading', {
-      name: /Find the run, isolate the failure, and jump straight into the workspace/i,
-    })
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Traces' })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`project_id=${PRIMARY_PROJECT_ID}`));
 
   if (isMobile) {
     await page.getByRole('button', { name: 'Open navigation' }).click();
-    const projectSwitcher = page.locator('#mobile-project-switcher');
+    const projectSwitcher = page.getByRole('combobox', { name: 'Project' });
     await expect(projectSwitcher).toBeVisible();
     await expect(projectSwitcher).toHaveValue(PRIMARY_PROJECT_ID);
     await projectSwitcher.selectOption(SECONDARY_PROJECT_ID);
     await expect(page).toHaveURL(new RegExp(`project_id=${SECONDARY_PROJECT_ID}`));
     await page.getByRole('button', { name: 'Open navigation' }).click();
-    await expect(page.locator('#mobile-project-switcher')).toHaveValue(
+    await expect(page.getByRole('combobox', { name: 'Project' })).toHaveValue(
       SECONDARY_PROJECT_ID
     );
     return;
   }
 
-  const projectSwitcher = page.locator('#project-switcher');
+  const projectSwitcher = page.getByLabel('Active project');
   await expect(projectSwitcher).toBeVisible();
   await expect(projectSwitcher).toHaveValue(PRIMARY_PROJECT_ID);
   await projectSwitcher.selectOption(SECONDARY_PROJECT_ID);
@@ -373,12 +374,7 @@ test('captures overview, traces, sessions, and settings shells', async ({ page }
     page,
     testInfo,
     `/dashboard?project_id=${PRIMARY_PROJECT_ID}`,
-    () =>
-      expect(
-        page.getByRole('heading', {
-          name: /Trace the work that matters before it turns into support debt/i,
-        })
-      ).toBeVisible(),
+    () => expect(page.getByRole('heading', { name: 'Recent traces' })).toBeVisible(),
     `${prefix}-overview`
   );
 
@@ -386,12 +382,7 @@ test('captures overview, traces, sessions, and settings shells', async ({ page }
     page,
     testInfo,
     `/traces?project_id=${PRIMARY_PROJECT_ID}`,
-    () =>
-      expect(
-        page.getByRole('heading', {
-          name: /Find the run, isolate the failure, and jump straight into the workspace/i,
-        })
-      ).toBeVisible(),
+    () => expect(page.getByRole('heading', { name: 'Traces' })).toBeVisible(),
     `${prefix}-traces`
   );
 
@@ -399,12 +390,7 @@ test('captures overview, traces, sessions, and settings shells', async ({ page }
     page,
     testInfo,
     `/sessions?project_id=${PRIMARY_PROJECT_ID}`,
-    () =>
-      expect(
-        page.getByRole('heading', {
-          name: /Follow a user journey across multiple traces without losing narrative context/i,
-        })
-      ).toBeVisible(),
+    () => expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible(),
     `${prefix}-sessions`
   );
 
@@ -412,12 +398,7 @@ test('captures overview, traces, sessions, and settings shells', async ({ page }
     page,
     testInfo,
     `/settings?project_id=${PRIMARY_PROJECT_ID}`,
-    () =>
-      expect(
-        page.getByRole('heading', {
-          name: /Manage your operator session and debugger workspace/i,
-        })
-      ).toBeVisible(),
+    () => expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible(),
     `${prefix}-settings`
   );
 });
@@ -443,7 +424,7 @@ test('captures trace, session, and compare workspaces', async ({ page }, testInf
     page,
     testInfo,
     `/sessions/${SESSION_ID}?project_id=${PRIMARY_PROJECT_ID}`,
-    () => expect(page.getByRole('heading', { name: 'Traces' })).toBeVisible(),
+    () => expect(page.getByRole('heading', { name: 'Session journey' })).toBeVisible(),
     `${prefix}-session-detail`
   );
 
@@ -475,15 +456,11 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText(/read-only demo/i)).toBeVisible();
   await expect(page.getByText(/sample traces/i)).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Run locally with your own traces' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Run locally' })).toBeVisible();
 
   await page.goto('/traces');
-  await expect(
-    page.getByRole('heading', {
-      name: /Find the run, isolate the failure, and jump straight into the workspace/i,
-    })
-  ).toBeVisible();
-  await expect(page.locator('#project-switcher')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Traces' })).toBeVisible();
+  await expect(page.getByLabel('Active project')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
 
   await page.goto(`/traces/${TRACE_ONE.id}`);
@@ -494,7 +471,7 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
   ).toBeVisible();
 
   await page.goto(`/sessions/${SESSION_ID}`);
-  await expect(page.getByRole('heading', { name: 'Traces' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Session journey' })).toBeVisible();
 
   await page.goto(
     `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`

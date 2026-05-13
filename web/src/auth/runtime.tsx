@@ -55,6 +55,14 @@ function getE2EAuthToken(): string {
   return window.__CONTINUA_E2E_AUTH_TOKEN__ ?? 'e2e-operator-token';
 }
 
+function isLocalBrowserOrigin(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+}
+
 export function useRuntimeAuthState(): RuntimeAuthState {
   const [state, setState] = useState<RuntimeAuthState>({
     ...defaultRuntimeAuthState,
@@ -76,6 +84,18 @@ export function useRuntimeAuthState(): RuntimeAuthState {
       })
       .catch((error) => {
         if (cancelled) {
+          return;
+        }
+
+        if (isLocalBrowserOrigin()) {
+          setState({
+            status: 'ready',
+            enabled: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to load authentication configuration',
+          });
           return;
         }
 

@@ -21,23 +21,23 @@ export function EnginePendingWorkPanel({
   const waitSummary = describeEngineWaitState(data?.current_wait);
 
   return (
-    <section className="rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] p-4 shadow-[var(--continua-shadow-soft)]">
+    <section className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
             Pending work
           </div>
-          <h2 className="mt-2 text-base font-bold text-[var(--continua-text-primary)]">
+          <h2 className="mt-2 text-base font-semibold text-[var(--c-text-primary)]">
             Engine wait state and queued work
           </h2>
-          <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
+          <p className="mt-1 text-sm text-[var(--c-text-secondary)]">
             Inspect outstanding activities, timers, and signals without relying
             on the projected timeline alone.
           </p>
         </div>
 
         {data ? (
-          <div className="flex flex-wrap gap-2 text-xs text-[var(--continua-text-secondary)]">
+          <div className="flex flex-wrap gap-2 text-xs text-[var(--c-text-secondary)]">
             <PendingWorkCountPill
               label="Activities"
               value={data.pending_activity_tasks}
@@ -57,25 +57,25 @@ export function EnginePendingWorkPanel({
         </div>
       ) : (
         <>
-          <div className="mt-4 rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+          <div className="mt-4 rounded-md border border-[var(--c-border)] bg-[var(--c-surface-muted)] p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
               Current wait
             </div>
             {isLoading && !data ? (
-              <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">
+              <p className="mt-2 text-sm text-[var(--c-text-secondary)]">
                 Loading pending work...
               </p>
             ) : waitSummary ? (
               <>
-                <h3 className="mt-2 text-sm font-semibold text-[var(--continua-text-primary)]">
+                <h3 className="mt-2 text-sm font-semibold text-[var(--c-text-primary)]">
                   {waitSummary.heading}
                 </h3>
-                <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
+                <p className="mt-1 text-sm text-[var(--c-text-secondary)]">
                   {waitSummary.detail}
                 </p>
               </>
             ) : (
-              <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">
+              <p className="mt-2 text-sm text-[var(--c-text-secondary)]">
                 No active wait reported.
               </p>
             )}
@@ -149,7 +149,7 @@ function PendingWorkCountPill({
   value: number;
 }) {
   return (
-    <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2.5 py-1">
+    <span className="rounded border border-[var(--c-border)] bg-[var(--c-surface-muted)] px-2 py-1">
       {label}: {value}
     </span>
   );
@@ -169,12 +169,12 @@ function PendingWorkList<Item>({
   renderItem: (item: Item, key: string) => ReactNode;
 }) {
   return (
-    <div className="rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+    <div className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface-muted)] p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
         {title}
       </div>
       {items.length === 0 ? (
-        <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">
+        <p className="mt-3 text-sm text-[var(--c-text-secondary)]">
           {emptyMessage}
         </p>
       ) : (
@@ -196,14 +196,14 @@ function PendingWorkCard({
   keyValue: string;
 }) {
   return (
-    <article className="rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] p-3">
-      <h3 className="text-sm font-semibold text-[var(--continua-text-primary)]">
+    <article className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
+      <h3 className="text-sm font-semibold text-[var(--c-text-primary)]">
         {title}
       </h3>
-      <p className="mt-1 font-mono text-xs text-[var(--continua-text-muted)]">
+      <p className="mt-1 font-mono text-xs text-[var(--c-text-muted)]">
         {keyValue}
       </p>
-      <ul className="mt-3 space-y-1 text-sm text-[var(--continua-text-secondary)]">
+      <ul className="mt-3 space-y-1 text-sm text-[var(--c-text-secondary)]">
         {metadata.map((entry) => (
           <li key={entry}>{entry}</li>
         ))}

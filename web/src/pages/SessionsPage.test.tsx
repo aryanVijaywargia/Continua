@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearApiKey, setApiKey } from '../api/client';
+import { downloadJsonFile } from '../utils/downloadJson';
 import {
   OTHER_SESSION_ID,
   SESSION_ONE,
@@ -12,6 +13,10 @@ import {
   readRequestUrl,
   renderTraceRoutes,
 } from './testUtils';
+
+vi.mock('../utils/downloadJson', () => ({
+  downloadJsonFile: vi.fn(),
+}));
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -34,6 +39,7 @@ async function waitForSessionListFetch(search: string) {
 
 beforeEach(() => {
   fetchMock = vi.fn();
+  vi.mocked(downloadJsonFile).mockReset();
   vi.stubGlobal('fetch', fetchMock);
   localStorage.clear();
   setApiKey('test-key');
@@ -56,6 +62,33 @@ describe('SessionsPage', () => {
     expect(screen.queryByText('Engine')).not.toBeInTheDocument();
   });
 
+  it('exports the current session page as JSON', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    renderTraceRoutes(['/sessions?q=conv&user_id=user-1&limit=50']);
+
+    expect(await screen.findByText('conv-checkout-123')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Export' }));
+
+    expect(downloadJsonFile).toHaveBeenCalledWith(
+      'continua-sessions.json',
+      expect.objectContaining({
+        source: '/sessions?limit=50&q=conv&user_id=user-1',
+        total: 2,
+        count: 2,
+        filters: expect.objectContaining({
+          q: 'conv',
+          user_id: 'user-1',
+          limit: 50,
+        }),
+        sessions: expect.arrayContaining([
+          expect.objectContaining({ id: SESSION_ONE.id }),
+        ]),
+      })
+    );
+  });
+
   it('rehydrates URL state and fetches with the typed sessions params', async () => {
     fetchMock.mockImplementation(
       buildFetchHandler({
@@ -74,7 +107,10 @@ describe('SessionsPage', () => {
     });
 
     expect(screen.getByLabelText('Search')).toHaveValue('conv');
-    expect(screen.getByLabelText('User ID')).toHaveValue('user-42');
+    expect(screen.getByText('user-42')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Clear User filter' })
+    ).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Rows per page' })).toHaveDisplayValue('50');
   });
 
