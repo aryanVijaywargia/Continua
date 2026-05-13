@@ -220,6 +220,16 @@ describe('AppShell', () => {
     });
   });
 
+  it('links the console brand back to the landing page', async () => {
+    await renderShell('/sessions');
+
+    expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to landing page' })).toHaveAttribute(
+      'href',
+      '/'
+    );
+  });
+
   it('switches the active project and keeps the selected project in route state', async () => {
     const user = userEvent.setup();
     await renderShell(`/dashboard?project_id=${PRIMARY_PROJECT_ID}`);
@@ -261,7 +271,7 @@ describe('AppShell', () => {
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
     expect(screen.getByText('Local API key')).toBeInTheDocument();
-    expect(screen.getByText('Overview content')).toBeInTheDocument();
+    expect(await screen.findByText('Overview content')).toBeInTheDocument();
     expect(
       (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
     ).toMatchObject({
@@ -361,20 +371,13 @@ describe('AppShell', () => {
     expect(screen.getByRole('combobox', { name: 'Search commands' })).toBeInTheDocument();
   });
 
-  it('uses a utility drawer instead of duplicate navigation when primary nav is visible', async () => {
-    const user = userEvent.setup();
+  it('keeps primary navigation available in the fixed sidebar on wide screens', async () => {
     setMatchMediaMatches(true);
 
     await renderShell();
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
-    expect(screen.getByText('Tools')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Open operator tools' }));
-
-    expect(screen.getByText('Operator tools')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Use the top bar to switch projects and move between views/i)
-    ).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Mobile primary' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Project')).not.toBeInTheDocument();
   });
@@ -402,10 +405,10 @@ describe('AppShell', () => {
     });
 
     expect(screen.getByText('Overview content')).toBeInTheDocument();
-    expect(screen.getByText('Sample data')).toBeInTheDocument();
+    expect(screen.getAllByText('Sample data').length).toBeGreaterThan(0);
     expect(screen.getByText(/read-only demo: sample traces are hosted here/i)).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Run locally with your own traces' })
+      screen.getByRole('link', { name: 'Run locally' })
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Active project')).not.toBeInTheDocument();
     expect(screen.queryByText('operator@continua.dev')).not.toBeInTheDocument();

@@ -2,21 +2,28 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
-  Command,
+  ChevronDown,
+  ChevronRight,
+  Clock,
   LayoutDashboard,
   Menu,
+  Moon,
+  MoreHorizontal,
   Settings2,
+  Sun,
   Waypoints,
   X,
+  Zap,
+  type LucideIcon,
 } from 'lucide-react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   fetchProjects,
   LOCAL_API_KEY_CHANGED_EVENT,
   setSelectedProjectIdProvider,
 } from '../api/client';
 import { useOperatorAuth, useRuntimeAuth } from '../auth/runtime';
-import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useTheme } from '../hooks/useTheme';
 import { CommandPalette } from './CommandPalette';
 import {
   buildProjectPath,
@@ -26,38 +33,17 @@ import {
 interface NavItem {
   path: string;
   label: string;
-  detail: string;
-  icon: typeof LayoutDashboard;
+  icon: LucideIcon;
 }
 
 const RUN_LOCALLY_DOCS_URL =
   'https://github.com/aryanVijaywargia/Continua/blob/main/docs/guides/run-locally.md';
 
 const NAV_ITEMS: NavItem[] = [
-  {
-    path: '/dashboard',
-    label: 'Overview',
-    detail: 'Snapshot of active traces and sessions',
-    icon: LayoutDashboard,
-  },
-  {
-    path: '/traces',
-    label: 'Traces',
-    detail: 'Triage individual runs and failures',
-    icon: Activity,
-  },
-  {
-    path: '/sessions',
-    label: 'Sessions',
-    detail: 'Follow user workflows across traces',
-    icon: Waypoints,
-  },
-  {
-    path: '/settings',
-    label: 'Settings',
-    detail: 'Theme and operator session controls',
-    icon: Settings2,
-  },
+  { path: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { path: '/traces', label: 'Traces', icon: Activity },
+  { path: '/sessions', label: 'Sessions', icon: Waypoints },
+  { path: '/settings', label: 'Settings', icon: Settings2 },
 ];
 
 export function AppShell() {
@@ -65,9 +51,9 @@ export function AppShell() {
   const navigate = useNavigate();
   const runtimeAuth = useRuntimeAuth();
   const { isAuthenticated, user } = useOperatorAuth();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const isPublicDemo = runtimeAuth.public_demo_enabled === true;
   const publicDemoLabel = runtimeAuth.public_demo_label ?? 'Sample data';
-  const isPrimaryNavVisible = useMediaQuery('(min-width: 768px)');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [lastProjectId, setLastProjectId] = useState<string | undefined>();
   const [localAuthVersion, setLocalAuthVersion] = useState(0);
@@ -78,6 +64,7 @@ export function AppShell() {
     queryKey: ['projects', localAuthVersion],
     queryFn: fetchProjects,
     enabled: isAuthenticated && !isPublicDemo,
+    retry: false,
   });
   const projects = projectsQuery.data?.projects ?? [];
   const effectiveProjectId = currentProjectId ?? lastProjectId;
@@ -112,16 +99,11 @@ export function AppShell() {
   useEffect(() => {
     if (isPublicDemo) {
       setSelectedProjectIdProvider(null);
-      return () => {
-        setSelectedProjectIdProvider(null);
-      };
+      return () => setSelectedProjectIdProvider(null);
     }
 
     setSelectedProjectIdProvider(() => selectedProjectId ?? null);
-
-    return () => {
-      setSelectedProjectIdProvider(null);
-    };
+    return () => setSelectedProjectIdProvider(null);
   }, [isPublicDemo, selectedProjectId]);
 
   useEffect(() => {
@@ -137,7 +119,6 @@ export function AppShell() {
 
     const nextParams = new URLSearchParams(location.search);
     nextParams.set('project_id', selectedProjectId);
-
     navigate(
       {
         pathname: location.pathname,
@@ -160,7 +141,6 @@ export function AppShell() {
     () => NAV_ITEMS.filter((item) => !(isPublicDemo && item.path === '/settings')),
     [isPublicDemo]
   );
-
   const commands = useMemo(() => {
     const baseCommands = [
       {
@@ -197,11 +177,18 @@ export function AppShell() {
       },
     ];
   }, [isPublicDemo, navigate, selectedProjectId]);
+  const projectsReady = isPublicDemo
+    ? true
+    : projectsQuery.isSuccess &&
+      (projects.length === 0 || selectedProject !== null);
+  const projectsErrorMessage =
+    projectsQuery.error instanceof Error
+      ? projectsQuery.error.message
+      : 'Failed to load projects.';
 
   const handleProjectChange = (projectId: string) => {
     const nextParams = new URLSearchParams(location.search);
     nextParams.set('project_id', projectId);
-
     navigate(
       {
         pathname: location.pathname,
@@ -211,336 +198,280 @@ export function AppShell() {
     );
   };
 
-  const projectsReady = isPublicDemo
-    ? true
-    : projectsQuery.isSuccess &&
-      (projects.length === 0 ||
-        (selectedProject !== null && currentProjectId === selectedProject.id));
-  const projectsErrorMessage =
-    projectsQuery.error instanceof Error
-      ? projectsQuery.error.message
-      : 'Failed to load projects.';
+  const content = isPublicDemo ? (
+    <Outlet />
+  ) : !isAuthenticated ? (
+    <ShellStateCard
+      title="Local API key required"
+      message="Enter a project API key to load the local debugger workspace."
+    />
+  ) : projectsQuery.isError ? (
+    <ShellStateCard title="Project loading failed" message={projectsErrorMessage} />
+  ) : projectsQuery.isPending || !projectsReady ? (
+    <ShellStateCard
+      title="Loading projects"
+      message="Resolving the project list for this operator session."
+    />
+  ) : projects.length === 0 ? (
+    <ShellStateCard
+      title="No projects available"
+      message="Create or ingest into a project first, then reload the debugger."
+    />
+  ) : (
+    <Outlet />
+  );
 
   return (
-    <div className="app-shell-enter min-h-screen bg-[var(--continua-app-bg)] text-[var(--continua-text-primary)]">
-      <nav className="fixed top-0 z-50 w-full border-b border-[var(--continua-border-soft)] bg-[var(--continua-shell-topbar)] backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-6">
-          <div className="flex items-center gap-8">
-            <NavLink
-              to="/"
-              className="text-xl font-black tracking-tighter text-[var(--continua-text-primary)]"
-            >
-              Continua
-            </NavLink>
+    <div className="app-shell-enter min-h-screen bg-[var(--c-app-bg)] text-[var(--c-text-primary)]">
+      <ConsoleSidebar
+        email={user?.email}
+        isPublicDemo={isPublicDemo}
+        navItems={visibleNavItems}
+        projectId={selectedProjectId}
+        projects={projects}
+        projectsReady={projectsReady}
+        projectsQueryPending={projectsQuery.isPending}
+        selectedProjectId={selectedProject?.id}
+        selectedProjectName={selectedProject?.name}
+        onProjectChange={handleProjectChange}
+      />
 
-            <div
-              className="hidden items-center gap-1 md:flex"
-              role="navigation"
-              aria-label="Primary"
-            >
-              {visibleNavItems.map((item) => (
-                <ShellNavLink
-                  key={item.path}
-                  item={item}
-                  projectId={selectedProject?.id}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 md:gap-3">
-            {!isPublicDemo ? (
-              <div className="hidden items-center gap-2 md:flex">
-                <label className="sr-only" htmlFor="project-switcher">
-                  Active project
-                </label>
-                <select
-                  id="project-switcher"
-                  value={selectedProject?.id ?? ''}
-                  onChange={(event) => handleProjectChange(event.target.value)}
-                  disabled={!projectsReady || projects.length === 0}
-                  className="app-input min-w-[11rem] py-2 text-sm lg:min-w-[13rem]"
-                >
-                  {projects.length === 0 ? (
-                    <option value="">
-                      {projectsQuery.isPending ? 'Loading projects...' : 'No projects'}
-                    </option>
-                  ) : null}
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-
-            <div className="hidden items-center gap-2 xl:flex">
-              {!isPublicDemo ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--continua-text-secondary)]">
-                  <Command className="h-3.5 w-3.5 text-[var(--continua-accent)]" />
-                  <span>{user?.email ?? 'Signed in'}</span>
-                </span>
-              ) : null}
-
-              <CommandPalette commands={commands} />
-            </div>
-
-            <button
-              type="button"
-              aria-label={
-                !isPublicDemo && isPrimaryNavVisible
-                  ? 'Open operator tools'
-                  : 'Open navigation'
-              }
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 text-[var(--continua-text-secondary)] transition hover:text-[var(--continua-text-primary)] xl:hidden"
-              onClick={() => setMobileOpen(true)}
-            >
-              <Menu className="h-4 w-4" />
-              {!isPublicDemo && isPrimaryNavVisible ? (
-                <span className="text-sm font-medium">Tools</span>
-              ) : null}
-            </button>
-          </div>
-        </div>
-      </nav>
+      <div className="min-h-screen md:ml-56">
+        <ConsoleTopBar
+          breadcrumbs={buildBreadcrumbs(location.pathname)}
+          commands={commands}
+          resolvedTheme={resolvedTheme}
+          toggleTheme={toggleTheme}
+          onMobileOpen={() => setMobileOpen(true)}
+        />
+        <main className="flex min-h-[calc(100vh-44px)] flex-col">
+          {isPublicDemo ? (
+            <PublicDemoBanner label={publicDemoLabel} docsHref={RUN_LOCALLY_DOCS_URL} />
+          ) : null}
+          {content}
+        </main>
+      </div>
 
       {mobileOpen ? (
-        <div className="app-overlay-enter fixed inset-0 z-[60] xl:hidden">
+        <div className="app-overlay-enter fixed inset-0 z-[70] md:hidden">
           <button
             type="button"
-            aria-label={
-              !isPublicDemo && isPrimaryNavVisible
-                ? 'Close operator tools'
-                : 'Close navigation'
-            }
-            className="absolute inset-0 bg-[var(--continua-text-primary)]/50 backdrop-blur-sm"
+            aria-label="Close navigation"
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="app-drawer-enter relative flex h-full w-[19rem] max-w-[88vw] flex-col border-r border-[var(--continua-border-strong)] bg-[var(--continua-app-bg)] px-6 py-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <span className="text-xl font-black tracking-tighter text-[var(--continua-text-primary)]">
-                {!isPublicDemo && isPrimaryNavVisible ? 'Operator tools' : 'Continua'}
-              </span>
+          <aside className="app-drawer-enter relative flex h-full w-[19rem] max-w-[88vw] flex-col border-r border-[var(--c-border)] bg-[var(--c-sidebar-bg)]">
+            <div className="flex items-center justify-between border-b border-[var(--c-border)] p-4">
+              <BrandBlock />
               <button
                 type="button"
-                aria-label={
-                  !isPublicDemo && isPrimaryNavVisible
-                    ? 'Close operator tools'
-                    : 'Close navigation'
-                }
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] transition hover:text-[var(--continua-text-primary)]"
+                aria-label="Close navigation"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-secondary)]"
                 onClick={() => setMobileOpen(false)}
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-
-            {!isPublicDemo && isPrimaryNavVisible ? (
-              <div className="mt-6 flex flex-1 flex-col gap-4">
-                <div className="rounded-2xl border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-                    Signed in
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-[var(--continua-text-primary)]">
-                    {user?.email ?? 'Signed in'}
-                  </p>
-                  <p className="mt-3 text-sm leading-relaxed text-[var(--continua-text-secondary)]">
-                    Use the top bar to switch projects and move between views.
-                    Open the command palette here for fast jumps and keyboard shortcuts.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-                    Active project
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-[var(--continua-text-primary)]">
-                    {selectedProject?.name ??
-                      (projectsQuery.isPending ? 'Loading project...' : 'No project selected')}
-                  </p>
-                </div>
-
-                <div className="mt-auto">
-                  <CommandPalette commands={commands} />
-                </div>
-              </div>
-            ) : (
-              <>
-                {!isPublicDemo ? (
-                  <div className="mt-6">
-                    <label
-                      className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]"
-                      htmlFor="mobile-project-switcher"
-                    >
-                      Project
-                    </label>
-                    <select
-                      id="mobile-project-switcher"
-                      value={selectedProject?.id ?? ''}
-                      onChange={(event) => handleProjectChange(event.target.value)}
-                      disabled={!projectsReady || projects.length === 0}
-                      className="app-input w-full py-2 text-sm"
-                    >
-                      {projects.length === 0 ? (
-                        <option value="">
-                          {projectsQuery.isPending ? 'Loading projects...' : 'No projects'}
-                        </option>
-                      ) : null}
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="mt-6 rounded-2xl border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-                      {publicDemoLabel}
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-[var(--continua-text-secondary)]">
-                      Read-only sample traces are available here. Run Continua locally to inspect your own data.
-                    </p>
-                  </div>
-                )}
-
-                <nav className="mt-8 flex flex-1 flex-col gap-1" aria-label="Mobile primary">
-                  {visibleNavItems.map((item) => (
-                    <MobileNavLink
-                      key={item.path}
-                      item={item}
-                      projectId={selectedProject?.id}
-                    />
-                  ))}
-                </nav>
-
-                <div className="mt-auto space-y-3">
-                  {!isPublicDemo && user?.email ? (
-                    <div className="rounded-2xl border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-4 py-3 text-sm text-[var(--continua-text-secondary)]">
-                      {user.email}
-                    </div>
-                  ) : null}
-                  <CommandPalette commands={commands} />
-                </div>
-              </>
-            )}
+            <SidebarProjectSwitcher
+              isPublicDemo={isPublicDemo}
+              label="Project"
+              projects={projects}
+              projectsReady={projectsReady}
+              projectsQueryPending={projectsQuery.isPending}
+              selectedProjectId={selectedProject?.id}
+              selectedProjectName={selectedProject?.name}
+              onProjectChange={handleProjectChange}
+            />
+            <div className="border-b border-[var(--c-border)] px-3 py-3">
+              <CommandPalette commands={commands} />
+            </div>
+            <SidebarNav
+              label="Mobile primary"
+              isPublicDemo={isPublicDemo}
+              items={visibleNavItems}
+              projectId={selectedProjectId}
+            />
+            <SidebarFooter email={user?.email} />
           </aside>
         </div>
       ) : null}
-
-      <main className="mx-auto min-h-screen max-w-7xl px-6 pt-24 pb-16">
-        {isPublicDemo ? (
-          <PublicDemoBanner
-            label={publicDemoLabel}
-            docsHref={RUN_LOCALLY_DOCS_URL}
-          />
-        ) : null}
-
-        {isPublicDemo ? (
-          <Outlet />
-        ) : !isAuthenticated ? (
-          <ShellStateCard
-            title="Local API key required"
-            message="Enter a project API key to load the local debugger workspace."
-          />
-        ) : projectsQuery.isError ? (
-          <ShellStateCard
-            title="Project loading failed"
-            message={projectsErrorMessage}
-          />
-        ) : projectsQuery.isPending || !projectsReady ? (
-          <ShellStateCard
-            title="Loading projects"
-            message="Resolving the project list for this operator session."
-          />
-        ) : projects.length === 0 ? (
-          <ShellStateCard
-            title="No projects available"
-            message="Create or ingest into a project first, then reload the debugger."
-          />
-        ) : (
-          <Outlet />
-        )}
-      </main>
     </div>
   );
 }
 
-function PublicDemoBanner({
-  label,
-  docsHref,
+function ConsoleSidebar({
+  email,
+  isPublicDemo,
+  navItems,
+  onProjectChange,
+  projectId,
+  projects,
+  projectsQueryPending,
+  projectsReady,
+  selectedProjectId,
+  selectedProjectName,
 }: {
-  label: string;
-  docsHref: string;
+  email?: string;
+  isPublicDemo: boolean;
+  navItems: NavItem[];
+  onProjectChange: (projectId: string) => void;
+  projectId?: string;
+  projects: Array<{ id: string; name: string }>;
+  projectsQueryPending: boolean;
+  projectsReady: boolean;
+  selectedProjectId?: string;
+  selectedProjectName?: string;
 }) {
   return (
-    <section className="mb-6 flex flex-col gap-3 rounded-2xl border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-          {label}
-        </div>
-        <p className="mt-2 text-sm leading-6 text-[var(--continua-text-secondary)]">
-          Read-only demo: sample traces are hosted here for exploration. Run Continua locally to inspect your own traces.
-        </p>
+    <aside className="fixed inset-y-0 left-0 z-50 hidden w-56 flex-col border-r border-[var(--c-border)] bg-[var(--c-sidebar-bg)] md:flex">
+      <div className="border-b border-[var(--c-border)] px-4 py-3.5">
+        <BrandBlock />
       </div>
-      <a
-        href={docsHref}
-        target="_blank"
-        rel="noreferrer"
-        className="app-button-secondary whitespace-nowrap"
-      >
-        Run locally with your own traces
-      </a>
-    </section>
+      <SidebarProjectSwitcher
+        isPublicDemo={isPublicDemo}
+        label="Active project"
+        projects={projects}
+        projectsReady={projectsReady}
+        projectsQueryPending={projectsQueryPending}
+        selectedProjectId={selectedProjectId}
+        selectedProjectName={selectedProjectName}
+        onProjectChange={onProjectChange}
+      />
+      <SidebarNav
+        label="Primary"
+        isPublicDemo={isPublicDemo}
+        items={navItems}
+        projectId={projectId}
+      />
+      <SidebarFooter email={email} />
+    </aside>
   );
 }
 
-function ShellStateCard({
-  title,
-  message,
-}: {
-  title: string;
-  message: string;
-}) {
+function BrandBlock() {
   return (
-    <section className="app-surface max-w-3xl p-8">
-      <div className="app-overline">Operator workspace</div>
-      <h1 className="mt-3 text-3xl font-black tight-headline text-[var(--continua-text-primary)]">
-        {title}
-      </h1>
-      <p className="mt-4 text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
-        {message}
-      </p>
-    </section>
+    <Link
+      to="/"
+      aria-label="Go to landing page"
+      className="flex min-w-0 items-center gap-2.5 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[var(--c-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--c-sidebar-bg)]"
+    >
+      <img
+        alt=""
+        className="h-[22px] w-[22px] shrink-0"
+        src="/logo.svg"
+      />
+      <div className="min-w-0 leading-none">
+        <div className="truncate text-[13px] font-bold text-[var(--c-text-primary)]">
+          Continua
+        </div>
+        <div className="mt-1 font-mono text-[10.5px] text-[var(--c-text-muted)]">
+          local · v0.4.2
+        </div>
+      </div>
+    </Link>
   );
 }
 
-function ShellNavLink({
-  item,
+function SidebarProjectSwitcher({
+  isPublicDemo,
+  label = 'Active project',
+  onProjectChange,
+  projects,
+  projectsQueryPending,
+  projectsReady,
+  selectedProjectId,
+  selectedProjectName,
+}: {
+  isPublicDemo: boolean;
+  label?: string;
+  onProjectChange: (projectId: string) => void;
+  projects: Array<{ id: string; name: string }>;
+  projectsQueryPending: boolean;
+  projectsReady: boolean;
+  selectedProjectId?: string;
+  selectedProjectName?: string;
+}) {
+  if (isPublicDemo) {
+    return (
+      <div className="m-3 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-2 text-[13px] font-medium text-[var(--c-text-primary)]">
+        Sample data
+      </div>
+    );
+  }
+
+  return (
+    <label className="relative m-3 block">
+      <span className="sr-only">{label}</span>
+      <select
+        value={selectedProjectId ?? ''}
+        onChange={(event) => onProjectChange(event.target.value)}
+        disabled={!projectsReady || projects.length === 0}
+        className="h-8 w-full appearance-none truncate rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-9 pr-8 text-[13px] font-medium text-[var(--c-text-primary)] outline-none"
+      >
+        {projects.length === 0 ? (
+          <option value="">
+            {projectsQueryPending ? 'Loading projects...' : 'No projects'}
+          </option>
+        ) : null}
+        {projects.map((project) => (
+          <option key={project.id} value={project.id}>
+            {project.name}
+          </option>
+        ))}
+      </select>
+      <span className="absolute left-2 top-2 h-4 w-4 rounded-[3px] bg-gradient-to-br from-[#0075d6] to-[#79b4f5]" />
+      <ChevronDown className="pointer-events-none absolute right-2 top-2 h-4 w-4 text-[var(--c-text-muted)]" />
+      {!selectedProjectName && projectsQueryPending ? null : null}
+    </label>
+  );
+}
+
+function SidebarNav({
+  isPublicDemo,
+  items,
+  label,
   projectId,
 }: {
-  item: NavItem;
+  isPublicDemo: boolean;
+  items: NavItem[];
+  label: string;
   projectId?: string;
 }) {
+  const primaryItems = items.filter((item) => item.path !== '/settings');
+  const settingsItem = items.find((item) => item.path === '/settings');
+
   return (
-    <NavLink
-      to={buildProjectPath(item.path, projectId)}
-      end={item.path === '/dashboard'}
-      className={({ isActive }) =>
-        `rounded-full px-4 py-2 text-sm font-bold tracking-tight transition ${
-          isActive
-            ? 'border-b-2 border-[var(--continua-text-primary)] text-[var(--continua-text-primary)]'
-            : 'text-[var(--continua-text-muted)] hover:text-[var(--continua-text-primary)]'
-        }`
-      }
+    <nav
+      aria-label={label}
+      className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 pb-4"
     >
-      {item.label}
-    </NavLink>
+      <div>
+        {primaryItems.map((item) => (
+          <SidebarNavLink key={item.path} item={item} projectId={projectId} />
+        ))}
+      </div>
+
+      <div>
+        <div className="px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
+          Engine
+        </div>
+        <DisabledEngineItem icon={Zap} label="Definitions" />
+        <DisabledEngineItem icon={Clock} label="Schedules" />
+      </div>
+
+      {!isPublicDemo && settingsItem ? (
+        <div>
+          <div className="px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
+            Workspace
+          </div>
+          <SidebarNavLink item={settingsItem} projectId={projectId} />
+        </div>
+      ) : null}
+    </nav>
   );
 }
 
-function MobileNavLink({
+function SidebarNavLink({
   item,
   projectId,
 }: {
@@ -554,15 +485,190 @@ function MobileNavLink({
       to={buildProjectPath(item.path, projectId)}
       end={item.path === '/dashboard'}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition ${
+        `mb-0.5 flex items-center gap-2.5 rounded-[5px] px-2.5 py-1.5 text-[13px] font-medium transition ${
           isActive
-            ? 'bg-[var(--continua-surface-elevated)] text-[var(--continua-text-primary)]'
-            : 'text-[var(--continua-text-muted)] hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-primary)]'
+            ? 'bg-[var(--c-nav-active-bg)] font-semibold text-[var(--c-text-primary)]'
+            : 'text-[var(--c-text-secondary)] hover:bg-[var(--c-nav-hover-bg)] hover:text-[var(--c-text-primary)]'
         }`
       }
     >
-      <Icon className="h-4 w-4" />
-      <span>{item.label}</span>
+      <Icon className="h-4 w-4 text-[var(--c-text-muted)]" />
+      {item.label}
     </NavLink>
   );
+}
+
+function DisabledEngineItem({
+  icon: Icon,
+  label,
+}: {
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled
+      title="Engine controls are available on engine-backed traces."
+      className="mb-0.5 flex w-full items-center gap-2.5 rounded-[5px] px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--c-text-muted)] opacity-70"
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
+function SidebarFooter({ email }: { email?: string }) {
+  const initials = (email ?? 'AV')
+    .split('@')[0]
+    .split(/[._-]/)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-[var(--c-border)] p-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--c-border)] bg-[var(--c-surface-elevated)] text-[10px] font-bold text-[var(--c-text-secondary)]">
+          {initials || 'AV'}
+        </div>
+        <div className="truncate text-xs text-[var(--c-text-secondary)]">
+          {email ?? 'aryan@continua.dev'}
+        </div>
+      </div>
+      <MoreHorizontal className="h-4 w-4 shrink-0 text-[var(--c-text-muted)]" />
+    </div>
+  );
+}
+
+function ConsoleTopBar({
+  breadcrumbs,
+  commands,
+  onMobileOpen,
+  resolvedTheme,
+  toggleTheme,
+}: {
+  breadcrumbs: string[];
+  commands: Array<{ id: string; title: string; keywords: string[]; action: () => void }>;
+  onMobileOpen: () => void;
+  resolvedTheme: 'light' | 'dark';
+  toggleTheme: () => void;
+}) {
+  return (
+    <header className="sticky top-0 z-40 flex h-11 items-center justify-between border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-3 md:px-4">
+      <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-[var(--c-text-secondary)]">
+        <button
+          type="button"
+          className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] md:hidden"
+          aria-label="Open navigation"
+          onClick={onMobileOpen}
+        >
+          <Menu className="h-4 w-4" />
+        </button>
+        {breadcrumbs.map((breadcrumb, index) => (
+          <span key={`${breadcrumb}-${index}`} className="contents">
+            {index > 0 ? (
+              <ChevronRight className="h-3.5 w-3.5 text-[var(--c-text-muted)]" />
+            ) : null}
+            <span
+              className={`truncate ${
+                index === breadcrumbs.length - 1
+                  ? 'font-semibold text-[var(--c-text-primary)]'
+                  : 'font-medium text-[var(--c-text-secondary)]'
+              }`}
+            >
+              {breadcrumb}
+            </span>
+          </span>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <div className="hidden sm:block">
+          <CommandPalette commands={commands} />
+        </div>
+        <button
+          type="button"
+          title="Toggle theme"
+          aria-label="Toggle theme"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-secondary)]"
+          onClick={toggleTheme}
+        >
+          {resolvedTheme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function PublicDemoBanner({
+  docsHref,
+  label,
+}: {
+  docsHref: string;
+  label: string;
+}) {
+  return (
+    <section className="flex flex-col gap-3 border-b border-[var(--c-border)] bg-[var(--c-accent-faint)] px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--c-accent-text)]">
+          {label}
+        </div>
+        <p className="mt-1 text-[13px] leading-5 text-[var(--c-text-secondary)]">
+          Read-only demo: sample traces are hosted here for exploration. Run Continua locally to inspect your own traces.
+        </p>
+      </div>
+      <a
+        href={docsHref}
+        target="_blank"
+        rel="noreferrer"
+        className="app-button-secondary whitespace-nowrap"
+      >
+        Run locally
+      </a>
+    </section>
+  );
+}
+
+function ShellStateCard({
+  message,
+  title,
+}: {
+  message: string;
+  title: string;
+}) {
+  return (
+    <section className="m-6 max-w-3xl rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-6">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
+        Operator workspace
+      </div>
+      <h1 className="mt-3 text-2xl font-bold text-[var(--c-text-primary)]">
+        {title}
+      </h1>
+      <p className="mt-3 text-sm leading-6 text-[var(--c-text-secondary)]">
+        {message}
+      </p>
+    </section>
+  );
+}
+
+function buildBreadcrumbs(pathname: string): string[] {
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length === 0 || segments[0] === 'dashboard') {
+    return ['Overview'];
+  }
+  if (segments[0] === 'traces') {
+    return segments[1] ? ['Traces', segments[1]] : ['Traces'];
+  }
+  if (segments[0] === 'sessions') {
+    if (segments[2] === 'compare') {
+      return ['Sessions', segments[1] ?? 'Session', 'Compare'];
+    }
+    return segments[1] ? ['Sessions', segments[1]] : ['Sessions'];
+  }
+  if (segments[0] === 'settings') {
+    return ['Settings'];
+  }
+  return [segments[0] ?? 'Overview'];
 }

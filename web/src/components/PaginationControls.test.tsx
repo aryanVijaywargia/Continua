@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PaginationControls } from './PaginationControls';
 
 describe('PaginationControls', () => {
-  it('renders advanced pagination controls and disabled states', () => {
+  it('renders kit pagination controls and disabled states', () => {
     render(
       <PaginationControls
         offset={0}
@@ -18,10 +18,8 @@ describe('PaginationControls', () => {
 
     expect(screen.getByText('Showing 1-20 of 150')).toBeInTheDocument();
     expect(screen.getByText('Page 1 of 8')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'First page' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Next page' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Last page' })).toBeEnabled();
 
     const rowsPerPage = screen.getByRole('combobox', { name: 'Rows per page' });
     expect(rowsPerPage).toHaveDisplayValue('20');
@@ -30,7 +28,7 @@ describe('PaginationControls', () => {
     expect(screen.getByRole('option', { name: '100' })).toBeInTheDocument();
   });
 
-  it('navigates to the last page', async () => {
+  it('navigates through pages', async () => {
     const user = userEvent.setup();
 
     function Wrapper() {
@@ -48,12 +46,12 @@ describe('PaginationControls', () => {
     }
 
     render(<Wrapper />);
-    await user.click(screen.getByRole('button', { name: 'Last page' }));
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
 
-    expect(screen.getByText('Showing 141-150 of 150')).toBeInTheDocument();
-    expect(screen.getByText('Page 8 of 8')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Last page' })).toBeDisabled();
+    expect(screen.getByText('Showing 21-40 of 150')).toBeInTheDocument();
+    expect(screen.getByText('Page 2 of 8')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeEnabled();
   });
 
   it('resets offset when the page size changes', async () => {

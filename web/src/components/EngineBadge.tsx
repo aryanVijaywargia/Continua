@@ -3,13 +3,13 @@ import { formatProjectionStateLabel } from './engineProjectionState';
 
 const toneByProjectionState: Record<EngineProjectionState, string> = {
   up_to_date:
-    'border-emerald-300/60 bg-emerald-100/80 text-emerald-900 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-100',
+    'border-[var(--c-green-border)] bg-[var(--c-green-faint)] text-[var(--c-green-text)]',
   catching_up:
-    'border-amber-300/60 bg-amber-100/80 text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-100',
+    'border-[var(--c-amber-border)] bg-[var(--c-amber-faint)] text-[var(--c-amber-text)]',
   summary_only:
-    'border-stone-300/60 bg-stone-100/80 text-stone-900 dark:border-stone-400/25 dark:bg-stone-400/10 dark:text-stone-100',
+    'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-secondary)]',
   journal_expired:
-    'border-rose-300/60 bg-rose-100/80 text-rose-900 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-100',
+    'border-[var(--c-red-border)] bg-[var(--c-red-faint)] text-[var(--c-red-text)]',
 };
 
 export function EngineBadge({
@@ -21,7 +21,7 @@ export function EngineBadge({
 }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${toneByProjectionState[projectionState]}`}
+      className={`inline-flex h-5 items-center rounded border px-1.5 text-[11px] font-medium normal-case tracking-normal ${toneByProjectionState[projectionState]}`}
     >
       {showProjectionState ? `Engine · ${formatProjectionStateLabel(projectionState)}` : 'Engine'}
     </span>

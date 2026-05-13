@@ -31,7 +31,7 @@ interface ExecutionWaterfallProps {
 }
 
 const MIN_BAR_WIDTH_REM = 0.875;
-export const WATERFALL_ROW_HEIGHT = 68;
+export const WATERFALL_ROW_HEIGHT = 40;
 const TICK_LINE_COLOR = 'var(--continua-waterfall-tick-color)';
 const EMPTY_SPAN_ASSESSMENTS = new Map<string, RetrySafetyAssessment>();
 
@@ -102,29 +102,29 @@ export function ExecutionWaterfall({
 
   if (rows.length === 0 || !window) {
     return (
-      <section className="flex h-full items-center justify-center rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
-        <div className="text-sm text-[var(--continua-text-muted)]">No spans available for execution timing.</div>
+      <section className="flex h-full items-center justify-center border border-[var(--c-border)] bg-[var(--c-surface)]">
+        <div className="text-sm text-[var(--c-text-muted)]">No spans available for execution timing.</div>
       </section>
     );
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
-      <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--continua-text-secondary)]">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--c-app-bg)]">
+      <div className="border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-6 py-3">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--c-text-muted)]">
           Execution Waterfall
         </h2>
-        <p className="mt-1 text-sm text-[var(--continua-text-muted)]">
+        <p className="mt-1 text-xs text-[var(--c-text-muted)]">
           Timing bars follow the visible tree order and selection state.
         </p>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,13rem)_minmax(0,1fr)] border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)]">
-        <div className="border-r border-[var(--continua-border-soft)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
-          Visible spans
+      <div className="grid grid-cols-[minmax(16rem,26rem)_minmax(0,1fr)_5.5rem] border-b border-[var(--c-border)] bg-[var(--c-table-head-bg)]">
+        <div className="px-6 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--c-text-muted)]">
+          Span
         </div>
-        <div className="relative px-4 py-3">
-          <div className="relative flex h-full items-start justify-between gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
+        <div className="relative border-l border-[var(--c-border)] px-4 py-2">
+          <div className="relative flex h-full items-start justify-between gap-2 text-[10.5px] font-medium uppercase tracking-[0.04em] text-[var(--c-text-muted)]">
             {ticks.map((tick) => (
               <span
                 key={tick.leftPercent}
@@ -136,6 +136,9 @@ export function ExecutionWaterfall({
             ))}
           </div>
         </div>
+        <div className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--c-text-muted)]">
+          Duration
+        </div>
       </div>
 
       <CostStrip series={costSeries} window={window} />
@@ -146,7 +149,7 @@ export function ExecutionWaterfall({
         onScroll={onScroll}
       >
         <div
-          className="divide-y divide-[var(--continua-border-soft)]"
+          className="divide-y divide-[var(--c-border-subtle)]"
           style={{
             paddingBottom: `${paddingBottom}px`,
             paddingTop: `${paddingTop}px`,
@@ -171,15 +174,17 @@ export function ExecutionWaterfall({
 
                   rowRefs.current.delete(row.span.span_id);
                 }}
-                className="grid grid-cols-[minmax(0,13rem)_minmax(0,1fr)]"
+                className={`grid grid-cols-[minmax(16rem,26rem)_minmax(0,1fr)_5.5rem] ${
+                  isSelected ? 'bg-[var(--c-row-selected-bg)]' : ''
+                }`}
                 style={{ height: `${WATERFALL_ROW_HEIGHT}px` }}
               >
                 <button
                   type="button"
-                  className={`flex h-full min-w-0 items-center border-r border-[var(--continua-border-soft)] px-4 py-3 text-left transition ${
+                  className={`flex h-full min-w-0 items-center px-6 py-2 text-left transition ${
                     isSelected
-                      ? 'bg-[var(--continua-accent-faint)]'
-                      : 'bg-[var(--continua-surface-elevated)] hover:bg-[var(--continua-surface-muted)]'
+                      ? ''
+                      : 'hover:bg-[var(--c-row-hover-bg)]'
                   }`}
                   onClick={() => onSelectSpanAndShowDetails(row.span.span_id)}
                 >
@@ -188,7 +193,18 @@ export function ExecutionWaterfall({
                     style={{ paddingLeft: `${row.depth * 12}px` }}
                   >
                     <div className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--continua-text-primary)]">
+                      <span
+                        className="h-1.5 w-1.5 shrink-0 rounded-full"
+                        style={{
+                          background:
+                            row.span.status === 'FAILED'
+                              ? 'var(--c-red)'
+                              : row.span.status === 'STARTED'
+                                ? 'var(--c-blue)'
+                                : 'var(--c-green)',
+                        }}
+                      />
+                      <div className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--c-text-primary)]">
                         {row.span.name}
                       </div>
                       {row.span.status === 'FAILED' && retrySafety ? (
@@ -200,7 +216,7 @@ export function ExecutionWaterfall({
                       ) : null}
                     </div>
 
-                    <div className="mt-1 flex items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-[var(--continua-text-muted)]">
+                    <div className="mt-0.5 flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-[var(--c-text-muted)]">
                       <span className="shrink-0">{row.span.status}</span>
                       <span aria-hidden="true">·</span>
                       <span className="shrink-0">{formatDuration(row.span.latency_ms)}</span>
@@ -220,9 +236,9 @@ export function ExecutionWaterfall({
                   </div>
                 </button>
 
-                <div className="flex h-full items-center px-4 py-3">
+                <div className="flex h-full items-center border-l border-[var(--c-border)] px-4 py-2">
                   <div
-                    className="relative h-11 w-full"
+                    className="relative h-10 w-full"
                     style={
                       timingGridBackground
                         ? {
@@ -234,7 +250,7 @@ export function ExecutionWaterfall({
                   >
                     <button
                       type="button"
-                      className={`absolute top-1/2 flex h-6 -translate-y-1/2 items-center rounded-full border px-2 text-xs font-medium text-[var(--continua-text-primary)] transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]`}
+                      className="absolute top-1/2 flex h-4 -translate-y-1/2 items-center rounded-[3px] border-l-2 px-1.5 text-[10px] font-medium text-[var(--c-text-secondary)] transition focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)]"
                       style={{
                         left: `${bar.leftPercent}%`,
                         width: `${Math.max(bar.widthPercent, 0.35)}%`,
@@ -270,6 +286,15 @@ export function ExecutionWaterfall({
                     </button>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  className={`h-full px-4 text-right font-mono text-xs tabular-nums text-[var(--c-text-secondary)] transition ${
+                    isSelected ? '' : 'hover:bg-[var(--c-row-hover-bg)]'
+                  }`}
+                  onClick={() => onSelectSpanAndShowDetails(row.span.span_id)}
+                >
+                  {formatDuration(row.span.latency_ms)}
+                </button>
               </div>
             );
           })}

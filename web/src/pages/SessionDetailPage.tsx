@@ -1,12 +1,28 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import {
+  Download,
+  ExternalLink,
+  MoreHorizontal,
+  RefreshCw,
+  User,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import { CopyButton } from '../components/CopyButton';
-import { EngineBadge } from '../components/EngineBadge';
 import { PaginationControls } from '../components/PaginationControls';
-import { SortableHeader } from '../components/SortableHeader';
-import { StatusBadge } from '../components/StatusBadge';
+import {
+  Btn,
+  Chip,
+  DataTable,
+  PageHeader,
+  StatusDot,
+  Td,
+  Th,
+  Tr,
+} from '../components/DebuggerKit';
 import {
   ApiError,
   fetchSession,
@@ -14,8 +30,8 @@ import {
   fetchSessionNarrative,
   fetchTraces,
   isAuthError,
-  type SessionNarrative,
-  type SessionNarrativeLineage,
+  type Session,
+  type SessionNarrativeSummary,
   type SessionNarrativeTrace,
   type TraceDetail,
   type Trace,
@@ -39,6 +55,7 @@ import {
   buildCompareSearchParams,
   normalizeCompareTraceIdParam,
 } from './sessionCompareUtils';
+import { downloadJsonFile } from '../utils/downloadJson';
 
 type HistoryMode = 'push' | 'replace';
 type CompareRole = 'baseline' | 'candidate';
@@ -357,9 +374,14 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
     swapCompare,
   } = useSessionDetailSearchParams();
   const returnTo = getSessionsReturnToDestination(location.state);
+  const [activeTab, setActiveTab] = useState<
+    'journey' | 'traces' | 'context' | 'feedback'
+  >('journey');
+  const [journeyStatusFilter, setJourneyStatusFilter] = useState<
+    'all' | 'completed' | 'failed'
+  >('all');
   const currentSessionDetailSearch = serializeSessionDetailSearchParams(filters, compare).toString();
   const currentSessionDetailUrl = `${location.pathname}${currentSessionDetailSearch ? `?${currentSessionDetailSearch}` : ''}`;
-  const isAscending = filters.sort_dir === 'asc';
   const projectQueryKey = filters.project_id ?? null;
 
   const sessionQuery = useQuery({
@@ -492,6 +514,34 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
       isTerminalTraceStatus(selectedBaseline.status) &&
       isTerminalTraceStatus(selectedCandidate.status);
   }
+  const handleExportSession = useCallback(() => {
+    downloadJsonFile(`continua-session-${sessionId}.json`, {
+      exported_at: new Date().toISOString(),
+      source: currentSessionDetailUrl,
+      session: sessionQuery.data ?? null,
+      narrative: narrativeQuery.data ?? null,
+      traces: tracesQuery.data?.traces ?? [],
+      trace_page: {
+        total: tracesQuery.data?.total ?? 0,
+        limit: filters.limit,
+        offset: filters.offset,
+        sort_by: filters.sort_by,
+        sort_dir: filters.sort_dir,
+      },
+      compare,
+    });
+  }, [
+    compare,
+    currentSessionDetailUrl,
+    filters.limit,
+    filters.offset,
+    filters.sort_by,
+    filters.sort_dir,
+    narrativeQuery.data,
+    sessionId,
+    sessionQuery.data,
+    tracesQuery.data,
+  ]);
 
   useEffect(() => {
     if (traces.length !== 0 || total === 0 || filters.offset === 0) {
@@ -548,165 +598,319 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
   }
 
   const session = sessionQuery.data;
+  const narrative = narrativeQuery.data;
+  const narrativeTraces = [...(narrative?.traces ?? [])].sort(
+    (a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
+  );
+  const visibleJourneyTraces =
+    journeyStatusFilter === 'all'
+      ? narrativeTraces
+      : narrativeTraces.filter(
+          (trace) => trace.status === journeyStatusFilter.toUpperCase()
+        );
+  const summary = narrative?.summary;
+  const totalNarrativeTraces = summary?.total_trace_count ?? session.trace_count ?? total;
+  const completedTraceCount = summary?.completed_trace_count ?? 0;
+  const failedTraceCount = summary?.failed_trace_count ?? 0;
+  const runningTraceCount = summary?.running_trace_count ?? 0;
+  const successRate = totalNarrativeTraces
+    ? Math.round((completedTraceCount / totalNarrativeTraces) * 100)
+    : 0;
+  const totalNarrativeTokens =
+    (summary?.total_tokens_in ?? 0) + (summary?.total_tokens_out ?? 0);
+  const durationValues = narrativeTraces
+    .map((trace) => trace.duration_ms)
+    .filter((value): value is number => typeof value === 'number');
+  const averageDuration =
+    durationValues.length > 0
+      ? durationValues.reduce((sum, value) => sum + value, 0) / durationValues.length
+      : undefined;
+  const maxDuration =
+    durationValues.length > 0 ? Math.max(...durationValues) : undefined;
+  const totalErrors =
+    narrativeTraces.reduce((sum, trace) => sum + (trace.error_count ?? 0), 0) ??
+    0;
 
   return (
-    <div className="app-page">
-        <Link
-          to={returnTo}
-          className="inline-flex text-sm font-medium text-[var(--continua-accent)] transition hover:opacity-80"
-        >
-          &larr; Back to Sessions
-        </Link>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PageHeader
+        actions={
+          <>
+            <Btn kind="secondary" leadingIcon={RefreshCw} size="sm" disabled>
+              Replay session
+            </Btn>
+            <Btn
+              kind="secondary"
+              leadingIcon={Download}
+              size="sm"
+              onClick={handleExportSession}
+            >
+              Export
+            </Btn>
+            <Btn
+              aria-label="Session actions"
+              kind="secondary"
+              leadingIcon={MoreHorizontal}
+              size="sm"
+            />
+          </>
+        }
+        description={
+          <span className="flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="font-mono text-[var(--c-text-secondary)]">
+              {session.external_id}
+            </span>
+            <span className="h-1 w-1 rounded-full bg-[var(--c-text-muted)]" />
+            <span>
+              User{' '}
+              <span className="font-mono text-[var(--c-text-secondary)]">
+                {session.user_id || '-'}
+              </span>
+            </span>
+            <span className="h-1 w-1 rounded-full bg-[var(--c-text-muted)]" />
+            <span>Started {formatRelativeTime(session.created_at)}</span>
+            {summary?.last_activity_at ? (
+              <>
+                <span className="h-1 w-1 rounded-full bg-[var(--c-text-muted)]" />
+                <span>Last active {formatRelativeTime(summary.last_activity_at)}</span>
+              </>
+            ) : null}
+          </span>
+        }
+        eyebrow={
+          <span className="flex flex-wrap items-center gap-2">
+            <Link to={returnTo} className="hover:text-[var(--c-text-primary)]">
+              Sessions
+            </Link>
+            <span className="text-[var(--c-text-muted)]">/</span>
+            <span className="font-mono">{session.id}</span>
+            <CopyButton
+              aria-label="Copy session ID"
+              value={session.id}
+              idleLabel="Copy"
+              successLabel="Copied"
+              className="!rounded-md !border-[var(--c-border)] !bg-[var(--c-surface)] !px-2 !py-0.5 !text-[11px] !text-[var(--c-text-secondary)]"
+            />
+          </span>
+        }
+        title={session.name || session.external_id}
+      />
 
-        <section className="app-surface p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-black tight-headline text-[var(--continua-text-primary)]">{session.external_id}</h1>
-                <CopyButton
-                  aria-label="Copy session external ID"
-                  value={session.external_id}
-                  idleLabel="Copy external ID"
-                  successLabel="Copied external ID"
-                />
+      <section className="grid border-b border-[var(--c-border)] bg-[var(--c-surface)] sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <SessionStatCard
+          hint={`${completedTraceCount} ok · ${failedTraceCount} failed${
+            runningTraceCount ? ` · ${runningTraceCount} live` : ''
+          }`}
+          label="Traces"
+          value={String(totalNarrativeTraces)}
+        />
+        <SessionStatCard
+          hint={successRate === 100 ? 'all clear' : `${failedTraceCount} failed`}
+          label="Success rate"
+          tone={successRate < 90 ? 'red' : successRate < 100 ? 'amber' : 'green'}
+          value={`${successRate}%`}
+        />
+        <SessionStatCard
+          hint={
+            totalNarrativeTraces && totalNarrativeTokens
+              ? `~${formatTokens(totalNarrativeTokens / totalNarrativeTraces)} avg / trace`
+              : undefined
+          }
+          label="Total tokens"
+          value={totalNarrativeTokens ? formatTokens(totalNarrativeTokens) : '-'}
+        />
+        <SessionStatCard
+          hint={
+            totalNarrativeTraces && summary?.total_cost_usd
+              ? `${formatCost(summary.total_cost_usd / totalNarrativeTraces)} avg`
+              : undefined
+          }
+          label="Total cost"
+          value={formatCost(summary?.total_cost_usd)}
+        />
+        <SessionStatCard
+          hint={maxDuration ? `peak ${formatDuration(maxDuration)}` : undefined}
+          label="Avg duration"
+          value={averageDuration ? formatDuration(averageDuration) : '-'}
+        />
+        <SessionStatCard
+          hint={totalErrors > 0 ? 'across spans' : 'none'}
+          label="Errors"
+          tone={totalErrors > 0 ? 'red' : 'muted'}
+          value={String(totalErrors)}
+        />
+      </section>
+
+      {compareSelectionVisible ? (
+        <CompareBar
+          baseline={selectedBaseline}
+          candidate={selectedCandidate}
+          canOpenComparison={canOpenComparison}
+          clearCompare={clearCompare}
+          currentSessionDetailUrl={currentSessionDetailUrl}
+          isBaselineLookupPending={isBaselineLookupPending}
+          isCandidateLookupPending={isCandidateLookupPending}
+          projectId={filters.project_id}
+          sessionId={sessionId}
+          swapCompare={swapCompare}
+        />
+      ) : null}
+
+      <div className="flex border-b border-[var(--c-border)] px-6">
+        {[
+          { id: 'journey', label: 'Journey', count: totalNarrativeTraces },
+          { id: 'traces', label: 'Traces', count: total },
+          { id: 'context', label: 'Context' },
+          { id: 'feedback', label: 'Feedback', count: getFeedbackItems(session).length },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id as typeof activeTab)}
+            className={`-mb-px border-b-2 px-3.5 py-2 text-[13px] font-medium ${
+              activeTab === tab.id
+                ? 'border-[var(--c-accent)] text-[var(--c-text-primary)]'
+                : 'border-transparent text-[var(--c-text-secondary)]'
+            }`}
+          >
+            {tab.label}
+            {tab.count != null ? (
+              <span className="ml-1.5 font-mono text-[11px] tabular-nums text-[var(--c-text-muted)]">
+                {tab.count}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+
+      {narrativeQuery.error ? (
+        <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
+          Error loading narrative: {queryErrorMessage(narrativeQuery.error)}
+        </div>
+      ) : null}
+
+      {activeTab === 'journey' ? (
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[13px] font-semibold text-[var(--c-text-primary)]">
+                  Session journey
+                </h2>
+                <p className="mt-0.5 text-[11.5px] text-[var(--c-text-muted)]">
+                  Oldest first · click any step to open trace
+                  {narrativeQuery.isFetching ? ' · updating' : ''}
+                </p>
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <span className="font-mono text-sm text-[var(--continua-text-muted)]">{session.id}</span>
-                <CopyButton
-                  aria-label="Copy session UUID"
-                  value={session.id}
-                  idleLabel="Copy UUID"
-                  successLabel="Copied UUID"
-                />
+              <div className="flex gap-1 rounded-md border border-[var(--c-border)] bg-[var(--c-surface-muted)] p-0.5">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'completed', label: 'OK' },
+                  { id: 'failed', label: 'Failed' },
+                ].map((filter) => (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    onClick={() =>
+                      setJourneyStatusFilter(filter.id as typeof journeyStatusFilter)
+                    }
+                    className={`rounded px-2.5 py-1 text-[11.5px] font-medium ${
+                      journeyStatusFilter === filter.id
+                        ? 'border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-primary)]'
+                        : 'border border-transparent text-[var(--c-text-secondary)]'
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
               </div>
-              {session.name ? (
-                <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">{session.name}</p>
-              ) : null}
             </div>
 
-            <dl className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-                  User ID
-                </dt>
-                <dd className="mt-1 text-sm text-[var(--continua-text-primary)]">{session.user_id || '-'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-                  Trace Count
-                </dt>
-                <dd className="mt-1 text-sm text-[var(--continua-text-primary)]">{session.trace_count ?? 0}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-                  Created
-                </dt>
-                <dd className="mt-1 text-sm text-[var(--continua-text-primary)]">
-                  {formatRelativeTime(session.created_at)}
-                </dd>
-              </div>
-            </dl>
-          </div>
-        </section>
-
-        {compareSelectionVisible ? (
-          <CompareBar
-            baseline={selectedBaseline}
-            candidate={selectedCandidate}
-            canOpenComparison={canOpenComparison}
-            clearCompare={clearCompare}
-            currentSessionDetailUrl={currentSessionDetailUrl}
-            isBaselineLookupPending={isBaselineLookupPending}
-            isCandidateLookupPending={isCandidateLookupPending}
-            projectId={filters.project_id}
-            sessionId={sessionId}
-            swapCompare={swapCompare}
-          />
-        ) : null}
-
-        <SessionNarrativeSections
-          narrative={narrativeQuery.data}
-          error={narrativeQuery.error}
-          isFetching={narrativeQuery.isFetching}
-          isPending={narrativeQuery.isPending && !narrativeQuery.data}
-          compare={compare}
-          assignCompareRole={assignCompareRole}
-          projectId={filters.project_id}
-          setComparePair={setComparePair}
-          returnTo={currentSessionDetailUrl}
-        />
-
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <div className="app-overline">Trace browser</div>
-            <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">Traces</h2>
-            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
-              Sort by started time and preserve table state in the URL.
-            </p>
-          </div>
-          <div className="text-sm text-[var(--continua-text-muted)]">
-            <span>{total} traces</span>
-            {tracesQuery.isFetching && !tracesQuery.isPending && (
-              <span className="ml-2">Updating...</span>
+            {narrativeQuery.isPending && !narrative ? (
+              <div className="app-empty-state">Loading session journey...</div>
+            ) : visibleJourneyTraces.length === 0 ? (
+              <div className="app-empty-state">No traces match this filter.</div>
+            ) : (
+              <SessionJourney
+                assignCompareRole={assignCompareRole}
+                compare={compare}
+                projectId={filters.project_id}
+                returnTo={currentSessionDetailUrl}
+                setComparePair={setComparePair}
+                traces={visibleJourneyTraces}
+              />
             )}
           </div>
-        </div>
 
-        {tracesQuery.error && (
-          isAuthError(tracesQuery.error) ? (
-            <div className="mb-4">
+          <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-[var(--c-border)] lg:block">
+            <SessionSidePanel
+              completedTraceCount={completedTraceCount}
+              failedTraceCount={failedTraceCount}
+              runningTraceCount={runningTraceCount}
+              session={session}
+              summary={summary}
+              totalTokens={totalNarrativeTokens}
+              traces={narrativeTraces}
+            />
+          </aside>
+        </div>
+      ) : null}
+
+      {activeTab === 'traces' ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          {tracesQuery.error ? (
+            isAuthError(tracesQuery.error) ? (
               <AuthErrorBanner message={queryErrorMessage(tracesQuery.error)} />
+            ) : (
+              <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
+                Error loading traces: {queryErrorMessage(tracesQuery.error)}
+              </div>
+            )
+          ) : null}
+
+          {tracesQuery.isPending && !tracesQuery.data ? (
+            <div className="app-empty-state">Loading traces...</div>
+          ) : traces.length === 0 ? (
+            <div className="app-empty-state">
+              <h2 className="text-base font-semibold text-[var(--c-text-primary)]">
+                No traces in this session
+              </h2>
+              <p className="mt-2">Traces will appear here as they are ingested.</p>
             </div>
           ) : (
-            <div className="app-alert-error mb-4">
-              Error loading traces: {queryErrorMessage(tracesQuery.error)}
-            </div>
-          )
-        )}
-
-        {tracesQuery.isPending && !tracesQuery.data ? (
-          <div className="app-empty-state">
-            Loading traces...
-          </div>
-        ) : traces.length === 0 ? (
-          <div className="app-empty-state">
-            <h2 className="text-lg font-bold text-[var(--continua-text-primary)]">No traces in this session</h2>
-            <p className="mt-2">
-              Traces will appear here as they are ingested for this session.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="app-surface overflow-x-auto">
-              <table className="min-w-full divide-y divide-[var(--continua-border-soft)]">
-                <thead className="bg-[var(--continua-surface-muted)]">
+            <>
+              <DataTable>
+                <colgroup>
+                  <col className="w-[34%]" />
+                  <col className="w-[110px]" />
+                  <col className="w-[110px]" />
+                  <col className="w-[90px]" />
+                  <col className="w-[90px]" />
+                  <col className="w-[70px]" />
+                  <col className="w-[130px]" />
+                  <col className="w-[150px]" />
+                </colgroup>
+                <thead>
                   <tr>
-                    <th className="px-6 py-3 text-left app-overline">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left app-overline">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left app-overline">
-                      Duration
-                    </th>
-                    <th className="px-6 py-3 text-left app-overline">
-                      Tokens
-                    </th>
-                    <th className="px-6 py-3 text-left app-overline">
-                      Cost
-                    </th>
-                    <th className="px-6 py-3 text-left app-overline">
-                      <SortableHeader
-                        label="Started"
-                        isActive={filters.sort_by === 'started_at'}
-                        isAscending={isAscending}
-                        onClick={handleStartedSortToggle}
-                      />
-                    </th>
+                    <Th>Trace</Th>
+                    <Th>Status</Th>
+                    <Th align="right">Duration</Th>
+                    <Th align="right">Tokens</Th>
+                    <Th align="right">Cost</Th>
+                    <Th align="right">Errors</Th>
+                    <Th
+                      align="right"
+                      sortable
+                      sortActive={filters.sort_by === 'started_at'}
+                      sortDir={filters.sort_dir}
+                      onSort={handleStartedSortToggle}
+                    >
+                      Started
+                    </Th>
+                    <Th align="right">Compare</Th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)]">
+                <tbody>
                   {traces.map((trace) => (
                     <SessionTraceRow
                       assignCompareRole={assignCompareRole}
@@ -718,327 +922,687 @@ function SessionDetailContent({ sessionId }: { sessionId: string }) {
                     />
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </DataTable>
+              <div className="border-t border-[var(--c-border)] px-6 py-2">
+                <PaginationControls
+                  offset={filters.offset}
+                  pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
+                  total={total}
+                  currentItemCount={traces.length}
+                  onOffsetChange={(offset) => setFilters({ offset }, 'push')}
+                  onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
+                  onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
 
-            <PaginationControls
-              offset={filters.offset}
-              pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
-              total={total}
-              currentItemCount={traces.length}
-              onOffsetChange={(offset) => setFilters({ offset }, 'push')}
-              onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
-              onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
-            />
-          </>
-        )}
+      {activeTab === 'context' ? (
+        <SessionContextPanel session={session} summary={summary} />
+      ) : null}
+
+      {activeTab === 'feedback' ? (
+        <SessionFeedbackPanel session={session} traces={narrativeTraces} />
+      ) : null}
     </div>
   );
 }
 
-function SessionNarrativeSections({
-  narrative,
-  error,
-  isFetching,
-  isPending,
-  compare,
+function SessionJourney({
   assignCompareRole,
+  compare,
   projectId,
-  setComparePair,
   returnTo,
+  setComparePair,
+  traces,
 }: {
-  narrative?: SessionNarrative;
-  error: unknown;
-  isFetching: boolean;
-  isPending: boolean;
-  compare: SessionDetailCompareState;
   assignCompareRole: (role: CompareRole, traceId: string, mode?: HistoryMode) => void;
+  compare: SessionDetailCompareState;
   projectId?: string;
-  setComparePair: (baselineTraceId: string, candidateTraceId: string, mode?: HistoryMode) => void;
   returnTo: string;
+  setComparePair: (baselineTraceId: string, candidateTraceId: string, mode?: HistoryMode) => void;
+  traces: SessionNarrativeTrace[];
 }) {
-  if (error) {
-    return (
-      <div className="mb-6">
-        {isAuthError(error) ? (
-          <AuthErrorBanner message={queryErrorMessage(error)} />
-        ) : (
-          <div className="app-alert-error">
-            Error loading narrative: {queryErrorMessage(error)}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (isPending || !narrative) {
-    return (
-      <section
-        aria-label="Session narrative loading"
-        className="app-surface mb-6 p-6"
-      >
-        <div className="animate-pulse">
-          <h2 className="text-lg font-bold text-[var(--continua-text-primary)]">
-            Session Narrative
-          </h2>
-          <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">Loading narrative...</p>
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div
-                key={index}
-                className="h-20 rounded-[1.1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)]"
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  const lineageCoverageLabel = narrative.summary.truncated
-    ? `Lineage coverage applies to the first ${narrative.summary.returned_trace_count} traces shown.`
-    : 'Lineage coverage applies to the shown narrative only.';
-  const narrativeTraceByExternalId = new Map(
-    narrative.traces.map((trace) => [trace.trace_id, trace] as const)
+  const traceByExternalId = new Map(
+    traces.map((trace) => [trace.trace_id, trace] as const)
   );
 
-  if (narrative.summary.total_trace_count === 0) {
-    return (
-      <section
-        aria-label="Session narrative placeholder"
-        className="app-surface mb-6 p-6"
-      >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="app-overline">Narrative</div>
-            <h2 className="mt-2 text-lg font-bold text-[var(--continua-text-primary)]">
-              Session Narrative
-            </h2>
-            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
-              A compact session storyline will appear here as traces are ingested for this session.
-            </p>
-          </div>
-          {isFetching ? (
-            <div className="text-sm text-[var(--continua-accent)]">Updating narrative...</div>
-          ) : null}
-        </div>
-
-        <div className="app-empty-state mt-4 text-left">
-          <p className="font-medium text-[var(--continua-text-primary)]">No narrative yet</p>
-          <p className="mt-1">
-            This placeholder stays compact until the session has at least one ingested trace.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <>
-      <section
-        aria-label="Session narrative summary"
-        className="app-surface mb-6 p-6"
-      >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="app-overline">Narrative</div>
-            <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">
-              Session Narrative
-            </h2>
-            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
-              Chronological summary for the returned storyline above the full trace browser.
-            </p>
-          </div>
-          {isFetching && (
-            <div className="text-sm text-[var(--continua-accent)]">Updating narrative...</div>
-          )}
-        </div>
-
-        <dl className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <MetricBlock
-            label="Returned / Total"
-            value={`${narrative.summary.returned_trace_count} shown / ${narrative.summary.total_trace_count} total`}
+    <div className="relative">
+      <div className="absolute bottom-2 left-[14px] top-2 w-px bg-[var(--c-border)]" />
+      <div className="flex flex-col gap-1.5">
+        {traces.map((trace, index) => (
+          <JourneyStep
+            assignCompareRole={assignCompareRole}
+            compare={compare}
+            index={index + 1}
+            key={trace.id}
+            parentTrace={
+              trace.lineage.parent_trace_id
+                ? traceByExternalId.get(trace.lineage.parent_trace_id)
+                : undefined
+            }
+            projectId={projectId}
+            returnTo={returnTo}
+            setComparePair={setComparePair}
+            trace={trace}
           />
-          <MetricBlock
-            label="Status Breakdown"
-            value={`${narrative.summary.running_trace_count} running`}
-            hint={`${narrative.summary.completed_trace_count} completed · ${narrative.summary.failed_trace_count} failed`}
-          />
-          <MetricBlock
-            label="Aggregate Usage"
-            value={formatCost(narrative.summary.total_cost_usd)}
-            hint={`${formatTokens(narrative.summary.total_tokens_in)} in · ${formatTokens(
-              narrative.summary.total_tokens_out
-            )} out`}
-          />
-          <MetricBlock
-            label="Started"
-            value={formatRelativeTime(narrative.summary.started_at)}
-          />
-          <MetricBlock
-            label="Last Activity"
-            value={formatRelativeTime(narrative.summary.last_activity_at)}
-          />
-          <MetricBlock
-            label="Lineage Coverage"
-            value={`${narrative.summary.explicit_link_count} explicit · ${narrative.summary.inferred_link_count} inferred · ${narrative.summary.unlinked_trace_count} unlinked`}
-            hint={lineageCoverageLabel}
-          />
-        </dl>
-      </section>
-
-      <section
-        aria-label="Session narrative storyline"
-        className="app-surface mb-6 p-6"
-      >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="app-overline">Lineage</div>
-            <h2 className="mt-2 text-2xl font-black tight-headline text-[var(--continua-text-primary)]">Storyline</h2>
-            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
-              Oldest-first trace flow for the narrative that was returned.
-            </p>
-          </div>
-        </div>
-
-        {narrative.summary.truncated && (
-          <div className="mt-4 rounded-[1rem] border border-amber-300/40 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
-            Narrative limited to the first {narrative.summary.returned_trace_count} traces. The
-            table below remains the full browser.
-          </div>
-        )}
-
-        {narrative.traces.length === 0 ? (
-          <div className="app-empty-state mt-4 text-left">
-            <p className="font-medium text-[var(--continua-text-primary)]">No narrative yet</p>
-            <p className="mt-1">
-              A compact session storyline will appear here as traces are ingested for this session.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-4 space-y-4">
-            {narrative.traces.map((trace) => (
-              <StorylineTraceCard
-                assignCompareRole={assignCompareRole}
-                compare={compare}
-                key={trace.id}
-                parentTrace={
-                  trace.lineage.parent_trace_id
-                    ? narrativeTraceByExternalId.get(trace.lineage.parent_trace_id)
-                    : undefined
-                }
-                projectId={projectId}
-                setComparePair={setComparePair}
-                trace={trace}
-                returnTo={returnTo}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-    </>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function StorylineTraceCard({
-  compare,
+function JourneyStep({
   assignCompareRole,
+  compare,
+  index,
   parentTrace,
   projectId,
+  returnTo,
   setComparePair,
   trace,
-  returnTo,
 }: {
-  compare: SessionDetailCompareState;
   assignCompareRole: (role: CompareRole, traceId: string, mode?: HistoryMode) => void;
+  compare: SessionDetailCompareState;
+  index: number;
   parentTrace?: SessionNarrativeTrace;
   projectId?: string;
+  returnTo: string;
   setComparePair: (baselineTraceId: string, candidateTraceId: string, mode?: HistoryMode) => void;
   trace: SessionNarrativeTrace;
-  returnTo: string;
 }) {
+  const duration = formatDuration(trace.duration_ms);
+  const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
   const semanticSnippet = getSemanticSnippet(trace);
   const isSelectable = isTerminalTraceStatus(trace.status);
   const canCompareToParent =
-    parentTrace &&
-    isSelectable &&
-    isTerminalTraceStatus(parentTrace.status);
+    parentTrace && isSelectable && isTerminalTraceStatus(parentTrace.status);
+  const nodeTone =
+    trace.status === 'FAILED'
+      ? 'var(--c-red)'
+      : trace.status === 'RUNNING'
+        ? 'var(--c-blue)'
+        : 'var(--c-green)';
 
   return (
-    <article className="app-surface-muted overflow-hidden p-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to={appendProjectToPath(`/traces/${trace.id}`, projectId)}
-              state={{ returnTo }}
-              className="text-sm font-semibold text-[var(--continua-accent)] transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
-            >
-              {trace.name}
-            </Link>
-            <StatusBadge status={trace.status} />
-            <NarrativeLineageBadge lineage={trace.lineage} />
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-[var(--continua-text-muted)]">
-            <span className="font-mono">{trace.trace_id}</span>
-            {trace.user_id ? <span>User {trace.user_id}</span> : null}
-          </div>
-
-          {semanticSnippet ? (
-            <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">{semanticSnippet}</p>
+    <div className="grid grid-cols-[30px_minmax(0,1fr)] gap-3 rounded-md py-2 pr-3 hover:bg-[var(--c-row-hover-bg)]">
+      <div className="relative flex justify-center pt-0.5">
+        <div
+          className="relative z-[1] flex h-7 w-7 items-center justify-center rounded-full border bg-[var(--c-surface)] font-mono text-[10.5px] font-semibold"
+          style={{ borderColor: nodeTone, color: nodeTone }}
+        >
+          {index}
+          {trace.status === 'RUNNING' ? (
+            <span
+              className="absolute -inset-1 rounded-full"
+              style={{
+                animation: 'continua-pulse 1.6s ease-out infinite',
+                border: `1.5px solid ${nodeTone}`,
+                opacity: 0.35,
+              }}
+            />
           ) : null}
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <CompareRoleButton
-              disabled={!isSelectable}
-              isSelected={compare.baseline_trace_id === trace.id}
-              label="Set as baseline"
-              onClick={() => assignCompareRole('baseline', trace.id)}
-              title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
-            />
-            <CompareRoleButton
-              disabled={!isSelectable}
-              isSelected={compare.candidate_trace_id === trace.id}
-              label="Set as candidate"
-              onClick={() => assignCompareRole('candidate', trace.id)}
-              title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
-            />
-            {canCompareToParent ? (
-              <CompareRoleButton
-                disabled={false}
-                isSelected={false}
-                label="Compare to parent"
-                onClick={() => setComparePair(parentTrace.id, trace.id)}
-              />
-            ) : null}
-          </div>
         </div>
-
-        <dl className="grid gap-3 sm:grid-cols-2 xl:w-[30rem] xl:grid-cols-3">
-          <MetricBlock label="Started" value={formatRelativeTime(trace.started_at)} compact />
-          <MetricBlock label="Ended" value={formatRelativeTime(trace.ended_at)} compact />
-          <MetricBlock
-            label="Latest Activity"
-            value={formatRelativeTime(trace.latest_activity_at)}
-            compact
-          />
-          <MetricBlock label="Duration" value={formatDuration(trace.duration_ms)} compact />
-          <MetricBlock
-            label="Tokens"
-            value={`${formatTokens(trace.total_tokens_in)} in / ${formatTokens(
-              trace.total_tokens_out
-            )} out`}
-            compact
-          />
-          <MetricBlock
-            label="Cost / Errors"
-            value={`${formatCost(trace.total_cost_usd)} · ${trace.error_count ?? 0} errors`}
-            compact
-          />
-        </dl>
       </div>
-    </article>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to={appendProjectToPath(`/traces/${trace.id}`, projectId)}
+            state={{ returnTo }}
+            className="font-mono text-[13px] font-semibold text-[var(--c-text-primary)] hover:text-[var(--c-accent-text)]"
+          >
+            {trace.name}
+          </Link>
+          <StatusDot status={trace.status} />
+          <Chip tone="muted">{formatLineageLabel(trace.lineage.type)}</Chip>
+          <span className="ml-auto font-mono text-[11px] tabular-nums text-[var(--c-text-muted)]">
+            {formatRelativeTime(trace.started_at)}
+          </span>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-3 font-mono text-[11.5px] tabular-nums text-[var(--c-text-muted)]">
+          <span>
+            dur <span className="font-medium text-[var(--c-text-secondary)]">{duration}</span>
+          </span>
+          <span>
+            tok{' '}
+            <span className="font-medium text-[var(--c-text-secondary)]">
+              {totalTokens > 0 ? formatTokens(totalTokens) : '-'}
+            </span>
+          </span>
+          <span>
+            cost{' '}
+            <span className="font-medium text-[var(--c-text-secondary)]">
+              {formatCost(trace.total_cost_usd)}
+            </span>
+          </span>
+          {trace.error_count ? (
+            <span className="text-[var(--c-red-text)]">err {trace.error_count}</span>
+          ) : null}
+        </div>
+        {semanticSnippet ? (
+          <div className="mt-2 rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1.5 text-[12px] leading-5 text-[var(--c-text-secondary)]">
+            {semanticSnippet}
+          </div>
+        ) : null}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <CompareRoleButton
+            disabled={!isSelectable}
+            isSelected={compare.baseline_trace_id === trace.id}
+            label="Set baseline"
+            onClick={() => assignCompareRole('baseline', trace.id)}
+            title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
+          />
+          <CompareRoleButton
+            disabled={!isSelectable}
+            isSelected={compare.candidate_trace_id === trace.id}
+            label="Set candidate"
+            onClick={() => assignCompareRole('candidate', trace.id)}
+            title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
+          />
+          {canCompareToParent ? (
+            <CompareRoleButton
+              disabled={false}
+              isSelected={false}
+              label="Compare to parent"
+              onClick={() => setComparePair(parentTrace.id, trace.id)}
+            />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SessionStatCard({
+  hint,
+  label,
+  tone,
+  value,
+}: {
+  hint?: string;
+  label: string;
+  tone?: 'amber' | 'green' | 'muted' | 'red';
+  value: string;
+}) {
+  const toneClass =
+    tone === 'red'
+      ? 'text-[var(--c-red-text)]'
+      : tone === 'amber'
+        ? 'text-[var(--c-amber-text)]'
+        : tone === 'green'
+          ? 'text-[var(--c-green-text)]'
+          : 'text-[var(--c-text-primary)]';
+
+  return (
+    <div className="border-r border-[var(--c-border)] px-4 py-3">
+      <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--c-text-muted)]">
+        {label}
+      </div>
+      <div className={`text-lg font-semibold leading-tight tracking-[-0.01em] tabular-nums ${toneClass}`}>
+        {value}
+      </div>
+      {hint ? (
+        <div className="mt-1 text-[11px] text-[var(--c-text-muted)]">{hint}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function SessionSidePanel({
+  completedTraceCount,
+  failedTraceCount,
+  runningTraceCount,
+  session,
+  summary,
+  totalTokens,
+  traces,
+}: {
+  completedTraceCount: number;
+  failedTraceCount: number;
+  runningTraceCount: number;
+  session: Session;
+  summary?: SessionNarrativeSummary;
+  totalTokens: number;
+  traces: SessionNarrativeTrace[];
+}) {
+  return (
+    <div className="flex flex-col gap-5 px-5 py-4">
+      <SidePanelSection title="Identity">
+        <SidePanelRow label="Session ID" mono value={session.id} />
+        <SidePanelRow label="External" mono value={session.external_id} />
+        <SidePanelRow label="User" mono value={session.user_id || '-'} />
+      </SidePanelSection>
+      <SidePanelSection title="Engagement">
+        <SidePanelRow label="Started" value={formatRelativeTime(session.created_at)} />
+        <SidePanelRow
+          label="Last active"
+          value={formatRelativeTime(summary?.last_activity_at)}
+        />
+        <SidePanelRow label="Touchpoints" mono value={String(summary?.total_trace_count ?? session.trace_count ?? 0)} />
+      </SidePanelSection>
+      <SidePanelSection title="Trace status">
+        <UsageBar
+          segments={[
+            { color: 'var(--c-green)', label: 'OK', value: completedTraceCount },
+            { color: 'var(--c-blue)', label: 'Live', value: runningTraceCount },
+            { color: 'var(--c-red)', label: 'Failed', value: failedTraceCount },
+          ]}
+        />
+      </SidePanelSection>
+      <SidePanelSection title="Usage">
+        <SidePanelRow label="Tokens" mono value={formatTokens(totalTokens)} />
+        <SidePanelRow label="Cost" mono value={formatCost(summary?.total_cost_usd)} />
+      </SidePanelSection>
+      <SidePanelSection title="Latency by trace">
+        <LatencyBars traces={traces} />
+      </SidePanelSection>
+      <SidePanelSection title="Linked">
+        <SidePanelLink icon={User} label="User profile" sub={session.user_id || 'No user ID'} />
+        <SidePanelLink icon={Zap} label="Trace lineage" sub={`${summary?.explicit_link_count ?? 0} explicit links`} />
+        <SidePanelLink icon={ExternalLink} label="Workspace" sub="Current project" />
+      </SidePanelSection>
+    </div>
+  );
+}
+
+function SessionContextPanel({
+  session,
+  summary,
+}: {
+  session: Session;
+  summary?: SessionNarrativeSummary;
+}) {
+  return (
+    <div className="max-w-3xl px-6 py-5">
+      <ContextSection title="User and session">
+        <ContextRow label="Session ID" mono value={session.id} />
+        <ContextRow label="External ID" mono value={session.external_id} />
+        <ContextRow label="User ID" mono value={session.user_id || '-'} />
+        <ContextRow label="Created" value={formatRelativeTime(session.created_at)} />
+        <ContextRow
+          label="Last activity"
+          value={formatRelativeTime(summary?.last_activity_at)}
+        />
+      </ContextSection>
+      <ContextSection title="Metadata">
+        {session.metadata && Object.keys(session.metadata).length > 0 ? (
+          Object.entries(session.metadata).map(([key, value]) => (
+            <ContextRow
+              key={key}
+              label={key}
+              mono={typeof value !== 'object'}
+              value={
+                typeof value === 'string'
+                  ? value
+                  : JSON.stringify(value, null, 2)
+              }
+            />
+          ))
+        ) : (
+          <div className="text-[12.5px] text-[var(--c-text-muted)]">
+            No session metadata.
+          </div>
+        )}
+      </ContextSection>
+    </div>
+  );
+}
+
+interface FeedbackItem {
+  score?: string | number;
+  text: string;
+  trace?: string;
+  user?: string;
+  when?: string;
+}
+
+function SessionFeedbackPanel({
+  session,
+  traces,
+}: {
+  session: Session;
+  traces: SessionNarrativeTrace[];
+}) {
+  const feedbackItems = getFeedbackItems(session);
+
+  if (feedbackItems.length === 0) {
+    return (
+      <div className="max-w-3xl px-6 py-5">
+        <ContextSection title="Feedback">
+          <div className="rounded-md border border-dashed border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-8 text-center text-[12.5px] text-[var(--c-text-muted)]">
+            No feedback has been attached to this session.
+          </div>
+        </ContextSection>
+        <ContextSection title="Trace signals">
+          <div className="flex flex-col gap-2">
+            {traces.slice(0, 6).map((trace) => (
+              <div
+                key={trace.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[12.5px]"
+              >
+                <span className="min-w-0 truncate font-mono font-medium text-[var(--c-text-primary)]">
+                  {trace.name}
+                </span>
+                <StatusDot status={trace.status} />
+              </div>
+            ))}
+          </div>
+        </ContextSection>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl px-6 py-5">
+      <ContextSection title="Feedback">
+        <div className="flex flex-col gap-2.5">
+          {feedbackItems.map((item, index) => (
+            <div
+              key={`${item.text}-${index}`}
+              className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3.5 py-3"
+            >
+              <div className="mb-1.5 flex items-center gap-2 text-xs">
+                {item.score != null ? (
+                  <Chip tone={isPositiveFeedback(item.score) ? 'success' : 'error'}>
+                    {String(item.score)}
+                  </Chip>
+                ) : null}
+                <span className="font-mono text-[var(--c-text-secondary)]">
+                  {item.user || session.user_id || 'anonymous'}
+                </span>
+                {item.when ? (
+                  <>
+                    <span className="text-[var(--c-text-muted)]">/</span>
+                    <span className="text-[var(--c-text-muted)]">{item.when}</span>
+                  </>
+                ) : null}
+                {item.trace ? (
+                  <span className="ml-auto truncate font-mono text-[11px] text-[var(--c-accent-text)]">
+                    {item.trace}
+                  </span>
+                ) : null}
+              </div>
+              <div className="text-[12.5px] leading-5 text-[var(--c-text-primary)]">
+                {item.text}
+              </div>
+            </div>
+          ))}
+        </div>
+      </ContextSection>
+    </div>
+  );
+}
+
+function getFeedbackItems(session: Session): FeedbackItem[] {
+  const metadata = session.metadata;
+  if (!metadata) {
+    return [];
+  }
+
+  const rawFeedback =
+    metadata.feedback ??
+    metadata.feedback_items ??
+    metadata.ratings ??
+    metadata.rating;
+
+  if (Array.isArray(rawFeedback)) {
+    return rawFeedback
+      .map(normalizeFeedbackItem)
+      .filter((item): item is FeedbackItem => item !== null);
+  }
+
+  const normalizedSingle = normalizeFeedbackItem(rawFeedback);
+  if (normalizedSingle) {
+    return [normalizedSingle];
+  }
+
+  if (typeof metadata.feedback_text === 'string') {
+    return [
+      {
+        score:
+          typeof metadata.feedback_score === 'string' ||
+          typeof metadata.feedback_score === 'number'
+            ? metadata.feedback_score
+            : undefined,
+        text: metadata.feedback_text,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function normalizeFeedbackItem(value: unknown): FeedbackItem | null {
+  if (typeof value === 'string') {
+    return { text: value };
+  }
+
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const rawText = record.text ?? record.comment ?? record.message ?? record.feedback;
+  if (typeof rawText !== 'string' || rawText.trim() === '') {
+    return null;
+  }
+
+  return {
+    score:
+      typeof record.score === 'string' || typeof record.score === 'number'
+        ? record.score
+        : typeof record.rating === 'string' || typeof record.rating === 'number'
+          ? record.rating
+          : undefined,
+    text: rawText,
+    trace: typeof record.trace === 'string' ? record.trace : undefined,
+    user: typeof record.user === 'string' ? record.user : undefined,
+    when: typeof record.when === 'string' ? record.when : undefined,
+  };
+}
+
+function isPositiveFeedback(score: string | number): boolean {
+  if (typeof score === 'number') {
+    return score >= 0;
+  }
+  return !/negative|bad|fail|thumbs\s*down|down/i.test(score);
+}
+
+function ContextSection({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="mb-6 border-b border-[var(--c-border)] pb-6">
+      <div className="mb-3 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--c-text-muted)]">
+        {title}
+      </div>
+      <div className="flex flex-col gap-1">{children}</div>
+    </section>
+  );
+}
+
+function ContextRow({
+  label,
+  mono = false,
+  value,
+}: {
+  label: string;
+  mono?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="grid grid-cols-[160px_minmax(0,1fr)] items-baseline gap-4 border-b border-[var(--c-border-subtle)] py-1.5 text-[12.5px]">
+      <span className="font-medium text-[var(--c-text-secondary)]">{label}</span>
+      <span
+        className={`min-w-0 whitespace-pre-wrap break-words text-[var(--c-text-primary)] ${
+          mono ? 'font-mono' : ''
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function SidePanelSection({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title: string;
+}) {
+  return (
+    <section>
+      <div className="mb-2.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--c-text-muted)]">
+        {title}
+      </div>
+      <div className="flex flex-col gap-1.5">{children}</div>
+    </section>
+  );
+}
+
+function SidePanelRow({
+  label,
+  mono = false,
+  value,
+}: {
+  label: string;
+  mono?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2 text-[11.5px]">
+      <span className="text-[var(--c-text-muted)]">{label}</span>
+      <span className={`truncate text-[var(--c-text-primary)] ${mono ? 'font-mono' : ''}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function UsageBar({
+  segments,
+}: {
+  segments: Array<{ color: string; label: string; value: number }>;
+}) {
+  const total = Math.max(
+    segments.reduce((sum, segment) => sum + segment.value, 0),
+    1
+  );
+
+  return (
+    <div>
+      <div className="flex h-2 overflow-hidden rounded-full bg-[var(--c-surface-muted)]">
+        {segments.map((segment) => (
+          <div
+            key={segment.label}
+            style={{
+              background: segment.color,
+              width: `${(segment.value / total) * 100}%`,
+            }}
+          />
+        ))}
+      </div>
+      <div className="mt-2 flex justify-between gap-2 text-[11.5px]">
+        {segments.map((segment) => (
+          <span key={segment.label} className="inline-flex items-center gap-1.5">
+            <span
+              className="h-1.5 w-1.5 rounded-sm"
+              style={{ background: segment.color }}
+            />
+            <span className="text-[var(--c-text-secondary)]">{segment.label}</span>
+            <span className="font-mono text-[var(--c-text-muted)]">
+              {segment.value}
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LatencyBars({ traces }: { traces: SessionNarrativeTrace[] }) {
+  const durations = traces
+    .map((trace) => trace.duration_ms)
+    .filter((duration): duration is number => typeof duration === 'number' && duration > 0);
+  const maxDuration = Math.max(...durations, 1);
+  const minDuration = durations.length > 0 ? Math.min(...durations) : undefined;
+  const p95Duration = percentile(durations, 0.95);
+
+  if (durations.length === 0) {
+    return (
+      <div className="text-[11.5px] text-[var(--c-text-muted)]">
+        No completed trace latency yet.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex h-9 items-end gap-[3px]">
+        {durations.slice(0, 18).map((duration, index) => (
+          <div
+            key={`${duration}-${index}`}
+            className="min-h-0.5 flex-1 rounded-[1px]"
+            style={{
+              background:
+                duration > maxDuration * 0.7
+                  ? 'var(--c-amber)'
+                  : 'var(--c-accent)',
+              height: `${Math.max(6, (duration / maxDuration) * 100)}%`,
+              opacity: 0.85,
+            }}
+            title={formatDuration(duration)}
+          />
+        ))}
+      </div>
+      <div className="mt-1.5 flex justify-between font-mono text-[10.5px] text-[var(--c-text-muted)]">
+        <span>min {formatDuration(minDuration)}</span>
+        <span>p95 {formatDuration(p95Duration)}</span>
+        <span>max {formatDuration(maxDuration)}</span>
+      </div>
+    </div>
+  );
+}
+
+function percentile(values: number[], p: number): number | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1);
+  return sorted[index];
+}
+
+function SidePanelLink({
+  icon: Icon,
+  label,
+  sub,
+}: {
+  icon: LucideIcon;
+  label: string;
+  sub: string;
+}) {
+  return (
+    <div className="grid grid-cols-[20px_minmax(0,1fr)_12px] items-center gap-2.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-2">
+      <Icon className="h-3.5 w-3.5 text-[var(--c-text-secondary)]" />
+      <div className="min-w-0">
+        <div className="truncate text-xs font-medium text-[var(--c-text-primary)]">
+          {label}
+        </div>
+        <div className="truncate font-mono text-[11px] text-[var(--c-text-muted)]">
+          {sub}
+        </div>
+      </div>
+      <ExternalLink className="h-3 w-3 text-[var(--c-text-muted)]" />
+    </div>
   );
 }
 
@@ -1078,9 +1642,9 @@ function CompareBar({
     (candidate && !isTerminalTraceStatus(candidate.status));
 
   return (
-    <section className="app-surface sticky top-[5rem] z-20 mb-6 p-4">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div className="grid gap-3 sm:grid-cols-2 xl:w-[40rem]">
+    <section className="sticky top-11 z-20 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-6 py-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div className="grid gap-2 sm:grid-cols-2 xl:w-[40rem]">
           <CompareSelectionCard
             isPending={isBaselineLookupPending}
             label="Baseline"
@@ -1093,34 +1657,26 @@ function CompareBar({
           />
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => swapCompare()}
-            className="app-button-ghost"
-          >
+        <div className="flex flex-wrap gap-1.5">
+          <Btn kind="ghost" size="sm" type="button" onClick={() => swapCompare()}>
             Swap
-          </button>
-          <button
-            type="button"
-            onClick={() => clearCompare()}
-            className="app-button-ghost"
-          >
+          </Btn>
+          <Btn kind="ghost" size="sm" type="button" onClick={() => clearCompare()}>
             Clear
-          </button>
+          </Btn>
           {canOpenComparison ? (
             <Link
               to={compareHref}
               state={{ returnTo: currentSessionDetailUrl }}
-              className="app-button-primary"
+              className="inline-flex h-7 items-center justify-center rounded-md border border-transparent bg-[var(--c-text-primary)] px-2.5 text-xs font-semibold text-[var(--c-app-bg)]"
             >
               Open comparison
             </Link>
           ) : (
-            <button
-              type="button"
+            <Btn
               disabled
-              className="cursor-not-allowed rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-2.5 text-sm font-medium text-[var(--continua-text-muted)]"
+              kind="secondary"
+              size="sm"
               title={
                 hasRunningSelection
                   ? 'Both selected traces must be terminal before comparison can open'
@@ -1128,13 +1684,13 @@ function CompareBar({
               }
             >
               Open comparison
-            </button>
+            </Btn>
           )}
         </div>
       </div>
 
       {(isBaselineLookupPending || isCandidateLookupPending || hasRunningSelection) ? (
-        <p className="mt-3 text-sm text-[var(--continua-text-secondary)]">
+        <p className="mt-2 text-[12.5px] text-[var(--c-text-secondary)]">
           {isBaselineLookupPending || isCandidateLookupPending
             ? 'Resolving selected trace details...'
             : 'Running traces stay visible here, but comparison remains disabled until they finish.'}
@@ -1154,24 +1710,24 @@ function CompareSelectionCard({
   isPending: boolean;
 }) {
   return (
-    <div className="rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-4">
-      <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
+    <div className="rounded-md border border-[var(--c-border)] bg-[var(--c-app-bg)] p-3">
+      <p className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--c-text-muted)]">
         {label}
       </p>
       {isPending ? (
-        <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">Loading trace…</p>
+        <p className="mt-1.5 text-[12.5px] text-[var(--c-text-secondary)]">Loading trace...</p>
       ) : trace ? (
-        <div className="mt-2">
+        <div className="mt-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-[var(--continua-text-primary)]">{trace.name}</p>
-            <StatusBadge status={trace.status} />
+            <p className="font-mono text-[12.5px] font-semibold text-[var(--c-text-primary)]">{trace.name}</p>
+            <StatusDot status={trace.status} />
           </div>
           {trace.trace_id ? (
-            <p className="mt-1 font-mono text-xs text-[var(--continua-text-muted)]">{trace.trace_id}</p>
+            <p className="mt-1 font-mono text-[11px] text-[var(--c-text-muted)]">{trace.trace_id}</p>
           ) : null}
         </div>
       ) : (
-        <p className="mt-2 text-sm text-[var(--continua-text-secondary)]">No trace selected</p>
+        <p className="mt-1.5 text-[12.5px] text-[var(--c-text-secondary)]">No trace selected</p>
       )}
     </div>
   );
@@ -1196,12 +1752,12 @@ function CompareRoleButton({
       disabled={disabled}
       onClick={onClick}
       title={title}
-      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+      className={`rounded border px-2 py-1 text-[11.5px] font-medium transition ${
         disabled
-          ? 'cursor-not-allowed border-[var(--continua-border-soft)] text-[var(--continua-text-muted)]'
+          ? 'cursor-not-allowed border-[var(--c-border)] text-[var(--c-text-muted)]'
           : isSelected
-            ? 'border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
-            : 'border-[var(--continua-border-strong)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] hover:border-[var(--continua-accent)] hover:text-[var(--continua-accent)]'
+            ? 'border-[var(--c-accent-border)] bg-[var(--c-accent-faint)] text-[var(--c-accent-text)]'
+            : 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-secondary)] hover:border-[var(--c-border-strong)] hover:text-[var(--c-text-primary)]'
       }`}
     >
       {label}
@@ -1209,55 +1765,7 @@ function CompareRoleButton({
   );
 }
 
-function MetricBlock({
-  label,
-  value,
-  hint,
-  compact = false,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className={
-        compact
-          ? 'rounded-[1rem] border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] p-3'
-          : 'app-metric-panel'
-      }
-    >
-      <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-        {label}
-      </dt>
-      <dd className="mt-2 text-sm font-semibold text-[var(--continua-text-primary)]">{value}</dd>
-      {hint ? (
-        <p className="mt-1 text-xs text-[var(--continua-text-secondary)]">{hint}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function NarrativeLineageBadge({ lineage }: { lineage: SessionNarrativeLineage }) {
-  const label = formatLineageLabel(lineage.type);
-  const colorClass =
-    lineage.type === 'explicit'
-      ? 'bg-amber-100 text-amber-900'
-      : lineage.type === 'inferred'
-        ? 'bg-sky-100 text-sky-900'
-        : 'bg-[var(--continua-surface-muted)] text-[var(--continua-text-secondary)]';
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${colorClass}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-function formatLineageLabel(type: SessionNarrativeLineage['type']): string {
+function formatLineageLabel(type: SessionNarrativeTrace['lineage']['type']): string {
   switch (type) {
     case 'explicit':
       return 'Explicit';
@@ -1270,7 +1778,11 @@ function formatLineageLabel(type: SessionNarrativeLineage['type']): string {
 
 function getSemanticSnippet(trace: SessionNarrativeTrace): string | null {
   const latestEvent = trace.semantic_events.at(-1);
-  return latestEvent ? summarizeTimelineEvent(latestEvent) : null;
+  if (!latestEvent?.event_type) {
+    return null;
+  }
+
+  return summarizeTimelineEvent(latestEvent);
 }
 
 function SessionTraceRow({
@@ -1291,52 +1803,62 @@ function SessionTraceRow({
   const isSelectable = isTerminalTraceStatus(trace.status);
 
   return (
-    <tr className="border-b border-[var(--continua-border-soft)] transition hover:bg-[var(--continua-surface-muted)]">
-      <td className="px-6 py-4 align-top">
-        <div className="flex flex-wrap items-center gap-2">
+    <Tr>
+      <Td>
+        <div className="flex min-w-0 flex-col gap-1">
           <Link
             to={appendProjectToPath(`/traces/${trace.id}`, projectId)}
             state={{ returnTo }}
-            className="text-sm font-semibold text-[var(--continua-accent)] transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
+            className="truncate font-mono text-[12.5px] font-medium text-[var(--c-text-primary)] hover:text-[var(--c-accent-text)]"
           >
             {trace.name}
           </Link>
-          {trace.engine ? (
-            <EngineBadge projectionState={trace.engine.projection_state} />
-          ) : null}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-mono text-[10.5px] text-[var(--c-text-muted)]">
+              {trace.id}
+            </span>
+            {trace.engine ? (
+              <Chip icon={Zap}>{trace.engine.definition_name}</Chip>
+            ) : null}
+          </div>
         </div>
-        <div className="mt-2 flex flex-wrap gap-2">
+      </Td>
+      <Td>
+        <StatusDot status={trace.status} />
+      </Td>
+      <Td align="right" mono>
+        {formatDuration(duration)}
+      </Td>
+      <Td align="right" mono>
+        {formatTokens(totalTokens)}
+      </Td>
+      <Td align="right" mono>
+        {formatCost(trace.total_cost_usd)}
+      </Td>
+      <Td align="right" mono className={(trace.error_count ?? 0) > 0 ? 'text-[var(--c-red-text)]' : ''}>
+        {trace.error_count ?? 0}
+      </Td>
+      <Td align="right" dim>
+        {formatRelativeTime(trace.started_at)}
+      </Td>
+      <Td className="w-[150px]">
+        <div className="flex justify-end gap-1">
           <CompareRoleButton
             disabled={!isSelectable}
             isSelected={compare.baseline_trace_id === trace.id}
-            label="Set as baseline"
+            label="Base"
             onClick={() => assignCompareRole('baseline', trace.id)}
             title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
           />
           <CompareRoleButton
             disabled={!isSelectable}
             isSelected={compare.candidate_trace_id === trace.id}
-            label="Set as candidate"
+            label="Cand"
             onClick={() => assignCompareRole('candidate', trace.id)}
             title={!isSelectable ? 'Trace must complete before it can be compared' : undefined}
           />
         </div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap align-top">
-        <StatusBadge status={trace.status} />
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--continua-text-primary)] align-top">
-        {formatDuration(duration)}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--continua-text-primary)] align-top">
-        {formatTokens(totalTokens)}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--continua-text-primary)] align-top">
-        {formatCost(trace.total_cost_usd)}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--continua-text-muted)] align-top">
-        {formatRelativeTime(trace.started_at)}
-      </td>
-    </tr>
+      </Td>
+    </Tr>
   );
 }

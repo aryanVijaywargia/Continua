@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { clearApiKey, getApiKey, setApiKey } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { useOperatorAuth, useRuntimeAuth } from '../auth/runtime';
+import { PageHeader } from '../components/DebuggerKit';
 
 const THEME_OPTIONS = [
   { id: 'system', label: 'System' },
@@ -26,21 +27,23 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="app-page max-w-5xl space-y-6">
-      <section className="app-surface p-6 sm:p-7">
-        <div className="app-overline">Operator settings</div>
-        <h1 className="mt-3 text-3xl font-black tight-headline text-[var(--continua-text-primary)] sm:text-4xl">
-          Manage your operator session and debugger workspace.
-        </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
-          {isLocalApiKeyMode
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PageHeader
+        description={
+          isLocalApiKeyMode
             ? 'Local self-host access uses a project API key. Theme controls stay here.'
-            : 'Auth is handled through Auth0. Theme controls and sign-out stay here.'}
-        </p>
-      </section>
+            : 'Auth is handled through Auth0. Theme controls and sign-out stay here.'
+        }
+        title="Settings"
+        tabs={[
+          { id: 'general', label: 'General', active: true },
+          { id: 'keys', label: 'API keys' },
+          { id: 'appearance', label: 'Appearance' },
+        ]}
+      />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <section className="app-surface p-6">
+      <div className="grid max-w-5xl gap-8 p-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <section>
           {isLocalApiKeyMode ? (
             <LocalApiKeySettings
               draft={localApiKeyDraft}
@@ -75,12 +78,12 @@ export function SettingsPage() {
           )}
         </section>
 
-        <section className="app-surface p-6">
+        <section>
           <div className="mb-4">
-            <h2 className="text-xl font-black tight-headline text-[var(--continua-text-primary)]">
+            <h2 className="text-sm font-semibold text-[var(--c-text-primary)]">
               Appearance
             </h2>
-            <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
+            <p className="mt-1 text-sm text-[var(--c-text-secondary)]">
               Choose how the debugger resolves its theme on this device.
             </p>
           </div>
@@ -94,14 +97,14 @@ export function SettingsPage() {
                   key={option.id}
                   type="button"
                   onClick={() => setMode(option.id)}
-                  className={`rounded-2xl border px-4 py-4 text-left transition ${
+                  className={`rounded-md border px-4 py-4 text-left transition ${
                     active
-                      ? 'border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-text-primary)]'
-                      : 'border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] hover:text-[var(--continua-text-primary)]'
+                      ? 'border-[var(--c-accent-border)] bg-[var(--c-accent-faint)] text-[var(--c-text-primary)]'
+                      : 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-secondary)] hover:text-[var(--c-text-primary)]'
                   }`}
                 >
                   <div className="text-sm font-bold">{option.label}</div>
-                  <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
+                  <div className="mt-2 text-xs uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
                     {active ? 'Active' : 'Available'}
                   </div>
                 </button>
@@ -110,10 +113,10 @@ export function SettingsPage() {
           </div>
 
           <div className="app-surface-muted mt-5 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
+            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
               Resolved theme
             </div>
-            <div className="mt-2 text-sm text-[var(--continua-text-primary)]">
+            <div className="mt-2 text-sm text-[var(--c-text-primary)]">
               {resolvedTheme}
             </div>
           </div>

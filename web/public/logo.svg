@@ -1,4 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <circle cx="50" cy="50" r="40" fill="#3B82F6"/>
-  <text x="50" y="55" text-anchor="middle" fill="white" font-size="24" font-weight="bold">C</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+
+  <defs>
+    <linearGradient id="cont-grad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0075d6"></stop>
+      <stop offset="1" stop-color="#005cab"></stop>
+    </linearGradient>
+  </defs>
+
+  <circle cx="32" cy="32" r="28" stroke="url(#cont-grad)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="118 30 22 6" stroke-dashoffset="-32"></circle>
+
+  <path d="M 46 18 A 18 18 0 1 0 46 46" stroke="url(#cont-grad)" stroke-width="4.5" stroke-linecap="round"></path>
+
+  <circle cx="46" cy="18" r="3.25" fill="url(#cont-grad)"></circle>
+  <circle cx="46" cy="46" r="3.25" fill="url(#cont-grad)"></circle>
 </svg>

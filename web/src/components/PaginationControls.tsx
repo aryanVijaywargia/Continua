@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   DEFAULT_PAGE_SIZE,
   PAGE_SIZE_OPTIONS,
@@ -18,8 +19,8 @@ interface PaginationControlsProps {
 
 function buttonClassName(enabled: boolean): string {
   return enabled
-    ? 'app-button-secondary'
-    : 'cursor-not-allowed rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-2 text-sm font-medium text-[var(--continua-text-muted)] opacity-55';
+    ? 'inline-flex h-7 min-w-7 items-center justify-center rounded border border-transparent px-2 text-[var(--c-text-secondary)] hover:border-[var(--c-border)] hover:bg-[var(--c-surface)]'
+    : 'inline-flex h-7 min-w-7 cursor-not-allowed items-center justify-center rounded border border-transparent px-2 text-[var(--c-text-muted)] opacity-50';
 }
 
 export function PaginationControls({
@@ -54,67 +55,49 @@ export function PaginationControls({
   }, [currentItemCount, lastValidOffset, offset, onRepairOffset]);
 
   return (
-    <div className="app-surface mt-4 flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          aria-label="First page"
-          onClick={() => onOffsetChange(0)}
-          disabled={!hasPreviousPage}
-          className={buttonClassName(hasPreviousPage)}
-        >
-          First
-        </button>
-        <button
-          type="button"
-          aria-label="Previous page"
-          onClick={() => onOffsetChange(Math.max(0, currentOffset - pageSize))}
-          disabled={!hasPreviousPage}
-          className={buttonClassName(hasPreviousPage)}
-        >
-          Previous
-        </button>
-        <button
-          type="button"
-          aria-label="Next page"
-          onClick={() => onOffsetChange(currentOffset + pageSize)}
-          disabled={!hasNextPage}
-          className={buttonClassName(hasNextPage)}
-        >
-          Next
-        </button>
-        <button
-          type="button"
-          aria-label="Last page"
-          onClick={() => onOffsetChange(lastValidOffset)}
-          disabled={!hasNextPage}
-          className={buttonClassName(hasNextPage)}
-        >
-          Last
-        </button>
-      </div>
-
-      <div className="flex flex-col gap-2 text-sm text-[var(--continua-text-secondary)] md:items-end">
+    <div className="flex flex-col gap-3 bg-[var(--c-app-bg)] text-xs text-[var(--c-text-muted)] md:flex-row md:items-center md:justify-between">
+      <div className="font-medium">
         <span>
           Showing {showingFrom}-{showingTo} of {total}
         </span>
-        <div className="flex flex-wrap items-center gap-3">
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+        <label className="flex items-center gap-2">
+          <span>Rows per page</span>
+          <select
+            aria-label="Rows per page"
+            value={pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value) || DEFAULT_PAGE_SIZE)}
+            className="h-7 rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 text-[11.5px] text-[var(--c-text-primary)] outline-none"
+          >
+            {pageSizeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Previous page"
+            onClick={() => onOffsetChange(Math.max(0, currentOffset - pageSize))}
+            disabled={!hasPreviousPage}
+            className={buttonClassName(hasPreviousPage)}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
           <span>Page {currentPage} of {totalPages}</span>
-          <label className="flex items-center gap-2">
-            <span>Rows</span>
-            <select
-              aria-label="Rows per page"
-              value={pageSize}
-              onChange={(event) => onPageSizeChange(Number(event.target.value) || DEFAULT_PAGE_SIZE)}
-              className="app-select min-w-[5rem] px-2 py-1.5"
-            >
-              {pageSizeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          <button
+            type="button"
+            aria-label="Next page"
+            onClick={() => onOffsetChange(currentOffset + pageSize)}
+            disabled={!hasNextPage}
+            className={buttonClassName(hasNextPage)}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     </div>

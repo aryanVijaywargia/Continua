@@ -42,9 +42,9 @@ export function InspectorTabs({
   }, [switchToDetailsRef]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] shadow-[var(--continua-shadow-soft)]">
-      <div className="border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-3">
-        <div className="flex items-center gap-2">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--c-app-bg)]">
+      <div className="border-b border-[var(--c-border)] px-3">
+        <div className="flex items-center gap-0">
           <InspectorTabButton
             active={activeTab === 'details'}
             label="Details"
@@ -114,10 +114,10 @@ function InspectorTabButton({
     <button
       type="button"
       aria-label={label}
-      className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
+      className={`-mb-px border-b-2 px-3 py-2 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)] ${
         active
-          ? 'border border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
-          : 'border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)] hover:border-[var(--continua-border-strong)] hover:text-[var(--continua-text-primary)]'
+          ? 'border-[var(--c-accent)] text-[var(--c-text-primary)]'
+          : 'border-transparent text-[var(--c-text-secondary)] hover:text-[var(--c-text-primary)]'
       }`}
       aria-pressed={active}
       onClick={onClick}
@@ -126,10 +126,10 @@ function InspectorTabButton({
       {badgeCount && badgeCount > 0 ? (
         <span
           aria-hidden="true"
-          className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+          className={`ml-1 font-mono text-[10.5px] ${
             active
-              ? 'bg-[var(--continua-accent)] text-[var(--continua-accent-contrast)]'
-              : 'bg-[var(--continua-text-primary)] text-[var(--continua-surface-elevated)]'
+              ? 'text-[var(--c-text-muted)]'
+              : 'text-[var(--c-text-muted)]'
           }`}
         >
           {badgeCount}

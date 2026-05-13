@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckpointIllustration } from '../components/landing/CheckpointIllustration';
-import { AnimatedCounter } from '../components/landing/AnimatedCounter';
 import { HeroIllustration } from '../components/landing/HeroIllustration';
 import { ScrollReveal } from '../components/landing/ScrollReveal';
 import { useRuntimeAuth } from '../auth/runtime';
@@ -19,36 +18,31 @@ const CODE_TABS: CodeTab[] = [
     label: 'Basic Agent',
     content: (
       <pre className="font-mono text-sm leading-relaxed text-on-surface md:text-lg">
-        <span className="text-primary-container">export const</span>{' '}
-        <span className="text-tertiary">agentProcess</span> ={' '}
-        <span className="text-primary-container">workflow</span>(
-        <span className="text-secondary">async</span> {'(input) => {'}
+        <span className="text-primary-container">from</span> continua{' '}
+        <span className="text-primary-container">import</span> Continua, span, trace{'\n'}
         {'\n'}
-        {'  '}
-        <span className="text-on-surface-variant">
-          {'// Checkpointed automatically'}
-        </span>
+        client = Continua.init({'\n'}
+        {'    '}api_key=<span className="text-outline">&quot;default&quot;</span>,{'\n'}
+        {'    '}endpoint=<span className="text-outline">&quot;http://localhost:8080&quot;</span>,{'\n'}
+        {'    '}ingest_mode=<span className="text-outline">&quot;sync&quot;</span>,{'\n'}
+        ){'\n'}
         {'\n'}
-        {'  '}
-        <span className="text-primary-container">const</span> research ={' '}
-        <span className="text-secondary">await</span> step(
-        <span className="text-outline">&apos;research&apos;</span>,{' '}
-        {'() => fetchAPI(input.query)'});{'\n'}
+        <span className="text-primary-container">@trace</span>(name=<span className="text-outline">&quot;research_agent&quot;</span>){'\n'}
+        <span className="text-primary-container">def</span>{' '}
+        <span className="text-tertiary">run_research_agent</span>(query: str):{'\n'}
+        {'    '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;plan_research&quot;</span>, kind=<span className="text-outline">&quot;llm&quot;</span>) <span className="text-primary-container">as</span> s:
         {'\n'}
-        {'  '}
-        <span className="text-primary-container">const</span> summary ={' '}
-        <span className="text-secondary">await</span> step(
-        <span className="text-outline">&apos;summarize&apos;</span>, {'{'}
+        {'        '}s.set_input({'{'}<span className="text-outline">&quot;query&quot;</span>: query{'}'}){'\n'}
+        {'        '}response = call_llm(query){'\n'}
+        {'        '}s.set_llm_response({'\n'}
+        {'            '}<span className="text-outline">&quot;gpt-4&quot;</span>, query, response,{'\n'}
+        {'            '}tokens_in=50, tokens_out=100, provider=<span className="text-outline">&quot;openai&quot;</span>,{'\n'}
+        {'        '}){'\n'}
         {'\n'}
-        {'    '}
-        <span className="text-primary-container">retries</span>:{' '}
-        <span className="text-primary-container">5</span>
+        {'    '}<span className="text-primary-container">return</span> {'{'}<span className="text-outline">&quot;answer&quot;</span>: response{'}'}{'\n'}
         {'\n'}
-        {'  }'}, {'() => llm.generate(research)'});{'\n'}
-        {'\n'}
-        {'  '}
-        <span className="text-secondary">return</span> summary;{'\n'}
-        {'}'});
+        result = run_research_agent(<span className="text-outline">&quot;debug retry behavior&quot;</span>){'\n'}
+        client.flush()
       </pre>
     ),
   },
@@ -56,40 +50,36 @@ const CODE_TABS: CodeTab[] = [
     label: 'With Retries',
     content: (
       <pre className="font-mono text-sm leading-relaxed text-on-surface md:text-lg">
-        <span className="text-primary-container">export const</span>{' '}
-        <span className="text-tertiary">resilientAgent</span> ={' '}
-        <span className="text-primary-container">workflow</span>(
-        <span className="text-secondary">async</span> {'(input) => {'}
+        <span className="text-primary-container">from</span> continua{' '}
+        <span className="text-primary-container">import</span> Continua, span, trace{'\n'}
         {'\n'}
-        {'  '}
-        <span className="text-primary-container">const</span> data ={' '}
-        <span className="text-secondary">await</span> step(
-        <span className="text-outline">&apos;fetch-data&apos;</span>, {'{'}
+        client = Continua.init({'\n'}
+        {'    '}api_key=<span className="text-outline">&quot;default&quot;</span>,{'\n'}
+        {'    '}endpoint=<span className="text-outline">&quot;http://localhost:8080&quot;</span>,{'\n'}
+        {'    '}ingest_mode=<span className="text-outline">&quot;sync&quot;</span>,{'\n'}
+        {'    '}max_retries=3,{'\n'}
+        ){'\n'}
         {'\n'}
-        {'    '}
-        <span className="text-primary-container">retries</span>:{' '}
-        <span className="text-primary-container">3</span>,{'\n'}
-        {'    '}
-        <span className="text-primary-container">backoff</span>:{' '}
-        <span className="text-outline">&apos;exponential&apos;</span>,{'\n'}
-        {'    '}
-        <span className="text-primary-container">timeout</span>:{' '}
-        <span className="text-outline">&apos;30s&apos;</span>,{'\n'}
-        {'  }'}, {'() => externalApi.fetch(input.id)'});{'\n'}
+        <span className="text-primary-container">@trace</span>(name=<span className="text-outline">&quot;resilient_agent&quot;</span>, tags=[<span className="text-outline">&quot;demo&quot;</span>]){'\n'}
+        <span className="text-primary-container">def</span>{' '}
+        <span className="text-tertiary">run_resilient_agent</span>(task_id: str):{'\n'}
+        {'    '}<span className="text-primary-container">for</span> attempt <span className="text-primary-container">in</span> range(1, 4):{'\n'}
+        {'        '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;fetch_data&quot;</span>, kind=<span className="text-outline">&quot;tool&quot;</span>) <span className="text-primary-container">as</span> s:
         {'\n'}
-        {'  '}
-        <span className="text-primary-container">const</span> result ={' '}
-        <span className="text-secondary">await</span> step(
-        <span className="text-outline">&apos;process&apos;</span>,{' '}
-        {'() => transform(data)'});{'\n'}
-        {'  '}
-        <span className="text-secondary">await</span> step(
-        <span className="text-outline">&apos;notify&apos;</span>,{' '}
-        {'() => slack.send(result)'});{'\n'}
+        {'            '}s.set_input({'{'}<span className="text-outline">&quot;task_id&quot;</span>: task_id, <span className="text-outline">&quot;attempt&quot;</span>: attempt{'}'}){'\n'}
+        {'            '}<span className="text-primary-container">try</span>:{'\n'}
+        {'                '}result = fetch_external_data(task_id){'\n'}
+        {'                '}s.set_tool_call(<span className="text-outline">&quot;fetch_external_data&quot;</span>, {'{'}<span className="text-outline">&quot;task_id&quot;</span>: task_id{'}'}, result){'\n'}
+        {'                '}<span className="text-primary-container">return</span> result{'\n'}
+        {'            '}<span className="text-primary-container">except</span> TimeoutError <span className="text-primary-container">as</span> exc:{'\n'}
+        {'                '}s.error(<span className="text-outline">&quot;Fetch timed out&quot;</span>, payload={'{'}<span className="text-outline">&quot;attempt&quot;</span>: attempt{'}'}){'\n'}
+        {'                '}s.exception(exc, payload={'{'}<span className="text-outline">&quot;attempt&quot;</span>: attempt{'}'}){'\n'}
+        {'                '}s.set_error(str(exc)){'\n'}
+        {'                '}<span className="text-primary-container">if</span> attempt == 3:{'\n'}
+        {'                    '}<span className="text-primary-container">raise</span>{'\n'}
         {'\n'}
-        {'  '}
-        <span className="text-secondary">return</span> result;{'\n'}
-        {'}'});
+        run_resilient_agent(<span className="text-outline">&quot;task_123&quot;</span>){'\n'}
+        client.flush()
       </pre>
     ),
   },
@@ -97,43 +87,33 @@ const CODE_TABS: CodeTab[] = [
     label: 'Complex Logic',
     content: (
       <pre className="font-mono text-sm leading-relaxed text-on-surface md:text-lg">
-        <span className="text-primary-container">export const</span>{' '}
-        <span className="text-tertiary">orchestrator</span> ={' '}
-        <span className="text-primary-container">workflow</span>(
-        <span className="text-secondary">async</span> {'(input) => {'}
+        <span className="text-primary-container">from</span> continua{' '}
+        <span className="text-primary-container">import</span> Continua, session, span, trace{'\n'}
         {'\n'}
-        {'  '}
-        <span className="text-primary-container">const</span> tasks ={' '}
-        <span className="text-secondary">await</span> step(
-        <span className="text-outline">&apos;plan&apos;</span>,{' '}
-        {'() =>'} {'\n'}
-        {'    '}llm.plan(input.objective){'\n'}
-        {'  )'});{'\n'}
+        client = Continua.init(api_key=<span className="text-outline">&quot;default&quot;</span>, endpoint=<span className="text-outline">&quot;http://localhost:8080&quot;</span>){'\n'}
         {'\n'}
-        {'  '}
-        <span className="text-primary-container">const</span> results ={' '}
-        <span className="text-secondary">await</span>{' '}
-        <span className="text-primary-container">parallel</span>({'\n'}
-        {'    '}tasks.map((task, i) ={'>'}{'\n'}
-        {'      '}step(
-        <span className="text-outline">{`\`execute-\${i}\``}</span>,{' '}
-        {'{ '}
-        <span className="text-primary-container">retries</span>:{' '}
-        <span className="text-primary-container">2</span>
-        {' }'}, {'() =>'} {'\n'}
-        {'        '}agent.run(task){'\n'}
-        {'      )'}){'\n'}
-        {'    )'}){'\n'}
-        {'  )'});{'\n'}
+        <span className="text-primary-container">@trace</span>(name=<span className="text-outline">&quot;code_review_agent&quot;</span>){'\n'}
+        <span className="text-primary-container">def</span>{' '}
+        <span className="text-tertiary">run_code_review_agent</span>(code: str):{'\n'}
+        {'    '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;code_analysis_chain&quot;</span>, kind=<span className="text-outline">&quot;chain&quot;</span>):
         {'\n'}
-        {'  '}
-        <span className="text-secondary">return</span>{' '}
-        <span className="text-secondary">await</span> step(
-        <span className="text-outline">&apos;synthesize&apos;</span>,{' '}
-        {'() =>'}{'\n'}
-        {'    '}llm.merge(results){'\n'}
-        {'  )'});{'\n'}
-        {'}'});
+        {'        '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;parse_code&quot;</span>, kind=<span className="text-outline">&quot;tool&quot;</span>) <span className="text-primary-container">as</span> s:{'\n'}
+        {'            '}parsed = parse_code(code){'\n'}
+        {'            '}s.set_tool_call(<span className="text-outline">&quot;parse_code&quot;</span>, {'{'}<span className="text-outline">&quot;code&quot;</span>: code[:100]{'}'}, parsed){'\n'}
+        {'\n'}
+        {'        '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;security_scan&quot;</span>, kind=<span className="text-outline">&quot;tool&quot;</span>) <span className="text-primary-container">as</span> s:{'\n'}
+        {'            '}scan = security_scan(code){'\n'}
+        {'            '}s.set_output(scan){'\n'}
+        {'\n'}
+        {'    '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;generate_review&quot;</span>, kind=<span className="text-outline">&quot;llm&quot;</span>) <span className="text-primary-container">as</span> s:{'\n'}
+        {'        '}review = call_llm({'{'}<span className="text-outline">&quot;parsed&quot;</span>: parsed, <span className="text-outline">&quot;scan&quot;</span>: scan{'}'}){'\n'}
+        {'        '}s.set_llm_response(<span className="text-outline">&quot;claude-3-opus&quot;</span>, code, review, provider=<span className="text-outline">&quot;anthropic&quot;</span>){'\n'}
+        {'        '}<span className="text-primary-container">return</span> {'{'}<span className="text-outline">&quot;review&quot;</span>: review{'}'}{'\n'}
+        {'\n'}
+        <span className="text-primary-container">with</span> session(<span className="text-outline">&quot;demo-sdk-review&quot;</span>, user_id=<span className="text-outline">&quot;user_123&quot;</span>):{'\n'}
+        {'    '}run_code_review_agent(code){'\n'}
+        {'\n'}
+        client.flush()
       </pre>
     ),
   },
@@ -155,7 +135,7 @@ export function LandingPage() {
   const consoleCtaLabel = isPublicDemo ? 'Open Demo' : 'Open Console';
   const topSecondaryLabel = isPublicDemo ? 'Run locally' : 'Docs';
   const topSecondaryHref = isPublicDemo ? RUN_LOCALLY_DOCS_URL : GITHUB_DOCS_URL;
-  const heroPrimaryLabel = isPublicDemo ? 'Open Demo' : 'Start Building Free';
+  const heroPrimaryLabel = isPublicDemo ? 'Open Demo' : 'Open Console';
   const heroSecondaryLabel = isPublicDemo ? 'Run Locally' : 'See how it works';
   const heroSecondaryHref = isPublicDemo ? RUN_LOCALLY_DOCS_URL : '#how-it-works';
   const heroSecondaryIcon = isPublicDemo ? 'open_in_new' : 'play_circle';
@@ -289,7 +269,7 @@ export function LandingPage() {
           <div className="mb-8 inline-flex items-center gap-2 rounded-full bg-surface-container px-3 py-1">
             <span className="h-2 w-2 rounded-full bg-primary-container" />
             <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-              {isPublicDemo ? 'Read-only sample data' : 'Production Ready'}
+              {isPublicDemo ? 'Read-only sample data' : 'Open source debugger'}
             </span>
           </div>
           <h1 className="tight-headline mb-8 max-w-5xl text-5xl font-black leading-[0.94] text-on-surface md:text-8xl">
@@ -305,9 +285,9 @@ export function LandingPage() {
               </>
             ) : (
               <>
-                <span className="block sm:inline">Build and deploy</span>
+                <span className="block sm:inline">Run and inspect</span>
                 <span className="mt-3 inline-block bg-primary-container px-4 py-1 text-white sm:mt-0 sm:ml-3 sm:-rotate-1">
-                  fully-managed
+                  durable
                 </span>
                 <span className="mt-3 block sm:mt-0 sm:ml-3 sm:inline">
                   AI agents.
@@ -318,7 +298,7 @@ export function LandingPage() {
           <p className="mb-12 max-w-3xl text-lg font-medium leading-relaxed text-on-surface-variant md:text-2xl">
             {isPublicDemo
               ? 'Browse a safe portfolio workspace with fake traces, nested runs, failures, sessions, and compare flows. Run locally to inspect your own data.'
-              : 'The durable execution engine designed for the next generation of autonomous workflows. Immortal code that survives restarts and network failures.'}
+              : 'Open-source durable execution and debugger tooling for agent workflows. Run it locally, inspect traces, and debug failures from the operator console.'}
           </p>
           <div className="flex flex-col items-center gap-4 sm:flex-row">
             <Link
@@ -347,93 +327,64 @@ export function LandingPage() {
         {/* ── Hero Illustration — animated SVG ── */}
         <HeroIllustration />
 
-        {/* ── Proof Points (Logo Cloud) ── */}
-        <ScrollReveal>
-          <section className="mb-20 mt-8 overflow-hidden bg-surface-container-low py-12">
-            <div className="mx-auto max-w-7xl px-6">
-              <p className="mb-10 text-center text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant/40">
-                Trusted by Infrastructure Pioneers
-              </p>
-              <div className="flex flex-wrap justify-center gap-12 opacity-60 saturate-0 transition-all hover:saturate-100 md:gap-24">
-                <span className="text-2xl font-black tracking-tighter">
-                  NEXUS
-                </span>
-                <span className="text-2xl font-black tracking-tighter">
-                  QUANTUM
-                </span>
-                <span className="text-2xl font-black tracking-tighter">
-                  VORTEX
-                </span>
-                <span className="text-2xl font-black tracking-tighter">
-                  BYTEBOUND
-                </span>
-                <span className="text-2xl font-black tracking-tighter">
-                  SYNTH
-                </span>
-              </div>
-            </div>
-          </section>
-        </ScrollReveal>
-
         {/* ── How It Works — Interactive Workflow ── */}
         <ScrollReveal>
           <section
             id="how-it-works"
-            className="mx-auto max-w-7xl scroll-mt-32 border-y border-outline-variant/10 px-6 py-24"
+            className="w-full scroll-mt-32 border-y border-outline-variant/10 bg-[#f9f9f9] px-6 py-24 sm:py-28 lg:py-36"
           >
-            <div className="mb-16 text-center">
-              <h2 className="tight-headline mb-4 text-3xl font-black md:text-5xl">
+            <div className="mx-auto max-w-7xl">
+              <div className="text-center">
+                <h2 className="tight-headline mb-7 text-[52px] font-black leading-[0.95] text-[#1b1b1b] md:text-[72px]">
                 How it works
-              </h2>
-              <p className="mx-auto max-w-2xl text-on-surface-variant">
-                Visualize the lifecycle of a durable agent execution from trigger
-                to completion.
-              </p>
-            </div>
-            <div className="relative flex flex-col items-center justify-center gap-8 md:flex-row md:gap-16">
-              <WorkflowStep
-                icon="bolt"
-                label="Trigger"
-                detail="HTTP, Webhook, Schedule"
-                bgClass="bg-primary-container/10"
-                iconColor="text-primary-container"
-                isLast={false}
-              />
-              <WorkflowStep
-                icon="database"
-                label="Checkpoint"
-                detail="State saved to DB"
-                bgClass="bg-tertiary-container/10 border-2 border-dashed border-tertiary-container/30"
-                iconColor="text-tertiary-container"
-                isLast={false}
-              />
-              <WorkflowStep
-                icon="psychology"
-                label="Execution"
-                detail="Active Step"
-                bgClass="bg-primary-container shadow-lg shadow-primary-container/30"
-                iconColor="text-white"
-                isLast={false}
-                detailClass="text-primary-container font-bold"
-              />
-              <WorkflowStep
-                icon="history"
-                label="Retry"
-                detail="Auto-recovery on fail"
-                bgClass="bg-secondary-container/10"
-                iconColor="text-secondary-container"
-                isLast={false}
-              />
-              <div className="relative flex flex-col items-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-on-surface">
-                  <span className="material-symbols-outlined text-3xl text-white">
-                    check_circle
-                  </span>
-                </div>
-                <span className="text-sm font-bold">Complete</span>
-                <span className="text-xs text-on-surface-variant">
-                  Final result delivered
-                </span>
+                </h2>
+                <p className="mx-auto max-w-3xl text-xl leading-8 text-[#404753]">
+                  Visualize the lifecycle of a durable agent execution from trigger
+                  to completion.
+                </p>
+              </div>
+              <div className="relative mt-24 flex flex-col items-center justify-center gap-12 md:flex-row md:gap-[76px]">
+                <WorkflowStep
+                  icon="bolt"
+                  label="Trigger"
+                  detail="HTTP, Webhook, Schedule"
+                  bgClass="bg-[#e8f0fb]"
+                  iconColor="text-primary-container"
+                  isLast={false}
+                />
+                <WorkflowStep
+                  icon="database"
+                  label="Checkpoint"
+                  detail="State saved to DB"
+                  bgClass="border-2 border-dashed border-[#b9d7ad] bg-[#edf8e8]"
+                  iconColor="text-tertiary-container"
+                  isLast={false}
+                />
+                <WorkflowStep
+                  icon="psychology"
+                  label="Execution"
+                  detail="Active Step"
+                  bgClass="bg-primary-container shadow-[0_18px_34px_-16px_rgba(0,117,214,0.72)]"
+                  iconColor="text-white"
+                  isLast={false}
+                  detailClass="text-primary-container font-bold"
+                />
+                <WorkflowStep
+                  icon="history"
+                  label="Retry"
+                  detail="Auto-recovery on fail"
+                  bgClass="bg-[#fff8e8]"
+                  iconColor="text-secondary-container"
+                  isLast={false}
+                />
+                <WorkflowStep
+                  icon="check_circle"
+                  label="Complete"
+                  detail="Final result delivered"
+                  bgClass="bg-[#1b1b1b]"
+                  iconColor="text-white"
+                  isLast
+                />
               </div>
             </div>
           </section>
@@ -490,7 +441,7 @@ export function LandingPage() {
                 Written in the language you love
               </h3>
               <p className="text-on-surface-variant">
-                Simple TypeScript SDK for complex agent orchestration.
+                Python SDK helpers for traces, spans, sessions, and timeline events.
               </p>
             </div>
             <div className="overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-editorial">
@@ -549,9 +500,8 @@ export function LandingPage() {
                   Built in public, for the community.
                 </h2>
                 <p className="mb-8 text-lg text-zinc-400">
-                  Continua is Apache 2.0 licensed. Self-host it or use our
-                  managed cloud. You always own your infrastructure and your
-                  code.
+                  Continua is Apache 2.0 licensed. Self-host it, inspect the
+                  code, and keep ownership of your infrastructure.
                 </p>
                 <div className="flex gap-4">
                   <a
@@ -560,8 +510,8 @@ export function LandingPage() {
                     rel="noreferrer"
                     className="flex items-center gap-2 rounded-full bg-white px-8 py-3 font-bold text-zinc-900 transition-colors hover:bg-zinc-200"
                   >
-                    <span className="material-symbols-outlined">star</span>{' '}
-                    Star on GitHub
+                    <span className="material-symbols-outlined">terminal</span>{' '}
+                    View GitHub
                   </a>
                   <a
                     href={GITHUB_LICENSE_URL}
@@ -573,24 +523,17 @@ export function LandingPage() {
                   </a>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-8 text-center md:text-left">
-                <StatBlock
-                  value={
-                    <AnimatedCounter end={12.4} suffix="k+" decimals={1} />
-                  }
-                  label="Stars on GitHub"
-                />
-                <StatBlock
-                  value={<AnimatedCounter end={250} suffix="+" />}
-                  label="Contributors"
-                />
-                <StatBlock value="Apache" label="2.0 License" />
-                <StatBlock
-                  value={
-                    <AnimatedCounter end={4.8} suffix="k+" decimals={1} />
-                  }
-                  label="Discord Members"
-                />
+              <div className="max-w-md rounded-xl border border-white/10 bg-white/5 p-8 text-left">
+                <div className="text-xs font-black uppercase tracking-[0.2em] text-primary-fixed">
+                  Repository
+                </div>
+                <p className="mt-4 text-3xl font-black tracking-tight text-white">
+                  Source code, license, and local setup docs.
+                </p>
+                <p className="mt-4 text-sm leading-6 text-zinc-400">
+                  Use the repository to review the implementation, run the
+                  debugger locally, and follow the Apache 2.0 license terms.
+                </p>
               </div>
             </div>
           </section>
@@ -626,7 +569,7 @@ export function LandingPage() {
               <p className="mt-8 text-sm font-medium text-surface-container opacity-60">
                 {isPublicDemo
                   ? 'Hosted demo uses safe sample data. Local self-hosting is the path for real traces.'
-                  : 'Join 2,400+ developers building with durable execution.'}
+                  : 'Open the console or read the local setup guide.'}
               </p>
             </div>
           </section>
@@ -734,17 +677,21 @@ function WorkflowStep({
 }) {
   return (
     <div
-      className={`relative flex flex-col items-center ${!isLast ? 'workflow-step' : ''}`}
+      className={`relative flex min-w-[170px] flex-col items-center text-center ${!isLast ? 'marketing-workflow-step' : ''}`}
     >
       <div
-        className={`mb-4 flex h-16 w-16 items-center justify-center rounded-full ${bgClass}`}
+        className={`mb-7 flex h-24 w-24 items-center justify-center rounded-full ${bgClass}`}
       >
-        <span className={`material-symbols-outlined text-3xl ${iconColor}`}>
+        <span className={`material-symbols-outlined text-[42px] leading-none ${iconColor}`}>
           {icon}
         </span>
       </div>
-      <span className="text-sm font-bold">{label}</span>
-      <span className={`text-xs ${detailClass ?? 'text-on-surface-variant'}`}>
+      <span className="text-[22px] font-black leading-7 text-[#1b1b1b]">
+        {label}
+      </span>
+      <span
+        className={`mt-1 whitespace-nowrap text-lg leading-6 ${detailClass ?? 'text-[#404753]'}`}
+      >
         {detail}
       </span>
     </div>
@@ -838,23 +785,6 @@ function IntegrationItem({ icon, name }: { icon: string; name: string }) {
     <div className="flex flex-col items-center gap-2">
       <span className="material-symbols-outlined text-4xl">{icon}</span>
       <span className="font-mono text-xs font-bold">{name}</span>
-    </div>
-  );
-}
-
-function StatBlock({
-  value,
-  label,
-}: {
-  value: string | JSX.Element;
-  label: string;
-}) {
-  return (
-    <div>
-      <div className="mb-2 text-5xl font-black text-primary-fixed">{value}</div>
-      <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">
-        {label}
-      </p>
     </div>
   );
 }
