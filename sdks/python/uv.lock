@@ -118,8 +118,8 @@ wheels = [
 ]
 
 [[package]]
-name = "continua"
-version = "0.0.1"
+name = "continua-sdk"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

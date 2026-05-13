@@ -19,7 +19,7 @@ Example:
             return result
 """
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 from .client import Continua
 from .engine_control import EngineControlClient

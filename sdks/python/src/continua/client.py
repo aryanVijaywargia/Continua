@@ -6,7 +6,7 @@ import atexit
 import random
 import time
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -194,7 +194,7 @@ class Continua:
             )
             data = response.json()
             if data.get("status") in {"completed", "failed"}:
-                return data
+                return cast(dict[str, Any], data)
 
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"Timed out waiting for batch {batch_id}")
@@ -440,4 +440,4 @@ class Continua:
         jitter = random.random()
         delay += jitter
         # Cap at max_delay
-        return min(delay, self.max_delay)
+        return float(min(delay, self.max_delay))
