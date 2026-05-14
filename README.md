@@ -15,19 +15,13 @@
     <a href="#architecture"><b>Architecture</b></a> ·
     <a href="#python-sdk"><b>Python SDK</b></a> ·
     <a href="./docs/setup.md"><b>Docs</b></a> ·
-    <a href="https://github.com/continua-ai/continua/issues"><b>Issues</b></a>
+    <a href="https://github.com/aryanVijaywargia/Continua/issues"><b>Issues</b></a>
   </p>
 
   <p>
     <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0EA5E9?style=flat-square"></a>
     <img alt="Docker demo" src="https://img.shields.io/badge/demo-Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white">
     <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-F59E0B?style=flat-square">
-  </p>
-
-  <p>
-    <a href="https://github.com/continua-ai/continua/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/continua-ai/continua?style=flat-square&color=2DD4BF"></a>
-    <a href="https://github.com/continua-ai/continua/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/continua-ai/continua?style=flat-square&color=8B5CF6"></a>
-    <a href="https://github.com/continua-ai/continua/issues"><img alt="Open issues" src="https://img.shields.io/github/issues/continua-ai/continua?style=flat-square&color=F43F5E"></a>
   </p>
 
 </div>
@@ -50,7 +44,7 @@ The current product is intentionally concrete: trace runs, inspect spans and pay
 The recommended first run is Docker Compose. It does not require local Go, Node, pnpm, Python, or uv.
 
 ```bash
-git clone https://github.com/continua-ai/continua.git
+git clone https://github.com/aryanVijaywargia/Continua.git
 cd continua
 make demo
 ```
@@ -203,10 +197,6 @@ make test
 ```
 
 Documentation follows the status convention in [`docs/README.md`](./docs/README.md): current public docs are authoritative for the checkout alongside the source tree.
-
-<a href="https://github.com/continua-ai/continua/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=continua-ai/continua" alt="Continua contributors" />
-</a>
 
 ## License
 
