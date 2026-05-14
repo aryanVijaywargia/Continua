@@ -17,6 +17,8 @@ import {
 } from './runtime';
 
 const PROJECT_ID = '11111111-1111-1111-1111-111111111111';
+const RUN_LOCALLY_DOCS_URL =
+  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/setup.md';
 
 const auth0State = vi.hoisted(() => ({
   error: undefined as Error | undefined,
@@ -49,6 +51,7 @@ function RuntimeAuthProbe() {
       <div data-testid="auth-audience">{auth.audience ?? ''}</div>
       <div data-testid="auth-public-demo">{String(auth.public_demo_enabled ?? false)}</div>
       <div data-testid="auth-public-demo-label">{auth.public_demo_label ?? ''}</div>
+      <div data-testid="auth-console-available">{String(auth.console_available ?? true)}</div>
     </div>
   );
 }
@@ -134,6 +137,54 @@ describe('runtime auth', () => {
     expect(screen.getByTestId('auth-enabled')).toHaveTextContent('false');
     expect(screen.getByTestId('auth-domain')).toHaveTextContent('');
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/config');
+  });
+
+  it('marks the console unavailable when static hosting returns HTML for auth config', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('<!DOCTYPE html><html></html>', {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+        },
+      })
+    );
+
+    render(<RuntimeAuthProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status')).toHaveTextContent('ready');
+    });
+    expect(screen.getByTestId('auth-enabled')).toHaveTextContent('false');
+    expect(screen.getByTestId('auth-console-available')).toHaveTextContent('false');
+  });
+
+  it('shows a static-hosting message instead of the local API-key form', () => {
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <Routes>
+          <Route
+            element={
+              <ProtectedRoute
+                auth={{
+                  status: 'ready',
+                  enabled: false,
+                  console_available: false,
+                }}
+              />
+            }
+          >
+            <Route path="/dashboard" element={<div>Dashboard</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Console backend not connected')).toBeInTheDocument();
+    expect(screen.queryByText('Enter a local project API key.')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Run locally' })).toHaveAttribute(
+      'href',
+      RUN_LOCALLY_DOCS_URL
+    );
   });
 
   it('allows public demo console routes without triggering Auth0 login', () => {

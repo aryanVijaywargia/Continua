@@ -123,7 +123,7 @@ const GITHUB_REPO_URL = 'https://github.com/aryanVijaywargia/Continua';
 const GITHUB_DOCS_URL = `${GITHUB_REPO_URL}/tree/main/docs`;
 const GITHUB_LICENSE_URL = `${GITHUB_REPO_URL}/blob/main/LICENSE`;
 const GITHUB_OPENAPI_URL = `${GITHUB_REPO_URL}/blob/main/contracts/openapi/openapi.yaml`;
-const RUN_LOCALLY_DOCS_URL = `${GITHUB_REPO_URL}/blob/main/docs/guides/run-locally.md`;
+const RUN_LOCALLY_DOCS_URL = `${GITHUB_REPO_URL}/blob/main/docs/setup.md`;
 
 /* ── Page component ──────────────────────────────────────────────── */
 
@@ -132,14 +132,27 @@ export function LandingPage() {
   const isDesktopNav = useMediaQuery('(min-width: 768px)');
   const runtimeAuth = useRuntimeAuth();
   const isPublicDemo = runtimeAuth.public_demo_enabled === true;
-  const consoleCtaLabel = isPublicDemo ? 'Open Demo' : 'Open Console';
+  const isConsoleAvailable = runtimeAuth.console_available !== false;
+  const consoleCtaLabel = isPublicDemo
+    ? 'Open Demo'
+    : isConsoleAvailable
+      ? 'Open Console'
+      : 'Run Locally';
   const topSecondaryLabel = isPublicDemo ? 'Run locally' : 'Docs';
   const topSecondaryHref = isPublicDemo ? RUN_LOCALLY_DOCS_URL : GITHUB_DOCS_URL;
-  const heroPrimaryLabel = isPublicDemo ? 'Open Demo' : 'Open Console';
+  const heroPrimaryLabel = isPublicDemo
+    ? 'Open Demo'
+    : isConsoleAvailable
+      ? 'Open Console'
+      : 'Run Locally';
   const heroSecondaryLabel = isPublicDemo ? 'Run Locally' : 'See how it works';
   const heroSecondaryHref = isPublicDemo ? RUN_LOCALLY_DOCS_URL : '#how-it-works';
   const heroSecondaryIcon = isPublicDemo ? 'open_in_new' : 'play_circle';
-  const footerConsoleLabel = isPublicDemo ? 'Open Demo' : 'Operator Console';
+  const footerConsoleLabel = isPublicDemo
+    ? 'Open Demo'
+    : isConsoleAvailable
+      ? 'Operator Console'
+      : 'Run locally';
 
   return (
     <div
@@ -216,12 +229,23 @@ export function LandingPage() {
               >
                 {topSecondaryLabel}
               </a>
-              <Link
-                to="/dashboard"
-                className="scale-95 rounded-full bg-zinc-900 px-5 py-2 text-sm font-bold text-white transition-all duration-200 hover:bg-zinc-800 active:scale-90"
-              >
-                {consoleCtaLabel}
-              </Link>
+              {isConsoleAvailable ? (
+                <Link
+                  to="/dashboard"
+                  className="scale-95 rounded-full bg-zinc-900 px-5 py-2 text-sm font-bold text-white transition-all duration-200 hover:bg-zinc-800 active:scale-90"
+                >
+                  {consoleCtaLabel}
+                </Link>
+              ) : (
+                <a
+                  href={RUN_LOCALLY_DOCS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="scale-95 rounded-full bg-zinc-900 px-5 py-2 text-sm font-bold text-white transition-all duration-200 hover:bg-zinc-800 active:scale-90"
+                >
+                  {consoleCtaLabel}
+                </a>
+              )}
             </div>
           </div>
           {!isDesktopNav ? (
@@ -301,12 +325,23 @@ export function LandingPage() {
               : 'Open-source durable execution and debugger tooling for agent workflows. Run it locally, inspect traces, and debug failures from the operator console.'}
           </p>
           <div className="flex flex-col items-center gap-4 sm:flex-row">
-            <Link
-              to="/dashboard"
-              className="rounded-full bg-on-surface px-10 py-4 text-lg font-bold text-surface-container-lowest transition-all hover:opacity-90 active:scale-95"
-            >
-              {heroPrimaryLabel}
-            </Link>
+            {isConsoleAvailable ? (
+              <Link
+                to="/dashboard"
+                className="rounded-full bg-on-surface px-10 py-4 text-lg font-bold text-surface-container-lowest transition-all hover:opacity-90 active:scale-95"
+              >
+                {heroPrimaryLabel}
+              </Link>
+            ) : (
+              <a
+                href={RUN_LOCALLY_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full bg-on-surface px-10 py-4 text-lg font-bold text-surface-container-lowest transition-all hover:opacity-90 active:scale-95"
+              >
+                {heroPrimaryLabel}
+              </a>
+            )}
             <a
               href={heroSecondaryHref}
               target={isPublicDemo ? '_blank' : undefined}
@@ -551,12 +586,23 @@ export function LandingPage() {
                 <span className="text-primary-fixed">immortal agent</span>?
               </h2>
               <div className="flex flex-col gap-6 sm:flex-row">
-                <Link
-                  to="/dashboard"
-                  className="rounded-full bg-primary-container px-12 py-5 text-xl font-black text-white transition-all hover:bg-primary"
-                >
-                  {isPublicDemo ? 'Open the public demo' : 'Open the operator console'}
-                </Link>
+                {isConsoleAvailable ? (
+                  <Link
+                    to="/dashboard"
+                    className="rounded-full bg-primary-container px-12 py-5 text-xl font-black text-white transition-all hover:bg-primary"
+                  >
+                    {isPublicDemo ? 'Open the public demo' : 'Open the operator console'}
+                  </Link>
+                ) : (
+                  <a
+                    href={RUN_LOCALLY_DOCS_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full bg-primary-container px-12 py-5 text-xl font-black text-white transition-all hover:bg-primary"
+                  >
+                    Run locally
+                  </a>
+                )}
                 <a
                   href={isPublicDemo ? RUN_LOCALLY_DOCS_URL : GITHUB_DOCS_URL}
                   target="_blank"
@@ -569,7 +615,9 @@ export function LandingPage() {
               <p className="mt-8 text-sm font-medium text-surface-container opacity-60">
                 {isPublicDemo
                   ? 'Hosted demo uses safe sample data. Local self-hosting is the path for real traces.'
-                  : 'Open the console or read the local setup guide.'}
+                  : isConsoleAvailable
+                    ? 'Open the console or read the local setup guide.'
+                    : 'The hosted Pages site is static. Run locally to open the console with your own data.'}
               </p>
             </div>
           </section>
@@ -613,12 +661,23 @@ export function LandingPage() {
             >
               License
             </a>
-            <Link
-              className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
-              to="/dashboard"
-            >
-              {footerConsoleLabel}
-            </Link>
+            {isConsoleAvailable ? (
+              <Link
+                className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
+                to="/dashboard"
+              >
+                {footerConsoleLabel}
+              </Link>
+            ) : (
+              <a
+                className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
+                href={RUN_LOCALLY_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {footerConsoleLabel}
+              </a>
+            )}
             <a
               className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
               href={RUN_LOCALLY_DOCS_URL}
@@ -640,15 +699,29 @@ export function LandingPage() {
                 terminal
               </span>
             </a>
-            <Link
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition-colors hover:bg-surface-container-high"
-              to="/dashboard"
-              aria-label="Open the Continua operator console"
-            >
-              <span className="material-symbols-outlined text-zinc-900">
-                hub
-              </span>
-            </Link>
+            {isConsoleAvailable ? (
+              <Link
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition-colors hover:bg-surface-container-high"
+                to="/dashboard"
+                aria-label="Open the Continua operator console"
+              >
+                <span className="material-symbols-outlined text-zinc-900">
+                  hub
+                </span>
+              </Link>
+            ) : (
+              <a
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition-colors hover:bg-surface-container-high"
+                href={RUN_LOCALLY_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open the local setup guide"
+              >
+                <span className="material-symbols-outlined text-zinc-900">
+                  hub
+                </span>
+              </a>
+            )}
           </div>
         </div>
       </footer>

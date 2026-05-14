@@ -129,6 +129,7 @@ export interface RuntimeAuthConfig {
   audience?: string;
   public_demo_enabled?: boolean;
   public_demo_label?: string;
+  console_available?: boolean;
 }
 
 export interface Project {
@@ -673,6 +674,14 @@ export async function fetchRuntimeAuthConfig(): Promise<RuntimeAuthConfig> {
       error.code || 'error',
       error.message || 'Failed to load auth configuration'
     );
+  }
+
+  const contentType = response.headers.get('Content-Type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return {
+      enabled: false,
+      console_available: false,
+    };
   }
 
   return response.json();

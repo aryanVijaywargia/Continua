@@ -112,6 +112,24 @@ describe('client', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/config');
   });
 
+  it('treats an HTML auth config response as a static landing deployment', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('<!DOCTYPE html><html></html>', {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+        },
+      })
+    );
+
+    const config = await fetchRuntimeAuthConfig();
+
+    expect(config).toEqual({
+      enabled: false,
+      console_available: false,
+    });
+  });
+
   it('fails fast when no operator token provider is installed', async () => {
     await expect(fetchAPI('/api/traces')).rejects.toMatchObject({
       status: 401,

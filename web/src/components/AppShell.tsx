@@ -37,7 +37,7 @@ interface NavItem {
 }
 
 const RUN_LOCALLY_DOCS_URL =
-  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/guides/run-locally.md';
+  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/setup.md';
 
 const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard', label: 'Overview', icon: LayoutDashboard },
