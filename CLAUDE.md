@@ -34,11 +34,10 @@ Do not assume replay, WebSocket runtime, proxy capture, durable engine workflows
 
 Start discovery from:
 - `AGENTS.md`
-- `docs/DEBUGGER_PLATFORM_BASELINE.md`
 - `.claude/skills/references/decisions.md`
 - the live package you are editing
 
-Use `docs/PHASE5_CURRENT_STATE_REPORT.md` only as deeper historical context.
+Use the checked-in code, contracts, migrations, and current public docs as the current-state baseline.
 
 ## What Exists Today
 
@@ -61,7 +60,6 @@ Use `docs/PHASE5_CURRENT_STATE_REPORT.md` only as deeper historical context.
 ## Discovery Rules
 
 - Treat checked-in code as the primary truth.
-- Use `docs/DEBUGGER_PLATFORM_BASELINE.md` to understand repo reality quickly.
 - Use OpenSpec for proposals and active change context, but remember `openspec/specs/` is currently empty.
 - If a doc conflicts with code, trust the code and update the doc if it is part of the task.
 

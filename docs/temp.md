@@ -1,4 +1,0 @@
-> **Status: Historical**
-> This document is preserved for historical context and does not define the current repo state. Use [docs/README.md](./README.md) and [DEBUGGER_PLATFORM_BASELINE.md](./DEBUGGER_PLATFORM_BASELINE.md) for current guidance.
-
-Lets complete all the requirements in Must, Should, and Do later before starting with debugger. I want my debugger to be complete before starting on teh replay stuff. Can u please divide the requirements in multiple phases, divide them properly and in a smart manner it should not be that all teh heavyy requirements are in one phase and that the agent struggles in completing them. Keep them distributed smartly such that the agent is able to effectively complete all the requirements listed in each phaes.

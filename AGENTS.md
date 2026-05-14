@@ -22,7 +22,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Current Repo Baseline
 - Treat the checked-in code as the primary truth. Historical phase docs and some older architecture docs drift from the current implementation.
 - The live product path today is: authenticated REST ingest -> Postgres persistence -> River background jobs -> REST read APIs -> embedded React debugger operator console.
-- The current repo handoff doc is `docs/DEBUGGER_PLATFORM_BASELINE.md`. Use `docs/PHASE5_CURRENT_STATE_REPORT.md` as deeper historical context, not the shortest current-state baseline.
+- Use the checked-in code, contracts, migrations, and current public docs as the current-state baseline.
 - `openspec/specs/` is currently empty. That means OpenSpec is useful for active proposals and archived work, but not as a complete source of current-state specs.
 
 ## Documentation Status Convention
@@ -137,7 +137,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
   - read `design.md` if present
   - read `tasks.md`
   - implement in task order
-- Because `openspec/specs/` is empty, do not assume OpenSpec alone describes the current repo state. Cross-check with code and `docs/PHASE5_CURRENT_STATE_REPORT.md`.
+- Because `openspec/specs/` is empty, do not assume OpenSpec alone describes the current repo state. Cross-check with code, contracts, migrations, and current public docs.
 
 ## Project-local Codex Context
 - Repo-local Codex assets live in `.codex/`. Prefer these over `.claude/` when working from Codex.

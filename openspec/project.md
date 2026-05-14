@@ -63,7 +63,7 @@ Use these in order:
 1. Live code in `cmd/`, `internal/`, `web/`, and `sdks/python/`
 2. Contracts in `contracts/`
 3. Platform schema and queries in `db/platform/`
-4. `docs/DEBUGGER_PLATFORM_BASELINE.md`
+4. Current public docs in `docs/`
 5. `openspec/implemented/` and `openspec/changes/`
 
 Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a complete current-state source on its own.
@@ -118,7 +118,7 @@ sdks/                → TypeScript and Python SDKs
 - Use `openspec/changes/` for active or proposed work.
 - Move completed changes into `openspec/implemented/`.
 - Treat `openspec/implemented/` as history, not as the sole source of current runtime truth.
-- When planning, prefer the live code plus `docs/DEBUGGER_PLATFORM_BASELINE.md` before older phase docs.
+- When planning, prefer the live code, contracts, migrations, and current public docs before historical OpenSpec context.
 
 ## Domain Context
 
