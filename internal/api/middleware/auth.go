@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -347,9 +349,32 @@ func hashAPIKey(apiKey string) string {
 	return hashKeyMaterial(apiKey)
 }
 
+// HashAPIKey is the exported form used by handlers that create or rotate keys.
+func HashAPIKey(apiKey string) string {
+	return hashAPIKey(apiKey)
+}
+
 func hashKeyMaterial(value string) string {
 	hash := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(hash[:])
+}
+
+// APIKeyPrefix prefixes generated keys so they're recognizable on sight.
+const APIKeyPrefix = "pk_"
+
+// apiKeyRandomBytes is the entropy size for generated keys (32 bytes = 256 bits).
+const apiKeyRandomBytes = 32
+
+// GenerateAPIKey returns a fresh API key with the form `pk_<base32>`.
+// The plaintext key is returned only once to the caller; the server stores
+// just its SHA-256 hash via HashAPIKey.
+func GenerateAPIKey() (string, error) {
+	buf := make([]byte, apiKeyRandomBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	encoded := strings.ToLower(strings.TrimRight(base32.StdEncoding.EncodeToString(buf), "="))
+	return APIKeyPrefix + encoded, nil
 }
 
 // writeAuthError writes a JSON error response for authentication failures.
