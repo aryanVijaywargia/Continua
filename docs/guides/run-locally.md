@@ -67,7 +67,11 @@ make dev-web
 
 3. Open `http://localhost:3000/dashboard` and enter a project API key when prompted.
 
-For a fresh local database, the default seed project API key is `default`. The key is stored only in your browser's local storage and is sent as a bearer token to the local server. Public demo mode never uses or exposes this browser key.
+For a fresh local database, the seeded **Default Project** has API key `default`. The key is stored only in your browser's local storage and is sent as a bearer token to the local server. Public demo mode never uses or exposes this browser key.
+
+That key is good for getting started; once you want to organize work by app or agent, open **Projects** in the debugger UI (`/projects`) to create additional projects. Each new project returns its own `pk_…` API key once at creation time — paste it into your SDK init call and the traces from that app land in their own bucket. You can also rotate or delete projects from the same page.
+
+**Local-mode authorization model.** When Auth0 is not configured (the normal local-self-host setup), any valid project API key — including the seeded `default` — can manage *all* projects through `/projects`. This is a deliberate single-tenant trade-off: the local user owns the box, so they own everything in it. If you ever expose the server beyond localhost, enable Auth0; the project management endpoints will then require an operator token and reject API-key callers with `403 operator_required`.
 
 Auth0 is optional for a separate private/team deployment. Configure it only when you intentionally want hosted operator sign-in:
 
