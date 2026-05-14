@@ -16,7 +16,7 @@ Prerequisites:
 Run:
 
 ```bash
-git clone https://github.com/continua-ai/continua.git
+git clone https://github.com/aryanVijaywargia/Continua.git
 cd continua
 make demo
 ```
