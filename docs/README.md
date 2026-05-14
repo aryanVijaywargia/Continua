@@ -17,7 +17,6 @@ Use these first:
 - [Architecture Rules](./architecture/RULES.md)
 - [Data Model](./architecture/data-model.md)
 - [Event Conventions](./event-conventions.md)
-- [Run Locally Guide](./guides/run-locally.md)
 - [Repo Root README](../README.md)
 
 ## Private And Historical Docs
