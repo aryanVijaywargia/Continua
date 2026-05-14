@@ -81,6 +81,8 @@ It's most useful when you need to answer: what failed first, what changed during
 
 ## Features
 
+![Continua features at a glance](./assets/diagrams/feature-strip.svg)
+
 - **Trace debugger** — span tree, execution waterfall, selected spans, payload inspection, breadcrumbs, truncation banners, and merged timeline events.
 - **Session workflows** — browse sessions, open session detail, and compare baseline vs. candidate traces from the same workflow.
 - **Durable ingest path** — project-scoped API key auth, idempotent batches via `batch_key`, sync ingest, opt-in async ingest (`X-Continua-Async-Version: 2`), and batch polling.
@@ -89,7 +91,11 @@ It's most useful when you need to answer: what failed first, what changed during
 - **Python SDK** — `trace`, `span`, `session`, `event`, batching, retries, async polling, and engine-control helpers live under `sdks/python`.
 - **Typed events** — Continua emits 11 event kinds (`log`, `error`, `exception`, `message`, `metric`, `custom`, `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`); see [event-conventions.md](./docs/event-conventions.md).
 
+![Implemented event types](./assets/diagrams/event-types.svg)
+
 ## Architecture
+
+![Continua runtime architecture](./assets/diagrams/runtime-architecture.svg)
 
 ```mermaid
 flowchart LR
@@ -107,7 +113,13 @@ flowchart LR
 
 A request hits the authenticated ingest API, gets validated and batched (sync or async), and lands in Postgres. River workers process async batches, compute rollups, and run cleanup. The debugger reads everything back through REST and polls `GET /api/traces/{id}/events` for live trace detail — there is no live WebSocket runtime in the current checkout.
 
-Stack: Go 1.24+ (Chi, Fx), PostgreSQL 16+ (sqlc), River for jobs, Vite/React/TypeScript with TanStack Query for the UI, OpenAPI 3 contracts driving generated Go/TS/Python types. External IDs (`trace_id`, `span_id`, `parent_span_id`) are the SDK-facing identifiers; timeline responses merge stored events with synthetic span lifecycle markers.
+![Continua ingest flow](./assets/diagrams/ingest-flow.svg)
+
+Stack: Go 1.24+ (Chi, Fx), PostgreSQL 16+ (sqlc), River for jobs, Vite/React/TypeScript with TanStack Query for the UI, OpenAPI 3 contracts driving generated Go/TS/Python types.
+
+![Continua data model](./assets/diagrams/data-model.svg)
+
+External IDs (`trace_id`, `span_id`, `parent_span_id`) are the SDK-facing identifiers; timeline responses merge stored events with synthetic span lifecycle markers.
 
 See [`docs/architecture/overview.md`](./docs/architecture/overview.md) for the full storage model and ingest flow.
 
