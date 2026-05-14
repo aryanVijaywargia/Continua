@@ -166,6 +166,6 @@ cd sdks/python && uv run pytest
 
 - [docs/setup.md](./docs/setup.md): canonical setup guide for humans and agents
 - [docs/README.md](./docs/README.md): documentation map and status convention
-- [docs/DEBUGGER_PLATFORM_BASELINE.md](./docs/DEBUGGER_PLATFORM_BASELINE.md): current implemented-vs-scaffolded baseline
+- [docs/architecture/overview.md](./docs/architecture/overview.md): runtime architecture overview
 - [docs/architecture/RULES.md](./docs/architecture/RULES.md): anti-drift architecture rules
 - [openspec/](./openspec): active and implemented change proposals

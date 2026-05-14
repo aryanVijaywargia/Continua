@@ -1,7 +1,7 @@
 # Architecture Overview
 
 > **Status: Current**
-> This document summarizes the current runtime shape. For the shortest handoff, use [../DEBUGGER_PLATFORM_BASELINE.md](../DEBUGGER_PLATFORM_BASELINE.md).
+> This document summarizes the current runtime shape.
 
 ## Current Runtime
 
@@ -160,4 +160,4 @@ These exist as plans, contracts, or scaffolding, but not as full runtime capabil
 - `web/playwright.config.ts`
 - `web/e2e/ui-smoke.spec.ts`
 
-For the shortest current repo-verified handoff, see `docs/DEBUGGER_PLATFORM_BASELINE.md`.
+For deeper implementation detail, start from the checked-in code, contracts, migrations, and the public docs indexed in `docs/README.md`.

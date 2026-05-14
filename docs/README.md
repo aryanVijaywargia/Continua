@@ -13,24 +13,16 @@
 
 Use these first:
 - [Setup Guide](./setup.md)
-- [Debugger Platform Baseline](./DEBUGGER_PLATFORM_BASELINE.md)
 - [Architecture Overview](./architecture/overview.md)
 - [Architecture Rules](./architecture/RULES.md)
 - [Data Model](./architecture/data-model.md)
 - [Event Conventions](./event-conventions.md)
+- [Run Locally Guide](./guides/run-locally.md)
 - [Repo Root README](../README.md)
 
-## Historical Docs
+## Private And Historical Docs
 
-These remain in place for provenance and archaeology:
-- [Phase 5 Current State Report](./PHASE5_CURRENT_STATE_REPORT.md)
-- `docs/phase2/`, `docs/phase3/`, `docs/phase4/`
-- `docs/guides/`
-- `docs/reviews/`
-- `docs/plans/`
-- `docs/*_v1.md`, rollout notes, and scratch docs such as `docs/temp.md`
-
-Historical docs should not be treated as the current architecture contract unless a newer current doc points back to them for context.
+Historical phase reports, review notes, old implementation plans, scratch docs, and planning artifacts are intentionally not kept in this public documentation tree. Treat the checked-in code, contracts, migrations, and current docs above as the source of truth for this checkout.
 
 ## Active Change Docs
 
