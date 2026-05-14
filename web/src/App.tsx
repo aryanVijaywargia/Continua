@@ -6,6 +6,7 @@ import { SessionsPage } from './pages/SessionsPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionComparePage } from './pages/SessionComparePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ProjectsPage } from './pages/ProjectsPage';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AppShell } from './components/AppShell';
 import { OverviewPage } from './pages/OverviewPage';
@@ -36,6 +37,7 @@ export function App() {
                   <Route path="/sessions" element={<SessionsPage />} />
                   <Route path="/sessions/:id" element={<SessionDetailPage />} />
                   <Route path="/sessions/:id/compare" element={<SessionComparePage />} />
+                  <Route path="/projects" element={<ProjectsPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Route>
               </Route>

@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Download, MoreHorizontal, RefreshCw, Zap } from 'lucide-react';
 import { fetchTraces, isAuthError, type Trace } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
+import { DefaultProjectBanner } from '../components/DefaultProjectBanner';
 import {
   Btn,
   Chip,
@@ -496,6 +497,7 @@ function TracesContent() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <DefaultProjectBanner />
         <PageHeader
           actions={
             <>

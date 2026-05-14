@@ -5,6 +5,7 @@ import { useTheme } from '../hooks/useTheme';
 const navItems = [
   { path: '/traces', label: 'Traces' },
   { path: '/sessions', label: 'Sessions' },
+  { path: '/projects', label: 'Projects' },
   { path: '/settings', label: 'Settings' },
 ];
 
@@ -27,6 +28,12 @@ export function Navigation() {
       title: 'Go to Sessions',
       keywords: ['navigate', 'sessions'],
       action: () => navigate('/sessions'),
+    },
+    {
+      id: 'go-projects',
+      title: 'Go to Projects',
+      keywords: ['navigate', 'projects', 'api key', 'create project'],
+      action: () => navigate('/projects'),
     },
     {
       id: 'go-settings',

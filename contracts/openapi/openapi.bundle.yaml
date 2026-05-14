@@ -986,18 +986,183 @@ paths:
   /api/projects:
     get:
       operationId: listProjects
-      summary: List projects visible to the authenticated debugger operator
+      summary: List all projects in the deployment
+      description: |
+        Returns every project the deployment knows about. Intended for the project-management
+        view in the debugger UI. In a remote multi-tenant deployment, pair this with operator
+        auth (Auth0) if API keys should not enumerate other projects.
       tags:
         - Projects
       responses:
         '200':
-          description: List of visible projects
+          description: List of projects
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProjectList'
         '401':
           description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      operationId: createProject
+      summary: Create a new project and return its API key
+      description: |
+        Generates a fresh API key, stores its SHA-256 hash, and returns the plaintext key
+        exactly once in the response. The key cannot be retrieved later; use rotate to
+        replace it.
+      tags:
+        - Projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created. The plaintext api_key is included in this response only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectWithKey'
+        '400':
+          description: Invalid request body (missing or empty name)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/projects/{id}:
+    patch:
+      operationId: updateProject
+      summary: Rename an existing project
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: Updated project metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deleteProject
+      summary: Delete a project and all its data
+      description: |
+        Permanently deletes the project row. Associated traces, sessions, spans, and
+        payloads cascade via foreign keys. The seeded default project cannot be deleted.
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Project deleted
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Project cannot be deleted (e.g. the default project)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/projects/{id}/rotate:
+    post:
+      operationId: rotateProjectAPIKey
+      summary: Rotate the API key for a project
+      description: |
+        Generates a new API key, replaces the stored hash, and returns the plaintext
+        key exactly once. The previous key stops working immediately.
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Rotated key. The plaintext api_key is included only in this response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectWithKey'
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
           content:
             application/json:
               schema:
@@ -1534,6 +1699,49 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Project'
+    ProjectWithKey:
+      type: object
+      required:
+        - id
+        - name
+        - created_at
+        - updated_at
+        - api_key
+      description: Project metadata including the plaintext API key. Returned only on create or rotate; never retrievable again.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        api_key:
+          type: string
+          description: Plaintext API key. Display once and store securely; the server only retains a hash.
+    CreateProjectRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Human-readable project name (1-100 characters)
+    UpdateProjectRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
     SizeError:
       type: object
       required:

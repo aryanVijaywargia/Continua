@@ -35,6 +35,18 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 	return i, err
 }
 
+const deleteProject = `-- name: DeleteProject :execrows
+DELETE FROM projects WHERE id = $1
+`
+
+func (q *Queries) DeleteProject(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProject, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getDefaultProject = `-- name: GetDefaultProject :one
 SELECT id, name, api_key_hash, created_at, updated_at FROM projects WHERE id = '00000000-0000-0000-0000-000000000001'
 `
@@ -121,6 +133,31 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]P
 		return nil, err
 	}
 	return items, nil
+}
+
+const rotateProjectAPIKey = `-- name: RotateProjectAPIKey :one
+UPDATE projects
+SET api_key_hash = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING id, name, api_key_hash, created_at, updated_at
+`
+
+type RotateProjectAPIKeyParams struct {
+	ID         uuid.UUID `json:"id"`
+	ApiKeyHash string    `json:"api_key_hash"`
+}
+
+func (q *Queries) RotateProjectAPIKey(ctx context.Context, arg RotateProjectAPIKeyParams) (Project, error) {
+	row := q.db.QueryRow(ctx, rotateProjectAPIKey, arg.ID, arg.ApiKeyHash)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ApiKeyHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const updateProject = `-- name: UpdateProject :one

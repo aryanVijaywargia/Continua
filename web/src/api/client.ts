@@ -142,6 +142,10 @@ export interface ProjectList {
   projects: Project[];
 }
 
+export interface ProjectWithKey extends Project {
+  api_key: string;
+}
+
 /**
  * Fetch wrapper with bearer-token authentication.
  */
@@ -676,6 +680,70 @@ export async function fetchRuntimeAuthConfig(): Promise<RuntimeAuthConfig> {
 
 export async function fetchProjects(): Promise<ProjectList> {
   return fetchAPI<ProjectList>('/api/projects');
+}
+
+async function fetchAPIEmpty(
+  path: string,
+  options: RequestInit = {}
+): Promise<void> {
+  const localApiKey = publicDemoModeEnabled ? null : getApiKey();
+  let accessToken: string | null = localApiKey;
+  if (accessTokenProvider) {
+    accessToken = await accessTokenProvider();
+  }
+  if (!accessToken && !publicDemoModeEnabled) {
+    throw new ApiError(401, 'unauthorized', 'Sign in required');
+  }
+
+  const requestUrl = buildRequestUrl(path);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> | undefined),
+  };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(requestUrl.toString(), {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ message: 'Unknown error', code: 'error' }));
+    throw new ApiError(
+      response.status,
+      error.code || 'error',
+      error.message || 'Request failed',
+      error.detail
+    );
+  }
+}
+
+export async function createProject(name: string): Promise<ProjectWithKey> {
+  return fetchAPI<ProjectWithKey>('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function renameProject(id: string, name: string): Promise<Project> {
+  return fetchAPI<Project>(`/api/projects/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function rotateProjectApiKey(id: string): Promise<ProjectWithKey> {
+  return fetchAPI<ProjectWithKey>(`/api/projects/${id}/rotate`, {
+    method: 'POST',
+  });
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await fetchAPIEmpty(`/api/projects/${id}`, { method: 'DELETE' });
 }
 
 /**

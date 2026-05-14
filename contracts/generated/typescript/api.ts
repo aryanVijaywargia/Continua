@@ -412,10 +412,68 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List projects visible to the authenticated debugger operator */
+        /**
+         * List all projects in the deployment
+         * @description Returns every project the deployment knows about. Intended for the project-management
+         *     view in the debugger UI. In a remote multi-tenant deployment, pair this with operator
+         *     auth (Auth0) if API keys should not enumerate other projects.
+         *
+         */
         get: operations["listProjects"];
         put?: never;
+        /**
+         * Create a new project and return its API key
+         * @description Generates a fresh API key, stores its SHA-256 hash, and returns the plaintext key
+         *     exactly once in the response. The key cannot be retrieved later; use rotate to
+         *     replace it.
+         *
+         */
+        post: operations["createProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         post?: never;
+        /**
+         * Delete a project and all its data
+         * @description Permanently deletes the project row. Associated traces, sessions, spans, and
+         *     payloads cascade via foreign keys. The seeded default project cannot be deleted.
+         *
+         */
+        delete: operations["deleteProject"];
+        options?: never;
+        head?: never;
+        /** Rename an existing project */
+        patch: operations["updateProject"];
+        trace?: never;
+    };
+    "/api/projects/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the API key for a project
+         * @description Generates a new API key, replaces the stored hash, and returns the plaintext
+         *     key exactly once. The previous key stops working immediately.
+         *
+         */
+        post: operations["rotateProjectAPIKey"];
         delete?: never;
         options?: never;
         head?: never;
@@ -587,6 +645,25 @@ export interface components {
         };
         ProjectList: {
             projects: components["schemas"]["Project"][];
+        };
+        /** @description Project metadata including the plaintext API key. Returned only on create or rotate; never retrievable again. */
+        ProjectWithKey: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description Plaintext API key. Display once and store securely; the server only retains a hash. */
+            api_key: string;
+        };
+        CreateProjectRequest: {
+            /** @description Human-readable project name (1-100 characters) */
+            name: string;
+        };
+        UpdateProjectRequest: {
+            name: string;
         };
         /** @description Error response for 413 Payload Too Large */
         SizeError: {
@@ -2516,7 +2593,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of visible projects */
+            /** @description List of projects */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2527,6 +2604,206 @@ export interface operations {
             };
             /** @description Unauthorized - missing or invalid credentials */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Project created. The plaintext api_key is included in this response only. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectWithKey"];
+                };
+            };
+            /** @description Invalid request body (missing or empty name) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project cannot be deleted (e.g. the default project) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated project metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Invalid request body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rotateProjectAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rotated key. The plaintext api_key is included only in this response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectWithKey"];
+                };
+            };
+            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

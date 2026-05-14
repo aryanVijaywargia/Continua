@@ -20,5 +20,14 @@ SET name = $2, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
+-- name: RotateProjectAPIKey :one
+UPDATE projects
+SET api_key_hash = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: DeleteProject :execrows
+DELETE FROM projects WHERE id = $1;
+
 -- name: GetDefaultProject :one
 SELECT * FROM projects WHERE id = '00000000-0000-0000-0000-000000000001';

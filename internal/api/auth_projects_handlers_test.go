@@ -126,23 +126,31 @@ func TestListProjects_OperatorReturnsAllVisibleProjects(t *testing.T) {
 	assert.Empty(t, expectedProjectIDs)
 }
 
-func TestListProjects_APIKeyContextReturnsOnlyScopedProject(t *testing.T) {
+func TestListProjects_APIKeyContextSeesAllProjects(t *testing.T) {
+	// Local-first design: an authenticated caller — including one bound to a single
+	// project via API key — can enumerate every project so the management UI works
+	// with just the seeded default key. In remote multi-tenant deployments, this
+	// surface should be gated by operator auth (Auth0).
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	platformStore := store.New(pool)
 	server := NewServer(platformStore, nil)
 
-	projectID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
-	_ = testutil.CreateTestProject(t, ctx, platformStore.Queries())
+	projectAID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
+	projectBID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/projects", nil)
-	reqCtx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
+	reqCtx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectAID)
 	rec := httptest.NewRecorder()
 
 	server.ListProjects(rec, req.WithContext(reqCtx))
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	resp := decodeJSONBody[ProjectList](t, rec)
-	require.Len(t, resp.Projects, 1)
-	assert.Equal(t, projectID, resp.Projects[0].Id)
+	ids := make(map[string]struct{}, len(resp.Projects))
+	for _, project := range resp.Projects {
+		ids[project.Id.String()] = struct{}{}
+	}
+	assert.Contains(t, ids, projectAID.String())
+	assert.Contains(t, ids, projectBID.String())
 }
