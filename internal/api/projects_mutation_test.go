@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -73,7 +72,7 @@ func TestUpdateProject_RenamesExisting(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPatch, "/api/projects/"+projectID.String(), bytes.NewReader(body))
-	server.UpdateProject(rec, req, openapi_types.UUID(projectID))
+	server.UpdateProject(rec, req, projectID)
 
 	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
 	resp := decodeJSONBody[Project](t, rec)
@@ -91,7 +90,7 @@ func TestUpdateProject_ReturnsNotFoundForUnknownID(t *testing.T) {
 	missing := uuid.New()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPatch, "/api/projects/"+missing.String(), bytes.NewReader(body))
-	server.UpdateProject(rec, req, openapi_types.UUID(missing))
+	server.UpdateProject(rec, req, missing)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
@@ -128,7 +127,7 @@ func TestRotateProjectAPIKey_InvalidatesOldKey(t *testing.T) {
 	// New key resolves.
 	resolved, err := platformStore.GetProjectByAPIKey(ctx, middleware.HashAPIKey(rotated.ApiKey))
 	require.NoError(t, err)
-	assert.Equal(t, created.Id, openapi_types.UUID(resolved.ID))
+	assert.Equal(t, created.Id, resolved.ID)
 }
 
 func TestRotateProjectAPIKey_ReturnsNotFoundForUnknownID(t *testing.T) {
@@ -139,7 +138,7 @@ func TestRotateProjectAPIKey_ReturnsNotFoundForUnknownID(t *testing.T) {
 	missing := uuid.New()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/projects/"+missing.String()+"/rotate", nil)
-	server.RotateProjectAPIKey(rec, req, openapi_types.UUID(missing))
+	server.RotateProjectAPIKey(rec, req, missing)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
@@ -154,7 +153,7 @@ func TestDeleteProject_RemovesRow(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/projects/"+projectID.String(), nil)
-	server.DeleteProject(rec, req, openapi_types.UUID(projectID))
+	server.DeleteProject(rec, req, projectID)
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	_, err := platformStore.GetProject(ctx, projectID)
@@ -169,7 +168,7 @@ func TestDeleteProject_RefusesDefault(t *testing.T) {
 	defaultID := uuid.MustParse(defaultProjectIDString)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/projects/"+defaultID.String(), nil)
-	server.DeleteProject(rec, req, openapi_types.UUID(defaultID))
+	server.DeleteProject(rec, req, defaultID)
 
 	require.Equal(t, http.StatusConflict, rec.Code)
 }
@@ -182,7 +181,7 @@ func TestDeleteProject_ReturnsNotFoundForUnknownID(t *testing.T) {
 	missing := uuid.New()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/projects/"+missing.String(), nil)
-	server.DeleteProject(rec, req, openapi_types.UUID(missing))
+	server.DeleteProject(rec, req, missing)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
@@ -235,7 +234,7 @@ func TestProjectMutations_Require403FromAPIKeyWhenAuth0Enabled(t *testing.T) {
 		body, _ := json.Marshal(UpdateProjectRequest{Name: "y"})
 		rec := httptest.NewRecorder()
 		req := apiKeyCtx(httptest.NewRequest(http.MethodPatch, "/api/projects/"+id.String(), bytes.NewReader(body)))
-		server.UpdateProject(rec, req, openapi_types.UUID(id))
+		server.UpdateProject(rec, req, id)
 		require.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
@@ -243,7 +242,7 @@ func TestProjectMutations_Require403FromAPIKeyWhenAuth0Enabled(t *testing.T) {
 		id := testutil.CreateTestProject(t, ctx, platformStore.Queries())
 		rec := httptest.NewRecorder()
 		req := apiKeyCtx(httptest.NewRequest(http.MethodPost, "/api/projects/"+id.String()+"/rotate", nil))
-		server.RotateProjectAPIKey(rec, req, openapi_types.UUID(id))
+		server.RotateProjectAPIKey(rec, req, id)
 		require.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
@@ -251,7 +250,7 @@ func TestProjectMutations_Require403FromAPIKeyWhenAuth0Enabled(t *testing.T) {
 		id := testutil.CreateTestProject(t, ctx, platformStore.Queries())
 		rec := httptest.NewRecorder()
 		req := apiKeyCtx(httptest.NewRequest(http.MethodDelete, "/api/projects/"+id.String(), nil))
-		server.DeleteProject(rec, req, openapi_types.UUID(id))
+		server.DeleteProject(rec, req, id)
 		require.Equal(t, http.StatusForbidden, rec.Code)
 	})
 }
@@ -290,7 +289,7 @@ func TestProjectMutations_AllowOperatorWhenAuth0Enabled(t *testing.T) {
 		body, _ := json.Marshal(UpdateProjectRequest{Name: "renamed-by-operator"})
 		rec := httptest.NewRecorder()
 		req := operatorCtx(httptest.NewRequest(http.MethodPatch, "/api/projects/"+id.String(), bytes.NewReader(body)))
-		server.UpdateProject(rec, req, openapi_types.UUID(id))
+		server.UpdateProject(rec, req, id)
 		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
 	})
 
@@ -298,7 +297,7 @@ func TestProjectMutations_AllowOperatorWhenAuth0Enabled(t *testing.T) {
 		id := testutil.CreateTestProject(t, ctx, platformStore.Queries())
 		rec := httptest.NewRecorder()
 		req := operatorCtx(httptest.NewRequest(http.MethodPost, "/api/projects/"+id.String()+"/rotate", nil))
-		server.RotateProjectAPIKey(rec, req, openapi_types.UUID(id))
+		server.RotateProjectAPIKey(rec, req, id)
 		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
 	})
 
@@ -306,7 +305,7 @@ func TestProjectMutations_AllowOperatorWhenAuth0Enabled(t *testing.T) {
 		id := testutil.CreateTestProject(t, ctx, platformStore.Queries())
 		rec := httptest.NewRecorder()
 		req := operatorCtx(httptest.NewRequest(http.MethodDelete, "/api/projects/"+id.String(), nil))
-		server.DeleteProject(rec, req, openapi_types.UUID(id))
+		server.DeleteProject(rec, req, id)
 		require.Equal(t, http.StatusNoContent, rec.Code)
 	})
 }

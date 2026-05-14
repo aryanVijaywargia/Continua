@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
@@ -89,7 +88,7 @@ func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, id openap
 		return
 	}
 
-	project, err := s.store.UpdateProject(r.Context(), uuid.UUID(id), name)
+	project, err := s.store.UpdateProject(r.Context(), id, name)
 	if err != nil {
 		writeProjectMutationError(w, err, "Failed to update project")
 		return
@@ -109,7 +108,7 @@ func (s *Server) RotateProjectAPIKey(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	project, err := s.store.RotateProjectAPIKey(r.Context(), uuid.UUID(id), middleware.HashAPIKey(plaintextKey))
+	project, err := s.store.RotateProjectAPIKey(r.Context(), id, middleware.HashAPIKey(plaintextKey))
 	if err != nil {
 		writeProjectMutationError(w, err, "Failed to rotate API key")
 		return
@@ -123,12 +122,12 @@ func (s *Server) DeleteProject(w http.ResponseWriter, r *http.Request, id openap
 	if !s.requireOperatorWhenAuth0Enabled(w, r) {
 		return
 	}
-	if uuid.UUID(id).String() == defaultProjectIDString {
+	if id.String() == defaultProjectIDString {
 		writeError(w, http.StatusConflict, "default_project_protected", "The seeded default project cannot be deleted")
 		return
 	}
 
-	if err := s.store.DeleteProject(r.Context(), uuid.UUID(id)); err != nil {
+	if err := s.store.DeleteProject(r.Context(), id); err != nil {
 		writeProjectMutationError(w, err, "Failed to delete project")
 		return
 	}
