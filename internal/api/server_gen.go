@@ -447,6 +447,12 @@ type ComparisonTooLargeErrorDetail struct {
 	MaxSpans               int `json:"max_spans"`
 }
 
+// CreateProjectRequest defines model for CreateProjectRequest.
+type CreateProjectRequest struct {
+	// Name Human-readable project name (1-100 characters)
+	Name string `json:"name"`
+}
+
 // EngineControlResponse defines model for EngineControlResponse.
 type EngineControlResponse struct {
 	Accepted    bool               `json:"accepted"`
@@ -951,6 +957,16 @@ type ProjectList struct {
 	Projects []Project `json:"projects"`
 }
 
+// ProjectWithKey Project metadata including the plaintext API key. Returned only on create or rotate; never retrievable again.
+type ProjectWithKey struct {
+	// ApiKey Plaintext API key. Display once and store securely; the server only retains a hash.
+	ApiKey    string             `json:"api_key"`
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
 // SemanticDiffGroup defines model for SemanticDiffGroup.
 type SemanticDiffGroup struct {
 	BaselineEvent  *CompareSemanticSummary   `json:"baseline_event"`
@@ -1256,6 +1272,11 @@ type TraceList struct {
 	Traces []Trace `json:"traces"`
 }
 
+// UpdateProjectRequest defines model for UpdateProjectRequest.
+type UpdateProjectRequest struct {
+	Name string `json:"name"`
+}
+
 // SelectedProjectId defines model for SelectedProjectId.
 type SelectedProjectId = openapi_types.UUID
 
@@ -1502,6 +1523,12 @@ type IngestParams struct {
 	XContinuaAsyncVersion *string `json:"X-Continua-Async-Version,omitempty"`
 }
 
+// CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
+type CreateProjectJSONRequestBody = CreateProjectRequest
+
+// UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
+type UpdateProjectJSONRequestBody = UpdateProjectRequest
+
 // ClaimRemoteActivityTasksJSONRequestBody defines body for ClaimRemoteActivityTasks for application/json ContentType.
 type ClaimRemoteActivityTasksJSONRequestBody = EngineRemoteActivityClaimRequest
 
@@ -1692,9 +1719,21 @@ type ServerInterface interface {
 	// Get Auth0 runtime configuration for the debugger
 	// (GET /api/auth/config)
 	GetAuthConfig(w http.ResponseWriter, r *http.Request)
-	// List projects visible to the authenticated debugger operator
+	// List all projects in the deployment
 	// (GET /api/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request)
+	// Create a new project and return its API key
+	// (POST /api/projects)
+	CreateProject(w http.ResponseWriter, r *http.Request)
+	// Delete a project and all its data
+	// (DELETE /api/projects/{id})
+	DeleteProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Rename an existing project
+	// (PATCH /api/projects/{id})
+	UpdateProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Rotate the API key for a project
+	// (POST /api/projects/{id}/rotate)
+	RotateProjectAPIKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List sessions
 	// (GET /api/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
@@ -1791,9 +1830,33 @@ func (_ Unimplemented) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// List projects visible to the authenticated debugger operator
+// List all projects in the deployment
 // (GET /api/projects)
 func (_ Unimplemented) ListProjects(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a new project and return its API key
+// (POST /api/projects)
+func (_ Unimplemented) CreateProject(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a project and all its data
+// (DELETE /api/projects/{id})
+func (_ Unimplemented) DeleteProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rename an existing project
+// (PATCH /api/projects/{id})
+func (_ Unimplemented) UpdateProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rotate the API key for a project
+// (POST /api/projects/{id}/rotate)
+func (_ Unimplemented) RotateProjectAPIKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2001,6 +2064,127 @@ func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListProjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateProject operation middleware
+func (siw *ServerInterfaceWrapper) CreateProject(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateProject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProject operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RotateProjectAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RotateProjectAPIKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RotateProjectAPIKey(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3753,6 +3937,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/projects", wrapper.ListProjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/projects", wrapper.CreateProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/projects/{id}", wrapper.DeleteProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/projects/{id}", wrapper.UpdateProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/projects/{id}/rotate", wrapper.RotateProjectAPIKey)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/sessions", wrapper.ListSessions)

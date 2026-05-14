@@ -42,6 +42,34 @@ class ProjectList(BaseModel):
     projects: list[Project]
 
 
+class ProjectWithKey(BaseModel):
+    """
+    Project metadata including the plaintext API key. Returned only on create or rotate; never retrievable again.
+    """
+
+    id: UUID
+    name: str
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    api_key: str = Field(
+        ...,
+        description="Plaintext API key. Display once and store securely; the server only retains a hash.",
+    )
+
+
+class CreateProjectRequest(BaseModel):
+    name: str = Field(
+        ...,
+        description="Human-readable project name (1-100 characters)",
+        max_length=100,
+        min_length=1,
+    )
+
+
+class UpdateProjectRequest(BaseModel):
+    name: str = Field(..., max_length=100, min_length=1)
+
+
 class SizeError(BaseModel):
     """
     Error response for 413 Payload Too Large
