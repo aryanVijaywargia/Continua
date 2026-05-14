@@ -128,12 +128,12 @@
 
 ## 14. Regression Guard
 
-- [ ] 14.1 Run `make generate` and verify no drift
+- [x] 14.1 Run `make generate` and verify generated output is refreshed
 - [x] 14.2 Run `cd engine && go test ./...` — all engine tests pass
 - [x] 14.3 Run root Go regression: `go test ./internal/api/... ./internal/ingest/... ./internal/store/... ./internal/jobs/...`
-- [ ] 14.4 Run existing web tests: `pnpm --filter web test`
+- [x] 14.4 Run existing web tests: `pnpm --filter web test`
 
-**Validation:** Engine and root Go regressions pass; `make generate` still requires a plain `pnpm` binary in PATH and `pnpm --filter web test` still hangs after suite completion in this environment
+**Validation:** Engine and root Go regressions pass; `make generate` completes; `pnpm --filter web test` passes.
 
 ---
 

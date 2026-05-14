@@ -74,14 +74,14 @@
 
 ## 9. Integration Tests
 
-- [ ] 9.1 Integration test: `ActivityWithOptions` with `MaxAttempts=3`, activity fails twice then succeeds on third attempt → workflow completes with activity output
-- [ ] 9.2 Integration test: `ActivityWithOptions` with `MaxAttempts=2`, activity fails twice → workflow sees `activity.failed` and can handle the error
-- [ ] 9.3 Integration test: `Activity()` (no options), activity fails → workflow sees `activity.failed` immediately (no retry)
-- [ ] 9.4 Integration test: `NonRetryableError` with `MaxAttempts=3` → activity fails on first attempt with no retry
-- [ ] 9.5 Integration test: retry backoff delays are respected — second attempt is not claimable before `available_at`
+- [x] 9.1 Integration test: `ActivityWithOptions` with `MaxAttempts=3`, activity fails twice then succeeds on third attempt → workflow completes with activity output
+- [x] 9.2 Integration test: `ActivityWithOptions` with `MaxAttempts=2`, activity fails twice → workflow sees `activity.failed` and can handle the error
+- [x] 9.3 Integration test: `Activity()` (no options), activity fails → workflow sees `activity.failed` immediately (no retry)
+- [x] 9.4 Integration test: `NonRetryableError` with `MaxAttempts=3` → activity fails on first attempt with no retry
+- [x] 9.5 Integration test: retry backoff delays are respected — second attempt is not claimable before `available_at`
 - [x] 9.6 Integration test: history contains `activity.retry_scheduled` events between `activity.scheduled` and `activity.completed`/`activity.failed`
-- [ ] 9.7 Integration test: replay with retry history — workflow replays correctly past retry events
-- [ ] 9.8 Integration test: invalid retry policy (MaxAttempts=0) returns deterministic error from `ActivityWithOptions`
+- [x] 9.7 Integration test: replay with retry history — workflow replays correctly past retry events
+- [x] 9.8 Integration test: invalid retry policy (MaxAttempts=0) returns deterministic error from `ActivityWithOptions`
 - [x] 9.9 Integration test: suspend a run while it is waiting on an activity, let the activity reach terminal failure during suspension (for example retries exhausted), verify the run remains `SUSPENDED`, then resume and confirm the first post-resume activation observes `activity.failed`
 - [x] 9.10 Integration test: suspend a run while it is waiting on an activity, let the activity hit a retryable failure with attempts remaining, verify the run remains `SUSPENDED`, `activity.retry_scheduled` is appended without waking the run, and the run still observes the final activity outcome only after resume
 
@@ -92,11 +92,12 @@
 - [x] 10.1 Run `make generate` and verify no drift
 - [x] 10.2 Run `cd engine && go test ./...`
 - [x] 10.3 Run `go test ./internal/api/... ./internal/ingest/... ./internal/store/... ./internal/jobs/...`
-- [ ] 10.4 Run `pnpm --filter web test`
+- [x] 10.4 Run `pnpm --filter web test`
 - [x] 10.5 Run `cd sdks/python && uv run pytest`
 - [x] 10.6 Confirm suspend/resume tests from the previous change still pass without modification
 
 **Validation:** all suites pass
+
 
 ---
 

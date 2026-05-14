@@ -13,6 +13,12 @@ const (
 	CancelCompletesDefinitionVersion = "v1"
 	RetryDemoDefinitionName          = "darklaunch.retry-demo"
 	RetryDemoDefinitionVersion       = "v1"
+	RetryThreeDefinitionName         = "darklaunch.retry-three-demo"
+	RetryThreeDefinitionVersion      = "v1"
+	RetryHandledDefinitionName       = "darklaunch.retry-handled-demo"
+	RetryHandledDefinitionVersion    = "v1"
+	InvalidRetryDefinitionName       = "darklaunch.invalid-retry-policy"
+	InvalidRetryDefinitionVersion    = "v1"
 )
 
 type WorkflowInput struct {
@@ -46,6 +52,21 @@ func Definitions() []workflow.Definition {
 			Version: RetryDemoDefinitionVersion,
 			Run:     runRetryDemoWorkflow,
 		},
+		{
+			Name:    RetryThreeDefinitionName,
+			Version: RetryThreeDefinitionVersion,
+			Run:     runRetryThreeWorkflow,
+		},
+		{
+			Name:    RetryHandledDefinitionName,
+			Version: RetryHandledDefinitionVersion,
+			Run:     runRetryHandledWorkflow,
+		},
+		{
+			Name:    InvalidRetryDefinitionName,
+			Version: InvalidRetryDefinitionVersion,
+			Run:     runInvalidRetryWorkflow,
+		},
 	}
 }
 
@@ -58,6 +79,29 @@ func runCancelCompletesWorkflow(ctx workflow.Context) error {
 }
 
 func runRetryDemoWorkflow(ctx workflow.Context) error {
+	return runRetryWorkflow(ctx, 2, false)
+}
+
+func runRetryThreeWorkflow(ctx workflow.Context) error {
+	return runRetryWorkflow(ctx, 3, false)
+}
+
+func runRetryHandledWorkflow(ctx workflow.Context) error {
+	return runRetryWorkflow(ctx, 2, true)
+}
+
+func runInvalidRetryWorkflow(ctx workflow.Context) error {
+	var output ActivityOutput
+	return ctx.ActivityWithOptions(
+		"compose-greeting",
+		DemoActivityType,
+		ActivityInput{Name: "invalid"},
+		&output,
+		workflow.ActivityOptions{RetryPolicy: &workflow.RetryPolicy{MaxAttempts: 0}},
+	)
+}
+
+func runRetryWorkflow(ctx workflow.Context, maxAttempts int, handleActivityFailure bool) error {
 	var input WorkflowInput
 	if err := ctx.Input(&input); err != nil {
 		return err
@@ -78,13 +122,19 @@ func runRetryDemoWorkflow(ctx workflow.Context) error {
 		&activityOutput,
 		workflow.ActivityOptions{
 			RetryPolicy: &workflow.RetryPolicy{
-				MaxAttempts:       2,
+				MaxAttempts:       maxAttempts,
 				InitialBackoff:    500 * time.Millisecond,
 				MaxBackoff:        500 * time.Millisecond,
 				BackoffMultiplier: 1,
 			},
 		},
 	); err != nil {
+		if handleActivityFailure {
+			return ctx.SetResult(map[string]any{
+				"handled": true,
+				"error":   err.Error(),
+			})
+		}
 		return err
 	}
 

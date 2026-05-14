@@ -12,6 +12,7 @@
 ## Current Docs
 
 Use these first:
+- [Setup Guide](./setup.md)
 - [Debugger Platform Baseline](./DEBUGGER_PLATFORM_BASELINE.md)
 - [Architecture Overview](./architecture/overview.md)
 - [Architecture Rules](./architecture/RULES.md)
@@ -54,4 +55,4 @@ Python SDK / custom client
   -> embedded React debugger operator console
 ```
 
-The current web surface includes the shared shell, `/` overview, traces, sessions, session compare, and settings.
+The current web surface includes `/` landing, `/dashboard` overview, traces, sessions, session compare, and settings.

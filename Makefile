@@ -3,9 +3,14 @@
 # ONE generation command: `make generate`
 # CI fails on drift after running generate
 
+GO_BIN_DIR := $(shell go env GOPATH)/bin
+PATH := $(GO_BIN_DIR):$(PATH)
+export PATH
+GOLANGCI_LINT := $(GO_BIN_DIR)/golangci-lint
+
 .PHONY: all setup generate build build-engine test test-go test-js lint lint-go lint-js \
         dev dev-server dev-web clean help migrate migrate-down docker docker-build \
-        docker-up docker-down e2e seed-demo
+        docker-up docker-down docker-logs demo reset-demo e2e seed-demo
 
 # Default target
 all: generate build
@@ -120,8 +125,8 @@ lint: lint-go lint-js ## Run all linters
 
 lint-go: ## Run Go linters
 	@echo "==> Linting Go code..."
-	golangci-lint run ./...
-	cd engine && golangci-lint run ./...
+	$(GOLANGCI_LINT) run ./...
+	cd engine && $(GOLANGCI_LINT) run ./...
 
 lint-js: ## Run JavaScript/TypeScript linters
 	@echo "==> Linting JS/TS code..."
@@ -129,8 +134,8 @@ lint-js: ## Run JavaScript/TypeScript linters
 
 lint-fix: ## Fix linting issues
 	@echo "==> Fixing Go lint issues..."
-	golangci-lint run --fix ./...
-	cd engine && golangci-lint run --fix ./...
+	$(GOLANGCI_LINT) run --fix ./...
+	cd engine && $(GOLANGCI_LINT) run --fix ./...
 	@echo "==> Fixing JS/TS lint issues..."
 	pnpm lint:fix
 
@@ -157,6 +162,14 @@ dev-web: ## Start web UI development server
 dev-stop: ## Stop development services
 	@echo "==> Stopping development services..."
 	docker compose -f deploy/docker-compose/docker-compose.dev.yml down
+
+demo: ## Start the Docker demo, run migrations, and seed sample traces
+	@./scripts/demo.sh
+
+reset-demo: ## Reset Docker demo data and reseed sample traces
+	@echo "==> Resetting Docker demo volumes..."
+	docker compose -f deploy/docker-compose/docker-compose.yml down -v
+	@./scripts/demo.sh
 
 # ============================================================================
 # Database Migrations

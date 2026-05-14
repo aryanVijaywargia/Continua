@@ -1,6 +1,6 @@
 ## 0. Prep: Baseline Stabilization and Decision Record
 
-- [ ] 0.1 Restore `pnpm --filter web test` baseline: fix any broken Vitest tests or TypeScript type errors caused by engine trace-shell column additions in the regenerated TypeScript client; run `pnpm --filter web test` and confirm green
+- [x] 0.1 Restore `pnpm --filter web test` baseline: fix any broken Vitest tests or TypeScript type errors caused by engine trace-shell column additions in the regenerated TypeScript client; run `pnpm --filter web test` and confirm green
 - [x] 0.2 Record maintenance ownership rules in `.codex/references/decisions.md`: engine maintenance owns due-timer wakeups for non-suspended runs and request-dedupe expiry; activity retries use durable `available_at` on activity tasks, not a new maintenance loop; root-side maintenance owns retention and bulk backfill triggering
 - [x] 0.3 Run `make generate` and confirm no drift after prep changes
 
@@ -85,13 +85,13 @@
 
 ## 10. Integration Tests
 
-- [ ] 10.1 Integration test: start run → suspend from queued → verify run status is `SUSPENDED` → resume → verify run is `QUEUED` and claimable → workflow completes normally
+- [x] 10.1 Integration test: start run → suspend from queued → verify run status is `SUSPENDED` → resume → verify run is `QUEUED` and claimable → workflow completes normally
 - [x] 10.2 Integration test: start run → run becomes `waiting` (activity scheduled) → suspend → deliver signal during suspension → resume → next activation sees the signal in frontier
 - [x] 10.3 Integration test: start run → run becomes `waiting` (timer scheduled) → suspend → timer fires during suspension (maintenance skips it) → resume → next activation sees the fired timer
 - [x] 10.4 Integration test: suspend → cancel during suspension → resume → next activation sees `CancellationRequested() == true` before any wait resumes
 - [x] 10.5 Integration test: suspend → activity completes during suspension → resume → next activation sees activity outcome
 - [x] 10.6 Integration test: suspend idempotency (double suspend is no-op 200)
-- [ ] 10.7 Integration test: resume idempotency (resume on queued/waiting is no-op 200)
+- [x] 10.7 Integration test: resume idempotency (resume on queued/waiting is no-op 200)
 - [x] 10.8 Integration test: suspend from `running` returns 409
 - [x] 10.9 Integration test: suspend/resume on terminal run returns 409
 - [x] 10.10 Integration test: terminate on suspended run succeeds (widened CAS) and transitions to `TERMINATED`
@@ -104,10 +104,11 @@
 - [x] 11.1 Run `make generate` and verify no drift
 - [x] 11.2 Run `cd engine && go test ./...`
 - [x] 11.3 Run `go test ./internal/api/... ./internal/ingest/... ./internal/store/... ./internal/jobs/...`
-- [ ] 11.4 Run `pnpm --filter web test`
+- [x] 11.4 Run `pnpm --filter web test`
 - [x] 11.5 Run `cd sdks/python && uv run pytest`
 
 **Validation:** all suites pass
+
 
 ---
 

@@ -119,7 +119,7 @@ export function ExecutionWaterfall({
         </p>
       </div>
 
-      <div className="grid grid-cols-[minmax(16rem,26rem)_minmax(0,1fr)_5.5rem] border-b border-[var(--c-border)] bg-[var(--c-table-head-bg)]">
+      <div className="grid grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)_5rem] border-b border-[var(--c-border)] bg-[var(--c-table-head-bg)]">
         <div className="px-6 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--c-text-muted)]">
           Span
         </div>
@@ -174,7 +174,7 @@ export function ExecutionWaterfall({
 
                   rowRefs.current.delete(row.span.span_id);
                 }}
-                className={`grid grid-cols-[minmax(16rem,26rem)_minmax(0,1fr)_5.5rem] ${
+                className={`grid grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)_5rem] ${
                   isSelected ? 'bg-[var(--c-row-selected-bg)]' : ''
                 }`}
                 style={{ height: `${WATERFALL_ROW_HEIGHT}px` }}

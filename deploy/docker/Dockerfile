@@ -15,7 +15,7 @@ COPY web/ web/
 RUN pnpm --filter web build
 
 # Go build stage
-FROM golang:1.22-alpine AS go-builder
+FROM golang:1.24-alpine AS go-builder
 WORKDIR /app
 
 RUN apk add --no-cache git
@@ -41,5 +41,4 @@ COPY --from=go-builder /continua /usr/local/bin/continua
 
 EXPOSE 8080 8081
 
-# NOTE: The 'serve' command must be implemented in cmd/continua/main.go
 CMD ["continua", "serve"]

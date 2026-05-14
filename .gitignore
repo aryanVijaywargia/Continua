@@ -12,6 +12,8 @@ dist/
 
 # Node.js
 node_modules/
+.claude/skills/*/node_modules/
+.agents/skills/*/node_modules/
 *.log
 npm-debug.log*
 yarn-debug.log*
