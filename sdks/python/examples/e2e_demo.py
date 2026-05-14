@@ -38,6 +38,7 @@ API_URL = (
     or os.environ.get("CONTINUA_ENDPOINT")
     or "http://localhost:8080"
 ).rstrip("/")
+APP_URL = os.environ.get("CONTINUA_APP_URL", "http://localhost:3000").rstrip("/")
 API_KEY = os.environ.get("CONTINUA_API_KEY", "")
 PRINT_API_KEY = os.environ.get("CONTINUA_PRINT_API_KEY", "").lower() in {
     "1",
@@ -422,7 +423,7 @@ def main():
     if success:
         print("SUCCESS: E2E demo completed!")
         print("\nNext steps:")
-        print("  1. Open http://localhost:3000/traces in your browser")
+        print(f"  1. Open {APP_URL}/traces in your browser")
         print("  2. Enter your local project API key")
         print("  3. Open /sessions to see the new session groups")
         print(f"  4. Look for session IDs starting with demo-sdk-{DEMO_RUN_ID}")

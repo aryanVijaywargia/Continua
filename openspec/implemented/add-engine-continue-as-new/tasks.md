@@ -88,7 +88,7 @@
 - [x] 9.4 Extend `wait_for_terminal` to accept `follow_continuations=False` and `max_continuations=32`
 - [x] 9.5 When `follow_continuations=True` and status is `CONTINUED_AS_NEW`, follow `continued_to_run_id` until a non-continuation terminal status is reached or the depth limit is exceeded
 - [x] 9.6 Add unit tests for default no-follow behavior, one-hop and multi-hop follow behavior, and depth-limit failure
-- [ ] 9.7 Run `cd sdks/python && uv run pytest`
+- [x] 9.7 Run `cd sdks/python && uv run pytest`
 
 **Validation:** Python callers can opt into continuation following without changing the default per-run semantics
 
@@ -107,8 +107,8 @@
 - [x] 10.11 Integration test: Python `wait_for_terminal(..., max_continuations=1)` raises `EngineRunContinuationDepthError` on a deeper chain
 - [x] 10.12 Run `cd engine && go test ./...`
 - [x] 10.13 Run `go test ./internal/api/... ./internal/ingest/... ./internal/store/... ./internal/jobs/...`
-- [ ] 10.14 Run `pnpm --filter web test`
-- [ ] 10.15 Re-run `cd sdks/python && uv run pytest`
+- [x] 10.14 Run `pnpm --filter web test`
+- [x] 10.15 Re-run `cd sdks/python && uv run pytest`
 
 **Validation:** continuation works end-to-end against real Postgres and does not regress existing engine/platform behavior
 

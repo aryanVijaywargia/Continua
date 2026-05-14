@@ -11,12 +11,14 @@ import (
 	"time"
 
 	enginetesthooks "github.com/continua-ai/continua/engine/internal/testhooks"
+	publicworkflow "github.com/continua-ai/continua/engine/pkg/workflow"
 )
 
 const (
-	TestActivityAttemptsFileEnv = "CONTINUA_ENGINE_TEST_ACTIVITY_ATTEMPTS_FILE"
-	TestActivityReleaseFileEnv  = "CONTINUA_ENGINE_TEST_ACTIVITY_RELEASE_FILE"
-	TestActivityFailCountEnv    = "CONTINUA_ENGINE_TEST_ACTIVITY_FAIL_COUNT"
+	TestActivityAttemptsFileEnv     = "CONTINUA_ENGINE_TEST_ACTIVITY_ATTEMPTS_FILE"
+	TestActivityReleaseFileEnv      = "CONTINUA_ENGINE_TEST_ACTIVITY_RELEASE_FILE"
+	TestActivityFailCountEnv        = "CONTINUA_ENGINE_TEST_ACTIVITY_FAIL_COUNT"
+	TestActivityNonRetryableFailEnv = "CONTINUA_ENGINE_TEST_ACTIVITY_NON_RETRYABLE_FAIL"
 )
 
 var testActivityAttemptCounters sync.Map
@@ -27,7 +29,11 @@ func applyTestActivityHooks(ctx context.Context, activityName string) error {
 		return err
 	}
 	if shouldFailTestActivityAttempt(attempt) {
-		return fmt.Errorf("forced test activity failure on attempt %d: %w", attempt, errForcedTestActivityFailure)
+		err := fmt.Errorf("forced test activity failure on attempt %d: %w", attempt, errForcedTestActivityFailure)
+		if os.Getenv(TestActivityNonRetryableFailEnv) == "1" {
+			return publicworkflow.NonRetryableError(err)
+		}
+		return err
 	}
 	return waitForTestActivityRelease(ctx)
 }

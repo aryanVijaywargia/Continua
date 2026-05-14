@@ -26,5 +26,5 @@
 
 ## 6. Verify
 - [x] 6.1 Run `pnpm --filter web test` and confirm all new and existing tests pass.
-- [ ] 6.2 Manual QA (not jsdom geometry tests): SVG strip alignment against time axis, desktop resize behavior, waterfall scroll/virtualization interaction, mobile tab layout (six tabs reachable without clipping on small screens).
-- [ ] 6.3 Run existing workspace profiling script if the new strip measurably affects render cost.
+- [x] 6.2 Manual QA (not jsdom geometry tests): SVG strip alignment against time axis, desktop resize behavior, waterfall scroll/virtualization interaction, mobile tab layout (six tabs reachable without clipping on small screens). Verified with Playwright browser QA at 1280px desktop, 1100px desktop resize, and 320px mobile; screenshots captured in `/tmp/continua-trace-reasoning-desktop.png` and `/tmp/continua-trace-reasoning-mobile.png`.
+- [x] 6.3 Run existing workspace profiling script if the new strip measurably affects render cost. Not required: final fixes are tab routing and layout alignment/responsiveness changes, with no measured render-cost-sensitive change beyond the existing waterfall virtualization path.

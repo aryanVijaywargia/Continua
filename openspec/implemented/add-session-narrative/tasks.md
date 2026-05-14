@@ -70,9 +70,9 @@
 - [x] 9.1 `make generate` (no drift)
 - [x] 9.2 `go test ./internal/api/... ./internal/store/...`
 - [x] 9.3 `pnpm --filter web test`
-- [ ] 9.4 `make lint`
+- [x] 9.4 `make lint`
 
-Note: `make lint` is currently blocked in this environment because `golangci-lint` is not installed.
+Note: `make lint` requires `GO_BIN_DIR=$HOME/go/bin` in this environment because `go env GOPATH` resolves incorrectly under the sandbox, and `GOLANGCI_LINT_CACHE=/tmp/continua-golangci-lint` because the default cache path is outside the writable sandbox.
 
 ### Parallelization Notes
 

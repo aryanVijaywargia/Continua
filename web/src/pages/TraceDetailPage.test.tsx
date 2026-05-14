@@ -335,7 +335,7 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect(await screen.findByRole('heading', { name: 'Engine wait state and queued work' })).toBeInTheDocument();
-    expect(screen.getByText('payments.charge · charge-card')).toBeInTheDocument();
+    expect(await screen.findByText('payments.charge · charge-card')).toBeInTheDocument();
     expect(screen.getByText('approval-timeout')).toBeInTheDocument();
     expect(screen.getByText('manual_override')).toBeInTheDocument();
   });

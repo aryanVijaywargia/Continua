@@ -1,5 +1,5 @@
 ## 0. Prerequisite Gate
-- [ ] 0.1 Close prior-phase validation debt: retries, suspend/resume, ContinueAsNew, generated drift, and debugger tests must be green before starting Milestone 1A
+- [x] 0.1 Close prior-phase validation debt: retries, suspend/resume, ContinueAsNew, generated drift, and debugger tests must be green before starting Milestone 1A
 
 ## 1. Milestone 1A: Engine Composition Gate
 

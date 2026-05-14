@@ -41,11 +41,11 @@ export function CostStrip({ series, window }: CostStripProps) {
   const labelLeftPercent = clamp(lastPoint.leftPercent + 1, 8, 82);
 
   return (
-    <div className="grid grid-cols-[minmax(0,13rem)_minmax(0,1fr)] border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)]">
-      <div className="border-r border-[var(--continua-border-soft)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+    <div className="grid grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)_5rem] border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)]">
+      <div className="px-6 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
         Cumulative cost
       </div>
-      <div className="relative px-4 py-3">
+      <div className="relative border-l border-[var(--continua-border-soft)] px-4 py-3">
         <svg
           aria-label="Cumulative cost chart"
           className="h-12 w-full overflow-visible"
@@ -88,6 +88,7 @@ export function CostStrip({ series, window }: CostStripProps) {
           </div>
         </div>
       </div>
+      <div aria-hidden="true" />
     </div>
   );
 }
