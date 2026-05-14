@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/screenshots/debugger-hero.png" alt="Continua debugger — failure-first trace view with execution waterfall and span detail" />
+  <img src="./assets/banner.svg" alt="Continua — self-hosted debugging for AI agent runs" />
 </p>
 
 <div align="center">
@@ -40,6 +40,10 @@ The current product is intentionally concrete: trace runs, inspect spans and pay
 
 > [!NOTE]
 > Public demo mode uses seeded sample traces only. Use the private local console path when you want to ingest and inspect your own traces.
+
+<p align="center">
+  <img src="./assets/screenshots/debugger-hero.png" alt="Continua debugger — failure-first trace view with execution waterfall and span detail" />
+</p>
 
 ## Quickstart
 
@@ -176,12 +180,11 @@ Upcoming:
 - Durable engine workflow execution and a debugger UI for engine state
 - Score/eval APIs, alerts, and telemetry surfaces
 
-These signals come from the current baseline docs and source tree, not from shipped behavior.
+These signals come from the current source tree, not from shipped behavior.
 
 ## Documentation
 
 - [`docs/setup.md`](./docs/setup.md) — canonical setup guide for humans and agents
-- [`docs/DEBUGGER_PLATFORM_BASELINE.md`](./docs/DEBUGGER_PLATFORM_BASELINE.md) — repo-verified current platform baseline
 - [`docs/architecture/overview.md`](./docs/architecture/overview.md) — runtime architecture overview
 - [`docs/architecture/RULES.md`](./docs/architecture/RULES.md) — anti-drift architecture rules
 - [`docs/event-conventions.md`](./docs/event-conventions.md) — debugger-facing event semantics
@@ -199,7 +202,7 @@ make lint
 make test
 ```
 
-Documentation follows the status convention in [`docs/README.md`](./docs/README.md): current docs are authoritative for the checkout, while historical phase docs are context only.
+Documentation follows the status convention in [`docs/README.md`](./docs/README.md): current public docs are authoritative for the checkout alongside the source tree.
 
 <a href="https://github.com/continua-ai/continua/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=continua-ai/continua" alt="Continua contributors" />
