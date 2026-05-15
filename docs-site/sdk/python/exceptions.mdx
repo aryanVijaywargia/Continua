@@ -1,0 +1,153 @@
+---
+title: "Exceptions"
+description: "Every exception class the SDK raises — when each is thrown and how to handle it."
+---
+
+All exceptions inherit from `ContinuaError`. Catch that base class if you want to handle
+any SDK failure uniformly.
+
+```python
+from continua import ContinuaError
+
+try:
+    do_work()
+except ContinuaError as exc:
+    log.error("Continua call failed", exc_info=exc)
+```
+
+## Exception hierarchy
+
+```
+ContinuaError
+├── AuthenticationError
+├── RateLimitError
+├── ValidationError
+├── NetworkError
+├── EngineRunNotTerminalError
+├── EngineRunNotFoundError
+├── EngineRunWaitTimeoutError
+└── EngineRunContinuationDepthError
+```
+
+`NonRetryableError` is raised **by you** inside an activity handler to mark a task as
+permanently failed — it does not derive from `ContinuaError`.
+
+## Ingest / client errors
+
+### `ContinuaError`
+
+Base class. Catch this when you want a single handler for all SDK errors.
+
+### `AuthenticationError`
+
+Raised on `401 Unauthorized` from the server. Indicates an invalid or missing API key.
+
+```python
+from continua import AuthenticationError
+
+try:
+    Continua.init(api_key="bad", endpoint="...")
+    Continua.get_instance().flush()
+except AuthenticationError:
+    log.error("Check your CONTINUA_API_KEY")
+```
+
+### `RateLimitError`
+
+Raised on `429 Too Many Requests`. The error message includes the retry-after hint if the
+server provided one.
+
+```python
+try:
+    Continua.get_instance().flush()
+except RateLimitError as exc:
+    log.warning("Rate limited: %s", exc)
+```
+
+### `ValidationError`
+
+Raised on `400 Bad Request`. Indicates the payload did not match the OpenAPI contract or
+failed server-side validation. The exception message contains the server's error
+description.
+
+### `NetworkError`
+
+Raised when the SDK cannot reach the server after exhausting retries (connection refused,
+DNS failure, timeout, etc.).
+
+```python
+try:
+    Continua.get_instance().flush()
+except NetworkError as exc:
+    log.error("Continua server unreachable: %s", exc)
+```
+
+## Engine errors
+
+These are raised by [`EngineControlClient`](/sdk/python/engine-control) when interacting
+with the durable engine surface.
+
+### `EngineRunNotTerminalError`
+
+Raised when an operation requires the run to be in a terminal state (e.g. `get_result`)
+but the run is still running.
+
+### `EngineRunNotFoundError`
+
+Raised on `404` from engine endpoints. The run does not exist or is not visible to this
+API key.
+
+### `EngineRunWaitTimeoutError`
+
+Raised by `wait_for_terminal()` when the timeout elapses before the run reaches a
+terminal state. Carries `run_id` and `timeout` attributes.
+
+```python
+try:
+    result = client.wait_for_terminal(run_id, timeout=60)
+except EngineRunWaitTimeoutError as exc:
+    log.warning("Run %s still running after %ss", exc.run_id, exc.timeout)
+```
+
+### `EngineRunContinuationDepthError`
+
+Raised when a run exceeds the engine's continuation depth limit. Carries `run_id` and
+`max_continuations`.
+
+## Activity-handler errors
+
+### `NonRetryableError`
+
+**You raise this**, the SDK does not. Raise inside an `ActivityWorker` handler to mark a
+task as permanently failed without retry:
+
+```python
+from continua import NonRetryableError
+
+@worker.activity("validate_email")
+def validate_email(args: dict) -> dict:
+    if "@" not in args["email"]:
+        raise NonRetryableError("Invalid email format")
+    return {"valid": True}
+```
+
+Any other exception raised inside a handler is treated as a retryable failure per the
+engine's retry policy.
+
+## Retry behavior
+
+The client transparently retries on transient errors (`5xx`, `429`, and network errors)
+up to `max_retries` (default `3`) with exponential backoff between `base_delay` and
+`max_delay`. The exception is only raised after retries are exhausted.
+
+Tune the retry policy at init time:
+
+```python
+Continua.init(
+    api_key="...",
+    endpoint="...",
+    max_retries=5,
+    base_delay=1.0,
+    max_delay=60.0,
+)
+```

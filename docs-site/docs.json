@@ -1,0 +1,105 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Continua",
+  "description": "Self-hosted debugging for AI agent runs. Traces, spans, sessions, and events for production agents.",
+  "colors": {
+    "primary": "#0EA5E9",
+    "light": "#38BDF8",
+    "dark": "#0369A1"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://github.com/aryanVijaywargia/Continua"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "index",
+              "guides/quickstart",
+              "guides/installation",
+              "guides/self-hosting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Concepts",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "concepts/overview",
+              "concepts/data-model"
+            ]
+          },
+          {
+            "group": "Observability model",
+            "pages": [
+              "concepts/traces-spans-sessions",
+              "concepts/events",
+              "concepts/ingest-lifecycle"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Python SDK",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "sdk/python/overview",
+              "sdk/python/installation",
+              "sdk/python/tracing",
+              "sdk/python/span-events",
+              "sdk/python/activity-worker",
+              "sdk/python/engine-control",
+              "sdk/python/exceptions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "openapi": "/api-reference/openapi.yaml"
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/aryanVijaywargia/Continua",
+          "icon": "github"
+        },
+        {
+          "anchor": "Issues",
+          "href": "https://github.com/aryanVijaywargia/Continua/issues",
+          "icon": "bug"
+        }
+      ]
+    }
+  },
+  "api": {
+    "baseUrl": "http://localhost:8080",
+    "auth": {
+      "method": "key",
+      "name": "X-API-Key"
+    },
+    "playground": {
+      "display": "interactive"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/aryanVijaywargia/Continua"
+    }
+  }
+}

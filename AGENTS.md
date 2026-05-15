@@ -3,15 +3,12 @@
 
 These instructions are for AI assistants working in this project.
 
-Always open `@/openspec/AGENTS.md` when the request:
+If `openspec/` is present in the working tree, open `@/openspec/AGENTS.md` when the request:
 - Mentions planning or proposals (words like proposal, spec, change, plan)
 - Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
 - Sounds ambiguous and you need the authoritative spec before coding
 
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
+`openspec/` is gitignored — it's the internal product-development record, present only on the maintainer's local checkout. External contributors will not have it; fall back to checked-in code, [docs-site/](./docs-site/), and [docs/architecture/](./docs/architecture/) as the authoritative sources.
 
 Keep this managed block so 'openspec update' can refresh the instructions.
 
@@ -22,13 +19,15 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Current Repo Baseline
 - Treat the checked-in code as the primary truth. Historical phase docs and some older architecture docs drift from the current implementation.
 - The live product path today is: authenticated REST ingest -> Postgres persistence -> River background jobs -> REST read APIs -> embedded React debugger operator console.
-- Use the checked-in code, contracts, migrations, and current public docs as the current-state baseline.
-- `openspec/specs/` is currently empty. That means OpenSpec is useful for active proposals and archived work, but not as a complete source of current-state specs.
+- For current-state architecture, start with [`docs-site/concepts/`](./docs-site/concepts/) (overview, data-model, traces-spans-sessions, events, ingest-lifecycle) and [`docs/architecture/`](./docs/architecture/).
+- Use the checked-in code, contracts, and migrations as the authoritative current-state baseline.
+- `docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context. Use them only if present locally.
+- If `openspec/` is present locally, it is useful for active proposals and archived work but not a complete source of current-state specs (`openspec/specs/` is empty).
 
 ## Documentation Status Convention
 - `Current`: authoritative, repo-verified guidance for the current checkout.
 - `Historical`: preserved context or archaeology; do not treat it as the current architecture contract.
-- `Active change`: material under `openspec/changes/`; useful for intent/history, but not current-state truth by itself.
+- `Active change`: material under `openspec/changes/` if present locally; useful for intent/history, but not current-state truth by itself.
 
 ## Implemented Vs Scaffolded
 - Active backend packages: `internal/api`, `internal/ingest`, `internal/jobs`, `internal/store`, `internal/config`, `internal/web`.
@@ -131,13 +130,14 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - `make test-integration` exists for `-tags=integration`, but many current backend tests already use real DB access without that tag. Read the package tests before assuming a suite is purely unit-level.
 
 ## OpenSpec Expectations
-- Use OpenSpec for new capabilities, breaking changes, architectural shifts, or major performance/security work.
+- OpenSpec (`openspec/`) is gitignored and only present on the maintainer's local checkout. If not present, skip this section.
+- If present, use OpenSpec for new capabilities, breaking changes, architectural shifts, or major performance/security work.
 - For implementation against an existing change:
   - read `proposal.md`
   - read `design.md` if present
   - read `tasks.md`
   - implement in task order
-- Because `openspec/specs/` is empty, do not assume OpenSpec alone describes the current repo state. Cross-check with code, contracts, migrations, and current public docs.
+- Because `openspec/specs/` is empty, do not assume OpenSpec alone describes the current repo state. Cross-check with code, contracts, migrations, and [`docs/architecture/`](./docs/architecture/) or [`docs-site/concepts/`](./docs-site/concepts/).
 
 ## Project-local Codex Context
 - Repo-local Codex assets live in `.codex/`. Prefer these over `.claude/` when working from Codex.

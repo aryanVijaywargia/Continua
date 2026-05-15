@@ -1,0 +1,197 @@
+---
+title: "Tracing"
+description: "@trace, @span, and @session — decorators and context managers for instrumenting agent code."
+---
+
+The SDK exposes three context managers (also usable as decorators): `trace`, `span`, and
+`session`. They handle context propagation, parent/child links, and lifecycle events for
+you.
+
+## `@trace`
+
+Wraps a function as a top-level trace. The wrapped function becomes a unit of work the
+debugger shows in the traces list.
+
+```python
+from continua import trace
+
+@trace()
+def my_agent(query: str) -> str:
+    return "response"
+
+
+@trace(name="custom_name", tags=["production"])
+def another_agent():
+    pass
+```
+
+### Signature
+
+```python
+def trace(
+    name: str | None = None,
+    *,
+    session_id: str | None = None,
+    user_id: str | None = None,
+    tags: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Callable[[Callable[..., T]], Callable[..., T]]: ...
+```
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `name` | `str \| None` | Trace name. Defaults to the function name. |
+| `session_id` | `str \| None` | Pin this trace to a specific session. Usually inherited from `@session` instead. |
+| `user_id` | `str \| None` | Optional user identifier. |
+| `tags` | `list[str] \| None` | Optional tags for filtering in the debugger. |
+| `metadata` | `dict[str, Any] \| None` | Free-form metadata. |
+
+### Using as a context manager
+
+```python
+from continua import TraceContext
+
+with TraceContext(name="manual_trace") as t:
+    t.set_input({"query": "..."})
+    # ...
+    t.set_output({"answer": "..."})
+```
+
+### `TraceContext` methods
+
+| Method | Description |
+| --- | --- |
+| `set_input(value)` | Attach the trace-level input payload. |
+| `set_output(value)` | Attach the trace-level output payload. |
+| `set_metadata(key, value)` | Add a metadata key. |
+
+### Accessing the current trace
+
+```python
+from continua import get_current_trace
+
+current = get_current_trace()  # TraceContext | None
+```
+
+## `span`
+
+Open a span as a context manager. Spans nest automatically — a `span()` opened inside
+another `span()` is a child of the outer one.
+
+```python
+from continua import span
+
+with span("openai_call", kind="llm") as s:
+    s.set_input({"prompt": "..."})
+    result = call_openai()
+    s.set_output(result)
+```
+
+### Signature
+
+```python
+def span(
+    name: str,
+    *,
+    kind: SpanKind = "default",
+    metadata: dict[str, Any] | None = None,
+) -> SpanContext: ...
+```
+
+| Parameter | Description |
+| --- | --- |
+| `name` | Span name (required). |
+| `kind` | One of `"llm"`, `"tool"`, `"agent"`, `"default"`. Hints at the span's role. |
+| `metadata` | Optional metadata dictionary. |
+
+### `SpanContext` event methods
+
+The full list lives on [Span events](/sdk/python/span-events). Headline items:
+
+- `set_input`, `set_output`
+- `set_model`, `set_tokens`, `set_cost`
+- `set_llm_response`, `set_tool_call` (emit implicit `effect` events)
+- `log`, `error`, `exception`, `metric`
+- `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`
+
+### Accessing the current span
+
+```python
+from continua import get_current_span
+
+current = get_current_span()  # SpanContext | None
+```
+
+## `session`
+
+Groups traces under a shared external session identifier.
+
+```python
+from continua import session, trace
+
+with session("user-conversation-42"):
+    @trace(name="turn_1")
+    def turn_1(): ...
+
+    @trace(name="turn_2")
+    def turn_2(): ...
+
+    turn_1()
+    turn_2()
+```
+
+### Signature
+
+```python
+def session(
+    session_id: str | None = None,
+    *,
+    user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> SessionContext: ...
+```
+
+| Parameter | Description |
+| --- | --- |
+| `session_id` | External session identifier. If `None`, no session key is attached. |
+| `user_id` | Optional user identifier. |
+| `metadata` | Optional metadata dictionary. |
+
+### Accessing the current session
+
+```python
+from continua import get_current_session
+
+current = get_current_session()  # SessionContext | None
+```
+
+## How context propagates
+
+The SDK uses Python `contextvars` internally:
+
+- `@trace` sets the current trace for the duration of the wrapped call.
+- `span()` reads the current trace + parent span and links itself accordingly.
+- `session()` sets the current session, which `@trace` reads on entry.
+
+This means context propagates correctly across function calls, including async code that
+preserves `contextvars`. Threads need explicit context propagation.
+
+## Common patterns
+
+### Manual trace boundary
+
+```python
+from continua import TraceContext, span
+
+def run():
+    with TraceContext(name="run", tags=["batch"]) as t:
+        t.set_input({"job_id": "abc"})
+        with span("step_1") as s:
+            s.set_output({"ok": True})
+        t.set_output({"status": "done"})
+```
+
+### Nested sessions are not supported
+
+`session()` is meant to wrap the outermost agent loop. Don't nest sessions; instead, set
+`session_id` directly on `@trace` if you need a different session inside.

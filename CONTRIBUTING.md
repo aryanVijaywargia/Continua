@@ -1,18 +1,24 @@
 # Contributing to Continua
 
-## Architecture Rules
+## Project orientation
 
-See `docs/architecture/RULES.md` for the 10 rules that prevent drift.
+Before making changes, skim:
 
-## Development Workflow
+- [`docs-site/concepts/overview.mdx`](./docs-site/concepts/overview.mdx) — current architecture and runtime components
+- [`docs/architecture/overview.md`](./docs/architecture/overview.md) — package-level map
+- [`AGENTS.md`](./AGENTS.md) — repo conventions, generated-file boundaries, testing expectations
 
-1. Run `make generate` after changing contracts or queries
+## Development workflow
+
+1. Run `make generate` after changing OpenAPI, sqlc queries, WebSocket schemas, or migrations
 2. Run `make lint` before committing
 3. Run `make test` before pushing
+4. For docs changes: `make docs-dev` to preview locally (requires `npm i -g mint`)
 
-## PR Checklist
+## PR checklist
 
 - [ ] `make generate` produces no diff
 - [ ] `make lint` passes
 - [ ] `make test` passes
-- [ ] Documentation updated if needed
+- [ ] Documentation updated if needed (`docs-site/` and/or `docs/architecture/`)
+- [ ] Never edit generated files directly (see [`AGENTS.md`](./AGENTS.md#contracts-generation-and-generated-files))

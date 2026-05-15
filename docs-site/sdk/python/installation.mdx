@@ -1,0 +1,116 @@
+---
+title: "Installation"
+description: "Install continua-sdk, initialize the client, and pick an ingest mode."
+---
+
+## Install
+
+```bash
+pip install continua-sdk
+```
+
+The package targets Python 3.10+ and depends only on `httpx` and `pydantic`.
+
+## Initialize
+
+Initialize the client **once at process startup**. `Continua.init()` returns the global
+instance and registers an `atexit` handler that flushes the batch queue on shutdown.
+
+```python
+from continua import Continua
+
+Continua.init(
+    api_key="your-api-key",
+    endpoint="https://api.your-continua-host.com",
+)
+```
+
+For a local or self-hosted server:
+
+```python
+Continua.init(
+    api_key="dev-api-key",
+    endpoint="http://localhost:8080",
+)
+```
+
+After init, use `Continua.get_instance()` anywhere in your process to retrieve the singleton.
+
+## `Continua.init` parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `api_key` | `str` | _required_ | Project API key for authentication |
+| `endpoint` | `str` | `"http://localhost:8080"` | Continua server URL |
+| `batch_size` | `int` | `100` | Items in the batch queue before auto-flush |
+| `flush_interval` | `float` | `5.0` | Seconds between auto-flushes |
+| `max_retries` | `int` | `3` | Max retry attempts for transient errors |
+| `base_delay` | `float` | `0.5` | Base delay for exponential backoff (seconds) |
+| `max_delay` | `float` | `30.0` | Maximum delay between retries (seconds) |
+| `ingest_mode` | `str` | `"server_default"` | One of `"sync"`, `"async_v2"`, `"server_default"` |
+
+## Ingest modes
+
+See [Ingest lifecycle](/concepts/ingest-lifecycle) for the full model.
+
+| Mode | When |
+| --- | --- |
+| `"sync"` | You need read-after-write. Sends `sync=true`, waits for inline processing. |
+| `"async_v2"` | High throughput. Opts into true async with `X-Continua-Async-Version: 2`. |
+| `"server_default"` | Defers to the server's `INGEST_TRUE_ASYNC_DEFAULT` setting. |
+
+```python
+Continua.init(
+    api_key="...",
+    endpoint="...",
+    ingest_mode="async_v2",
+)
+```
+
+## Polling for async batches
+
+True async is **not read-after-write**. If your code needs the batch fully processed
+before reading data back, either use `sync` mode or poll:
+
+```python
+client = Continua.get_instance()
+result = client.wait_for_batch(batch_id, timeout=30, poll_interval=0.5)
+# result["status"] in {"completed", "failed"}
+```
+
+## Shutdown
+
+The SDK registers an `atexit` handler automatically. If you want deterministic shutdown
+(e.g. in a CLI tool or test):
+
+```python
+Continua.get_instance().shutdown()
+```
+
+This flushes the batch queue and closes the underlying `httpx.Client`.
+
+## Verifying the connection
+
+```python
+from continua import Continua, span, trace
+
+Continua.init(api_key="default", endpoint="http://localhost:8080")
+
+@trace(name="connectivity_check")
+def ping():
+    with span("noop") as s:
+        s.set_output({"ok": True})
+
+ping()
+Continua.get_instance().flush()
+```
+
+Open `http://localhost:8080/traces` — you should see a `connectivity_check` trace.
+
+## Examples
+
+The SDK ships with two runnable examples under `sdks/python/examples/`:
+
+- `e2e_demo.py` — end-to-end: traces with nested spans, LLM / tool / agent simulation,
+  API verification.
+- `agentic_flow_stress.py` — stress test with complex agent flows and OpenAI integration.

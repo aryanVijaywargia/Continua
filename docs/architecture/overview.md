@@ -160,4 +160,4 @@ These exist as plans, contracts, or scaffolding, but not as full runtime capabil
 - `web/playwright.config.ts`
 - `web/e2e/ui-smoke.spec.ts`
 
-For deeper implementation detail, start from the checked-in code, contracts, migrations, and the public docs indexed in `docs/README.md`.
+For deeper implementation detail, start from the checked-in code, contracts, migrations, and the [docs site](../../docs-site/).

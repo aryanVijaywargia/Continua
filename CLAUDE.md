@@ -3,15 +3,12 @@
 
 These instructions are for AI assistants working in this project.
 
-Always open `@/openspec/AGENTS.md` when the request:
+If `openspec/` is present in the working tree, open `@/openspec/AGENTS.md` when the request:
 - Mentions planning or proposals (words like proposal, spec, change, plan)
 - Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
 - Sounds ambiguous and you need the authoritative spec before coding
 
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
+`openspec/` is gitignored — it's the internal product-development record, present only on the maintainer's local checkout. External contributors will not have it; in that case, fall back to checked-in code, [docs-site/](./docs-site/), and [docs/architecture/](./docs/architecture/) as the authoritative sources.
 
 Keep this managed block so 'openspec update' can refresh the instructions.
 
@@ -34,10 +31,12 @@ Do not assume replay, WebSocket runtime, proxy capture, durable engine workflows
 
 Start discovery from:
 - `AGENTS.md`
-- `.claude/skills/references/decisions.md`
+- `docs-site/concepts/overview.mdx` (current architecture)
+- `docs/architecture/overview.md`
+- `.claude/skills/references/decisions.md` (if present locally)
 - the live package you are editing
 
-Use the checked-in code, contracts, migrations, and current public docs as the current-state baseline.
+Use the checked-in code, contracts, and migrations as the authoritative current-state baseline. `docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context — use them only if present locally; do not rely on them in external clones.
 
 ## What Exists Today
 
@@ -60,7 +59,8 @@ Use the checked-in code, contracts, migrations, and current public docs as the c
 ## Discovery Rules
 
 - Treat checked-in code as the primary truth.
-- Use OpenSpec for proposals and active change context, but remember `openspec/specs/` is currently empty.
+- Use [docs-site/concepts/](./docs-site/concepts/) and [docs/architecture/](./docs/architecture/) to understand repo reality quickly.
+- If `openspec/` is present locally, use it for proposals and active change context (note: `openspec/specs/` is currently empty).
 - If a doc conflicts with code, trust the code and update the doc if it is part of the task.
 
 ## Claude Skill Map

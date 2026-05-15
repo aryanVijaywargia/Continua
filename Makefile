@@ -10,7 +10,8 @@ GOLANGCI_LINT := $(GO_BIN_DIR)/golangci-lint
 
 .PHONY: all setup generate build build-engine test test-go test-js lint lint-go lint-js \
         dev dev-server dev-web clean help migrate migrate-down docker docker-build \
-        docker-up docker-down docker-logs demo reset-demo e2e seed-demo
+        docker-up docker-down docker-logs demo reset-demo e2e seed-demo \
+        docs docs-dev docs-check
 
 # Default target
 all: generate build
@@ -227,6 +228,18 @@ clean-all: clean ## Clean everything including dependencies
 	rm -rf web/node_modules/
 	rm -rf sdks/typescript/node_modules/
 	rm -rf sdks/python/.venv/
+
+# ============================================================================
+# Docs (Mintlify)
+# ============================================================================
+
+docs-dev: ## Run Mintlify docs preview at http://localhost:3000
+	cd docs-site && mint dev
+
+docs-check: ## Validate docs site for broken links
+	cd docs-site && mint broken-links
+
+docs: docs-check ## Validate docs site (alias for docs-check)
 
 # ============================================================================
 # CI
