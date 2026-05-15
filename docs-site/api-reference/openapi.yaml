@@ -1,1 +1,3484 @@
-../../contracts/openapi/openapi.bundle.yaml
+openapi: 3.1.0
+info:
+  title: Continua API
+  version: 0.1.0
+  description: AI Agent Observability Platform API
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: /
+    description: Relative path (works with any host)
+security:
+  - auth0Bearer: []
+  - apiKey: []
+paths:
+  /v1/ingest:
+    post:
+      operationId: ingest
+      summary: Ingest traces, spans, and events
+      description: |
+        Batch ingestion endpoint for traces, spans, and events.
+        Supports idempotent processing via batch_key.
+        Maximum request body size is 5MB.
+      tags:
+        - Ingest
+      security:
+        - apiKey: []
+      parameters:
+        - name: sync
+          in: query
+          description: If true, wait for processing to complete before returning
+          schema:
+            type: boolean
+            default: false
+        - name: X-Continua-Async-Version
+          in: header
+          description: |
+            Optional staged-rollout header for true async ingest.
+            `2` enables durable async acceptance and background processing.
+            Any other value is rejected with `400 unsupported_async_version`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+      responses:
+        '200':
+          description: Batch processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '202':
+          description: Batch accepted for asynchronous processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '400':
+          description: Invalid request body or unsupported async version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Request body too large (exceeds 5MB limit)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SizeError'
+  /v1/ingest/batches/{id}:
+    get:
+      operationId: getBatchStatus
+      summary: Get ingest batch status
+      description: Poll the processing status of an ingest batch.
+      tags:
+        - Ingest
+      security:
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Batch status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStatusResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs:
+    post:
+      operationId: startEngineRun
+      summary: Start an engine workflow run
+      tags:
+        - Engine
+      security:
+        - apiKey: []
+      parameters:
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineStartRunRequest'
+      responses:
+        '200':
+          description: Engine run started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineStartRunResponse'
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Duplicate, in-progress, or conflicting request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/activities/claim:
+    post:
+      operationId: claimRemoteActivityTasks
+      summary: Claim remote engine activity tasks
+      tags:
+        - Engine
+      security:
+        - apiKey: []
+      parameters:
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineRemoteActivityClaimRequest'
+      responses:
+        '200':
+          description: Claimed remote activity tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRemoteActivityClaimResponse'
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/activities/{id}/heartbeat:
+    post:
+      operationId: heartbeatRemoteActivityTask
+      summary: Renew a remote activity task lease
+      tags:
+        - Engine
+      security:
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineRemoteActivityHeartbeatRequest'
+      responses:
+        '200':
+          description: Renewed remote activity lease
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRemoteActivityHeartbeatResponse'
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Activity task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Activity task is not currently owned by this remote worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/activities/{id}/complete:
+    post:
+      operationId: completeRemoteActivityTask
+      summary: Complete a remote activity task
+      tags:
+        - Engine
+      security:
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineRemoteActivityCompleteRequest'
+      responses:
+        '204':
+          description: Activity task completed
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Activity task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Activity task is not currently owned by this remote worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/activities/{id}/fail:
+    post:
+      operationId: failRemoteActivityTask
+      summary: Fail or retry a remote activity task
+      tags:
+        - Engine
+      security:
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineRemoteActivityFailRequest'
+      responses:
+        '204':
+          description: Activity task failed or requeued
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Activity task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Activity task is not currently owned by this remote worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/instances/{instance_key}:
+    get:
+      operationId: getEngineInstance
+      summary: Get an engine instance and current run
+      tags:
+        - Engine
+      security:
+        - apiKey: []
+      parameters:
+        - name: instance_key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Engine instance detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineInstanceResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Instance not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}:
+    get:
+      operationId: getEngineRun
+      summary: Get an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Engine run detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/result:
+    get:
+      operationId: getEngineRunResult
+      summary: Get the terminal result for an engine run
+      description: |
+        Returns the terminal result shape for the run.
+        `COMPLETED` returns the workflow result payload.
+        `CANCELLED` and `TERMINATED` return `result=null` with a populated `failure` object.
+        Purged runs in `summary_only` and `journal_expired` continue to return the
+        retained terminal shell instead of becoming `404`.
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Engine run terminal result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResultResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run not terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/pending-work:
+    get:
+      operationId: getEngineRunPendingWork
+      summary: Get the durable pending work held by an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Pending work snapshot for the run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnginePendingWorkResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/history:
+    get:
+      operationId: getEngineRunHistory
+      summary: Get engine run history
+      description: |
+        Returns the durable engine history page for the run.
+        Purged runs continue to return `200`; `journal_expired` runs include
+        `expired=true` so clients can distinguish purged-empty from never-had-events.
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: after
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        '200':
+          description: Engine run history page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunHistoryResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/purge:
+    post:
+      operationId: purgeEngineRun
+      summary: Purge projected detail and optionally retained history for an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnginePurgeRequest'
+      responses:
+        '200':
+          description: Purge applied or already satisfied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnginePurgeResponse'
+        '400':
+          description: Invalid request body or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run not terminal (`run_not_terminal`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/repair:
+    post:
+      operationId: repairEngineRun
+      summary: Request projection repair for an engine run
+      description: |
+        Repair is asynchronous. Accepted repair requests only reopen projection by
+        returning the run to `catching_up`; the separate `continua-engine`
+        projector loop performs the rebuild later.
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Repair accepted or current state reported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRepairResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/projections/backfill:
+    post:
+      operationId: backfillEngineProjections
+      summary: Preview or request bulk projection repair for engine runs
+      description: |
+        Identifies engine-backed traces eligible for projection repair and, when
+        `dry_run=false`, reuses the existing per-run repair service to request
+        catch-up. When `engine_projection_state` is omitted, only `summary_only`
+        candidates are considered. Explicit `up_to_date`, `catching_up`, and
+        `journal_expired` filters return zero eligible rows because those states
+        are not valid backfill targets.
+      tags:
+        - Engine
+      security:
+        - apiKey: []
+      parameters:
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineProjectionBackfillRequest'
+      responses:
+        '200':
+          description: Backfill preview or apply result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineProjectionBackfillResponse'
+        '400':
+          description: Invalid request body, limit above 100, or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/signal:
+    post:
+      operationId: signalEngineRun
+      summary: Deliver a signal to an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngineSignalRunRequest'
+      responses:
+        '200':
+          description: Signal accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineControlResponse'
+        '400':
+          description: Invalid request or missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/suspend:
+    post:
+      operationId: suspendEngineRun
+      summary: Suspend an engine run without terminating it
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run suspended or current state returned for an idempotent no-op
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run is mid-activation (`run_not_suspendable`) or terminal (`run_terminal`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/resume:
+    post:
+      operationId: resumeEngineRun
+      summary: Resume a suspended engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run resumed or current state returned for an idempotent no-op
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/cancel:
+    post:
+      operationId: cancelEngineRun
+      summary: Request cancellation of an engine run
+      description: |
+        Cooperative cancellation request. Success only enqueues durable cancel intent and may wake the run;
+        it does not guarantee the final outcome becomes `CANCELLED`.
+        Workflow code decides between `COMPLETED` and `CANCELLED` by returning `workflow.ErrCancelled`.
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cancel accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineControlResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Run terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/engine/runs/{run_id}/terminate:
+    post:
+      operationId: terminateEngineRun
+      summary: Forcefully terminate an engine run
+      tags:
+        - Engine
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Continua-Engine-Preview
+          in: header
+          required: true
+          description: Required preview header for mutating engine routes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run terminated or already terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineRunResultResponse'
+        '400':
+          description: Missing preview header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Run not found or engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/auth/config:
+    get:
+      operationId: getAuthConfig
+      summary: Get Auth0 runtime configuration for the debugger
+      tags:
+        - Auth
+      security: []
+      responses:
+        '200':
+          description: Runtime Auth0 bootstrap configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthConfig'
+  /api/projects:
+    get:
+      operationId: listProjects
+      summary: List all projects in the deployment
+      description: |
+        Returns every project the deployment knows about. Intended for the project-management
+        view in the debugger UI. In a remote multi-tenant deployment, pair this with operator
+        auth (Auth0) if API keys should not enumerate other projects.
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectList'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      operationId: createProject
+      summary: Create a new project and return its API key
+      description: |
+        Generates a fresh API key, stores its SHA-256 hash, and returns the plaintext key
+        exactly once in the response. The key cannot be retrieved later; use rotate to
+        replace it.
+      tags:
+        - Projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created. The plaintext api_key is included in this response only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectWithKey'
+        '400':
+          description: Invalid request body (missing or empty name)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/projects/{id}:
+    patch:
+      operationId: updateProject
+      summary: Rename an existing project
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: Updated project metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deleteProject
+      summary: Delete a project and all its data
+      description: |
+        Permanently deletes the project row. Associated traces, sessions, spans, and
+        payloads cascade via foreign keys. The seeded default project cannot be deleted.
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Project deleted
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Project cannot be deleted (e.g. the default project)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/projects/{id}/rotate:
+    post:
+      operationId: rotateProjectAPIKey
+      summary: Rotate the API key for a project
+      description: |
+        Generates a new API key, replaces the stored hash, and returns the plaintext
+        key exactly once. The previous key stops working immediately.
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Rotated key. The plaintext api_key is included only in this response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectWithKey'
+        '403':
+          description: API-key callers are forbidden from project management when Auth0 is enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/traces:
+    get:
+      operationId: listTraces
+      summary: List traces
+      tags:
+        - Traces
+      parameters:
+        - $ref: '#/components/parameters/SelectedProjectId'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: session_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          description: Full-text search query (searches trace name and user_id)
+          schema:
+            type: string
+        - name: sort_by
+          in: query
+          description: Sort traces by started time. Ignored when q is present.
+          schema:
+            type: string
+            enum:
+              - started_at
+        - name: sort_dir
+          in: query
+          description: Sort direction for started time. Ignored when q is present.
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+        - name: status
+          in: query
+          description: Filter by trace status
+          schema:
+            type: string
+            enum:
+              - running
+              - completed
+              - failed
+        - name: start_time_from
+          in: query
+          description: Filter traces starting at or after this time
+          schema:
+            type: string
+            format: date-time
+        - name: start_time_to
+          in: query
+          description: Filter traces starting at or before this time
+          schema:
+            type: string
+            format: date-time
+        - name: user_id
+          in: query
+          description: Filter by user ID
+          schema:
+            type: string
+        - name: engine_instance_key
+          in: query
+          description: Filter by engine instance key
+          schema:
+            type: string
+        - name: engine_run_id
+          in: query
+          description: Filter by engine run ID
+          schema:
+            type: string
+            format: uuid
+        - name: engine_definition_name
+          in: query
+          description: Filter by engine definition name
+          schema:
+            type: string
+        - name: engine_definition_version
+          in: query
+          description: Filter by engine definition version
+          schema:
+            type: string
+        - name: engine_run_status
+          in: query
+          description: Filter by engine run lifecycle status
+          schema:
+            type: string
+            enum:
+              - queued
+              - running
+              - waiting
+              - suspended
+              - completed
+              - failed
+              - cancelled
+              - terminated
+              - continued_as_new
+        - name: engine_parent_run_id
+          in: query
+          description: Filter by engine parent run ID
+          schema:
+            type: string
+            format: uuid
+        - name: engine_root_run_id
+          in: query
+          description: Filter by engine root run ID
+          schema:
+            type: string
+            format: uuid
+        - name: engine_child_key
+          in: query
+          description: Filter by engine child key
+          schema:
+            type: string
+        - name: engine_child_depth
+          in: query
+          description: Filter by engine child depth
+          schema:
+            type: integer
+        - name: engine_projection_state
+          in: query
+          description: Filter by engine projection state
+          schema:
+            $ref: '#/components/schemas/EngineProjectionState'
+        - name: has_errors
+          in: query
+          description: Filter traces with errors (error_count > 0)
+          schema:
+            type: boolean
+        - name: min_duration_ms
+          in: query
+          description: Filter traces with duration >= this value in milliseconds
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: List of traces
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceList'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/traces/{id}:
+    get:
+      operationId: getTrace
+      summary: Get a trace by ID
+      tags:
+        - Traces
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
+      responses:
+        '200':
+          description: Trace details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceDetail'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/traces/{id}/spans:
+    get:
+      operationId: listSpansByTrace
+      summary: List spans for a trace
+      tags:
+        - Spans
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
+      responses:
+        '200':
+          description: List of spans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpanList'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/traces/{id}/events:
+    get:
+      operationId: getTraceEvents
+      summary: List timeline events for a trace
+      tags:
+        - Traces
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
+        - name: after
+          in: query
+          description: Opaque cursor returned by a previous timeline response
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of timeline events to return
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: Timeline events for the trace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineResponse'
+        '400':
+          description: Invalid cursor or pagination parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/sessions:
+    get:
+      operationId: listSessions
+      summary: List sessions
+      tags:
+        - Sessions
+      parameters:
+        - $ref: '#/components/parameters/SelectedProjectId'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: q
+          in: query
+          description: Search sessions by external ID or name
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          description: Filter sessions by exact user ID
+          schema:
+            type: string
+        - name: sort_by
+          in: query
+          description: Sort sessions by creation time or trace count. Ignored when q is present.
+          schema:
+            type: string
+            enum:
+              - created_at
+              - trace_count
+        - name: sort_dir
+          in: query
+          description: Sort direction for the selected session sort field. Ignored when q is present.
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+      responses:
+        '200':
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionList'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/sessions/{id}:
+    get:
+      operationId: getSession
+      summary: Get a session by ID
+      tags:
+        - Sessions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
+      responses:
+        '200':
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/sessions/{id}/narrative:
+    get:
+      operationId: getSessionNarrative
+      summary: Get a session narrative by ID
+      tags:
+        - Sessions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
+      responses:
+        '200':
+          description: Session narrative details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionNarrativeResponse'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/sessions/{id}/compare:
+    get:
+      operationId: getSessionCompare
+      summary: Compare two traces within a session
+      tags:
+        - Sessions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
+        - name: baseline_trace_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: candidate_trace_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session trace comparison details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionCompareResponse'
+        '400':
+          description: Invalid comparison request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Session or trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Comparison exceeds the supported span or semantic event ceiling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonTooLargeError'
+components:
+  parameters:
+    SelectedProjectId:
+      name: project_id
+      in: query
+      description: Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+      schema:
+        type: string
+        format: uuid
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+    auth0Bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Auth0 access token for debugger operator authentication
+  schemas:
+    AuthConfig:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+        domain:
+          type: string
+        client_id:
+          type: string
+        audience:
+          type: string
+        public_demo_enabled:
+          type: boolean
+          description: Whether the deployment exposes a public read-only demo console.
+        public_demo_label:
+          type: string
+          description: Display label for the public demo banner shown in the debugger shell.
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    Project:
+      type: object
+      required:
+        - id
+        - name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProjectList:
+      type: object
+      required:
+        - projects
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+    ProjectWithKey:
+      type: object
+      required:
+        - id
+        - name
+        - created_at
+        - updated_at
+        - api_key
+      description: Project metadata including the plaintext API key. Returned only on create or rotate; never retrievable again.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        api_key:
+          type: string
+          description: Plaintext API key. Display once and store securely; the server only retains a hash.
+    CreateProjectRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Human-readable project name (1-100 characters)
+    UpdateProjectRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    SizeError:
+      type: object
+      required:
+        - error
+      description: Error response for 413 Payload Too Large
+      properties:
+        error:
+          type: string
+          description: Error message describing the size limit violation
+    EngineProjectionState:
+      type: string
+      enum:
+        - up_to_date
+        - catching_up
+        - summary_only
+        - journal_expired
+    EngineProjectionBackfillAction:
+      type: string
+      enum:
+        - would_repair
+        - repair_requested
+        - skipped
+    EnginePurgeMode:
+      type: string
+      enum:
+        - projection_only
+        - full
+    EngineRepairReason:
+      type: string
+      enum:
+        - already_up_to_date
+        - history_expired
+        - no_events_to_project
+        - repair_requested
+        - already_catching_up
+    EngineRunStatus:
+      type: string
+      enum:
+        - QUEUED
+        - RUNNING
+        - WAITING
+        - SUSPENDED
+        - COMPLETED
+        - FAILED
+        - CANCELLED
+        - TERMINATED
+        - CONTINUED_AS_NEW
+    EngineTraceInfo:
+      type: object
+      required:
+        - run_id
+        - definition_name
+        - definition_version
+        - projection_state
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        definition_name:
+          type: string
+        definition_version:
+          type: string
+        projection_state:
+          $ref: '#/components/schemas/EngineProjectionState'
+        parent_run_id:
+          type: string
+          format: uuid
+        root_run_id:
+          type: string
+          format: uuid
+        child_key:
+          type: string
+        child_depth:
+          type: integer
+    EngineWaitState:
+      type: object
+      additionalProperties: true
+      properties:
+        kind:
+          type: string
+        activity_key:
+          type: string
+        activity_type:
+          type: string
+        timer_key:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        signal_name:
+          type: string
+        child_key:
+          type: string
+    EnginePendingWork:
+      type: object
+      required:
+        - pending_activity_tasks
+        - pending_inbox_items
+      properties:
+        pending_activity_tasks:
+          type: integer
+          format: int64
+        pending_inbox_items:
+          type: integer
+          format: int64
+    EnginePendingActivityItem:
+      type: object
+      required:
+        - task_id
+        - activity_key
+        - activity_type
+        - status
+        - available_at
+        - attempt_count
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        activity_key:
+          type: string
+        activity_type:
+          type: string
+        status:
+          type: string
+        available_at:
+          type: string
+          format: date-time
+        attempt_count:
+          type: integer
+          format: int32
+    EngineRemoteActivityClaimRequest:
+      type: object
+      required:
+        - worker_id
+        - activity_types
+      properties:
+        worker_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        activity_types:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 256
+        lease_duration:
+          type: string
+          description: Requested lease duration, e.g. 60s or 5m. The server clamps the effective value.
+        max_tasks:
+          type: integer
+          minimum: 1
+          maximum: 50
+    EngineRemoteActivityTask:
+      type: object
+      required:
+        - task_id
+        - activity_key
+        - activity_type
+        - input
+        - lease_expires_at
+        - effective_lease_duration_ms
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        activity_key:
+          type: string
+        activity_type:
+          type: string
+        input:
+          description: Activity input payload (any valid JSON)
+        lease_expires_at:
+          type: string
+          format: date-time
+        effective_lease_duration_ms:
+          type: integer
+          format: int64
+    EngineRemoteActivityClaimResponse:
+      type: object
+      required:
+        - tasks
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineRemoteActivityTask'
+    EngineRemoteActivityHeartbeatRequest:
+      type: object
+      required:
+        - worker_id
+      properties:
+        worker_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+    EngineRemoteActivityHeartbeatResponse:
+      type: object
+      required:
+        - lease_expires_at
+        - effective_lease_duration_ms
+      properties:
+        lease_expires_at:
+          type: string
+          format: date-time
+        effective_lease_duration_ms:
+          type: integer
+          format: int64
+    EngineRemoteActivityCompleteRequest:
+      type: object
+      required:
+        - worker_id
+        - output
+      properties:
+        worker_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        output:
+          description: Activity output payload (any valid JSON)
+    EngineRemoteActivityFailRequest:
+      type: object
+      required:
+        - worker_id
+        - error_code
+        - error_message
+      properties:
+        worker_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        error_code:
+          type: string
+          minLength: 1
+          maxLength: 128
+        error_message:
+          type: string
+          maxLength: 4096
+        non_retryable:
+          type: boolean
+          default: false
+    EnginePendingTimerItem:
+      type: object
+      required:
+        - inbox_id
+        - timer_key
+        - status
+        - available_at
+      properties:
+        inbox_id:
+          type: string
+          format: uuid
+        timer_key:
+          type: string
+        status:
+          type: string
+        available_at:
+          type: string
+          format: date-time
+    EnginePendingSignalItem:
+      type: object
+      required:
+        - inbox_id
+        - signal_name
+        - status
+        - available_at
+      properties:
+        inbox_id:
+          type: string
+          format: uuid
+        signal_name:
+          type: string
+        status:
+          type: string
+        available_at:
+          type: string
+          format: date-time
+    EnginePendingWorkResponse:
+      type: object
+      required:
+        - run_id
+        - current_wait
+        - activities
+        - timers
+        - signals
+        - pending_activity_tasks
+        - pending_inbox_items
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        current_wait:
+          description: Current synthesized wait state from the run row when present.
+          allOf:
+            - $ref: '#/components/schemas/EngineWaitState'
+          x-nullable: true
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnginePendingActivityItem'
+        timers:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnginePendingTimerItem'
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnginePendingSignalItem'
+        pending_activity_tasks:
+          type: integer
+          format: int64
+        pending_inbox_items:
+          type: integer
+          format: int64
+    EngineProjectionBackfillRequest:
+      type: object
+      properties:
+        dry_run:
+          type: boolean
+          default: false
+        limit:
+          type: integer
+          default: 50
+          maximum: 100
+        older_than:
+          type: string
+          format: date-time
+        engine_instance_key:
+          type: string
+        engine_definition_name:
+          type: string
+        engine_run_status:
+          $ref: '#/components/schemas/EngineRunStatus'
+        engine_projection_state:
+          allOf:
+            - $ref: '#/components/schemas/EngineProjectionState'
+          description: |
+            Defaults to `summary_only` when omitted. Explicit `up_to_date`,
+            `catching_up`, and `journal_expired` return zero eligible rows.
+    EngineProjectionBackfillRunResult:
+      type: object
+      required:
+        - run_id
+        - trace_id
+        - projection_state
+        - action
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+        projection_state:
+          $ref: '#/components/schemas/EngineProjectionState'
+        action:
+          $ref: '#/components/schemas/EngineProjectionBackfillAction'
+        reason:
+          $ref: '#/components/schemas/EngineRepairReason'
+    EngineProjectionBackfillResponse:
+      type: object
+      required:
+        - dry_run
+        - limit
+        - eligible_count
+        - repair_requested_count
+        - skipped_count
+        - results
+      properties:
+        dry_run:
+          type: boolean
+        limit:
+          type: integer
+        eligible_count:
+          type: integer
+        repair_requested_count:
+          type: integer
+        skipped_count:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineProjectionBackfillRunResult'
+    EngineFailureSummary:
+      type: object
+      required:
+        - error_code
+        - error_message
+        - status
+      properties:
+        error_code:
+          type: string
+          description: |
+            Stable reserved value: `definition_version_mismatch`. Clients may
+            exact-match this value while still accepting arbitrary strings.
+        error_message:
+          type: string
+        status:
+          type: string
+    EngineRunSummary:
+      allOf:
+        - $ref: '#/components/schemas/EngineTraceInfo'
+        - type: object
+          required:
+            - status
+            - instance_key
+            - pending_work
+            - created_at
+            - updated_at
+          properties:
+            status:
+              $ref: '#/components/schemas/EngineRunStatus'
+            instance_key:
+              type: string
+            continued_from_run_id:
+              type: string
+              format: uuid
+            continued_to_run_id:
+              type: string
+              format: uuid
+            continued_from_trace_id:
+              type: string
+            continued_to_trace_id:
+              type: string
+            custom_status:
+              type: object
+            wait_state:
+              $ref: '#/components/schemas/EngineWaitState'
+            pending_work:
+              $ref: '#/components/schemas/EnginePendingWork'
+            result:
+              description: Terminal workflow result payload when available.
+            failure:
+              $ref: '#/components/schemas/EngineFailureSummary'
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+            completed_at:
+              type: string
+              format: date-time
+    Trace:
+      type: object
+      required:
+        - id
+        - name
+        - status
+        - started_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        session_external_id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum:
+            - RUNNING
+            - COMPLETED
+            - FAILED
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        total_tokens_in:
+          type: integer
+        total_tokens_out:
+          type: integer
+        total_cost_usd:
+          type: number
+        error_count:
+          type: integer
+          description: Count of failed spans in this trace
+        metadata:
+          type: object
+        engine:
+          $ref: '#/components/schemas/EngineTraceInfo'
+    TraceDetail:
+      allOf:
+        - $ref: '#/components/schemas/Trace'
+        - type: object
+          properties:
+            trace_id:
+              type: string
+            user_id:
+              type: string
+            tags:
+              type: array
+              items:
+                type: string
+            environment:
+              type: string
+            release:
+              type: string
+            input:
+              description: Trace input payload (any valid JSON)
+            output:
+              description: Trace output payload (any valid JSON)
+            engine:
+              $ref: '#/components/schemas/EngineRunSummary'
+    EngineStartSession:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        metadata:
+          type: object
+    EngineStartTrace:
+      type: object
+      properties:
+        name:
+          type: string
+        user_id:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        environment:
+          type: string
+        release:
+          type: string
+        metadata:
+          type: object
+    EngineStartRunRequest:
+      type: object
+      required:
+        - instance_key
+        - definition_name
+        - definition_version
+        - request_key
+      properties:
+        instance_key:
+          type: string
+        definition_name:
+          type: string
+        definition_version:
+          type: string
+        request_key:
+          type: string
+        input:
+          description: Workflow input payload (any valid JSON)
+        session:
+          $ref: '#/components/schemas/EngineStartSession'
+        trace:
+          $ref: '#/components/schemas/EngineStartTrace'
+    EngineStartRunResponse:
+      type: object
+      required:
+        - run_id
+        - instance_key
+        - trace_id
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        instance_key:
+          type: string
+        trace_id:
+          type: string
+    EngineInstanceResponse:
+      type: object
+      required:
+        - instance_id
+        - instance_key
+        - definition_name
+        - status
+        - current_run
+      properties:
+        instance_id:
+          type: string
+          format: uuid
+        instance_key:
+          type: string
+        definition_name:
+          type: string
+        status:
+          type: string
+        current_run:
+          $ref: '#/components/schemas/EngineRunSummary'
+    EngineRunResponse:
+      description: |
+        Engine run detail. Clients can identify `definition_version_mismatch`
+        from the existing `definition_name`, `definition_version`, and
+        `failure.error_code` fields without a dedicated mismatch endpoint.
+      allOf:
+        - $ref: '#/components/schemas/EngineRunSummary'
+        - type: object
+          required:
+            - instance_id
+          properties:
+            instance_id:
+              type: string
+              format: uuid
+    EngineRunResultResponse:
+      type: object
+      required:
+        - run_id
+        - status
+        - result
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        continued_from_run_id:
+          type: string
+          format: uuid
+        continued_to_run_id:
+          type: string
+          format: uuid
+        continued_from_trace_id:
+          type: string
+        continued_to_trace_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/EngineRunStatus'
+        result:
+          description: |
+            Terminal workflow result payload when available. `summary_only` and
+            `journal_expired` runs continue to return the retained terminal shell.
+          x-nullable: true
+        failure:
+          $ref: '#/components/schemas/EngineFailureSummary'
+    EngineHistoryEvent:
+      type: object
+      required:
+        - id
+        - sequence_no
+        - event_type
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        sequence_no:
+          type: integer
+          format: int32
+        event_type:
+          type: string
+        payload:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+    EngineRunHistoryResponse:
+      type: object
+      required:
+        - events
+        - has_more
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineHistoryEvent'
+        has_more:
+          type: boolean
+        next_after:
+          type: integer
+        expired:
+          type: boolean
+          description: True when retained engine history for the run has been purged.
+    EnginePurgeRequest:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          $ref: '#/components/schemas/EnginePurgeMode'
+    EnginePurgeResponse:
+      type: object
+      required:
+        - run_id
+        - mode
+        - projection_state
+        - deleted
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        mode:
+          $ref: '#/components/schemas/EnginePurgeMode'
+        projection_state:
+          $ref: '#/components/schemas/EngineProjectionState'
+        deleted:
+          type: boolean
+          description: True when purge deleted projection detail and/or history rows.
+    EngineRepairResponse:
+      type: object
+      required:
+        - run_id
+        - accepted
+        - reason
+        - projection_state
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        accepted:
+          type: boolean
+        reason:
+          $ref: '#/components/schemas/EngineRepairReason'
+        projection_state:
+          $ref: '#/components/schemas/EngineProjectionState'
+    EngineSignalRunRequest:
+      type: object
+      required:
+        - signal_name
+      properties:
+        signal_name:
+          type: string
+        payload:
+          description: Signal payload (any valid JSON)
+    EngineControlResponse:
+      type: object
+      required:
+        - run_id
+        - instance_key
+        - accepted
+        - wake_applied
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        instance_key:
+          type: string
+        accepted:
+          type: boolean
+        wake_applied:
+          type: boolean
+    TraceList:
+      type: object
+      required:
+        - traces
+        - total
+      properties:
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trace'
+        total:
+          type: integer
+    Span:
+      type: object
+      required:
+        - id
+        - trace_id
+        - span_id
+        - name
+        - kind
+        - status
+        - started_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+          format: uuid
+        span_id:
+          type: string
+          description: External span identifier (used for parent-child relationships)
+        parent_span_id:
+          type: string
+          description: External parent span identifier
+        name:
+          type: string
+        kind:
+          type: string
+          enum:
+            - LLM
+            - TOOL
+            - CHAIN
+            - AGENT
+            - CUSTOM
+        status:
+          type: string
+          enum:
+            - SCHEDULED
+            - STARTED
+            - COMPLETED
+            - FAILED
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        tokens_in:
+          type: integer
+        tokens_out:
+          type: integer
+        cost_usd:
+          type: number
+        latency_ms:
+          type: integer
+        error_message:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        input:
+          description: Span input payload (any valid JSON)
+        input_truncated:
+          type: boolean
+        input_original_size_bytes:
+          type: integer
+          format: int64
+        input_truncation_reason:
+          type: string
+        output:
+          description: Span output payload (any valid JSON)
+        output_truncated:
+          type: boolean
+        output_original_size_bytes:
+          type: integer
+          format: int64
+        output_truncation_reason:
+          type: string
+        metadata:
+          type: object
+    SpanList:
+      type: object
+      required:
+        - spans
+      properties:
+        spans:
+          type: array
+          items:
+            $ref: '#/components/schemas/Span'
+    Session:
+      type: object
+      required:
+        - id
+        - external_id
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+          description: Human-readable external session identifier used by SDKs
+        name:
+          type: string
+        user_id:
+          type: string
+          description: User identifier for this session
+        trace_count:
+          type: integer
+          description: Number of traces in this session
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+    SessionList:
+      type: object
+      required:
+        - sessions
+        - total
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        total:
+          type: integer
+    SessionNarrativeResponse:
+      type: object
+      required:
+        - summary
+        - traces
+      properties:
+        summary:
+          $ref: '#/components/schemas/SessionNarrativeSummary'
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionNarrativeTrace'
+    SessionNarrativeSummary:
+      type: object
+      required:
+        - total_trace_count
+        - returned_trace_count
+        - truncated
+        - running_trace_count
+        - completed_trace_count
+        - failed_trace_count
+        - total_cost_usd
+        - total_tokens_in
+        - total_tokens_out
+        - started_at
+        - last_activity_at
+        - explicit_link_count
+        - inferred_link_count
+        - unlinked_trace_count
+      properties:
+        total_trace_count:
+          type: integer
+        returned_trace_count:
+          type: integer
+        truncated:
+          type: boolean
+        running_trace_count:
+          type: integer
+          description: Count of traces whose raw status normalizes to RUNNING.
+        completed_trace_count:
+          type: integer
+          description: Count of traces whose raw status normalizes to COMPLETED.
+        failed_trace_count:
+          type: integer
+          description: Count of traces whose raw status normalizes to FAILED.
+        total_cost_usd:
+          type: number
+        total_tokens_in:
+          type: integer
+          format: int64
+        total_tokens_out:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+          x-nullable: true
+          description: Earliest trace start time in the session, or null when the session has no traces.
+        last_activity_at:
+          type: string
+          format: date-time
+          x-nullable: true
+          description: |
+            Approximate session-level last activity timestamp computed from trace-level timestamps only.
+            Per-trace latest_activity_at is the authoritative activity timestamp.
+        explicit_link_count:
+          type: integer
+          description: Explicit lineage count for the shown narrative only.
+        inferred_link_count:
+          type: integer
+          description: Inferred lineage count for the shown narrative only.
+        unlinked_trace_count:
+          type: integer
+          description: Unlinked trace count for the shown narrative only.
+    SessionNarrativeTrace:
+      type: object
+      required:
+        - id
+        - trace_id
+        - name
+        - status
+        - started_at
+        - latest_activity_at
+        - semantic_events
+        - lineage
+      properties:
+        id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+          description: External trace identifier for the narrative trace.
+        name:
+          type: string
+        status:
+          type: string
+          enum:
+            - RUNNING
+            - COMPLETED
+            - FAILED
+        user_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+        total_cost_usd:
+          type: number
+        total_tokens_in:
+          type: integer
+          format: int64
+        total_tokens_out:
+          type: integer
+          format: int64
+        latest_activity_at:
+          type: string
+          format: date-time
+        semantic_events:
+          type: array
+          description: |
+            Explicit decision, effect, and wait events for this trace. SessionNarrativeTrace.trace_id is the
+            external trace identifier, while each nested semantic_events[].trace_id remains the internal trace UUID
+            from TimelineEvent.
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        lineage:
+          $ref: '#/components/schemas/SessionNarrativeLineage'
+    SessionNarrativeLineage:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - explicit
+            - inferred
+            - unlinked
+        parent_trace_id:
+          type: string
+          description: External parent trace identifier within the shown narrative when linked.
+        trigger_span_id:
+          type: string
+          description: Optional external span identifier carried by explicit metadata lineage.
+        link_kind:
+          type: string
+          description: Optional metadata-provided lineage classification string.
+    ComparisonTooLargeError:
+      type: object
+      required:
+        - code
+        - message
+        - detail
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        detail:
+          $ref: '#/components/schemas/ComparisonTooLargeErrorDetail'
+    ComparisonTooLargeErrorDetail:
+      type: object
+      required:
+        - baseline_span_count
+        - candidate_span_count
+        - baseline_semantic_count
+        - candidate_semantic_count
+        - max_spans
+        - max_semantic_events
+      properties:
+        baseline_span_count:
+          type: integer
+        candidate_span_count:
+          type: integer
+        baseline_semantic_count:
+          type: integer
+        candidate_semantic_count:
+          type: integer
+        max_spans:
+          type: integer
+        max_semantic_events:
+          type: integer
+    SessionCompareResponse:
+      type: object
+      required:
+        - session
+        - baseline
+        - candidate
+        - summary
+        - span_diffs
+      properties:
+        session:
+          $ref: '#/components/schemas/CompareSessionHeader'
+        baseline:
+          $ref: '#/components/schemas/CompareTraceHeader'
+        candidate:
+          $ref: '#/components/schemas/CompareTraceHeader'
+        summary:
+          $ref: '#/components/schemas/CompareSummary'
+        span_diffs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpanDiffRow'
+    CompareSessionHeader:
+      type: object
+      required:
+        - id
+        - external_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        name:
+          type: string
+    CompareTraceHeader:
+      type: object
+      required:
+        - id
+        - trace_id
+        - name
+        - status
+        - started_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum:
+            - RUNNING
+            - COMPLETED
+            - FAILED
+        user_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+        total_cost_usd:
+          type: number
+        total_tokens_in:
+          type: integer
+          format: int64
+        total_tokens_out:
+          type: integer
+          format: int64
+        engine:
+          $ref: '#/components/schemas/EngineTraceInfo'
+    CompareSummary:
+      type: object
+      required:
+        - total_spans_baseline
+        - total_spans_candidate
+        - matched_spans
+        - unmatched_baseline_spans
+        - unmatched_candidate_spans
+        - heuristic_matches
+        - duration_delta_ms
+        - tokens_in_delta
+        - tokens_out_delta
+        - cost_delta_usd
+        - total_semantic_baseline
+        - total_semantic_candidate
+      properties:
+        total_spans_baseline:
+          type: integer
+        total_spans_candidate:
+          type: integer
+        matched_spans:
+          type: integer
+        unmatched_baseline_spans:
+          type: integer
+        unmatched_candidate_spans:
+          type: integer
+        heuristic_matches:
+          type: integer
+        duration_delta_ms:
+          type: integer
+          format: int64
+        tokens_in_delta:
+          type: integer
+          format: int64
+        tokens_out_delta:
+          type: integer
+          format: int64
+        cost_delta_usd:
+          type: number
+        total_semantic_baseline:
+          type: integer
+        total_semantic_candidate:
+          type: integer
+    CompareDiffStatus:
+      type: string
+      enum:
+        - unchanged
+        - changed
+        - baseline_only
+        - candidate_only
+    CompareMatchSource:
+      type: string
+      enum:
+        - stable_id
+        - heuristic
+    CompareSemanticEventType:
+      type: string
+      enum:
+        - decision
+        - effect
+        - wait
+    SpanDiffRow:
+      type: object
+      required:
+        - diff_status
+        - changed_fields
+        - baseline_span
+        - candidate_span
+        - semantic_groups
+        - depth
+      properties:
+        diff_status:
+          $ref: '#/components/schemas/CompareDiffStatus'
+        match_source:
+          $ref: '#/components/schemas/CompareMatchSource'
+        match_reason:
+          type: string
+        changed_fields:
+          type: array
+          items:
+            type: string
+        baseline_span:
+          allOf:
+            - $ref: '#/components/schemas/CompareSpanSummary'
+          x-nullable: true
+        candidate_span:
+          allOf:
+            - $ref: '#/components/schemas/CompareSpanSummary'
+          x-nullable: true
+        semantic_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SemanticDiffGroup'
+        depth:
+          type: integer
+    SemanticDiffGroup:
+      type: object
+      required:
+        - event_type
+        - diff_status
+        - changed_fields
+        - baseline_event
+        - candidate_event
+      properties:
+        event_type:
+          $ref: '#/components/schemas/CompareSemanticEventType'
+        diff_status:
+          $ref: '#/components/schemas/CompareDiffStatus'
+        match_source:
+          $ref: '#/components/schemas/CompareMatchSource'
+        match_reason:
+          type: string
+        changed_fields:
+          type: array
+          items:
+            type: string
+        baseline_event:
+          allOf:
+            - $ref: '#/components/schemas/CompareSemanticSummary'
+          x-nullable: true
+        candidate_event:
+          allOf:
+            - $ref: '#/components/schemas/CompareSemanticSummary'
+          x-nullable: true
+    CompareSpanSummary:
+      type: object
+      required:
+        - id
+        - span_id
+        - name
+        - kind
+        - status
+        - started_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        span_id:
+          type: string
+        parent_span_id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum:
+            - LLM
+            - TOOL
+            - CHAIN
+            - AGENT
+            - CUSTOM
+        status:
+          type: string
+          enum:
+            - SCHEDULED
+            - STARTED
+            - COMPLETED
+            - FAILED
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        tokens_in:
+          type: integer
+        tokens_out:
+          type: integer
+        cost_usd:
+          type: number
+        latency_ms:
+          type: integer
+        error_message:
+          type: string
+        model:
+          type: string
+    CompareSemanticSummary:
+      type: object
+      required:
+        - id
+        - event_type
+        - timestamp
+      properties:
+        id:
+          type: string
+        span_id:
+          type: string
+        span_name:
+          type: string
+        event_type:
+          $ref: '#/components/schemas/CompareSemanticEventType'
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+        payload:
+          type: object
+    IngestRequest:
+      type: object
+      required:
+        - batch_key
+      properties:
+        batch_key:
+          type: string
+          description: Unique identifier for idempotency. Same batch_key returns success without reprocessing.
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestTraceInput'
+        spans:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestSpanInput'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestEventInput'
+    IngestTraceInput:
+      type: object
+      required:
+        - trace_id
+      properties:
+        trace_id:
+          type: string
+          description: External trace identifier
+        session_id:
+          type: string
+          description: External session key. The server resolves/creates the internal session UUID from this value.
+        name:
+          type: string
+        user_id:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        environment:
+          type: string
+        release:
+          type: string
+        metadata:
+          type: object
+        input:
+          description: Trace input data (any JSON-serializable value)
+        output:
+          description: Trace output data (any JSON-serializable value)
+        status:
+          type: string
+          enum:
+            - running
+            - completed
+            - failed
+          default: running
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+    IngestSpanInput:
+      type: object
+      required:
+        - trace_id
+        - span_id
+        - name
+        - start_time
+      properties:
+        trace_id:
+          type: string
+          description: External trace identifier
+        span_id:
+          type: string
+          description: External span identifier
+        parent_span_id:
+          type: string
+          description: External parent span identifier
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - default
+            - llm
+            - tool
+            - agent
+            - chain
+            - retrieval
+            - embedding
+            - generation
+          default: default
+        status:
+          type: string
+          enum:
+            - running
+            - completed
+            - failed
+          default: running
+        status_message:
+          type: string
+        level:
+          type: string
+          enum:
+            - debug
+            - default
+            - warning
+            - error
+          default: default
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        input:
+          description: Span input data (any JSON-serializable value)
+        output:
+          description: Span output data (any JSON-serializable value)
+        model:
+          type: string
+        provider:
+          type: string
+        prompt_tokens:
+          type: integer
+          format: int64
+        completion_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+          deprecated: true
+          description: Deprecated compatibility field. total_tokens-only payloads are rejected; provide prompt_tokens and/or completion_tokens for supported rollups.
+        total_cost:
+          type: number
+          format: double
+        metadata:
+          type: object
+        sequence:
+          type: integer
+          format: int32
+        depth:
+          type: integer
+          format: int32
+    IngestEventType:
+      type: string
+      enum:
+        - log
+        - error
+        - exception
+        - message
+        - metric
+        - custom
+        - state_change
+        - decision
+        - effect
+        - wait
+        - snapshot_marker
+    IngestEventLevel:
+      type: string
+      enum:
+        - debug
+        - info
+        - warning
+        - error
+    IngestEventInput:
+      type: object
+      required:
+        - trace_id
+        - span_id
+      properties:
+        trace_id:
+          type: string
+          description: External trace identifier
+        span_id:
+          type: string
+          description: External span identifier
+        event_type:
+          allOf:
+            - $ref: '#/components/schemas/IngestEventType'
+          default: log
+        level:
+          allOf:
+            - $ref: '#/components/schemas/IngestEventLevel'
+          default: info
+        event_ts:
+          type: string
+          format: date-time
+        sequence:
+          type: integer
+          format: int32
+        message:
+          type: string
+        payload:
+          type: object
+          description: |
+            Free-form event payload. Semantic debugger conventions apply for some event types: `effect` may include reserved `effect_id`; `wait` may include reserved `wait_id`; `state_change` expects `key`, `old_value`, `new_value`, and optional `namespace`; `decision` expects `question`, `chosen`, and optional `alternatives` and `reasoning`; `snapshot_marker` is a debugger milestone event, not a checkpoint or resumability primitive, and conventionally uses `marker_kind` (a non-empty string; default vocabulary `milestone`) and `label` (a human-facing marker label).
+        idempotency_key:
+          type: string
+          description: Optional key for event-level deduplication
+    TimelineEventType:
+      type: string
+      enum:
+        - log
+        - error
+        - exception
+        - message
+        - metric
+        - custom
+        - state_change
+        - decision
+        - effect
+        - wait
+        - snapshot_marker
+        - span_started
+        - span_completed
+        - span_failed
+    TimelineEventSource:
+      type: string
+      enum:
+        - explicit
+        - synthetic
+    TimelineEventLevel:
+      type: string
+      enum:
+        - debug
+        - info
+        - warning
+        - error
+    TimelineEvent:
+      type: object
+      required:
+        - id
+        - trace_id
+        - event_type
+        - timestamp
+        - source
+      properties:
+        id:
+          type: string
+          description: Opaque event identifier. Explicit events use persisted UUIDs; synthetic events use deterministic span-based IDs.
+        trace_id:
+          type: string
+          format: uuid
+        span_id:
+          type: string
+          description: External span identifier for the related span
+        span_name:
+          type: string
+        event_type:
+          $ref: '#/components/schemas/TimelineEventType'
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          $ref: '#/components/schemas/TimelineEventSource'
+        level:
+          $ref: '#/components/schemas/TimelineEventLevel'
+        sequence:
+          type: integer
+          format: int32
+          description: Explicit-event ordering value used to preserve same-timestamp ingest order. Absent for synthetic events.
+        message:
+          type: string
+        payload:
+          type: object
+          description: Event payload details for explicit events and helper metadata for synthetic events
+    TimelineResponse:
+      type: object
+      required:
+        - events
+        - trace_status
+        - has_more
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        trace_status:
+          type: string
+          enum:
+            - RUNNING
+            - COMPLETED
+            - FAILED
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
+          description: Opaque cursor for the next page when `has_more` is true
+        poll_cursor:
+          type: string
+          description: Opaque cursor representing the last event included in this response. Use for incremental polling even when `has_more` is false.
+        engine:
+          type: object
+          required:
+            - projection_state
+          properties:
+            projection_state:
+              $ref: '#/components/schemas/EngineProjectionState'
+    IngestResponse:
+      type: object
+      required:
+        - status
+        - batch_key
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - accepted
+            - duplicate
+            - failed
+          description: Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
+        batch_key:
+          type: string
+        batch_id:
+          type: string
+          format: uuid
+          description: |
+            Stable batch identifier returned for sync responses, true-async acceptance,
+            and duplicates. It may be omitted for the legacy Stage A fake-async path.
+        trace_count:
+          type: integer
+          format: int32
+        span_count:
+          type: integer
+          format: int32
+        event_count:
+          type: integer
+          format: int32
+        accepted_count:
+          type: integer
+          format: int32
+        rejected_count:
+          type: integer
+          format: int32
+        errors:
+          type: array
+          items:
+            type: string
+    BatchStatusResponse:
+      type: object
+      required:
+        - batch_id
+        - batch_key
+        - status
+        - attempt_count
+        - server_received_at
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+        batch_key:
+          type: string
+        status:
+          type: string
+          enum:
+            - accepted
+            - processing
+            - completed
+            - failed
+        attempt_count:
+          type: integer
+          format: int32
+        server_received_at:
+          type: string
+          format: date-time
+        processing_started_at:
+          type: string
+          format: date-time
+        processing_completed_at:
+          type: string
+          format: date-time
+        trace_count:
+          type: integer
+          format: int32
+        span_count:
+          type: integer
+          format: int32
+        event_count:
+          type: integer
+          format: int32
+        accepted_count:
+          type: integer
+          format: int32
+        rejected_count:
+          type: integer
+          format: int32
+        last_error_code:
+          type: string
+        last_error_message:
+          type: string

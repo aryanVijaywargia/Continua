@@ -50,6 +50,10 @@ generate: ## Generate ALL code (contracts, sqlc, API types)
 	@if [ -f contracts/openapi/openapi.bundle.yaml ]; then \
 		cd sdks/python && uv run --with datamodel-code-generator python scripts/generate_types.py; \
 	fi
+	@echo "==> Copying OpenAPI bundle to docs-site..."
+	@if [ -f contracts/openapi/openapi.bundle.yaml ]; then \
+		cp contracts/openapi/openapi.bundle.yaml docs-site/api-reference/openapi.yaml; \
+	fi
 	@echo "✅ All code generated"
 
 # ============================================================================
