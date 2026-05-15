@@ -395,6 +395,18 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // Proxy /docs/* to the Mintlify-hosted docs site when MINTLIFY_HOST is configured.
+    // Set MINTLIFY_HOST (e.g. "continua.mintlify.dev") in Cloudflare Pages env vars to activate.
+    const mintlifyHost = env?.MINTLIFY_HOST;
+    if (mintlifyHost && (url.pathname === '/docs' || url.pathname.startsWith('/docs/'))) {
+      const proxyUrl = new URL(url.pathname + url.search, `https://${mintlifyHost}`);
+      const proxyRequest = new Request(proxyUrl, request);
+      proxyRequest.headers.set('Host', mintlifyHost);
+      proxyRequest.headers.set('X-Forwarded-Host', url.host);
+      proxyRequest.headers.set('X-Forwarded-Proto', 'https');
+      return fetch(proxyRequest);
+    }
+
     if (url.pathname.startsWith('/api/')) {
       return handleApi(url);
     }
