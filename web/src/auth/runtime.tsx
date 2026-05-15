@@ -20,6 +20,9 @@ import {
   type RuntimeAuthConfig,
 } from '../api/client';
 
+const RUN_LOCALLY_DOCS_URL =
+  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/setup.md';
+
 type RuntimeAuthStatus = 'loading' | 'ready' | 'error';
 
 export interface RuntimeAuthState extends RuntimeAuthConfig {
@@ -269,6 +272,23 @@ export function ProtectedRoute({ auth }: { auth: RuntimeAuthState }) {
         primaryAction={{
           label: 'Retry',
           onClick: () => window.location.reload(),
+        }}
+        secondaryAction={{
+          label: 'Return home',
+          href: '/',
+        }}
+      />
+    );
+  }
+
+  if (auth.console_available === false) {
+    return (
+      <RouteGateState
+        title="Console backend not connected"
+        message="This hosted Pages deployment is serving the static landing site only. Run Continua locally, or connect a backend demo deployment, before opening the operator console."
+        primaryAction={{
+          label: 'Run locally',
+          href: RUN_LOCALLY_DOCS_URL,
         }}
         secondaryAction={{
           label: 'Return home',
@@ -554,6 +574,19 @@ function RouteGateAction({
     : 'app-button-secondary';
 
   if (action.href) {
+    if (/^https?:\/\//.test(action.href)) {
+      return (
+        <a
+          href={action.href}
+          target="_blank"
+          rel="noreferrer"
+          className={className}
+        >
+          {action.label}
+        </a>
+      );
+    }
+
     return (
       <Link to={action.href} className={className}>
         {action.label}

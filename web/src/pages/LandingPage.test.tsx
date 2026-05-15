@@ -6,7 +6,7 @@ import { setMatchMediaMatches } from '../test/matchMedia';
 import { LandingPage } from './LandingPage';
 
 const GITHUB_REPO_URL = 'https://github.com/aryanVijaywargia/Continua';
-const RUN_LOCALLY_DOCS_URL = `${GITHUB_REPO_URL}/blob/main/docs/guides/run-locally.md`;
+const RUN_LOCALLY_DOCS_URL = `${GITHUB_REPO_URL}/blob/main/docs/setup.md`;
 
 function renderLandingPage(auth?: Partial<RuntimeAuthState>) {
   const runtimeAuth: RuntimeAuthState = {
@@ -109,6 +109,22 @@ describe('LandingPage', () => {
     ).toBe(true);
     expect(
       screen.getByText(/hosted debugger uses seeded sample traces only/i)
+    ).toBeInTheDocument();
+  });
+
+  it('points console CTAs to the local setup guide when static hosting has no console backend', () => {
+    setMatchMediaMatches(true);
+
+    renderLandingPage({
+      console_available: false,
+    });
+
+    for (const link of screen.getAllByRole('link', { name: 'Run Locally' })) {
+      expect(link).toHaveAttribute('href', RUN_LOCALLY_DOCS_URL);
+    }
+    expect(screen.queryByRole('link', { name: 'Open Console' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/hosted Pages site is static/i)
     ).toBeInTheDocument();
   });
 });

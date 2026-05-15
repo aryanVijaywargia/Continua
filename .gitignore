@@ -60,6 +60,31 @@ coverage.html
 tmp/
 .cache/
 
+# Private/local documentation kept out of the public repository
+docs/001_initial_schema.sql
+docs/CONTINUA_ARCHITECTURE_PLAN_v1.md
+docs/CONTINUA_DESIGN_DECISIONS_v1.md
+docs/CONTINUA_IMPLEMENTATION_CHECKLIST_v1.md
+docs/DEBUGGER_PLATFORM_BASELINE.md
+docs/INGESTION_FLOW.mermaid.md
+docs/PHASE5_CURRENT_STATE_REPORT.md
+docs/async_ingest_rollout.md
+docs/deployment/
+docs/diagrams/
+docs/guides/.gitkeep
+docs/guides/ingestion_codebase_guide.md
+docs/guides/ingestion_line_by_line_guide.md
+docs/guides/phase2_e2e_usability_codebase_guide.md
+docs/phase2/
+docs/phase3/
+docs/phase4/
+docs/plans/
+docs/readme-improvement-changelog.md
+docs/readme-skill-setup-notes.md
+docs/reviews/
+docs/temp.md
+docs/architecture/decisions/
+
 # Claude Code session state (per-user, not shared)
 .claude/hooks/state/
 Study/

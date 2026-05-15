@@ -20,6 +20,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - Treat the checked-in code as the primary truth. Historical phase docs and some older architecture docs drift from the current implementation.
 - The live product path today is: authenticated REST ingest -> Postgres persistence -> River background jobs -> REST read APIs -> embedded React debugger operator console.
 - For current-state architecture, start with [`docs-site/concepts/`](./docs-site/concepts/) (overview, data-model, traces-spans-sessions, events, ingest-lifecycle) and [`docs/architecture/`](./docs/architecture/).
+- Use the checked-in code, contracts, and migrations as the authoritative current-state baseline.
 - `docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context. Use them only if present locally.
 - If `openspec/` is present locally, it is useful for active proposals and archived work but not a complete source of current-state specs (`openspec/specs/` is empty).
 
@@ -136,7 +137,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
   - read `design.md` if present
   - read `tasks.md`
   - implement in task order
-- Because `openspec/specs/` is empty, do not assume OpenSpec alone describes the current repo state. Cross-check with code and [`docs/architecture/`](./docs/architecture/).
+- Because `openspec/specs/` is empty, do not assume OpenSpec alone describes the current repo state. Cross-check with code, contracts, migrations, and [`docs/architecture/`](./docs/architecture/) or [`docs-site/concepts/`](./docs-site/concepts/).
 
 ## Project-local Codex Context
 - Repo-local Codex assets live in `.codex/`. Prefer these over `.claude/` when working from Codex.

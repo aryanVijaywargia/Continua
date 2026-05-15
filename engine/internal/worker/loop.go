@@ -11,6 +11,9 @@ type IterationFunc func(context.Context, string) error
 
 func RunLoop(ctx context.Context, pollInterval time.Duration, prefix string, fn IterationFunc) error {
 	if err := fn(ctx, workerID(prefix)); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
 		return err
 	}
 
@@ -23,6 +26,9 @@ func RunLoop(ctx context.Context, pollInterval time.Duration, prefix string, fn 
 			return nil
 		case <-ticker.C:
 			if err := fn(ctx, workerID(prefix)); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
 				return err
 			}
 		}

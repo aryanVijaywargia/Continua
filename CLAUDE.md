@@ -36,7 +36,7 @@ Start discovery from:
 - `.claude/skills/references/decisions.md` (if present locally)
 - the live package you are editing
 
-`docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context. Use them only if present locally; do not rely on them in external clones.
+Use the checked-in code, contracts, and migrations as the authoritative current-state baseline. `docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context — use them only if present locally; do not rely on them in external clones.
 
 ## What Exists Today
 
