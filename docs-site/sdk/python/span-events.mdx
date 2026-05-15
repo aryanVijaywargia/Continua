@@ -1,0 +1,246 @@
+---
+title: "Span events"
+description: "Every method on SpanContext — set_input/output, log, error, llm_response, tool_call, and the semantic events."
+---
+
+`SpanContext` exposes a comprehensive set of methods for attaching data, events, and
+semantics to a span. They fall into four groups:
+
+1. **Payload setters** — `set_input`, `set_output`, metadata, tokens, cost, model
+2. **High-level helpers** — `set_llm_response`, `set_tool_call` (these also emit implicit
+   `effect` events)
+3. **Explicit events** — `log`, `error`, `exception`, `metric`
+4. **Semantic events** — `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`
+
+For the conceptual model behind events, see [Events](/concepts/events).
+
+## Payload setters
+
+### `set_input(value)`
+
+Attach the span input payload.
+
+```python
+s.set_input({"question": "What's the weather?"})
+```
+
+### `set_output(value)`
+
+Attach the span output payload.
+
+```python
+s.set_output({"answer": "Sunny, 22°C"})
+```
+
+### `set_model(model, provider=None)`
+
+Record the model used in this span.
+
+```python
+s.set_model("gpt-4.1-mini", provider="openai")
+```
+
+### `set_tokens(*, prompt=None, completion=None, total=None)`
+
+Record token counts. Keyword-only. At least one of `prompt` or `completion` must be
+provided — `total` alone raises `ValueError`.
+
+```python
+s.set_tokens(prompt=120, completion=48)
+```
+
+### `set_cost(cost)`
+
+Record the span's cost in USD.
+
+```python
+s.set_cost(0.0042)
+```
+
+### `set_metadata(key, value)`
+
+Add a metadata key.
+
+```python
+s.set_metadata("retry_count", 2)
+```
+
+### `set_error(message)`
+
+Mark the span as failed with a message. The span's `status` becomes `"failed"`.
+
+```python
+s.set_error("Upstream API returned 503")
+```
+
+## High-level helpers
+
+These set multiple fields at once and emit an implicit `effect` event by default.
+
+### `set_llm_response(model, messages, response, tokens_in=None, tokens_out=None, *, provider=None, cost=None, emit_effect=True)`
+
+Capture an LLM call. Sets `model`, `provider`, `input`, `output`, and token counts in one
+call, and emits an implicit `effect` event with `effect_kind="model_call"`.
+
+```python
+with span("draft_reply", kind="llm") as s:
+    s.set_llm_response(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": "Summarize this ticket"}],
+        response={"role": "assistant", "content": "Summary"},
+        tokens_in=120,
+        tokens_out=48,
+        provider="openai",
+        cost=0.0042,
+    )
+```
+
+Set `emit_effect=False` if you want to suppress the implicit event.
+
+### `set_tool_call(tool_name, arguments, result, *, has_external_side_effect=True, emit_effect=True)`
+
+Capture a tool call. Overrides the span name with `tool_name`, sets input/output, and
+emits an implicit `effect` event with `effect_kind="tool_call"`.
+
+```python
+with span("lookup_weather", kind="tool") as s:
+    s.set_tool_call(
+        "weather_api",
+        {"city": "Berlin"},
+        {"temperature_c": 18},
+        has_external_side_effect=False,
+    )
+```
+
+## Explicit events
+
+### `log(message, level="info", payload=None)`
+
+Operational log line.
+
+```python
+s.log("Retrying upstream call", level="warning", payload={"attempt": 2})
+```
+
+`level` accepts `"debug"`, `"info"`, `"warning"`, `"error"`.
+
+### `error(message, payload=None)`
+
+Explicit failure signal without exception details. Default level `error`.
+
+```python
+s.error("Validation rejected the request", payload={"field": "email"})
+```
+
+### `exception(exc, payload=None)`
+
+Capture an exception with structured metadata (`exception_type`, `exception_message`,
+`traceback`).
+
+```python
+try:
+    risky_call()
+except Exception as exc:
+    s.exception(exc)
+    raise
+```
+
+### `metric(name, value, unit=None, payload=None)`
+
+Structured numeric measurement.
+
+```python
+s.metric("retrieval_hits", 12, unit="count")
+s.metric("latency_ms", 312.4, unit="ms")
+```
+
+## Semantic events
+
+These are the events the debugger renders with first-class UI. See
+[Events](/concepts/events) for when to choose each.
+
+### `state_change(key, old_value, new_value, namespace=None, message=None)`
+
+Observable state transition rendered as `old → new` in the State view.
+
+```python
+s.state_change(
+    "status",
+    "pending",
+    "approved",
+    namespace="order",
+    message="Order approved after validation",
+)
+```
+
+### `decision(question, chosen, *, alternatives=None, reasoning=None, message=None, payload=None)`
+
+Branch point with a selected outcome.
+
+```python
+s.decision(
+    "Which model should handle the request?",
+    "gpt-4.1",
+    alternatives=["gpt-4o-mini", "gpt-4.1"],
+    reasoning="Escalated for higher quality on refund requests",
+)
+```
+
+### `effect(effect_kind, *, has_external_side_effect=False, effect_id=None, idempotent=None, idempotency_key=None, message=None, payload=None)`
+
+External side effect, tool call, or model invocation worth surfacing.
+
+```python
+s.effect(
+    "api_call",
+    has_external_side_effect=True,
+    effect_id="billing-sync-42",
+    payload={"target": "billing"},
+)
+```
+
+### `wait(wait_kind, *, phase, wait_id=None, resolution=None, message=None, payload=None)`
+
+Blocked or deferred progress.
+
+```python
+# Entering a wait
+s.wait("human_approval", phase="entered", payload={"reviewer": "ops"})
+
+# Resolving the wait
+s.wait("human_approval", phase="resolved", wait_id="approval-42", resolution="approved")
+```
+
+### `snapshot_marker(label, *, marker_kind="milestone", message=None, payload=None)`
+
+Debugger milestone with a compact label.
+
+```python
+s.snapshot_marker(
+    "Inventory reserved",
+    marker_kind="phase",
+    payload={"reservation_id": "res-42"},
+)
+```
+
+<Warning>
+  `snapshot_marker` is a **debugger milestone event**, not a checkpoint, resume token, or
+  replay primitive.
+</Warning>
+
+## Method summary
+
+| Method | Event type emitted | Default level |
+| --- | --- | --- |
+| `set_input`, `set_output`, `set_model`, `set_tokens`, `set_cost`, `set_metadata`, `set_error` | _(no event — fields on the span)_ | — |
+| `set_llm_response` | implicit `effect` (`model_call`) | `info` |
+| `set_tool_call` | implicit `effect` (`tool_call`) | `info` |
+| `log` | `log` | `info` |
+| `error` | `error` | `error` |
+| `exception` | `exception` | `error` |
+| `metric` | `metric` | `info` |
+| `state_change` | `state_change` | `info` |
+| `decision` | `decision` | `info` |
+| `effect` | `effect` | `info` |
+| `wait` | `wait` | `info` |
+| `snapshot_marker` | `snapshot_marker` | `info` |

@@ -1,0 +1,64 @@
+---
+title: "Continua"
+description: "Self-hosted debugging for AI agent runs — traces, spans, sessions, and events you can inspect locally."
+---
+
+<Note>
+  Continua is in alpha. The Python SDK, REST ingest, and the embedded debugger UI are
+  production-shaped today. The TypeScript SDK, durable engine, proxy capture, and replay
+  runtime are scaffolded but not yet implemented.
+</Note>
+
+## What is Continua?
+
+Continua is a self-hosted observability platform for AI agents. You send traces, spans,
+sessions, and events over a small REST API; Continua persists them in Postgres and serves
+an embedded React debugger that lets you triage failures, inspect payloads, and compare
+runs.
+
+The active product path is:
+
+```
+Python SDK / custom client
+  → authenticated REST ingest
+  → Postgres persistence
+  → River background jobs (rollups, async ingest, cleanup)
+  → REST read APIs
+  → embedded React debugger
+```
+
+## Get started in 60 seconds
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/guides/quickstart">
+    Run Continua locally with Docker Compose and see seeded traces in the debugger.
+  </Card>
+  <Card title="Install the Python SDK" icon="python" href="/sdk/python/installation">
+    `pip install continua-sdk` and ship your first trace in a few lines.
+  </Card>
+  <Card title="Concepts" icon="book-open" href="/concepts/overview">
+    Traces, spans, sessions, events — and how the async ingest lifecycle works.
+  </Card>
+  <Card title="REST API" icon="code" href="/api-reference">
+    Auto-generated from the OpenAPI contract. Try it directly against `localhost:8080`.
+  </Card>
+</CardGroup>
+
+## Why Continua
+
+- **Self-hosted by default.** Postgres + a single Go binary. No vendor lock-in.
+- **Failure-first debugger.** Trace detail opens on the failure path — span tree, payloads,
+  state, and timeline in one workspace.
+- **Semantic events.** First-class `state_change`, `decision`, `effect`, and `wait` so the
+  timeline shows *why* the agent did what it did, not just `log` spam.
+- **Async ingest with durable idempotency.** Send batches with a `batch_key`, get an ID
+  back, poll for completion when you need read-after-write.
+
+## What's documented here
+
+| Section | What you'll find |
+| --- | --- |
+| **Guides** | Installation, Docker quickstart, self-hosting reference |
+| **Concepts** | Architecture, data model, traces/spans/sessions, events, ingest lifecycle |
+| **Python SDK** | Full reference for `continua-sdk` — decorators, span events, worker, exceptions |
+| **API Reference** | Auto-rendered OpenAPI — every endpoint with a live playground |

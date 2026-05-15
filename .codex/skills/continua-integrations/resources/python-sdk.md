@@ -62,18 +62,23 @@ These map to request params/headers inside `client.py`. Preserve this behavior u
 - relevant suites already cover client behavior, batch queueing, spans, traces, errors, and integration behavior
 
 ```python
-# src/continua/async_client.py
-import httpx
+from continua import Continua, span, trace
 
-class AsyncContinua:
-    def __init__(self, api_key: str, base_url: str):
-        self._client = httpx.AsyncClient(...)
+Continua.init(
+    api_key="...",
+    endpoint="http://localhost:8080",
+    ingest_mode="server_default",  # or "sync", "async_v2"
+)
 
-    async def trace(self, name: str):
-        return AsyncTraceContext(self, name)
 
-# Usage
-async with client.trace("agent") as trace:
-    async with client.span("llm") as span:
-        response = await openai.chat.completions.create(...)
+@trace(name="agent_run")
+def run() -> None:
+    with span("llm_call", kind="llm") as s:
+        s.set_input({"prompt": "..."})
+        s.set_output({"answer": "..."})
+        s.set_model("gpt-4.1-mini")
+        s.set_tokens(prompt=120, completion=48)
+
+# There is no async client class today. Continua.init() returns the global singleton;
+# trace/span/session are module-level helpers. Do not invent client.trace() or AsyncContinua.
 ```

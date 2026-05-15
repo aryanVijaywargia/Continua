@@ -1,0 +1,109 @@
+---
+title: "Overview"
+description: "The continua-sdk Python package — what it does and how its pieces fit together."
+---
+
+`continua-sdk` is the official Python client for Continua. It sends AI agent traces,
+spans, sessions, events, and engine control requests to a Continua server.
+
+<Note>
+  This is the client library only. It does not install or run the Go server, Postgres,
+  River workers, or debugger UI. See [Installation](/guides/installation) for the server.
+</Note>
+
+## Package metadata
+
+| Item | Value |
+| --- | --- |
+| PyPI name | `continua-sdk` |
+| Import name | `continua` |
+| Version | `0.1.0` |
+| Python | `>= 3.10` |
+| Dependencies | `httpx >= 0.25`, `pydantic >= 2.0` |
+
+## What's exported
+
+The full public surface from `continua/__init__.py`:
+
+### Core client
+
+- [`Continua`](/sdk/python/installation) — the singleton client (`Continua.init()`,
+  `add_trace()`, `add_span()`, `add_event()`, `flush()`, `wait_for_batch()`, `shutdown()`)
+- [`EngineControlClient`](/sdk/python/engine-control) — control plane for the durable
+  engine surface (scaffolded)
+
+### Decorators and context managers
+
+- [`@trace`](/sdk/python/tracing) — wrap a top-level agent function
+- [`@span`](/sdk/python/tracing) — open a span context manager
+- [`@session`](/sdk/python/tracing) — group traces under a session
+
+### Context classes
+
+- `TraceContext`, `SpanContext`, `SessionContext`, `ActivityTaskContext`,
+  [`ActivityWorker`](/sdk/python/activity-worker)
+
+### Context getters
+
+- `get_current_trace()`, `get_current_span()`, `get_current_session()`
+
+### Exceptions
+
+- [`ContinuaError`](/sdk/python/exceptions) (base) and 8 subclasses
+
+## Where each thing lives
+
+| Module | What's in it |
+| --- | --- |
+| `continua.client` | `Continua` singleton, batching, retries, async polling |
+| `continua.trace` | `@trace` decorator + `TraceContext` |
+| `continua.span` | `@span` context manager + `SpanContext` and its 19 event methods |
+| `continua.session` | `@session` context manager + `SessionContext` |
+| `continua.worker` | `ActivityWorker`, `@activity` decorator (engine surface) |
+| `continua.engine_control` | `EngineControlClient` (engine surface) |
+| `continua.exceptions` | All 8 exception classes |
+| `continua.types` | Generated Pydantic models from the OpenAPI contract |
+
+## Typical usage
+
+```python
+from continua import Continua, span, trace
+
+Continua.init(
+    api_key="your-api-key",
+    endpoint="https://your-continua-host.com",
+)
+
+
+@trace(name="answer_question")
+def answer_question(question: str) -> str:
+    with span("retrieve_context", kind="tool") as s:
+        s.set_input({"question": question})
+        context = retrieve(question)
+        s.set_output({"context": context})
+
+    with span("call_model", kind="llm") as s:
+        s.set_input({"question": question, "context": context})
+        s.set_model("gpt-4.1-mini")
+        answer = call_model(question, context)
+        s.set_output({"answer": answer})
+        s.set_tokens(prompt=120, completion=48)
+        return answer
+```
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/sdk/python/installation">
+    Install, initialize, and configure ingest modes.
+  </Card>
+  <Card title="Tracing" icon="route" href="/sdk/python/tracing">
+    `@trace`, `@span`, `@session` — decorators and context managers in depth.
+  </Card>
+  <Card title="Span events" icon="list-tree" href="/sdk/python/span-events">
+    Every method on `SpanContext` — `set_input`, `log`, `error`, `llm_response`, etc.
+  </Card>
+  <Card title="Exceptions" icon="triangle-exclamation" href="/sdk/python/exceptions">
+    How the SDK signals failures.
+  </Card>
+</CardGroup>

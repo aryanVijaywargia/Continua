@@ -64,3 +64,27 @@ tmp/
 .claude/hooks/state/
 Study/
 /continua
+
+# Historical / internal docs (kept locally, not published)
+docs/phase2/
+docs/phase3/
+docs/phase4/
+docs/reviews/
+docs/guides/
+docs/PHASE5_CURRENT_STATE_REPORT.md
+docs/CONTINUA_ARCHITECTURE_PLAN_v1.md
+docs/CONTINUA_DESIGN_DECISIONS_v1.md
+docs/CONTINUA_IMPLEMENTATION_CHECKLIST_v1.md
+
+# Internal product-development record
+openspec/
+
+# Internal engineering docs (kept locally, not published)
+docs/DEBUGGER_PLATFORM_BASELINE.md
+docs/architecture/RULES.md
+docs/README.md
+docs/INGESTION_FLOW.mermaid.md
+docs/001_initial_schema.sql
+docs/readme-improvement-changelog.md
+docs/readme-skill-setup-notes.md
+docs/temp.md

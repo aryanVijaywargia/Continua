@@ -1,0 +1,114 @@
+---
+title: "Self-hosting"
+description: "Environment variables, ports, and troubleshooting for running Continua on your own infrastructure."
+---
+
+Continua is designed to be self-hosted. The server is a single Go binary backed by
+Postgres. There is no required SaaS dependency.
+
+## Required configuration
+
+The server reads configuration from environment variables (see
+`internal/config/config.go`).
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection string. **Required.** |
+
+## Common optional variables
+
+| Variable | Purpose |
+| --- | --- |
+| `HOST`, `PORT` | Server bind address. Defaults to `0.0.0.0:8080`. |
+| `PUBLIC_DEMO_ENABLED` | Enables read-only seeded demo mode. |
+| `PUBLIC_DEMO_PROJECT_ID` | Project shown in public demo mode. |
+| `PUBLIC_DEMO_LABEL` | Demo workspace label in the UI. |
+| `INGEST_TRUE_ASYNC_DEFAULT` | Server default async ingest behavior. |
+| `INGEST_DEPENDENCY_RETRY_WINDOW` | Retry window for async ingest dependency resolution. |
+| `INGEST_FAILED_PAYLOAD_RETENTION` | How long to retain failed async ingest payloads. |
+| `RIVER_QUEUE_*` | River worker pool sizes per queue. |
+
+<Warning>
+  Do not use `config.example.yaml` as the runtime contract. It is forward-looking and not
+  the active config source. Env vars are authoritative.
+</Warning>
+
+## Migrations
+
+Apply migrations on the same binary you ship:
+
+```bash
+DATABASE_URL=... continua migrate up
+```
+
+Migrations are immutable once committed. Create new ones with:
+
+```bash
+make migrate-create name=<short_description>
+```
+
+## Background workers
+
+River workers run **inside** the platform server process. There is no separate worker
+binary to deploy today. The implemented queues are:
+
+- **ingest** — processes accepted async batches
+- **rollups** — recomputes trace-level aggregates (status, duration, cost, token counts)
+- **cleanup** — deletes processed async payload blobs after retention
+
+Scale by increasing process count or tuning `RIVER_QUEUE_*` pool sizes.
+
+## Health check
+
+```bash
+curl https://your-continua-host/api/health
+```
+
+Returns `{"status":"ok"}` when the server is up and Postgres is reachable.
+
+## Troubleshooting
+
+### Port `8080` is already in use
+
+```bash
+lsof -nP -iTCP:8080
+make docker-down
+```
+
+### Docker data looks stale
+
+```bash
+make reset-demo
+```
+
+### App is up but no traces appear
+
+```bash
+make docker-logs
+docker compose -f deploy/docker-compose/docker-compose.yml --profile seed run --rm demo-seed
+```
+
+### Native server fails with `DATABASE_URL environment variable is required`
+
+```bash
+export DATABASE_URL="postgres://continua:continua@localhost:5432/continua?sslmode=disable"
+make migrate
+make dev-server
+```
+
+### Native UI can't load data
+
+- Confirm the backend is running on `http://localhost:8080`.
+- Confirm Vite is running on `http://localhost:3000`.
+- Confirm the UI has API key `default` in `/settings`.
+
+## What is not in scope today
+
+Per the current [architecture baseline](/concepts/overview), these surfaces exist as
+scaffolds and **should not** be relied on in production:
+
+- Durable engine workflow execution
+- Live WebSocket runtime
+- Proxy capture runtime
+- Replay execution runtime
+- The TypeScript SDK

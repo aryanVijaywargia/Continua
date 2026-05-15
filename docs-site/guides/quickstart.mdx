@@ -1,0 +1,96 @@
+---
+title: "Quickstart"
+description: "Run Continua locally with Docker Compose, then send your first trace from the Python SDK."
+---
+
+This guide gets you from zero to a trace visible in the debugger in under five minutes.
+
+## Prerequisites
+
+- Git
+- Docker with Docker Compose v2
+- A free local port `8080`
+
+## 1. Start Continua
+
+```bash
+git clone https://github.com/aryanVijaywargia/Continua.git
+cd Continua
+make demo
+```
+
+`make demo` builds the Docker image, starts Postgres + the Continua server, applies
+migrations, and seeds a deterministic demo project with sample traces.
+
+Open the debugger:
+
+```text
+http://localhost:8080
+```
+
+The public demo workspace is read-only and shows seeded traces.
+
+<Tip>
+  Health check: `curl http://localhost:8080/api/health` should return `{"status":"ok"}`.
+</Tip>
+
+## 2. Send your first trace
+
+In a second terminal, install the Python SDK and emit a trace:
+
+```bash
+pip install continua-sdk
+```
+
+```python
+from continua import Continua, span, trace
+
+Continua.init(
+    api_key="continua-demo-local",
+    endpoint="http://localhost:8080",
+)
+
+
+@trace(name="hello_continua")
+def run() -> str:
+    with span("think", kind="llm") as s:
+        s.set_input({"prompt": "What is observability?"})
+        answer = "Observability is the ability to inspect a system from the outside."
+        s.set_output({"answer": answer})
+        s.set_model("gpt-4.1-mini")
+        s.set_tokens(prompt=12, completion=18)
+    return answer
+
+
+if __name__ == "__main__":
+    print(run())
+```
+
+Run it:
+
+```bash
+python hello.py
+```
+
+## 3. Open it in the debugger
+
+Navigate to `http://localhost:8080/traces`. You should see a new trace named
+`hello_continua` with one span `think` (kind `llm`). Click into it for the failure-first
+detail view — span tree, payload inspector, state, and merged timeline.
+
+## What's next?
+
+<CardGroup cols={2}>
+  <Card title="Tracing reference" icon="code" href="/sdk/python/tracing">
+    All the ways to use `@trace`, `@span`, and `@session`.
+  </Card>
+  <Card title="Span events" icon="list-tree" href="/sdk/python/span-events">
+    `set_input`, `log`, `error`, `llm_response`, `tool_call`, `state_change`, and the rest.
+  </Card>
+  <Card title="Concepts" icon="book-open" href="/concepts/traces-spans-sessions">
+    What a trace is vs. a span vs. a session in Continua's data model.
+  </Card>
+  <Card title="Self-hosting" icon="server" href="/guides/self-hosting">
+    Run Continua against your own Postgres in production.
+  </Card>
+</CardGroup>

@@ -1,5 +1,5 @@
 > **Status: Historical**
-> This document is preserved for historical context and does not define the current repo state. Use [docs/README.md](./README.md) and [DEBUGGER_PLATFORM_BASELINE.md](./DEBUGGER_PLATFORM_BASELINE.md) for current guidance.
+> This document is preserved for historical context. For current guidance, see the [docs site](../docs-site/) and [docs/architecture/overview.md](./architecture/overview.md).
 
 # Async Ingest Rollout
 

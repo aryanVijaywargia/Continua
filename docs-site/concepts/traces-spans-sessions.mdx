@@ -1,0 +1,99 @@
+---
+title: "Traces, spans, and sessions"
+description: "A short primer on Continua's three-level observability model."
+---
+
+Continua models agent runs as a three-level hierarchy: **sessions** group **traces**,
+and traces contain a tree of **spans**.
+
+## Trace
+
+A **trace** is one end-to-end execution of an agent or workflow. It's typically the unit
+you care about when debugging — "the agent run that handled ticket #4842".
+
+A trace has:
+
+- A unique `trace_id` (your external identifier)
+- A start time, end time, and overall `status` (`ok` / `error`)
+- Aggregate rollups: total cost, total tokens, error count
+- Optional trace-level input and output payloads
+- Optional `tags` and `metadata`
+
+```python
+from continua import trace
+
+@trace(name="answer_question", tags=["production"])
+def answer_question(question: str) -> str:
+    ...
+```
+
+## Span
+
+A **span** is an operation within a trace. Spans form a tree via `parent_span_id`. Every
+span has a `kind` that hints at its role:
+
+| Kind | Typical use |
+| --- | --- |
+| `llm` | Model invocation |
+| `tool` | Tool / external API call |
+| `agent` | A sub-agent or planning step |
+| `default` | Anything else |
+
+A span carries:
+
+- A name, kind, start/end time, and status
+- Input and output payloads
+- Optional model, provider, token counts, cost
+- Optional metadata
+- Zero or more **events** (see [Events](/concepts/events))
+
+```python
+from continua import span
+
+with span("call_openai", kind="llm") as s:
+    s.set_input({"prompt": "..."})
+    s.set_model("gpt-4.1-mini", provider="openai")
+    s.set_output({"answer": "..."})
+    s.set_tokens(tokens_in=120, tokens_out=48)
+```
+
+## Session
+
+A **session** groups related traces — typically a single user conversation, a multi-step
+job, or a continuous agent loop. Sessions are optional; many setups send standalone
+traces with no session.
+
+```python
+from continua import session, trace
+
+with session("user-conversation-42") as sess:
+    @trace(name="turn_1")
+    def turn_1(): ...
+
+    @trace(name="turn_2")
+    def turn_2(): ...
+
+    turn_1()
+    turn_2()
+    # both traces are grouped under session external_id "user-conversation-42"
+```
+
+## How the debugger surfaces these
+
+- **Sessions list** (`/sessions`) shows every session in the project with its trace count
+  and recent activity.
+- **Session detail** shows the timeline of traces in that session, plus a session compare
+  workspace.
+- **Traces list** (`/traces`) shows every trace with URL-driven filters.
+- **Trace detail** (`/traces/{id}`) opens **failure-first** — if the trace failed, it
+  jumps you to the failing span. Otherwise it shows the span tree, payload inspector,
+  state, and merged timeline.
+
+## When to use what
+
+| If you want to debug... | Use |
+| --- | --- |
+| One agent run end-to-end | A **trace** |
+| Steps within a run (LLM call, tool call, sub-agent) | **Spans**, nested via context managers |
+| A conversation or multi-run interaction | A **session** wrapping multiple traces |
+| Specific moments inside a span (decisions, state changes, tool calls) | [Span events](/concepts/events) |
