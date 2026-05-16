@@ -92,6 +92,12 @@ with span("validate_order") as s:
 Use `state_change` instead of `custom` when you want the debugger to show a before/after
 transition rather than a raw JSON blob.
 
+Payload guidance:
+
+- `key` should be the field name within the namespace, not a whole sentence.
+- `namespace` groups related keys in the State tab. Omit it for general state.
+- `old_value` and `new_value` may be scalars, arrays, or objects.
+
 ## `decision`
 
 Recommended payload:
@@ -117,11 +123,39 @@ with span("route_request") as s:
 
 Use `decision` when the key debugging question is *"why did the system choose this path?"*
 
+Payload guidance:
+
+- `question` should describe the branch point as a question or decision prompt.
+- `chosen` should be the final selected option or outcome.
+- `alternatives` should contain meaningful rejected options when available.
+- `reasoning` should explain why the choice was made, not restate the choice.
+
 ## `effect`
 
 Use when a span performs work whose observable consequence matters outside the current
 call stack: model calls, tool invocations, outbound API calls, or writes to external
 systems.
+
+Recommended payload:
+
+```json
+{
+  "effect_kind": "api_call",
+  "has_external_side_effect": true,
+  "effect_id": "effect_123",
+  "idempotent": false
+}
+```
+
+Payload guidance:
+
+- `effect_kind` is a descriptive category such as `model_call`, `tool_call`, `api_call`,
+  or `custom`.
+- `has_external_side_effect` should be `false` for read-only effects and `true` when the
+  action can mutate external state.
+- `effect_id` is optional. When omitted, the server may derive it.
+- `idempotent` and `idempotency_key` describe effect semantics; they are not ingest-level
+  deduplication keys.
 
 ```python
 with span("sync_billing") as s:
@@ -150,6 +184,25 @@ with span("draft_reply", kind="llm") as s:
 
 Use when execution paused pending some later resolution.
 
+Recommended payload:
+
+```json
+{
+  "wait_kind": "human_approval",
+  "phase": "entered",
+  "wait_id": "wait_123"
+}
+```
+
+Payload guidance:
+
+- `wait_kind` is the category of dependency, such as `human_approval`, `external`,
+  `timer`, or `custom`.
+- `phase` describes the lifecycle point. Common values include `entered` and `resolved`.
+- `resolution` is useful when the wait resolves with an outcome such as `approved`,
+  `rejected`, or `elapsed`.
+- `wait_id` is optional. When omitted, the server may derive it.
+
 ```python
 with span("review_order") as s:
     s.wait("human_approval", phase="entered", payload={"reviewer": "ops"})
@@ -170,6 +223,21 @@ s.wait(
 
 Use when execution reached a notable milestone and you want it to stay semantically
 distinct from generic logs.
+
+Recommended payload:
+
+```json
+{
+  "marker_kind": "milestone",
+  "label": "Validation passed"
+}
+```
+
+Payload guidance:
+
+- `marker_kind` should be a non-empty debugger-oriented category. Start with `milestone`
+  unless `phase` or `handoff` is clearer.
+- `label` is the human-facing marker text shown in the timeline.
 
 ```python
 with span("checkout_flow") as s:

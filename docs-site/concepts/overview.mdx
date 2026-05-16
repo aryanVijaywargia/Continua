@@ -79,7 +79,12 @@ GET /api/traces/{id}/spans
 GET /api/traces/{id}/events
 GET /api/sessions
 GET /api/sessions/{id}
+GET /api/sessions/{id}/compare
 ```
+
+The trace detail UI does not use a live WebSocket runtime today. It polls the timeline API
+for running traces and merges explicit stored events with synthetic lifecycle events
+derived from spans.
 
 ## Contracts and generation
 

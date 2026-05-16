@@ -16,7 +16,7 @@
   <rect width="2400" height="1000" fill="url(#evGrid)"/>
 
   <text x="120" y="120" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="-1.5">Event semantics</text>
-  <text x="120" y="172" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="26">Debugger-facing signals — not replay primitives. See docs/event-conventions.md.</text>
+  <text x="120" y="172" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="26">Debugger-facing signals — not replay primitives. See docs-site/concepts/events.mdx.</text>
 
   <!-- 4 columns x 3 rows = 12 slots, only 11 used; last slot blank for breathing room -->
   <g font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif">
