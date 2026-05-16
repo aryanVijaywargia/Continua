@@ -1545,6 +1545,16 @@ function RepoCard() {
   );
 }
 
+function isSameOriginHref(href: string): boolean {
+  if (typeof window === 'undefined') return false;
+  if (href.startsWith('/') || href.startsWith('#')) return true;
+  try {
+    return new URL(href, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 function ExternalLink({
   href,
   children,
@@ -1556,8 +1566,14 @@ function ExternalLink({
   className?: string;
   style?: CSSProperties;
 }) {
+  const sameOrigin = isSameOriginHref(href);
   return (
-    <a href={href} target="_blank" rel="noreferrer" className={className} style={style}>
+    <a
+      href={href}
+      {...(sameOrigin ? {} : { target: '_blank', rel: 'noreferrer' })}
+      className={className}
+      style={style}
+    >
       {children}
     </a>
   );
