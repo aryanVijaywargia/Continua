@@ -81,7 +81,10 @@ export function AppShell() {
     enabled: !isPublicDemo && (isAuthenticated || canAttemptProjectBootstrap),
     retry: false,
   });
-  const projects = projectsQuery.data?.projects ?? [];
+  const projects = useMemo(
+    () => projectsQuery.data?.projects ?? [],
+    [projectsQuery.data?.projects]
+  );
   const effectiveProjectId = currentProjectId ?? lastProjectId;
   const selectedProject =
     projects.find((project) => project.id === effectiveProjectId) ??

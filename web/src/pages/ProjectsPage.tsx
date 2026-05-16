@@ -508,7 +508,7 @@ function DeleteProjectDialog({
     setApiKey(fallbackKey);
     mutation.reset();
     mutation.mutate();
-  }, [mutation.error, mutation.mutate, mutation.reset, retriedWithFallback]);
+  }, [mutation, mutation.error, mutation.mutate, mutation.reset, retriedWithFallback]);
 
   const canSubmit = confirm === project.name && !mutation.isPending;
 
