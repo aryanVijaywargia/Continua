@@ -37,9 +37,14 @@ jobs:
       - name: Build web app
         run: pnpm --filter web build
 
+      - name: Install Wrangler globally
+        # wrangler-action's auto-install uses `pnpm add` which fails in a workspace root.
+        # Install globally via npm so the action detects an existing wrangler and skips install.
+        run: npm install -g wrangler@latest
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy web/dist --project-name=continua-landing --branch=main --commit-hash=${{ github.sha }} --commit-message="${{ github.event.head_commit.message }}"
+          command: pages deploy web/dist --project-name=continua-landing --branch=main --commit-hash=${{ github.sha }}
