@@ -88,7 +88,7 @@ It's most useful when you need to answer: what failed first, what changed during
 - **Background processing** — River workers handle async ingest, trace rollups, and payload cleanup.
 - **Embedded operator console** — the Vite React app is built into `internal/web/static/` and served by the Go binary.
 - **Python SDK** — `trace`, `span`, `session`, `event`, batching, retries, async polling, and engine-control helpers live under `sdks/python`.
-- **Typed events** — Continua emits 11 event kinds (`log`, `error`, `exception`, `message`, `metric`, `custom`, `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`); see [event-conventions.md](./docs/event-conventions.md).
+- **Typed events** — Continua emits 11 event kinds (`log`, `error`, `exception`, `message`, `metric`, `custom`, `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`); see the [events concept guide](./docs-site/concepts/events.mdx).
 
 ![Implemented event types](./assets/diagrams/event-types.svg)
 
@@ -120,7 +120,7 @@ Stack: Go 1.24+ (Chi, Fx), PostgreSQL 16+ (sqlc), River for jobs, Vite/React/Typ
 
 External IDs (`trace_id`, `span_id`, `parent_span_id`) are the SDK-facing identifiers; timeline responses merge stored events with synthetic span lifecycle markers.
 
-See [`docs/architecture/overview.md`](./docs/architecture/overview.md) for the full storage model and ingest flow.
+See the [architecture overview](./docs-site/concepts/overview.mdx) for the full storage model and ingest flow.
 
 ## Python SDK
 
@@ -163,7 +163,7 @@ The full REST contract lives in [`contracts/openapi/openapi.yaml`](./contracts/o
 
 ## Configuration & development
 
-The platform server is configured via environment variables read by [`internal/config/config.go`](./internal/config/config.go). `DATABASE_URL` is required. See [`docs/setup.md`](./docs/setup.md) for the full list, the native development path (Go / React / SDK), and operational tunables. Note: `config.example.yaml` is not the live runtime contract.
+The platform server is configured via environment variables read by [`internal/config/config.go`](./internal/config/config.go). `DATABASE_URL` is required. See the [installation guide](./docs-site/guides/installation.mdx) for the full list, the native development path (Go / React / SDK), and operational tunables. Note: `config.example.yaml` is not the live runtime contract.
 
 After changing OpenAPI, sqlc queries, WebSocket schemas, or migrations that affect generated types, run `make generate`.
 
@@ -187,9 +187,9 @@ These signals come from the current source tree, not from shipped behavior.
 The full documentation site lives under [`docs-site/`](./docs-site/) (Mintlify). Source markdown for individual topics:
 
 - [`docs-site/`](./docs-site/) — Mintlify docs site (guides, concepts, Python SDK reference, API reference)
-- [`docs/setup.md`](./docs/setup.md) — canonical setup guide for humans and agents
-- [`docs/architecture/overview.md`](./docs/architecture/overview.md) — runtime architecture overview
-- [`docs/event-conventions.md`](./docs/event-conventions.md) — debugger-facing event semantics
+- [`docs-site/guides/installation.mdx`](./docs-site/guides/installation.mdx) — canonical setup guide for humans and agents
+- [`docs-site/concepts/overview.mdx`](./docs-site/concepts/overview.mdx) — runtime architecture overview
+- [`docs-site/concepts/events.mdx`](./docs-site/concepts/events.mdx) — debugger-facing event semantics
 - [`engine/README.md`](./engine/README.md) — durable-execution foundation (schema/store/CLI only today)
 
 ## Contributing
@@ -202,7 +202,7 @@ make lint
 make test
 ```
 
-Documentation follows the status convention in [`docs/README.md`](./docs/README.md): current public docs are authoritative for the checkout alongside the source tree.
+Documentation in [`docs-site/`](./docs-site/) is authoritative for the public docs surface alongside the source tree.
 
 ## License
 

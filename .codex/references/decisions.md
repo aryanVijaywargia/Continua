@@ -4,7 +4,7 @@
 1. Live code in `cmd/`, `internal/`, `web/`, and `sdks/python/`
 2. Contracts in `contracts/`
 3. Platform schema + queries in `db/platform/`
-4. `docs/DEBUGGER_PLATFORM_BASELINE.md` for the shortest current architecture narrative
+4. Public docs in `docs-site/`
 5. OpenSpec proposals and implemented changes for change history and planned direction
 
 Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a complete current-state spec set.
@@ -104,11 +104,11 @@ Important caveat: `openspec/specs/` is currently empty, so OpenSpec is not a com
 - Root-side maintenance in `internal/jobs/` owns retention and bulk backfill triggering.
 
 ## Useful reference docs
-- `docs/README.md`
-- `docs/DEBUGGER_PLATFORM_BASELINE.md`
-- `docs/PHASE5_CURRENT_STATE_REPORT.md`
-- `docs/architecture/RULES.md`
-- `docs/architecture/data-model.md`
+- `docs-site/guides/installation.mdx`
+- `docs-site/concepts/overview.mdx`
+- `docs-site/concepts/data-model.mdx`
+- `docs-site/concepts/events.mdx`
+- `docs-site/concepts/ingest-lifecycle.mdx`
 
 ## Current validation surfaces
 - `pnpm --filter web test`

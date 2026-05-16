@@ -8,7 +8,7 @@ If `openspec/` is present in the working tree, open `@/openspec/AGENTS.md` when 
 - Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
 - Sounds ambiguous and you need the authoritative spec before coding
 
-`openspec/` is gitignored — it's the internal product-development record, present only on the maintainer's local checkout. External contributors will not have it; fall back to checked-in code, [docs-site/](./docs-site/), and [docs/architecture/](./docs/architecture/) as the authoritative sources.
+`openspec/` is gitignored — it's the internal product-development record, present only on the maintainer's local checkout. External contributors will not have it; fall back to checked-in code and [docs-site/](./docs-site/) as the authoritative sources.
 
 Keep this managed block so 'openspec update' can refresh the instructions.
 
@@ -19,7 +19,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Current Repo Baseline
 - Treat the checked-in code as the primary truth. Historical phase docs and some older architecture docs drift from the current implementation.
 - The live product path today is: authenticated REST ingest -> Postgres persistence -> River background jobs -> REST read APIs -> embedded React debugger operator console.
-- For current-state architecture, start with [`docs-site/concepts/`](./docs-site/concepts/) (overview, data-model, traces-spans-sessions, events, ingest-lifecycle) and [`docs/architecture/`](./docs/architecture/).
+- For current-state architecture, start with [`docs-site/concepts/`](./docs-site/concepts/) (overview, data-model, traces-spans-sessions, events, ingest-lifecycle).
 - Use the checked-in code, contracts, and migrations as the authoritative current-state baseline.
 - `docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context. Use them only if present locally.
 - If `openspec/` is present locally, it is useful for active proposals and archived work but not a complete source of current-state specs (`openspec/specs/` is empty).
@@ -137,7 +137,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
   - read `design.md` if present
   - read `tasks.md`
   - implement in task order
-- Because `openspec/specs/` is empty, do not assume OpenSpec alone describes the current repo state. Cross-check with code, contracts, migrations, and [`docs/architecture/`](./docs/architecture/) or [`docs-site/concepts/`](./docs-site/concepts/).
+- Because `openspec/specs/` is empty, do not assume OpenSpec alone describes the current repo state. Cross-check with code, contracts, migrations, and [`docs-site/concepts/`](./docs-site/concepts/).
 
 ## Project-local Codex Context
 - Repo-local Codex assets live in `.codex/`. Prefer these over `.claude/` when working from Codex.

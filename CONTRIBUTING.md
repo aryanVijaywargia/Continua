@@ -5,7 +5,7 @@
 Before making changes, skim:
 
 - [`docs-site/concepts/overview.mdx`](./docs-site/concepts/overview.mdx) — current architecture and runtime components
-- [`docs/architecture/overview.md`](./docs/architecture/overview.md) — package-level map
+- [`docs-site/concepts/data-model.mdx`](./docs-site/concepts/data-model.mdx) — persisted entity model and identity rules
 - [`AGENTS.md`](./AGENTS.md) — repo conventions, generated-file boundaries, testing expectations
 
 ## Development workflow
@@ -20,5 +20,5 @@ Before making changes, skim:
 - [ ] `make generate` produces no diff
 - [ ] `make lint` passes
 - [ ] `make test` passes
-- [ ] Documentation updated if needed (`docs-site/` and/or `docs/architecture/`)
+- [ ] Documentation updated if needed (`docs-site/`)
 - [ ] Never edit generated files directly (see [`AGENTS.md`](./AGENTS.md#contracts-generation-and-generated-files))

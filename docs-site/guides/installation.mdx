@@ -37,6 +37,12 @@ make demo
 
 Open `http://localhost:8080` to see the seeded demo workspace.
 
+Health check:
+
+```bash
+curl http://localhost:8080/api/health
+```
+
 ### Demo defaults
 
 | Setting | Value |
@@ -105,3 +111,82 @@ uv run python examples/e2e_demo.py
 | `8080` | Go server + embedded UI (Docker demo) | `make demo` |
 | `5432` | Postgres | Both setups |
 | `3000` | Vite dev server | Native `make dev-web` |
+
+## Runtime configuration
+
+The server reads runtime configuration from environment variables in
+`internal/config/config.go`.
+
+Required:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection string |
+
+Common optional variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `HOST`, `PORT` | Server bind address, defaults to `0.0.0.0:8080` |
+| `PUBLIC_DEMO_ENABLED` | Enables read-only seeded demo mode |
+| `PUBLIC_DEMO_PROJECT_ID` | Project shown in public demo mode |
+| `PUBLIC_DEMO_LABEL` | Demo workspace label in the UI |
+| `INGEST_TRUE_ASYNC_DEFAULT` | Server default async ingest behavior |
+| `INGEST_DEPENDENCY_RETRY_WINDOW` | Retry window for async batches waiting on dependencies |
+| `INGEST_FAILED_PAYLOAD_RETENTION` | Retention window for failed async ingest payloads |
+| `RIVER_QUEUE_*` | River worker pool sizes |
+
+`config.example.yaml` is a reference template only. The server does not read YAML
+configuration at runtime.
+
+## Troubleshooting
+
+Port `8080` is already in use:
+
+```bash
+lsof -nP -iTCP:8080
+make docker-down
+```
+
+Docker data looks stale:
+
+```bash
+make reset-demo
+```
+
+The app is up but no traces appear:
+
+```bash
+make docker-logs
+docker compose -f deploy/docker-compose/docker-compose.yml --profile seed run --rm demo-seed
+```
+
+Native server fails with `DATABASE_URL environment variable is required`:
+
+```bash
+export DATABASE_URL="postgres://continua:continua@localhost:5432/continua?sslmode=disable"
+make migrate
+make dev-server
+```
+
+Native UI cannot load data:
+
+- Confirm the backend is running on `http://localhost:8080`.
+- Confirm Vite is running on `http://localhost:3000`.
+- Confirm the UI has API key `default` in `/settings`.
+
+## Current product boundary
+
+The implemented setup path is:
+
+```text
+Python SDK / custom client
+  -> authenticated REST ingest
+  -> Postgres persistence
+  -> River background jobs
+  -> REST read APIs
+  -> embedded React debugger operator console
+```
+
+The TypeScript SDK, live WebSocket runtime, proxy capture, replay runtime, and durable
+engine execution are not the main local setup path today.
