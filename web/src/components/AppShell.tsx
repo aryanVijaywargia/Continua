@@ -37,7 +37,7 @@ interface NavItem {
 }
 
 const RUN_LOCALLY_DOCS_URL =
-  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/setup.md';
+  'https://www.continua.in/docs/guides/installation';
 
 const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -365,7 +365,7 @@ function BrandBlock() {
           Continua
         </div>
         <div className="mt-1 font-mono text-[10.5px] text-[var(--c-text-muted)]">
-          local · v0.4.2
+          local · alpha
         </div>
       </div>
     </Link>

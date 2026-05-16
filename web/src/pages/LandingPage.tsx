@@ -1,863 +1,1494 @@
-import { useState } from 'react';
+import {
+  ArrowRight,
+  Check,
+  ChevronRight,
+  Copy,
+  Github,
+  Moon,
+  Sun,
+  Terminal,
+} from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckpointIllustration } from '../components/landing/CheckpointIllustration';
-import { HeroIllustration } from '../components/landing/HeroIllustration';
-import { ScrollReveal } from '../components/landing/ScrollReveal';
 import { useRuntimeAuth } from '../auth/runtime';
 import { useMediaQuery } from '../hooks/useMediaQuery';
-
-/* ── Code tab content ────────────────────────────────────────────── */
-
-interface CodeTab {
-  label: string;
-  content: JSX.Element;
-}
-
-const CODE_TABS: CodeTab[] = [
-  {
-    label: 'Basic Agent',
-    content: (
-      <pre className="font-mono text-sm leading-relaxed text-on-surface md:text-lg">
-        <span className="text-primary-container">from</span> continua{' '}
-        <span className="text-primary-container">import</span> Continua, span, trace{'\n'}
-        {'\n'}
-        client = Continua.init({'\n'}
-        {'    '}api_key=<span className="text-outline">&quot;default&quot;</span>,{'\n'}
-        {'    '}endpoint=<span className="text-outline">&quot;http://localhost:8080&quot;</span>,{'\n'}
-        {'    '}ingest_mode=<span className="text-outline">&quot;sync&quot;</span>,{'\n'}
-        ){'\n'}
-        {'\n'}
-        <span className="text-primary-container">@trace</span>(name=<span className="text-outline">&quot;research_agent&quot;</span>){'\n'}
-        <span className="text-primary-container">def</span>{' '}
-        <span className="text-tertiary">run_research_agent</span>(query: str):{'\n'}
-        {'    '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;plan_research&quot;</span>, kind=<span className="text-outline">&quot;llm&quot;</span>) <span className="text-primary-container">as</span> s:
-        {'\n'}
-        {'        '}s.set_input({'{'}<span className="text-outline">&quot;query&quot;</span>: query{'}'}){'\n'}
-        {'        '}response = call_llm(query){'\n'}
-        {'        '}s.set_llm_response({'\n'}
-        {'            '}<span className="text-outline">&quot;gpt-4&quot;</span>, query, response,{'\n'}
-        {'            '}tokens_in=50, tokens_out=100, provider=<span className="text-outline">&quot;openai&quot;</span>,{'\n'}
-        {'        '}){'\n'}
-        {'\n'}
-        {'    '}<span className="text-primary-container">return</span> {'{'}<span className="text-outline">&quot;answer&quot;</span>: response{'}'}{'\n'}
-        {'\n'}
-        result = run_research_agent(<span className="text-outline">&quot;debug retry behavior&quot;</span>){'\n'}
-        client.flush()
-      </pre>
-    ),
-  },
-  {
-    label: 'With Retries',
-    content: (
-      <pre className="font-mono text-sm leading-relaxed text-on-surface md:text-lg">
-        <span className="text-primary-container">from</span> continua{' '}
-        <span className="text-primary-container">import</span> Continua, span, trace{'\n'}
-        {'\n'}
-        client = Continua.init({'\n'}
-        {'    '}api_key=<span className="text-outline">&quot;default&quot;</span>,{'\n'}
-        {'    '}endpoint=<span className="text-outline">&quot;http://localhost:8080&quot;</span>,{'\n'}
-        {'    '}ingest_mode=<span className="text-outline">&quot;sync&quot;</span>,{'\n'}
-        {'    '}max_retries=3,{'\n'}
-        ){'\n'}
-        {'\n'}
-        <span className="text-primary-container">@trace</span>(name=<span className="text-outline">&quot;resilient_agent&quot;</span>, tags=[<span className="text-outline">&quot;demo&quot;</span>]){'\n'}
-        <span className="text-primary-container">def</span>{' '}
-        <span className="text-tertiary">run_resilient_agent</span>(task_id: str):{'\n'}
-        {'    '}<span className="text-primary-container">for</span> attempt <span className="text-primary-container">in</span> range(1, 4):{'\n'}
-        {'        '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;fetch_data&quot;</span>, kind=<span className="text-outline">&quot;tool&quot;</span>) <span className="text-primary-container">as</span> s:
-        {'\n'}
-        {'            '}s.set_input({'{'}<span className="text-outline">&quot;task_id&quot;</span>: task_id, <span className="text-outline">&quot;attempt&quot;</span>: attempt{'}'}){'\n'}
-        {'            '}<span className="text-primary-container">try</span>:{'\n'}
-        {'                '}result = fetch_external_data(task_id){'\n'}
-        {'                '}s.set_tool_call(<span className="text-outline">&quot;fetch_external_data&quot;</span>, {'{'}<span className="text-outline">&quot;task_id&quot;</span>: task_id{'}'}, result){'\n'}
-        {'                '}<span className="text-primary-container">return</span> result{'\n'}
-        {'            '}<span className="text-primary-container">except</span> TimeoutError <span className="text-primary-container">as</span> exc:{'\n'}
-        {'                '}s.error(<span className="text-outline">&quot;Fetch timed out&quot;</span>, payload={'{'}<span className="text-outline">&quot;attempt&quot;</span>: attempt{'}'}){'\n'}
-        {'                '}s.exception(exc, payload={'{'}<span className="text-outline">&quot;attempt&quot;</span>: attempt{'}'}){'\n'}
-        {'                '}s.set_error(str(exc)){'\n'}
-        {'                '}<span className="text-primary-container">if</span> attempt == 3:{'\n'}
-        {'                    '}<span className="text-primary-container">raise</span>{'\n'}
-        {'\n'}
-        run_resilient_agent(<span className="text-outline">&quot;task_123&quot;</span>){'\n'}
-        client.flush()
-      </pre>
-    ),
-  },
-  {
-    label: 'Complex Logic',
-    content: (
-      <pre className="font-mono text-sm leading-relaxed text-on-surface md:text-lg">
-        <span className="text-primary-container">from</span> continua{' '}
-        <span className="text-primary-container">import</span> Continua, session, span, trace{'\n'}
-        {'\n'}
-        client = Continua.init(api_key=<span className="text-outline">&quot;default&quot;</span>, endpoint=<span className="text-outline">&quot;http://localhost:8080&quot;</span>){'\n'}
-        {'\n'}
-        <span className="text-primary-container">@trace</span>(name=<span className="text-outline">&quot;code_review_agent&quot;</span>){'\n'}
-        <span className="text-primary-container">def</span>{' '}
-        <span className="text-tertiary">run_code_review_agent</span>(code: str):{'\n'}
-        {'    '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;code_analysis_chain&quot;</span>, kind=<span className="text-outline">&quot;chain&quot;</span>):
-        {'\n'}
-        {'        '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;parse_code&quot;</span>, kind=<span className="text-outline">&quot;tool&quot;</span>) <span className="text-primary-container">as</span> s:{'\n'}
-        {'            '}parsed = parse_code(code){'\n'}
-        {'            '}s.set_tool_call(<span className="text-outline">&quot;parse_code&quot;</span>, {'{'}<span className="text-outline">&quot;code&quot;</span>: code[:100]{'}'}, parsed){'\n'}
-        {'\n'}
-        {'        '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;security_scan&quot;</span>, kind=<span className="text-outline">&quot;tool&quot;</span>) <span className="text-primary-container">as</span> s:{'\n'}
-        {'            '}scan = security_scan(code){'\n'}
-        {'            '}s.set_output(scan){'\n'}
-        {'\n'}
-        {'    '}<span className="text-primary-container">with</span> span(<span className="text-outline">&quot;generate_review&quot;</span>, kind=<span className="text-outline">&quot;llm&quot;</span>) <span className="text-primary-container">as</span> s:{'\n'}
-        {'        '}review = call_llm({'{'}<span className="text-outline">&quot;parsed&quot;</span>: parsed, <span className="text-outline">&quot;scan&quot;</span>: scan{'}'}){'\n'}
-        {'        '}s.set_llm_response(<span className="text-outline">&quot;claude-3-opus&quot;</span>, code, review, provider=<span className="text-outline">&quot;anthropic&quot;</span>){'\n'}
-        {'        '}<span className="text-primary-container">return</span> {'{'}<span className="text-outline">&quot;review&quot;</span>: review{'}'}{'\n'}
-        {'\n'}
-        <span className="text-primary-container">with</span> session(<span className="text-outline">&quot;demo-sdk-review&quot;</span>, user_id=<span className="text-outline">&quot;user_123&quot;</span>):{'\n'}
-        {'    '}run_code_review_agent(code){'\n'}
-        {'\n'}
-        client.flush()
-      </pre>
-    ),
-  },
-];
+import { useTheme } from '../hooks/useTheme';
 
 const GITHUB_REPO_URL = 'https://github.com/aryanVijaywargia/Continua';
-const GITHUB_DOCS_URL = `${GITHUB_REPO_URL}/tree/main/docs`;
+const DOCS_URL = 'https://www.continua.in/docs';
 const GITHUB_LICENSE_URL = `${GITHUB_REPO_URL}/blob/main/LICENSE`;
-const GITHUB_OPENAPI_URL = `${GITHUB_REPO_URL}/blob/main/contracts/openapi/openapi.yaml`;
-const RUN_LOCALLY_DOCS_URL = `${GITHUB_REPO_URL}/blob/main/docs/setup.md`;
+const API_REFERENCE_URL = `${DOCS_URL}/api-reference`;
+const PYTHON_SDK_DOCS_URL = `${DOCS_URL}/sdk/python/overview`;
+const ARCHITECTURE_DOCS_URL = `${DOCS_URL}/concepts/overview`;
+const RUN_LOCALLY_DOCS_URL = `${DOCS_URL}/guides/installation`;
 
-/* ── Page component ──────────────────────────────────────────────── */
+type SpanTone = 'ok' | 'fail' | 'run';
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+const HERO_SPANS = [
+  { name: 'resilient_agent', kind: 'TRACE', depth: 0, start: 0, dur: 100, tone: 'run' },
+  { name: 'plan_research', kind: 'LLM', depth: 1, start: 2, dur: 18, tone: 'ok' },
+  { name: 'fetch_corpus', kind: 'TOOL', depth: 1, start: 20, dur: 11, tone: 'fail' },
+  { name: 'fetch_corpus', kind: 'TOOL', depth: 1, start: 31, dur: 9, tone: 'ok', retry: true },
+  { name: 'classify', kind: 'LLM', depth: 1, start: 40, dur: 24, tone: 'run' },
+  { name: 'rank', kind: 'CHAIN', depth: 2, start: 43, dur: 14, tone: 'ok' },
+  { name: 'tool.search', kind: 'TOOL', depth: 3, start: 45, dur: 7, tone: 'ok' },
+  { name: 'tool.dedupe', kind: 'TOOL', depth: 3, start: 52, dur: 3, tone: 'ok' },
+  { name: 'summarize', kind: 'LLM', depth: 2, start: 57, dur: 7, tone: 'ok' },
+  { name: 'finalize', kind: 'CHAIN', depth: 1, start: 64, dur: 30, tone: 'run' },
+  { name: 'render_output', kind: 'TOOL', depth: 2, start: 68, dur: 16, tone: 'ok' },
+  { name: 'persist', kind: 'TOOL', depth: 2, start: 84, dur: 8, tone: 'ok' },
+] as const;
+
+const AFTER_SPANS = [
+  { name: 'resilient_agent', kind: 'TRACE', depth: 0, start: 0, dur: 100, tone: 'ok' },
+  { name: 'plan_research', kind: 'LLM', depth: 1, start: 2, dur: 18, tone: 'ok' },
+  { name: 'fetch_corpus', kind: 'TOOL', depth: 1, start: 20, dur: 11, tone: 'fail' },
+  { name: 'fetch_corpus', kind: 'TOOL', depth: 1, start: 31, dur: 9, tone: 'ok', retry: true },
+  { name: 'classify', kind: 'LLM', depth: 1, start: 41, dur: 24, tone: 'ok' },
+  { name: 'rank', kind: 'CHAIN', depth: 2, start: 44, dur: 14, tone: 'ok' },
+  { name: 'finalize', kind: 'CHAIN', depth: 1, start: 65, dur: 32, tone: 'ok' },
+] as const;
+
+const LOG_LINES = [
+  ['gray', '[2026-05-16 14:22:18.041] INFO  agent:run starting'],
+  ['gray', '[2026-05-16 14:22:18.044] DEBUG llm.openai calling gpt-4 model="gpt-4"'],
+  ['gray', '[2026-05-16 14:22:18.987] DEBUG llm.openai response 200 tokens_out=100'],
+  ['gray', '[2026-05-16 14:22:18.990] INFO  tool.fetch calling fetch_data q="docs"'],
+  ['gray', '[2026-05-16 14:22:19.001] DEBUG http GET https://api.corpus.local/v1/...'],
+  ['red', '[2026-05-16 14:22:24.012] ERROR TimeoutError: read timed out (5.0s)'],
+  ['red', 'Traceback (most recent call last):'],
+  ['red', '  File "agent.py", line 42, in run'],
+  ['red', '    data = fetch_data(query)'],
+  ['red', '  File "tools/fetch.py", line 18, in fetch_data'],
+  ['red', '    return requests.get(url, timeout=5).json()'],
+  ['gray', '[2026-05-16 14:22:24.013] WARN  retrying fetch_data attempt=2/3'],
+  ['gray', '[2026-05-16 14:22:25.107] DEBUG http 200 OK size=18KB'],
+  ['gray', '[2026-05-16 14:22:25.108] INFO  tool.fetch ok rows=124'],
+  ['gray', '[2026-05-16 14:22:26.860] INFO  agent:done duration_ms=8819'],
+] as const;
+
+const TICKER_ITEMS = [
+  ['trc_3a91c1', 'research_agent', '4.2s', 'ok'],
+  ['trc_8f2a91', 'resilient_agent', '6.8s', 'retry'],
+  ['trc_1d0432', 'code_review', '8.9s', 'ok'],
+  ['trc_b2e1c7', 'planner_agent', '2.1s', 'ok'],
+  ['trc_99af0c', 'data_ingest', '0.8s', 'fail'],
+  ['trc_4c7e1b', 'summarizer', '1.4s', 'ok'],
+  ['trc_e7d211', 'classifier_v2', '3.6s', 'ok'],
+  ['trc_223de4', 'query_planner', '5.2s', 'ok'],
+  ['trc_5a8b12', 'rag_pipeline', '12.4s', 'ok'],
+  ['trc_c91f0a', 'tool_executor', '0.9s', 'retry'],
+] as const;
+
+const CODE_TABS = [
+  {
+    label: 'Basic agent',
+    file: 'agent.py',
+    rows: [
+      ['k', 'from '], ['m', 'continua'], ['k', ' import '], ['_', 'Continua, span, trace\n\n'],
+      ['t', 'client'], ['_', ' = Continua.init(\n    api_key='], ['s', '"default"'], ['_', ',\n    endpoint='], ['s', '"http://localhost:8080"'], ['_', ',\n)\n\n'],
+      ['d', '@trace'], ['_', '(name='], ['s', '"research_agent"'], ['_', ')\n'],
+      ['k', 'def '], ['fn', 'run'], ['_', '(query):\n    '],
+      ['k', 'with '], ['_', 'span('], ['s', '"plan"'], ['_', ', kind='], ['s', '"llm"'], ['_', ') '], ['k', 'as '], ['_', 's:\n        s.set_input({'], ['s', '"query"'], ['_', ': query})\n        result = call_llm(query)\n        s.set_llm_response('], ['s', '"gpt-4"'], ['_', ', query, result)\n\n    '],
+      ['k', 'return '], ['_', '{'], ['s', '"answer"'], ['_', ': result}'],
+    ],
+  },
+  {
+    label: 'With retries',
+    file: 'resilient.py',
+    rows: [
+      ['c', '# Re-ingestion is deduped by span_id\n'],
+      ['k', 'from '], ['m', 'continua'], ['k', ' import '], ['_', 'span, trace\n\n'],
+      ['d', '@trace'], ['_', '(name='], ['s', '"resilient_agent"'], ['_', ')\n'],
+      ['k', 'def '], ['fn', 'run'], ['_', '(task_id):\n    '],
+      ['k', 'for '], ['_', 'attempt '], ['k', 'in '], ['_', 'range('], ['n', '1'], ['_', ', '], ['n', '4'], ['_', '):\n        '],
+      ['k', 'with '], ['_', 'span('], ['s', '"fetch"'], ['_', ', kind='], ['s', '"tool"'], ['_', ') '], ['k', 'as '], ['_', 's:\n            '],
+      ['k', 'try'], ['_', ':\n                '], ['k', 'return '], ['_', 'fetch_data(task_id)\n            '],
+      ['k', 'except '], ['_', 'TimeoutError '], ['k', 'as '], ['_', 'exc:\n                s.exception(exc, payload={'], ['s', '"attempt"'], ['_', ': attempt})\n                '],
+      ['k', 'if '], ['_', 'attempt == '], ['n', '3'], ['_', ': '], ['k', 'raise'],
+    ],
+  },
+  {
+    label: 'Sessions',
+    file: 'review.py',
+    rows: [
+      ['c', '# Group nested runs under a session\n'],
+      ['k', 'from '], ['m', 'continua'], ['k', ' import '], ['_', 'session, span\n\n'],
+      ['k', 'with '], ['_', 'session('], ['s', '"demo-review"'], ['_', ', user_id='], ['s', '"u_123"'], ['_', ') '], ['k', 'as '], ['_', 's:\n    s.set_metadata({'], ['s', '"app"'], ['_', ': '], ['s', '"docs"'], ['_', '})\n\n    '],
+      ['k', 'with '], ['_', 'span('], ['s', '"parse"'], ['_', ', kind='], ['s', '"tool"'], ['_', '):\n        parsed = parse_code(code)\n\n    '],
+      ['k', 'with '], ['_', 'span('], ['s', '"review"'], ['_', ', kind='], ['s', '"llm"'], ['_', '):\n        review = call_llm({'], ['s', '"parsed"'], ['_', ': parsed})\n        '],
+      ['k', 'return '], ['_', '{'], ['s', '"review"'], ['_', ': review}'],
+    ],
+  },
+] as const;
 
 export function LandingPage() {
-  const [activeTab, setActiveTab] = useState(0);
-  const isDesktopNav = useMediaQuery('(min-width: 768px)');
   const runtimeAuth = useRuntimeAuth();
+  const { resolvedTheme, toggleTheme } = useTheme();
+
   const isPublicDemo = runtimeAuth.public_demo_enabled === true;
   const isConsoleAvailable = runtimeAuth.console_available !== false;
-  const consoleCtaLabel = isPublicDemo
-    ? 'Open Demo'
-    : isConsoleAvailable
-      ? 'Open Console'
-      : 'Run Locally';
-  const topSecondaryLabel = isPublicDemo ? 'Run locally' : 'Docs';
-  const topSecondaryHref = isPublicDemo ? RUN_LOCALLY_DOCS_URL : GITHUB_DOCS_URL;
-  const heroPrimaryLabel = isPublicDemo
-    ? 'Open Demo'
-    : isConsoleAvailable
-      ? 'Open Console'
-      : 'Run Locally';
-  const heroSecondaryLabel = isPublicDemo ? 'Run Locally' : 'See how it works';
-  const heroSecondaryHref = isPublicDemo ? RUN_LOCALLY_DOCS_URL : '#how-it-works';
-  const heroSecondaryIcon = isPublicDemo ? 'open_in_new' : 'play_circle';
-  const footerConsoleLabel = isPublicDemo
-    ? 'Open Demo'
-    : isConsoleAvailable
-      ? 'Operator Console'
-      : 'Run locally';
+  const consoleLabel = isPublicDemo ? 'Open Demo' : isConsoleAvailable ? 'Open Console' : 'Run Locally';
 
   return (
-    <div
-      className="min-h-screen selection:bg-primary-container selection:text-white"
+    <div className="min-h-screen overflow-x-hidden bg-[var(--c-app-bg)] text-[var(--c-text-primary)]">
+      <StatusBanner isPublicDemo={isPublicDemo} />
+      <Nav
+        consoleLabel={consoleLabel}
+        isConsoleAvailable={isConsoleAvailable}
+        theme={resolvedTheme}
+        toggleTheme={toggleTheme}
+      />
+      <main>
+        <Hero
+          consoleLabel={consoleLabel}
+          isConsoleAvailable={isConsoleAvailable}
+          isPublicDemo={isPublicDemo}
+        />
+        <TraceTicker />
+        <StatsStrip />
+        <Manifesto />
+        <LogsVsTraces />
+        <AnatomySection />
+        <StackDiagram />
+        <SdkSection isConsoleAvailable={isConsoleAvailable} />
+        <OpenSourceSection />
+        <CtaSection
+          consoleLabel={consoleLabel}
+          isConsoleAvailable={isConsoleAvailable}
+          isPublicDemo={isPublicDemo}
+        />
+      </main>
+      <Footer
+        isConsoleAvailable={isConsoleAvailable}
+      />
+    </div>
+  );
+}
+
+function StatusBanner({ isPublicDemo }: { isPublicDemo: boolean }) {
+  return (
+    <div className="border-b bg-[var(--c-app-bg)]" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-1.5 text-[10.5px]">
+        <div className="flex items-center gap-2 font-mono text-[var(--c-text-muted)]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)] shadow-[0_0_0_3px_var(--c-green-faint)]" />
+          <span>{isPublicDemo ? 'Public demo with seeded traces' : 'Observability live · engine preview'}</span>
+          <span className="text-[var(--c-border-strong)]">·</span>
+          <span>docs at continua.in/docs</span>
+        </div>
+        <div className="hidden items-center gap-4 sm:flex">
+          <ExternalLink href={`${GITHUB_REPO_URL}/blob/main/CHANGELOG.md`} className="font-mono text-[var(--c-text-muted)] hover:text-[var(--c-text-primary)]">
+            changelog
+          </ExternalLink>
+          <ExternalLink href={DOCS_URL} className="font-mono text-[var(--c-text-muted)] hover:text-[var(--c-text-primary)]">
+            docs
+          </ExternalLink>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Nav({
+  consoleLabel,
+  isConsoleAvailable,
+  theme,
+  toggleTheme,
+}: {
+  consoleLabel: string;
+  isConsoleAvailable: boolean;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+}) {
+  const compactLinks = [
+    ['Product', '#product'],
+    ['How', '#how'],
+    ['SDK', '#sdk'],
+    ['Open source', '#open-source'],
+  ] as const;
+
+  return (
+    <header
+      className="sticky top-0 z-40 border-b backdrop-blur"
       style={{
-        fontFamily: "'Inter', sans-serif",
-        backgroundColor: '#f9f9f9',
-        color: '#1b1b1b',
+        background: 'color-mix(in srgb, var(--c-app-bg) 88%, transparent)',
+        borderColor: 'var(--c-border)',
       }}
     >
-      <header className="fixed inset-x-0 top-0 z-[60]">
-        <div className="border-b border-black/5 bg-secondary-container px-4 py-2 text-on-secondary-container sm:px-6 sm:py-2.5">
-          <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-center sm:gap-3">
-            <span className="hidden text-xs font-bold uppercase tracking-widest font-label sm:inline">
-              {isPublicDemo ? 'Public demo' : 'New in Continua'}
-            </span>
-            <span className="text-xs font-semibold tracking-tight sm:text-sm">
-              {isPublicDemo ? (
-                <>
-                  <span className="sm:hidden">
-                    Seeded sample traces only. Run locally for your own data.
-                  </span>
-                  <span className="hidden sm:inline">
-                    Public demo is live with seeded sample traces. Run Continua locally to inspect your own data.
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="sm:hidden">
-                    Operator auth and project switching are live.
-                  </span>
-                  <span className="hidden sm:inline">
-                    Hosted operator auth, project switching, and debugger triage are live.
-                  </span>
-                </>
-              )}
-            </span>
-          </div>
+      <div className="mx-auto flex min-h-13 max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+        <a href="#" className="flex shrink-0 items-center gap-2.5">
+          <Logo />
+          <span className="text-[14px] font-semibold tracking-tight">Continua</span>
+        </a>
+        <nav className="hidden items-center gap-7 text-[12.5px] font-medium text-[var(--c-text-secondary)] md:flex">
+          <a href="#product" className="transition hover:text-[var(--c-text-primary)]">Product</a>
+          <a href="#how" className="transition hover:text-[var(--c-text-primary)]">How it works</a>
+          <a href="#sdk" className="transition hover:text-[var(--c-text-primary)]">SDK</a>
+          <a href="#open-source" className="transition hover:text-[var(--c-text-primary)]">Open source</a>
+        </nav>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-label="Toggle theme"
+            onClick={toggleTheme}
+            className="flex h-7 w-7 items-center justify-center rounded-md border bg-[var(--c-surface)] text-[var(--c-text-secondary)] transition"
+            style={{ borderColor: 'var(--c-border)' }}
+          >
+            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+          </button>
+          <ExternalLink
+            href={DOCS_URL}
+            className="hidden h-7 items-center gap-1.5 rounded-md border bg-[var(--c-surface)] px-2.5 text-[12px] font-medium text-[var(--c-text-primary)] sm:inline-flex"
+            style={{ borderColor: 'var(--c-border)' }}
+          >
+            Docs
+          </ExternalLink>
+          <ExternalLink
+            href={GITHUB_REPO_URL}
+            className="hidden h-7 items-center gap-1.5 rounded-md border bg-[var(--c-surface)] px-2.5 text-[12px] font-medium text-[var(--c-text-primary)] sm:inline-flex"
+            style={{ borderColor: 'var(--c-border)' }}
+          >
+            <Github size={13} />
+            <span>GitHub</span>
+          </ExternalLink>
+          {isConsoleAvailable ? (
+            <Link
+              to="/dashboard"
+              className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold"
+              style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
+            >
+              {consoleLabel}
+              <ArrowRight size={12} />
+            </Link>
+          ) : (
+            <ExternalLink
+              href={RUN_LOCALLY_DOCS_URL}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold"
+              style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
+            >
+              {consoleLabel}
+              <ArrowRight size={12} />
+            </ExternalLink>
+          )}
         </div>
+      </div>
+      <nav
+        aria-label="Landing sections"
+        className="flex gap-1 overflow-x-auto border-t px-4 py-2 md:hidden"
+        style={{ borderColor: 'var(--c-border)' }}
+      >
+        {compactLinks.map(([label, href]) => (
+          <a
+            key={href}
+            href={href}
+            className="shrink-0 rounded-md border bg-[var(--c-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--c-text-primary)]"
+            style={{ borderColor: 'var(--c-border)' }}
+          >
+            {label}
+          </a>
+        ))}
+        <ExternalLink
+          href={DOCS_URL}
+          className="shrink-0 rounded-md border bg-[var(--c-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--c-text-primary)]"
+          style={{ borderColor: 'var(--c-border)' }}
+        >
+          Docs
+        </ExternalLink>
+      </nav>
+    </header>
+  );
+}
 
-        <nav className="border-b border-zinc-900/5 bg-white/80 backdrop-blur-xl">
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-            <div className="text-xl font-black tracking-tighter text-zinc-900">
-              Continua
-            </div>
-            {isDesktopNav ? (
-              <div className="flex items-center gap-10">
-                <a
-                  className="font-bold tracking-tight text-zinc-900 transition-colors hover:text-zinc-700"
-                  href="#how-it-works"
-                >
-                  How it works
-                </a>
-                <a
-                  className="tracking-tight text-zinc-500 transition-colors hover:text-zinc-900"
-                  href="#examples"
-                >
-                  Examples
-                </a>
-                <a
-                  className="tracking-tight text-zinc-500 transition-colors hover:text-zinc-900"
-                  href="#open-source"
-                >
-                  Open source
-                </a>
-              </div>
-            ) : null}
-            <div className="flex items-center gap-4">
-              <a
-                href={topSecondaryHref}
-                target="_blank"
-                rel="noreferrer"
-                className="hidden text-sm font-bold text-zinc-600 transition-colors hover:text-zinc-900 sm:inline"
+function Hero({
+  consoleLabel,
+  isConsoleAvailable,
+  isPublicDemo,
+}: {
+  consoleLabel: string;
+  isConsoleAvailable: boolean;
+  isPublicDemo: boolean;
+}) {
+  return (
+    <section className="relative overflow-hidden">
+      <div
+        className="landing-hero-grid absolute inset-0 -z-10"
+        style={{ maskImage: 'linear-gradient(to bottom, black 0%, transparent 90%)' }}
+      />
+      <div className="mx-auto max-w-7xl px-6 pb-20 pt-16 sm:pt-20">
+        <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_580px]">
+          <div className="min-w-0 max-w-2xl">
+            <SpanEyebrow idx={0} kind="TRACE" name="introducing_continua" dur="alpha" status="ok" />
+            <h1
+              aria-label={`${isPublicDemo ? 'Explore agent traces' : 'Debug your agents'} today. Run them durably tomorrow.`}
+              className="landing-display mt-6 text-[52px] font-bold tracking-[-0.035em] text-[var(--c-text-primary)] sm:text-[68px] lg:text-[76px]"
+            >
+              <span className="block">{isPublicDemo ? 'Explore agent traces' : 'Debug your agents'}</span>
+              <span
+                className="inline-block rounded-[2px] bg-[var(--c-accent)] px-[0.2em] pb-[0.08em] pt-[0.04em] text-white"
+                style={{ transform: 'rotate(-0.6deg) translateY(2px)' }}
               >
-                {topSecondaryLabel}
-              </a>
+                run durably tomorrow.
+              </span>
+            </h1>
+            <p className="mt-6 max-w-xl text-[15.5px] leading-relaxed text-[var(--c-text-secondary)]">
+              Continua is the open-source control plane for AI agent observability today and
+              durable execution tomorrow. Ship traces into a self-hosted operator console now;
+              use the engine preview surface as the runtime foundation evolves.
+            </p>
+            {isPublicDemo ? (
+              <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">
+                This hosted debugger uses seeded sample traces only. Run locally to inspect your
+                own traces and sessions.
+              </p>
+            ) : !isConsoleAvailable ? (
+              <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">
+                This hosted Pages deployment is static. Run locally to inspect your own traces
+                and sessions.
+              </p>
+            ) : null}
+            <div className="mt-7 flex flex-wrap items-center gap-2">
               {isConsoleAvailable ? (
                 <Link
                   to="/dashboard"
-                  className="scale-95 rounded-full bg-zinc-900 px-5 py-2 text-sm font-bold text-white transition-all duration-200 hover:bg-zinc-800 active:scale-90"
+                  className="inline-flex h-9 items-center gap-2 rounded-md px-3.5 text-[13px] font-semibold"
+                  style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
                 >
-                  {consoleCtaLabel}
+                  {consoleLabel} <ArrowRight size={14} />
                 </Link>
               ) : (
-                <a
+                <ExternalLink
                   href={RUN_LOCALLY_DOCS_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="scale-95 rounded-full bg-zinc-900 px-5 py-2 text-sm font-bold text-white transition-all duration-200 hover:bg-zinc-800 active:scale-90"
+                  className="inline-flex h-9 items-center gap-2 rounded-md px-3.5 text-[13px] font-semibold"
+                  style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
                 >
-                  {consoleCtaLabel}
-                </a>
+                  {consoleLabel} <ArrowRight size={14} />
+                </ExternalLink>
               )}
-            </div>
-          </div>
-          {!isDesktopNav ? (
-            <div className="border-t border-zinc-900/5 px-4 py-2">
-              <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto whitespace-nowrap">
-                <a
-                  className="rounded-full border border-zinc-900/10 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition-colors hover:text-zinc-900"
-                  href="#how-it-works"
-                  aria-label="Jump to how it works"
-                >
-                  How
-                </a>
-                <a
-                  className="rounded-full border border-zinc-900/10 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition-colors hover:text-zinc-900"
-                  href="#examples"
-                  aria-label="Jump to examples"
-                >
-                  Examples
-                </a>
-                <a
-                  className="rounded-full border border-zinc-900/10 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition-colors hover:text-zinc-900"
-                  href="#open-source"
-                  aria-label="Jump to open source"
-                >
-                  Source
-                </a>
-                <a
-                  className="rounded-full border border-zinc-900/10 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition-colors hover:text-zinc-900"
-                  href={topSecondaryHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={isPublicDemo ? 'Open run locally guide' : 'Open docs'}
-                >
-                  {topSecondaryLabel}
-                </a>
-              </div>
-            </div>
-          ) : null}
-        </nav>
-      </header>
-
-      <main className={isDesktopNav ? 'pt-24 sm:pt-28 md:pt-32' : 'pt-36'}>
-        {/* ── Hero Section ── */}
-        <section className="mx-auto flex max-w-7xl flex-col items-center px-6 py-20 text-center md:py-32">
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full bg-surface-container px-3 py-1">
-            <span className="h-2 w-2 rounded-full bg-primary-container" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-              {isPublicDemo ? 'Read-only sample data' : 'Open source debugger'}
-            </span>
-          </div>
-          <h1 className="tight-headline mb-8 max-w-5xl text-5xl font-black leading-[0.94] text-on-surface md:text-8xl">
-            {isPublicDemo ? (
-              <>
-                <span className="block sm:inline">Explore a seeded</span>
-                <span className="mt-3 inline-block bg-primary-container px-4 py-1 text-white sm:mt-0 sm:ml-3 sm:-rotate-1">
-                  debugger demo
-                </span>
-                <span className="mt-3 block sm:mt-0 sm:ml-3 sm:inline">
-                  with sample traces.
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="block sm:inline">Run and inspect</span>
-                <span className="mt-3 inline-block bg-primary-container px-4 py-1 text-white sm:mt-0 sm:ml-3 sm:-rotate-1">
-                  durable
-                </span>
-                <span className="mt-3 block sm:mt-0 sm:ml-3 sm:inline">
-                  AI agents.
-                </span>
-              </>
-            )}
-          </h1>
-          <p className="mb-12 max-w-3xl text-lg font-medium leading-relaxed text-on-surface-variant md:text-2xl">
-            {isPublicDemo
-              ? 'Browse a safe portfolio workspace with fake traces, nested runs, failures, sessions, and compare flows. Run locally to inspect your own data.'
-              : 'Open-source durable execution and debugger tooling for agent workflows. Run it locally, inspect traces, and debug failures from the operator console.'}
-          </p>
-          <div className="flex flex-col items-center gap-4 sm:flex-row">
-            {isConsoleAvailable ? (
-              <Link
-                to="/dashboard"
-                className="rounded-full bg-on-surface px-10 py-4 text-lg font-bold text-surface-container-lowest transition-all hover:opacity-90 active:scale-95"
-              >
-                {heroPrimaryLabel}
-              </Link>
-            ) : (
-              <a
+              <ExternalLink
                 href={RUN_LOCALLY_DOCS_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-full bg-on-surface px-10 py-4 text-lg font-bold text-surface-container-lowest transition-all hover:opacity-90 active:scale-95"
+                className="inline-flex h-9 items-center gap-2 rounded-md border bg-[var(--c-surface)] px-3.5 text-[13px] font-medium text-[var(--c-text-primary)]"
+                style={{ borderColor: 'var(--c-border)' }}
               >
-                {heroPrimaryLabel}
-              </a>
-            )}
-            <a
-              href={heroSecondaryHref}
-              target={isPublicDemo ? '_blank' : undefined}
-              rel={isPublicDemo ? 'noreferrer' : undefined}
-              className="flex items-center gap-2 rounded-full bg-transparent px-10 py-4 text-lg font-bold text-on-surface transition-all hover:bg-surface-container"
-            >
-              {heroSecondaryLabel}{' '}
-              <span className="material-symbols-outlined">{heroSecondaryIcon}</span>
-            </a>
+                <Terminal size={13} />
+                Run locally
+              </ExternalLink>
+            </div>
+            <InstallSnippet />
           </div>
-          {isPublicDemo ? (
-            <p className="mt-6 max-w-2xl text-sm font-medium leading-7 text-on-surface-variant">
-              The hosted debugger uses seeded sample traces only. Run Continua locally to inspect your own traces and sessions.
-            </p>
-          ) : null}
-        </section>
+          <div className="relative min-w-0">
+            <div
+              className="absolute -inset-6 -z-10 rounded-3xl"
+              style={{ background: 'radial-gradient(60% 50% at 50% 30%, var(--c-accent-faint), transparent 70%)' }}
+            />
+            <Reveal>
+              <HeroWaterfall />
+            </Reveal>
+            <div className="mt-3 flex items-center justify-between gap-3 font-mono text-[10px] text-[var(--c-text-muted)]">
+              <span>fig.01 · resilient_agent · live</span>
+              <span className="text-right">retries deduped by ingest key</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
-        {/* ── Hero Illustration — animated SVG ── */}
-        <HeroIllustration />
+function InstallSnippet() {
+  const [copied, setCopied] = useState(false);
+  const cmd = 'git clone https://github.com/aryanVijaywargia/Continua.git\ncd Continua\nmake demo';
 
-        {/* ── How It Works — Interactive Workflow ── */}
-        <ScrollReveal>
-          <section
-            id="how-it-works"
-            className="w-full scroll-mt-32 border-y border-outline-variant/10 bg-[#f9f9f9] px-6 py-24 sm:py-28 lg:py-36"
+  return (
+    <div className="mt-7 w-full max-w-md overflow-hidden rounded-md border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="flex items-center justify-between border-b px-3 py-1.5" style={{ borderColor: 'var(--c-border)' }}>
+        <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
+          local demo
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard?.writeText(cmd);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          }}
+          className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px]"
+          style={{ color: copied ? 'var(--c-green-text)' : 'var(--c-text-muted)' }}
+        >
+          {copied ? <Check size={10} /> : <Copy size={10} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="overflow-x-auto px-3 py-2 font-mono text-[12px] leading-[1.7] text-[var(--c-text-primary)]">
+        <span className="text-[var(--c-text-muted)]">$</span> git clone https://github.com/aryanVijaywargia/Continua.git{'\n'}
+        <span className="text-[var(--c-text-muted)]">$</span> cd Continua{'\n'}
+        <span className="text-[var(--c-text-muted)]">$</span> make demo{'\n'}
+        <span className="text-[var(--c-green-text)]">✓</span> <span className="text-[var(--c-text-secondary)]">seeded console ready at</span> <span className="text-[var(--c-accent-text)]">localhost:8080</span>
+      </pre>
+    </div>
+  );
+}
+
+function HeroWaterfall() {
+  const [t, setT] = useState(0);
+  const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setT(72);
+      return;
+    }
+    let raf = 0;
+    let last = performance.now();
+    const loop = (now: number) => {
+      const dt = Math.min(now - last, 60);
+      last = now;
+      setT((prev) => (prev + dt * 0.012) % 130);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [prefersReducedMotion]);
+
+  const playhead = Math.min(100, t);
+  const elapsedStr = `${Math.min((t / 100) * 4.2, 4.2).toFixed(2)}s`;
+
+  return (
+    <div className="relative w-full min-w-0 overflow-hidden rounded-xl border bg-[var(--c-surface)] shadow-[0_24px_48px_-20px_rgba(15,23,42,0.18)]" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="flex items-center justify-between border-b bg-[var(--c-sidebar-bg)] px-3 py-2" style={{ borderColor: 'var(--c-border)' }}>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="font-mono text-[10px] font-semibold tracking-[0.06em] text-[var(--c-text-primary)]">trc_8f2a91c4</span>
+          <span className="text-[var(--c-text-muted)]">·</span>
+          <span className="truncate text-[11px] text-[var(--c-text-secondary)]">resilient_agent</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="font-mono text-[10px] tabular-nums text-[var(--c-text-muted)]">{elapsedStr}</span>
+          <span
+            className="inline-flex items-center gap-1 rounded-[3px] border px-1 py-px text-[9.5px] font-medium"
+            style={{
+              background: playhead >= 100 ? 'var(--c-green-faint)' : 'var(--c-accent-faint)',
+              borderColor: playhead >= 100 ? 'var(--c-green-border)' : 'var(--c-accent-border)',
+              color: playhead >= 100 ? 'var(--c-green-text)' : 'var(--c-accent-text)',
+            }}
           >
-            <div className="mx-auto max-w-7xl">
-              <div className="text-center">
-                <h2 className="tight-headline mb-7 text-[52px] font-black leading-[0.95] text-[#1b1b1b] md:text-[72px]">
-                How it works
-                </h2>
-                <p className="mx-auto max-w-3xl text-xl leading-8 text-[#404753]">
-                  Visualize the lifecycle of a durable agent execution from trigger
-                  to completion.
-                </p>
-              </div>
-              <div className="relative mt-24 flex flex-col items-center justify-center gap-12 md:flex-row md:gap-[76px]">
-                <WorkflowStep
-                  icon="bolt"
-                  label="Trigger"
-                  detail="HTTP, Webhook, Schedule"
-                  bgClass="bg-[#e8f0fb]"
-                  iconColor="text-primary-container"
-                  isLast={false}
-                />
-                <WorkflowStep
-                  icon="database"
-                  label="Checkpoint"
-                  detail="State saved to DB"
-                  bgClass="border-2 border-dashed border-[#b9d7ad] bg-[#edf8e8]"
-                  iconColor="text-tertiary-container"
-                  isLast={false}
-                />
-                <WorkflowStep
-                  icon="psychology"
-                  label="Execution"
-                  detail="Active Step"
-                  bgClass="bg-primary-container shadow-[0_18px_34px_-16px_rgba(0,117,214,0.72)]"
-                  iconColor="text-white"
-                  isLast={false}
-                  detailClass="text-primary-container font-bold"
-                />
-                <WorkflowStep
-                  icon="history"
-                  label="Retry"
-                  detail="Auto-recovery on fail"
-                  bgClass="bg-[#fff8e8]"
-                  iconColor="text-secondary-container"
-                  isLast={false}
-                />
-                <WorkflowStep
-                  icon="check_circle"
-                  label="Complete"
-                  detail="Final result delivered"
-                  bgClass="bg-[#1b1b1b]"
-                  iconColor="text-white"
-                  isLast
-                />
-              </div>
-            </div>
-          </section>
-        </ScrollReveal>
-
-        {/* ── Feature Cards Section ── */}
-        <section className="mx-auto max-w-7xl px-6 py-32">
-          <ScrollReveal>
-            <div className="mb-20 grid items-center gap-16 md:grid-cols-2">
-              <div>
-                <div className="mb-6 inline-block rounded-sm bg-tertiary-container px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-white">
-                  Reviewing
-                </div>
-                <h2 className="tight-headline mb-6 text-4xl font-black md:text-6xl">
-                  Reliable by default
-                </h2>
-                <p className="text-xl leading-relaxed text-on-surface-variant">
-                  Every step in your workflow is automatically checkpointed. If
-                  your agent crashes mid-execution, it resumes exactly where it
-                  left off.
-                </p>
-              </div>
-              {/* Custom SVG illustration of the checkpoint/resume story */}
-              <CheckpointIllustration />
-            </div>
-          </ScrollReveal>
-
-          {/* Concept grid — eight primitives Continua ships against */}
-          <div className="mb-12 text-center">
-            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant/60">
-              The primitives
-            </p>
-            <h3 className="tight-headline text-3xl font-black md:text-4xl">
-              Eight things durable execution gives you
-            </h3>
-          </div>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {CONCEPTS.map((concept, i) => (
-              <ScrollReveal key={concept.src} delay={(i % 4) * 80}>
-                <ConceptCard {...concept} />
-              </ScrollReveal>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: playhead >= 100 ? 'var(--c-green)' : 'var(--c-accent)' }} />
+            <span className="font-mono uppercase tracking-[0.06em]">{playhead >= 100 ? 'Completed' : 'Running'}</span>
+          </span>
+        </div>
+      </div>
+      <div className="relative border-b bg-[var(--c-app-bg)] px-3" style={{ borderColor: 'var(--c-border)' }}>
+        <div className="grid h-5" style={{ gridTemplateColumns: '128px minmax(0, 1fr)' }}>
+          <div />
+          <div className="relative min-w-0 overflow-hidden">
+            {[0, 1, 2, 3, 4].map((s) => (
+              <span
+                key={s}
+                className="absolute top-1.5 font-mono text-[9px] tabular-nums text-[var(--c-text-muted)]"
+                style={{ left: `${Math.min(100, (s / 4.2) * 100)}%`, transform: 'translateX(-50%)' }}
+              >
+                {s}.0s
+              </span>
             ))}
           </div>
-        </section>
+        </div>
+      </div>
+      <div className="relative">
+        {HERO_SPANS.map((span) => (
+          <WaterfallBar key={`${span.name}-${span.start}`} {...span} playhead={playhead} />
+        ))}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-0 top-0 w-px bg-[var(--c-accent)] transition-opacity"
+          style={{
+            left: `calc(138px + ${playhead}% * (100% - 138px) / 100)`,
+            opacity: playhead < 100 ? 0.6 : 0,
+          }}
+        >
+          <div className="absolute -left-[3px] -top-1 h-1.5 w-1.5 rounded-full bg-[var(--c-accent)]" />
+        </div>
+      </div>
+      <div className="grid grid-cols-4 border-t font-mono text-[10px]" style={{ borderColor: 'var(--c-border)' }}>
+        <Kpi label="Spans" value={HERO_SPANS.length} />
+        <Kpi label="Tokens" value="3.1k" border />
+        <Kpi label="Cost" value="$0.04" border />
+        <Kpi label="Retries" value="1" border tone="amber" />
+      </div>
+    </div>
+  );
+}
 
-        {/* ── Tabbed Code Examples ── */}
-        <ScrollReveal>
-          <section
-            id="examples"
-            className="mx-auto max-w-5xl scroll-mt-32 px-6 py-24"
+function WaterfallBar({
+  name,
+  kind,
+  depth,
+  start,
+  dur,
+  tone,
+  retry,
+  playhead,
+}: {
+  name: string;
+  kind: string;
+  depth: number;
+  start: number;
+  dur: number;
+  tone: SpanTone;
+  retry?: boolean;
+  playhead: number;
+}) {
+  const colors = toneColors(tone);
+  const fillWidth = Math.max(0, Math.max(start, Math.min(start + dur, playhead)) - start);
+  const isRunning = playhead >= start && playhead < start + dur;
+
+  return (
+    <div
+      className="grid items-center gap-2 px-3"
+      style={{
+        gridTemplateColumns: '128px 1fr',
+        borderBottom: '1px solid var(--c-border-subtle)',
+        background: isRunning ? 'var(--c-row-hover-bg)' : 'transparent',
+        height: 22,
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-1.5">
+        <ChevronRight size={9} className="shrink-0 text-[var(--c-text-muted)]" style={{ opacity: depth === 0 ? 0 : 0.8, transform: 'rotate(90deg)' }} />
+        <span className="w-8 shrink-0 font-mono text-[9px] uppercase tracking-[0.04em] text-[var(--c-text-muted)]">{kind}</span>
+        <span
+          className="truncate font-mono text-[11px]"
+          style={{
+            color: tone === 'fail' ? 'var(--c-red-text)' : 'var(--c-text-primary)',
+            paddingLeft: depth * 8,
+            fontWeight: depth === 0 ? 600 : 500,
+          }}
+        >
+          {name}
+          {retry ? <span className="ml-1 text-[9.5px] text-[var(--c-amber-text)]">↻</span> : null}
+        </span>
+      </div>
+      <div className="relative h-full">
+        <div
+          className="absolute top-1/2 rounded-[3px]"
+          style={{
+            left: `${start}%`,
+            width: `${dur}%`,
+            height: 9,
+            background: colors.bg,
+            border: `1px solid ${colors.border}`,
+            transform: 'translateY(-50%)',
+          }}
+        />
+        <div
+          className="absolute top-1/2 rounded-[3px] transition-[width]"
+          style={{
+            left: `${start}%`,
+            width: `${fillWidth}%`,
+            height: 9,
+            background: colors.fill,
+            opacity: isRunning ? 0.92 : 1,
+            transform: 'translateY(-50%)',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TraceTicker() {
+  return (
+    <div className="overflow-hidden border-y bg-[var(--c-surface-muted)]" style={{ borderColor: 'var(--c-border)', contain: 'layout paint' }}>
+      <div className="flex items-stretch">
+        <div className="flex shrink-0 items-center gap-1.5 border-r px-4 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]" style={{ borderColor: 'var(--c-border)' }}>
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)] shadow-[0_0_0_3px_var(--c-green-faint)]" />
+          Sample traces
+        </div>
+        <div className="relative h-9 min-w-0 flex-1 overflow-hidden">
+          <div className="landing-marquee-track absolute left-0 top-0 flex w-max items-center gap-6 whitespace-nowrap py-2.5">
+            {[...TICKER_ITEMS, ...TICKER_ITEMS].map(([id, name, dur, kind], i) => {
+              const d = tickerTone(kind);
+              return (
+                <span key={`${id}-${i}`} className="inline-flex items-center gap-2 font-mono text-[11px]">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: d.dot }} />
+                  <span className="text-[var(--c-text-muted)]">{id}</span>
+                  <span className="text-[var(--c-text-primary)]">{name}</span>
+                  <span className="text-[var(--c-text-muted)]">·</span>
+                  <span className="tabular-nums text-[var(--c-text-secondary)]">{dur}</span>
+                  <span className="text-[9.5px] uppercase tracking-[0.08em]" style={{ color: d.text }}>{d.label}</span>
+                  <span className="text-[var(--c-text-muted)]">·</span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatsStrip() {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const items = [
+    { value: 'REST', label: 'Ingest API', hint: 'Authenticated trace, session, span, and event writes', pct: 88 },
+    { value: 'SQLC', label: 'Postgres store', hint: 'Typed queries backed by platform migrations', pct: 99 },
+    { value: 'River', label: 'Async jobs', hint: 'Background ingest, rollups, and payload cleanup', pct: 72 },
+    { value: 'Preview', label: 'Engine surface', hint: 'Control APIs and contracts for durable execution work', pct: 56, zero: true },
+  ];
+
+  return (
+    <section ref={ref} className="border-y bg-[var(--c-surface-muted)]" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-px md:grid-cols-4">
+        {items.map((it, i) => (
+          <div
+            key={it.label}
+            className="relative overflow-hidden bg-[var(--c-app-bg)] px-6 py-7"
+            style={{ borderLeft: i > 0 ? '1px solid var(--c-border)' : undefined }}
           >
-            <div className="mb-12 text-center">
-              <h3 className="tight-headline mb-4 text-3xl font-black">
-                Written in the language you love
-              </h3>
-              <p className="text-on-surface-variant">
-                Python SDK helpers for traces, spans, sessions, and timeline events.
+            <div className="font-mono text-[36px] font-semibold tracking-[-0.02em] text-[var(--c-text-primary)] sm:text-[44px]">
+              {it.value}
+            </div>
+            <div className="mt-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-accent-text)]">
+              {it.label}
+            </div>
+            <div className="mt-1.5 text-[11.5px] leading-5 text-[var(--c-text-muted)]">{it.hint}</div>
+            <div
+              className="absolute bottom-0 left-0 h-[2px] transition-[width] duration-1000"
+              style={{
+                width: inView ? `${it.pct}%` : '0%',
+                background: it.zero ? 'var(--c-green)' : 'var(--c-accent)',
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Manifesto() {
+  return (
+    <section className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-5xl px-6 py-28 sm:py-32">
+        <div className="flex items-start gap-5 sm:gap-7">
+          <span className="select-none pt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--c-text-muted)]">¶ 02</span>
+          <div className="flex-1">
+            <h2 className="landing-display text-[36px] font-semibold tracking-[-0.03em] text-[var(--c-text-primary)] sm:text-[52px]">
+              Spans are first-class.
+              <br />
+              <span className="text-[var(--c-text-muted)]">Logs are aftermath.</span>
+            </h2>
+            <div className="mt-7 grid gap-x-10 gap-y-3 text-[14.5px] leading-7 text-[var(--c-text-secondary)] sm:grid-cols-2">
+              <p>
+                Most teams ship agents to production and then reconstruct the run from{' '}
+                <code className="mx-1 rounded-[3px] border bg-[var(--c-surface)] px-1 font-mono text-[12.5px]" style={{ borderColor: 'var(--c-border)' }}>
+                  stdout
+                </code>
+                and stack traces.
+              </p>
+              <p>
+                Continua flips the model: retries, payloads, and state transitions are captured
+                as they happen, then made queryable from the console.
               </p>
             </div>
-            <div className="overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-editorial">
-              <div className="flex overflow-x-auto border-b border-outline-variant/10 whitespace-nowrap">
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LogsVsTraces() {
+  return (
+    <section id="product" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-7xl px-6 py-24">
+        <SectionHeader
+          eyebrow={<SpanEyebrow idx={1} kind="SECTION" name="before / after" status="ok" />}
+          title={<>Stop scrolling logs.<br /><span className="text-[var(--c-text-muted)]">Read the trace.</span></>}
+          copy="The same agent run, two ways. On the left, a legacy stdout dump. On the right, the same execution captured as a structured Continua trace."
+        />
+        <Reveal>
+          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border md:grid-cols-2" style={{ borderColor: 'var(--c-border)', background: 'var(--c-border)' }}>
+            <BeforeTerminal />
+            <AfterTrace />
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function BeforeTerminal() {
+  const ref = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+    const el = ref.current;
+    if (!el) return;
+    let scroll = 0;
+    const id = window.setInterval(() => {
+      scroll = (scroll + 0.4) % el.scrollHeight;
+      el.scrollTop = scroll;
+    }, 60);
+    return () => window.clearInterval(id);
+  }, [prefersReducedMotion]);
+
+  return (
+    <div className="relative bg-[#0a0b0f]">
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-rose-400">stdout</span>
+          <span className="text-[10px] text-zinc-500">$ python agent.py</span>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-[3px] border border-rose-300/30 bg-rose-400/10 px-1.5 py-0.5 text-[9.5px] font-medium text-rose-300">
+          <span className="h-1 w-1 rounded-full bg-rose-400" />
+          root cause unclear
+        </span>
+      </div>
+      <div ref={ref} className="overflow-hidden px-4 py-3 font-mono text-[10.5px] leading-[1.7] text-zinc-400" style={{ height: 340 }}>
+        {[...LOG_LINES, ...LOG_LINES, ...LOG_LINES].map(([tone, line], i) => (
+          <div key={`${line}-${i}`} className={tone === 'red' ? 'text-rose-300' : 'text-slate-400'} style={{ whiteSpace: 'pre' }}>
+            {line}
+          </div>
+        ))}
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-[#0a0b0f]" />
+    </div>
+  );
+}
+
+function AfterTrace() {
+  return (
+    <div className="bg-[var(--c-app-bg)]">
+      <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: 'var(--c-border)' }}>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--c-accent-text)]">trace</span>
+          <span className="font-mono text-[10px] text-[var(--c-text-muted)]">trc_8f2a91c4</span>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-[3px] border bg-[var(--c-green-faint)] px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--c-green-text)]" style={{ borderColor: 'var(--c-green-border)' }}>
+          <span className="h-1 w-1 rounded-full bg-[var(--c-green)]" />
+          retry recovered
+        </span>
+      </div>
+      <div className="py-2" style={{ height: 340 }}>
+        {AFTER_SPANS.map((span, i) => {
+          const colors = toneColors(span.tone);
+          return (
+            <div
+              key={`${span.name}-${span.start}`}
+              className="grid items-center gap-2 px-4"
+              style={{
+                gridTemplateColumns: 'minmax(116px,152px) 1fr 44px',
+                height: 30,
+                borderBottom: '1px solid var(--c-border-subtle)',
+                background: i === 3 ? 'var(--c-row-hover-bg)' : 'transparent',
+              }}
+            >
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="w-8 shrink-0 font-mono text-[9px] uppercase tracking-wide text-[var(--c-text-muted)]">{span.kind}</span>
+                <span
+                  className="truncate font-mono text-[11px]"
+                  style={{
+                    color: span.tone === 'fail' ? 'var(--c-red-text)' : 'var(--c-text-primary)',
+                    paddingLeft: span.depth * 8,
+                    fontWeight: span.depth === 0 ? 600 : 500,
+                  }}
+                >
+                  {span.name}
+                  {'retry' in span && span.retry ? <span className="ml-1 text-[var(--c-amber-text)]">↻</span> : null}
+                </span>
+              </div>
+              <div className="relative h-2">
+                <div className="absolute top-1/2 rounded-[2px]" style={{ left: `${span.start}%`, width: `${span.dur}%`, height: 8, background: colors.bg, border: `1px solid ${colors.border}`, transform: 'translateY(-50%)' }} />
+                <div className="absolute top-1/2 rounded-[2px]" style={{ left: `${span.start}%`, width: `${span.dur}%`, height: 8, background: colors.fill, transform: 'translateY(-50%)' }} />
+              </div>
+              <span className="text-right font-mono text-[10px] tabular-nums text-[var(--c-text-muted)]">{Math.round(span.dur * 88)}ms</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AnatomySection() {
+  const cards = [
+    { eyebrow: 'Span tree', title: 'Drill any depth', copy: 'Nested chains, parallel calls, retried tools, and the whole call graph inline.', visual: <SpanTreeVisual /> },
+    { eyebrow: 'Payload inspector', title: 'See every byte', copy: 'Inputs, outputs, errors, and JSON payloads stay attached to the span.', visual: <PayloadVisual /> },
+    { eyebrow: 'Failure summary', title: 'Get to root cause', copy: 'The first failing span, retry chain, and stack are already wired together.', visual: <FailureVisual /> },
+  ];
+
+  return (
+    <section id="how" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-7xl px-6 py-24">
+        <SectionHeader
+          eyebrow={<SpanEyebrow idx={4} kind="SECTION" name="anatomy" status="ok" />}
+          title={<>Everything an operator needs,<br /><span className="text-[var(--c-text-muted)]">on one screen.</span></>}
+        />
+        <div className="grid gap-6 lg:grid-cols-3">
+          {cards.map((card) => (
+            <Reveal key={card.title}>
+              <div className="overflow-hidden rounded-lg border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
+                <div className="border-b bg-[var(--c-surface-muted)]" style={{ borderColor: 'var(--c-border)' }}>{card.visual}</div>
+                <div className="p-5">
+                  <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-accent-text)]">{card.eyebrow}</div>
+                  <h3 className="mt-2 text-[15px] font-semibold tracking-[-0.01em] text-[var(--c-text-primary)]">{card.title}</h3>
+                  <p className="mt-1.5 text-[12.5px] leading-5 text-[var(--c-text-secondary)]">{card.copy}</p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StackDiagram() {
+  return (
+    <section className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-7xl px-6 py-24">
+        <div className="grid gap-12 md:grid-cols-2">
+          <div>
+            <SpanEyebrow idx={3} kind="SECTION" name="what's in the box" status="ok" />
+            <h2 className="landing-display mt-4 text-[32px] font-semibold tracking-[-0.025em] text-[var(--c-text-primary)] sm:text-[40px]">
+              One binary,
+              <br />
+              one Postgres.
+            </h2>
+            <p className="mt-4 max-w-md text-[14px] leading-6 text-[var(--c-text-secondary)]">
+              The stack is a Go service, a Postgres database, and a React console served from the
+              same binary. River queues handle async ingest, rollups, and cleanup.
+            </p>
+            <ul className="mt-6 space-y-2">
+              {[
+                ['Go service', 'Fx-wired modules under internal/'],
+                ['Postgres', 'Idempotent ingest, sqlc-typed queries'],
+                ['River', 'Async jobs: rollups, cleanup, dependencies'],
+                ['React console', 'Embedded SPA served from /'],
+                ['SDKs', 'Python real, TypeScript stub'],
+              ].map(([k, v]) => (
+                <li key={k} className="flex items-baseline gap-3 text-[12.5px]">
+                  <span className="w-[110px] shrink-0 font-mono font-medium text-[var(--c-text-primary)]">{k}</span>
+                  <span className="text-[var(--c-text-secondary)]">{v}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <Reveal>
+            <div className="relative rounded-xl border bg-[var(--c-surface-muted)] p-6" style={{ borderColor: 'var(--c-border)' }}>
+              <Layer label="Your code" sub="agent.py · @trace · span()" tone="muted" />
+              <Connector label="import" />
+              <Layer label="Python SDK" sub="continua · batching · helpers" tone="accent" />
+              <Connector label="POST /v1/ingest · HTTPS" />
+              <Layer label="Continua service · Go" sub="auth · ingest · mappers" tone="primary" split={[['Postgres', 'sqlc + migrations'], ['River', 'async workers']]} />
+              <Connector label="engine preview surface" />
+              <Layer label="Durable engine · planned runtime" sub="control APIs · pending work · history" tone="muted" />
+              <Connector label="GET /api/*" />
+              <Layer label="Operator console · React" sub="traces · sessions · settings" tone="accent" />
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SdkSection({ isConsoleAvailable }: { isConsoleAvailable: boolean }) {
+  const [active, setActive] = useState(0);
+  const panelId = `sdk-tabpanel-${CODE_TABS[active].file.replace('.', '-')}`;
+
+  const selectAdjacentTab = (direction: -1 | 1) => {
+    setActive((current) => (current + direction + CODE_TABS.length) % CODE_TABS.length);
+  };
+
+  return (
+    <section id="sdk" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-7xl px-6 py-24">
+        <SectionHeader
+          eyebrow={<SpanEyebrow idx={5} kind="SECTION" name="sdk" status="ok" />}
+          title={<>Two decorators<br /><span className="text-[var(--c-text-muted)]">and you're traced.</span></>}
+          copy="The Python SDK batches spans, polls async ingest, and ships helpers for traces, spans, and sessions."
+        />
+        <Reveal>
+          <div className="overflow-hidden rounded-xl border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
+            <div className="flex items-center justify-between border-b bg-[var(--c-surface-muted)] px-1" style={{ borderColor: 'var(--c-border)' }}>
+              <div
+                role="tablist"
+                aria-label="Python SDK examples"
+                className="flex overflow-x-auto"
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowRight') {
+                    event.preventDefault();
+                    selectAdjacentTab(1);
+                  }
+                  if (event.key === 'ArrowLeft') {
+                    event.preventDefault();
+                    selectAdjacentTab(-1);
+                  }
+                }}
+              >
                 {CODE_TABS.map((tab, i) => (
                   <button
-                    key={tab.label}
+                    key={tab.file}
                     type="button"
-                    onClick={() => setActiveTab(i)}
-                    className={`shrink-0 border-b-2 px-4 py-3 text-xs font-bold transition-all sm:px-6 sm:py-4 sm:text-sm ${
-                      activeTab === i
-                        ? 'border-primary-container text-primary-container'
-                        : 'border-transparent text-on-surface-variant hover:text-on-surface'
-                    }`}
+                    role="tab"
+                    id={`sdk-tab-${tab.file.replace('.', '-')}`}
+                    aria-controls={`sdk-tabpanel-${tab.file.replace('.', '-')}`}
+                    aria-selected={active === i}
+                    tabIndex={active === i ? 0 : -1}
+                    onClick={() => setActive(i)}
+                    className="inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 font-mono text-[11px] font-medium transition"
+                    style={{
+                      borderColor: active === i ? 'var(--c-accent)' : 'transparent',
+                      color: active === i ? 'var(--c-text-primary)' : 'var(--c-text-muted)',
+                      background: active === i ? 'var(--c-surface)' : 'transparent',
+                    }}
                   >
-                    {tab.label}
+                    <Terminal size={11} />
+                    {tab.file}
                   </button>
                 ))}
               </div>
-              <div className="p-8 md:p-12">{CODE_TABS[activeTab].content}</div>
+              <span className="hidden px-3 font-mono text-[9.5px] uppercase tracking-[0.12em] text-[var(--c-text-muted)] sm:block">Python · 3.11</span>
             </div>
-          </section>
-        </ScrollReveal>
-
-        {/* ── Integration Grid ── */}
-        <ScrollReveal>
-          <section className="mx-auto max-w-7xl px-6 py-24 text-center">
-            <h3 className="mb-12 text-sm font-black uppercase tracking-widest text-on-surface-variant/50">
-              Works with your existing tech stack
-            </h3>
-            <div className="grid grid-cols-2 gap-8 opacity-40 grayscale transition-all duration-500 hover:grayscale-0 md:grid-cols-6">
-              <IntegrationItem icon="terminal" name="NEXT.JS" />
-              <IntegrationItem icon="cloud_queue" name="VERCEL" />
-              <IntegrationItem icon="database" name="SUPABASE" />
-              <IntegrationItem icon="hub" name="GITHUB" />
-              <IntegrationItem icon="javascript" name="NODE.JS" />
-              <IntegrationItem icon="deployed_code" name="DOCKER" />
-            </div>
-          </section>
-        </ScrollReveal>
-
-        {/* ── Open Source Trust Section ── */}
-        <ScrollReveal>
-          <section
-            id="open-source"
-            className="scroll-mt-32 bg-zinc-900 py-24 text-white"
-          >
-            <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-12 px-6 md:flex-row">
-              <div className="max-w-xl">
-                <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-primary-fixed">
-                    Proudly Open Source
-                  </span>
+            <div className="grid lg:grid-cols-[1fr_360px]">
+              <pre
+                role="tabpanel"
+                id={panelId}
+                aria-labelledby={`sdk-tab-${CODE_TABS[active].file.replace('.', '-')}`}
+                className="overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-[1.75] text-[var(--c-text-primary)]"
+              >
+                {CODE_TABS[active].rows.map(([tag, text], i) => (
+                  <span key={`${tag}-${i}`} style={{ color: codeColor(tag) }}>{text}</span>
+                ))}
+              </pre>
+              <aside className="border-t bg-[var(--c-surface-muted)] lg:border-l lg:border-t-0" style={{ borderColor: 'var(--c-border)' }}>
+                <div className="px-4 pb-2 pt-4">
+                  <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Renders to console</div>
+                  <div className="mt-1 text-[11px] text-[var(--c-text-secondary)]">What the operator sees after this code runs.</div>
                 </div>
-                <h2 className="tight-headline mb-6 text-4xl font-black md:text-5xl">
-                  Built in public, for the community.
-                </h2>
-                <p className="mb-8 text-lg text-zinc-400">
-                  Continua is Apache 2.0 licensed. Self-host it, inspect the
-                  code, and keep ownership of your infrastructure.
-                </p>
-                <div className="flex gap-4">
-                  <a
-                    href={GITHUB_REPO_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 rounded-full bg-white px-8 py-3 font-bold text-zinc-900 transition-colors hover:bg-zinc-200"
-                  >
-                    <span className="material-symbols-outlined">terminal</span>{' '}
-                    View GitHub
-                  </a>
-                  <a
-                    href={GITHUB_LICENSE_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full border border-white/10 bg-white/5 px-8 py-3 font-bold transition-colors hover:bg-white/10"
-                  >
-                    Read License
-                  </a>
-                </div>
-              </div>
-              <div className="max-w-md rounded-xl border border-white/10 bg-white/5 p-8 text-left">
-                <div className="text-xs font-black uppercase tracking-[0.2em] text-primary-fixed">
-                  Repository
-                </div>
-                <p className="mt-4 text-3xl font-black tracking-tight text-white">
-                  Source code, license, and local setup docs.
-                </p>
-                <p className="mt-4 text-sm leading-6 text-zinc-400">
-                  Use the repository to review the implementation, run the
-                  debugger locally, and follow the Apache 2.0 license terms.
-                </p>
-              </div>
+                <CodeOutputPanel variant={active} isConsoleAvailable={isConsoleAvailable} />
+              </aside>
             </div>
-          </section>
-        </ScrollReveal>
-
-        {/* ── Final CTA ── */}
-        <ScrollReveal>
-          <section
-            id="get-started"
-            className="mx-auto max-w-7xl scroll-mt-32 px-6 py-32 text-center"
-          >
-            <div className="flex flex-col items-center rounded-lg bg-on-surface px-6 py-24 text-surface-container-lowest">
-              <h2 className="tight-headline mb-10 max-w-4xl text-4xl font-black md:text-7xl">
-                Ready to build the{' '}
-                <span className="text-primary-fixed">immortal agent</span>?
-              </h2>
-              <div className="flex flex-col gap-6 sm:flex-row">
-                {isConsoleAvailable ? (
-                  <Link
-                    to="/dashboard"
-                    className="rounded-full bg-primary-container px-12 py-5 text-xl font-black text-white transition-all hover:bg-primary"
-                  >
-                    {isPublicDemo ? 'Open the public demo' : 'Open the operator console'}
-                  </Link>
-                ) : (
-                  <a
-                    href={RUN_LOCALLY_DOCS_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full bg-primary-container px-12 py-5 text-xl font-black text-white transition-all hover:bg-primary"
-                  >
-                    Run locally
-                  </a>
-                )}
-                <a
-                  href={isPublicDemo ? RUN_LOCALLY_DOCS_URL : GITHUB_DOCS_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-full border border-white/20 bg-white/10 px-12 py-5 text-xl font-black text-white transition-all hover:bg-white/20"
-                >
-                  {isPublicDemo ? 'Run locally' : 'Read the docs'}
-                </a>
-              </div>
-              <p className="mt-8 text-sm font-medium text-surface-container opacity-60">
-                {isPublicDemo
-                  ? 'Hosted demo uses safe sample data. Local self-hosting is the path for real traces.'
-                  : isConsoleAvailable
-                    ? 'Open the console or read the local setup guide.'
-                    : 'The hosted Pages site is static. Run locally to open the console with your own data.'}
-              </p>
-            </div>
-          </section>
-        </ScrollReveal>
-      </main>
-
-      {/* ── Footer ── */}
-      <footer className="w-full border-t border-outline-variant/10 bg-zinc-50 px-6 py-12">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-8 md:flex-row">
-          <div className="flex flex-col gap-4">
-            <div className="text-lg font-black uppercase tracking-tighter text-zinc-900">
-              Continua
-            </div>
-            <p className="max-w-xs text-sm leading-relaxed text-zinc-500">
-              &copy; 2026 Continua durable execution tooling. Built for
-              technical precision.
-            </p>
           </div>
-          <div className="flex flex-wrap justify-center gap-8">
-            <a
-              className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
-              href={GITHUB_DOCS_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Documentation
-            </a>
-            <a
-              className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
-              href={GITHUB_OPENAPI_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              API Reference
-            </a>
-            <a
-              className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
-              href={GITHUB_LICENSE_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              License
-            </a>
-            {isConsoleAvailable ? (
-              <Link
-                className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
-                to="/dashboard"
-              >
-                {footerConsoleLabel}
-              </Link>
-            ) : (
-              <a
-                className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
-                href={RUN_LOCALLY_DOCS_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {footerConsoleLabel}
-              </a>
-            )}
-            <a
-              className="text-sm font-semibold uppercase tracking-wide text-zinc-500 transition-colors hover:text-zinc-900"
-              href={RUN_LOCALLY_DOCS_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Run locally
-            </a>
-          </div>
-          <div className="flex gap-4">
-            <a
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition-colors hover:bg-surface-container-high"
-              href={GITHUB_REPO_URL}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Open Continua on GitHub"
-            >
-              <span className="material-symbols-outlined text-zinc-900">
-                terminal
-              </span>
-            </a>
-            {isConsoleAvailable ? (
-              <Link
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition-colors hover:bg-surface-container-high"
-                to="/dashboard"
-                aria-label="Open the Continua operator console"
-              >
-                <span className="material-symbols-outlined text-zinc-900">
-                  hub
-                </span>
-              </Link>
-            ) : (
-              <a
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container transition-colors hover:bg-surface-container-high"
-                href={RUN_LOCALLY_DOCS_URL}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Open the local setup guide"
-              >
-                <span className="material-symbols-outlined text-zinc-900">
-                  hub
-                </span>
-              </a>
-            )}
-          </div>
-        </div>
-      </footer>
-    </div>
+        </Reveal>
+      </div>
+    </section>
   );
 }
 
-/* ── Sub-components ──────────────────────────────────────────────── */
+function OpenSourceSection() {
+  return (
+    <section id="open-source" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-7xl px-6 py-24">
+        <div className="grid gap-12 md:grid-cols-[1fr_360px]">
+          <div>
+            <SpanEyebrow idx={6} kind="SECTION" name="open_source" status="ok" />
+            <h2 className="landing-display mt-4 text-[32px] font-semibold tracking-[-0.025em] text-[var(--c-text-primary)] sm:text-[44px]">
+              Built in public.
+              <br />
+              <span className="text-[var(--c-text-muted)]">Run it on your laptop.</span>
+            </h2>
+            <p className="mt-4 max-w-lg text-[14px] leading-6 text-[var(--c-text-secondary)]">
+              Continua is MIT licensed. The Go service, React console, Python SDK, migrations,
+              and engine preview contracts are open. Self-host with one command, and keep traces
+              inside your network.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <ExternalLink
+                href={GITHUB_REPO_URL}
+                className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md px-3.5 text-[13px] font-semibold"
+                style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
+              >
+                <Github size={14} />
+                View on GitHub
+              </ExternalLink>
+              <ExternalLink
+                href={RUN_LOCALLY_DOCS_URL}
+                className="inline-flex h-9 items-center gap-2 rounded-md border bg-[var(--c-surface)] px-3.5 text-[13px] font-medium text-[var(--c-text-primary)]"
+                style={{ borderColor: 'var(--c-border)' }}
+              >
+                <Terminal size={13} />
+                Run locally
+              </ExternalLink>
+            </div>
+          </div>
+          <RepoCard />
+        </div>
+      </div>
+    </section>
+  );
+}
 
-function WorkflowStep({
-  icon,
-  label,
-  detail,
-  bgClass,
-  iconColor,
-  isLast,
-  detailClass,
+function CtaSection({
+  consoleLabel,
+  isConsoleAvailable,
+  isPublicDemo,
 }: {
-  icon: string;
-  label: string;
-  detail: string;
-  bgClass: string;
-  iconColor: string;
-  isLast: boolean;
-  detailClass?: string;
+  consoleLabel: string;
+  isConsoleAvailable: boolean;
+  isPublicDemo: boolean;
 }) {
   return (
-    <div
-      className={`relative flex min-w-[170px] flex-col items-center text-center ${!isLast ? 'marketing-workflow-step' : ''}`}
-    >
-      <div
-        className={`mb-7 flex h-24 w-24 items-center justify-center rounded-full ${bgClass}`}
-      >
-        <span className={`material-symbols-outlined text-[42px] leading-none ${iconColor}`}>
-          {icon}
-        </span>
+    <section className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-7xl px-6 py-24">
+        <div className="relative overflow-hidden rounded-xl px-6 py-14 text-center sm:px-10 sm:py-20" style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}>
+          <div className="landing-cta-grid absolute inset-0 opacity-30" />
+          <div className="relative">
+            <div className="inline-flex items-center gap-2 rounded-[4px] border border-white/20 bg-white/5 px-2 py-1 font-mono text-[10px] text-white/70">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#10b981]" />
+              {isPublicDemo ? 'demo_ready' : 'ready_to_trace'}
+            </div>
+            <h2 className="landing-display mx-auto mt-5 max-w-3xl text-[40px] font-semibold tracking-[-0.025em] sm:text-[56px]">
+              Trace your first agent
+              <br />
+              in <span className="text-[#79b4f5]">under sixty seconds</span>.
+            </h2>
+            <div className="mt-7 flex flex-wrap justify-center gap-2">
+              {isConsoleAvailable ? (
+                <Link to="/dashboard" className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-[14px] font-semibold" style={{ background: 'var(--c-app-bg)', color: 'var(--c-text-primary)' }}>
+                  {consoleLabel} <ArrowRight size={14} />
+                </Link>
+              ) : (
+                <ExternalLink href={RUN_LOCALLY_DOCS_URL} className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-[14px] font-semibold" style={{ background: 'var(--c-app-bg)', color: 'var(--c-text-primary)' }}>
+                  {consoleLabel} <ArrowRight size={14} />
+                </ExternalLink>
+              )}
+              <ExternalLink href={GITHUB_REPO_URL} className="inline-flex h-10 items-center gap-2 rounded-md border border-white/20 bg-white/5 px-4 text-[14px] font-medium text-white/90">
+                <Github size={14} />
+                Star on GitHub
+              </ExternalLink>
+            </div>
+          </div>
+        </div>
       </div>
-      <span className="text-[22px] font-black leading-7 text-[#1b1b1b]">
-        {label}
-      </span>
-      <span
-        className={`mt-1 whitespace-nowrap text-lg leading-6 ${detailClass ?? 'text-[#404753]'}`}
-      >
-        {detail}
-      </span>
-    </div>
+    </section>
   );
 }
 
-interface Concept {
-  src: string;
-  alt: string;
-  title: string;
-  description: string;
-}
+function Footer({
+  isConsoleAvailable,
+}: {
+  isConsoleAvailable: boolean;
+}) {
+  const columns = [
+    { label: 'Product', links: [['Console', '/dashboard'], ['Traces', '/traces'], ['Sessions', '/sessions'], ['Changelog', `${GITHUB_REPO_URL}/blob/main/CHANGELOG.md`]] },
+    { label: 'Develop', links: [['Docs', DOCS_URL], ['API reference', API_REFERENCE_URL], ['Python SDK', PYTHON_SDK_DOCS_URL], ['Run locally', RUN_LOCALLY_DOCS_URL]] },
+    { label: 'Open source', links: [['GitHub', GITHUB_REPO_URL], ['License', GITHUB_LICENSE_URL], ['Contributing', `${GITHUB_REPO_URL}/blob/main/CONTRIBUTING.md`], ['Architecture', ARCHITECTURE_DOCS_URL]] },
+  ];
 
-const CONCEPTS: Concept[] = [
-  {
-    src: '/illustrations/durable-execution.svg',
-    alt: 'Durable execution',
-    title: 'Durable execution',
-    description:
-      'Workflows run through crashes. State is preserved and execution resumes from the last checkpoint.',
-  },
-  {
-    src: '/illustrations/retry-recovery.svg',
-    alt: 'Retry and recovery',
-    title: 'Retry & recovery',
-    description:
-      'Failed attempts surface in the timeline. Successful retries close the loop without duplicate work.',
-  },
-  {
-    src: '/illustrations/orchestration.svg',
-    alt: 'Workflow orchestration',
-    title: 'Workflow orchestration',
-    description:
-      'Trigger, branch, join, done. Compose durable DAGs from steps you already know how to write.',
-  },
-  {
-    src: '/illustrations/scheduling.svg',
-    alt: 'Scheduling',
-    title: 'Scheduling',
-    description:
-      'Cron-based runs with queued ticks. Fires on time, every time, even across restarts.',
-  },
-  {
-    src: '/illustrations/observability.svg',
-    alt: 'Observability',
-    title: 'Observability',
-    description:
-      'Every span on a waterfall, every payload inspectable. Move from signal to root cause quickly.',
-  },
-  {
-    src: '/illustrations/checkpointing.svg',
-    alt: 'State checkpointing',
-    title: 'State checkpointing',
-    description:
-      'An append-only journal, committed layer by layer. Replay-safe and hash-verified.',
-  },
-  {
-    src: '/illustrations/background-jobs.svg',
-    alt: 'Resilient background jobs',
-    title: 'Resilient background jobs',
-    description:
-      'Dispatcher fans out to a pool of workers. Long-running work survives the network.',
-  },
-  {
-    src: '/illustrations/execution-timeline.svg',
-    alt: 'Execution timeline',
-    title: 'Execution timeline',
-    description:
-      'Segmented progress with completed, running, and scheduled steps. A NOW marker anchors the frame.',
-  },
-];
-
-function ConceptCard({ src, alt, title, description }: Concept) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-lowest transition-colors hover:border-primary-container/30">
-      <div className="aspect-[4/3] border-b border-outline-variant/10 bg-surface-container">
-        <img src={src} alt={alt} className="block h-full w-full" />
+    <footer className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-7xl px-6 py-14">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <Logo />
+              <span className="text-[14px] font-semibold tracking-tight">Continua</span>
+            </div>
+            <p className="mt-4 max-w-xs text-[12px] leading-5 text-[var(--c-text-muted)]">AI agent observability today, durable execution tomorrow. MIT licensed.</p>
+            <div className="mt-5 font-mono text-[10px] text-[var(--c-text-muted)]">© 2026 · alpha</div>
+          </div>
+          {columns.map((col) => (
+            <div key={col.label}>
+              <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">{col.label}</div>
+              <ul className="mt-3 space-y-2">
+                {col.links.map(([label, href]) => (
+                  <li key={label}>
+                    {href.startsWith('http') ? (
+                      <ExternalLink href={href} className="text-[12.5px] text-[var(--c-text-secondary)] transition hover:text-[var(--c-text-primary)]">{label}</ExternalLink>
+                    ) : !isConsoleAvailable ? (
+                      <ExternalLink href={RUN_LOCALLY_DOCS_URL} className="text-[12.5px] text-[var(--c-text-secondary)] transition hover:text-[var(--c-text-primary)]">{label}</ExternalLink>
+                    ) : (
+                      <Link to={href} className="text-[12.5px] text-[var(--c-text-secondary)] transition hover:text-[var(--c-text-primary)]">{label}</Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t pt-6 text-[11px] text-[var(--c-text-muted)] sm:flex-row sm:items-center" style={{ borderColor: 'var(--c-border)' }}>
+          <span className="inline-flex items-center gap-2 font-mono">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)]" />
+            All systems operational
+          </span>
+          <span className="font-mono">trc_landing · 2026-05-16</span>
+        </div>
       </div>
-      <div className="flex flex-1 flex-col gap-2 p-6">
-        <h4 className="text-lg font-black tracking-tight">{title}</h4>
-        <p className="text-sm leading-relaxed text-on-surface-variant">
-          {description}
-        </p>
+    </footer>
+  );
+}
+
+function SpanEyebrow({
+  idx,
+  name,
+  kind,
+  status = 'ok',
+  dur,
+}: {
+  idx: number;
+  name: string;
+  kind: string;
+  status?: SpanTone;
+  dur?: string;
+}) {
+  const c = status === 'fail'
+    ? { dot: 'var(--c-red)', text: 'var(--c-red-text)', label: 'failed' }
+    : status === 'run'
+      ? { dot: 'var(--c-accent)', text: 'var(--c-accent-text)', label: 'running' }
+      : { dot: 'var(--c-green)', text: 'var(--c-green-text)', label: 'ok' };
+
+  return (
+    <div className="inline-flex items-center gap-2 rounded-[4px] border bg-[var(--c-surface)] px-2 py-1 font-mono text-[10px] text-[var(--c-text-muted)]" style={{ borderColor: 'var(--c-border)' }}>
+      <span className="tabular-nums">[{String(idx).padStart(2, '0')}]</span>
+      <span>·</span>
+      <span className="uppercase tracking-[0.04em] text-[var(--c-text-secondary)]">{kind}</span>
+      <span className="font-semibold text-[var(--c-text-primary)]">{name}</span>
+      {dur ? <><span>·</span><span className="tabular-nums">{dur}</span></> : null}
+      <span>·</span>
+      <span className="inline-flex items-center gap-1" style={{ color: c.text }}>
+        <span className="h-1 w-1 rounded-full" style={{ background: c.dot }} />
+        {c.label}
+      </span>
+    </div>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  copy,
+}: {
+  eyebrow: ReactNode;
+  title: ReactNode;
+  copy?: string;
+}) {
+  return (
+    <div className="mb-10 max-w-3xl">
+      {eyebrow}
+      <h2 className="landing-display mt-4 text-[32px] font-semibold tracking-[-0.025em] text-[var(--c-text-primary)] sm:text-[44px]">{title}</h2>
+      {copy ? <p className="mt-4 max-w-2xl text-[14px] leading-6 text-[var(--c-text-secondary)]">{copy}</p> : null}
+    </div>
+  );
+}
+
+function Logo() {
+  return (
+    <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
+  );
+}
+
+function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver !== 'function') {
+      el.classList.add('in');
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          window.setTimeout(() => entry.target.classList.add('in'), delay);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.08 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [delay]);
+
+  return <div ref={ref} className="landing-reveal">{children}</div>;
+}
+
+function useInView<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver !== 'function') {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) {
+        setInView(true);
+        observer.unobserve(el);
+      }
+    }, { threshold: 0.2 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, inView] as const;
+}
+
+function Kpi({ label, value, border, tone }: { label: string; value: ReactNode; border?: boolean; tone?: 'amber' }) {
+  return (
+    <div className="px-3 py-2" style={{ borderLeft: border ? '1px solid var(--c-border)' : undefined }}>
+      <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--c-text-muted)]">{label}</div>
+      <div className="mt-0.5 font-mono text-[12.5px] font-semibold tabular-nums" style={{ color: tone === 'amber' ? 'var(--c-amber-text)' : 'var(--c-text-primary)' }}>{value}</div>
+    </div>
+  );
+}
+
+function SpanTreeVisual() {
+  const rows = [
+    ['agent.run', 'TRACE', 0, '#10b981'],
+    ['plan', 'LLM', 1, '#10b981'],
+    ['tools', 'CHAIN', 1, '#10b981'],
+    ['search', 'TOOL', 2, '#10b981'],
+    ['fetch', 'TOOL', 2, '#ef4444'],
+    ['fetch ↻', 'TOOL', 2, '#10b981'],
+    ['compose', 'LLM', 1, '#3b82f6'],
+  ] as const;
+  return (
+    <div className="px-3 py-3" style={{ height: 180 }}>
+      {rows.map(([name, kind, depth, dot]) => (
+        <div key={`${name}-${depth}`} className="flex items-center gap-1.5 py-1 text-[10.5px]" style={{ paddingLeft: depth * 10 }}>
+          <ChevronRight size={9} className="text-[var(--c-text-muted)]" style={{ transform: depth < 2 ? 'rotate(90deg)' : 'none', opacity: depth < 2 ? 0.8 : 0 }} />
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: dot }} />
+          <span className="w-[28px] shrink-0 font-mono text-[8.5px] uppercase tracking-wide text-[var(--c-text-muted)]">{kind}</span>
+          <span className="truncate font-mono" style={{ color: dot === '#ef4444' ? 'var(--c-red-text)' : 'var(--c-text-primary)' }}>{name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PayloadVisual() {
+  return (
+    <div className="px-3 py-3" style={{ height: 180 }}>
+      <div className="font-mono text-[10px] leading-[1.7] text-[var(--c-text-secondary)]">
+        <div>{'{'}</div>
+        <div className="pl-3"><span className="text-[var(--c-amber-text)]">"model"</span>: <span className="text-[var(--c-green-text)]">"gpt-4"</span>,</div>
+        <div className="pl-3"><span className="text-[var(--c-amber-text)]">"prompt"</span>: <span className="text-[var(--c-green-text)]">"summarize the corpus..."</span>,</div>
+        <div className="pl-3"><span className="text-[var(--c-amber-text)]">"tokens"</span>: {'{'}</div>
+        <div className="pl-6"><span className="text-[var(--c-amber-text)]">"in"</span>: <span className="text-[var(--c-accent-text)]">50</span>,</div>
+        <div className="pl-6"><span className="text-[var(--c-amber-text)]">"out"</span>: <span className="text-[var(--c-accent-text)]">312</span></div>
+        <div className="pl-3">{'}'},</div>
+        <div className="pl-3"><span className="text-[var(--c-amber-text)]">"latency_ms"</span>: <span className="text-[var(--c-accent-text)]">1843</span></div>
+        <div>{'}'}</div>
       </div>
     </div>
   );
 }
 
-function IntegrationItem({ icon, name }: { icon: string; name: string }) {
+function FailureVisual() {
   return (
-    <div className="flex flex-col items-center gap-2">
-      <span className="material-symbols-outlined text-4xl">{icon}</span>
-      <span className="font-mono text-xs font-bold">{name}</span>
+    <div className="px-3 py-3" style={{ height: 180 }}>
+      <div className="mb-2 inline-flex items-center gap-1.5 rounded-[3px] border bg-[var(--c-red-faint)] px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--c-red-text)]" style={{ borderColor: 'var(--c-red-border)' }}>
+        <span className="h-1 w-1 rounded-full bg-[var(--c-red)]" />
+        TimeoutError · attempt 1
+      </div>
+      <div className="mt-2 rounded-md border bg-[var(--c-app-bg)] p-2 font-mono text-[10px]" style={{ borderColor: 'var(--c-border)' }}>
+        <div className="text-[var(--c-red-text)]">requests.exceptions.TimeoutError</div>
+        <div className="text-[var(--c-text-muted)]">at tools/fetch.py:18 in fetch_data</div>
+        <div className="mt-2 text-[var(--c-text-secondary)]">→ <span className="text-[var(--c-green-text)]">retry succeeded</span> at 14:22:25</div>
+      </div>
+      <div className="mt-3 flex items-center justify-between font-mono text-[9.5px] text-[var(--c-text-muted)]">
+        <span>span_id · spn_4a7c</span>
+        <span className="text-[var(--c-accent-text)]">open span →</span>
+      </div>
     </div>
   );
+}
+
+function Layer({
+  label,
+  sub,
+  tone,
+  split,
+}: {
+  label: string;
+  sub: string;
+  tone: 'muted' | 'accent' | 'primary';
+  split?: readonly (readonly [string, string])[];
+}) {
+  const styles = {
+    muted: { bg: 'var(--c-surface)', border: 'var(--c-border)', label: 'var(--c-text-primary)' },
+    accent: { bg: 'var(--c-accent-faint)', border: 'var(--c-accent-border)', label: 'var(--c-accent-text)' },
+    primary: { bg: 'var(--c-text-primary)', border: 'var(--c-text-primary)', label: 'var(--c-app-bg)' },
+  }[tone];
+
+  return (
+    <div className="rounded-md border" style={{ background: styles.bg, borderColor: styles.border, color: styles.label }}>
+      <div className="px-3 py-2.5">
+        <div className="font-mono text-[11.5px] font-semibold">{label}</div>
+        <div className="mt-0.5 font-mono text-[10px] opacity-70">{sub}</div>
+      </div>
+      {split ? (
+        <div className="grid grid-cols-2 gap-px border-t border-white/10 bg-white/10">
+          {split.map(([splitLabel, splitSub]) => (
+            <div key={splitLabel} className="px-3 py-2" style={{ background: styles.bg }}>
+              <div className="font-mono text-[10.5px] font-semibold">{splitLabel}</div>
+              <div className="mt-0.5 font-mono text-[9.5px] opacity-70">{splitSub}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Connector({ label }: { label: string }) {
+  return (
+    <div className="my-1.5 flex items-center justify-center gap-2">
+      <span className="block h-2 w-px bg-[var(--c-border-strong)]" />
+      <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--c-text-muted)]">{label}</span>
+      <span className="block h-2 w-px bg-[var(--c-border-strong)]" />
+    </div>
+  );
+}
+
+function CodeOutputPanel({
+  variant,
+  isConsoleAvailable,
+}: {
+  variant: number;
+  isConsoleAvailable: boolean;
+}) {
+  const variants = [
+    [['research_agent', 0, '#10b981', 'TRACE'], ['plan', 1, '#10b981', 'LLM']],
+    [['resilient_agent', 0, '#10b981', 'TRACE'], ['fetch', 1, '#ef4444', 'TOOL'], ['fetch ↻', 1, '#f59e0b', 'TOOL'], ['fetch ↻', 1, '#10b981', 'TOOL']],
+    [['demo-review', 0, '#3b82f6', 'SESSION'], ['parse', 1, '#10b981', 'TOOL'], ['review', 1, '#10b981', 'LLM']],
+  ] as const;
+  return (
+    <div className="px-4 pb-5">
+      <div className="rounded-md border bg-[var(--c-app-bg)]" style={{ borderColor: 'var(--c-border)' }}>
+        {variants[variant].map(([name, depth, dot, kind], i, arr) => (
+          <div key={`${name}-${i}`} className="flex items-center gap-1.5 px-2.5 py-1 text-[10.5px]" style={{ paddingLeft: 10 + depth * 10, borderBottom: i < arr.length - 1 ? '1px solid var(--c-border-subtle)' : undefined }}>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: dot }} />
+            <span className="w-11 shrink-0 font-mono text-[8.5px] uppercase tracking-wide text-[var(--c-text-muted)]">{kind}</span>
+            <span className="truncate font-mono" style={{ color: dot === '#ef4444' ? 'var(--c-red-text)' : 'var(--c-text-primary)' }}>{name}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center justify-between text-[10px] text-[var(--c-text-muted)]">
+        <span className="font-mono">→ /traces</span>
+        {isConsoleAvailable ? (
+          <Link to="/dashboard" className="font-mono text-[var(--c-accent-text)]">open console ↗</Link>
+        ) : (
+          <ExternalLink href={RUN_LOCALLY_DOCS_URL} className="font-mono text-[var(--c-accent-text)]">run locally ↗</ExternalLink>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RepoCard() {
+  const repoFacts = [
+    ['License', 'MIT'],
+    ['Docs', 'continua.in/docs'],
+    ['Engine', 'preview'],
+  ] as const;
+
+  return (
+    <Reveal>
+      <div className="rounded-xl border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
+        <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
+          <Github size={14} className="text-[var(--c-text-secondary)]" />
+          <span className="font-mono text-[12px] text-[var(--c-text-primary)]">aryanVijaywargia/Continua</span>
+        </div>
+        <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
+          <div className="flex items-center justify-between">
+            <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Current surface</div>
+            <ExternalLink href={DOCS_URL} className="font-mono text-[10px] text-[var(--c-accent-text)]">docs ↗</ExternalLink>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {[
+              ['Observability', 'REST ingest, Postgres persistence, async River jobs, trace/session read APIs'],
+              ['Debugger console', 'Embedded React operator workspace for traces, sessions, payloads, and comparisons'],
+              ['Durable engine', 'Preview control surface and contracts; workflow runtime is still on the roadmap'],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-md border bg-[var(--c-app-bg)] px-3 py-2" style={{ borderColor: 'var(--c-border)' }}>
+                <div className="font-mono text-[10.5px] font-semibold text-[var(--c-text-primary)]">{label}</div>
+                <div className="mt-0.5 text-[11px] leading-4 text-[var(--c-text-secondary)]">{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="px-4 py-3">
+          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Repository facts</div>
+          <div className="mt-2.5 space-y-1.5">
+            {[
+              ['Runtime', 'Go server + Postgres + River workers'],
+              ['Frontend', 'Vite React console embedded in the Go binary'],
+              ['SDK', 'Python SDK is functional; TypeScript package is an early stub'],
+              ['Docs', 'Hosted at continua.in/docs'],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-2 text-[11px]">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 font-mono text-[var(--c-accent-text)]">{label}</span>
+                  <span className="truncate text-[var(--c-text-secondary)]">{value}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-px border-t bg-[var(--c-border)]" style={{ borderColor: 'var(--c-border)' }}>
+          {repoFacts.map(([label, value]) => (
+            <div key={label} className="bg-[var(--c-surface)] px-3 py-2.5">
+              <div className="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--c-text-muted)]">{label}</div>
+              <div className="mt-0.5 font-mono text-[14px] font-semibold tabular-nums text-[var(--c-text-primary)]">{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Reveal>
+  );
+}
+
+function ExternalLink({
+  href,
+  children,
+  className,
+  style,
+}: {
+  href: string;
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className={className} style={style}>
+      {children}
+    </a>
+  );
+}
+
+function toneColors(tone: SpanTone) {
+  if (tone === 'fail') {
+    return { fill: '#ef4444', bg: 'rgba(239, 68, 68, 0.16)', border: 'rgba(239, 68, 68, 0.35)' };
+  }
+  if (tone === 'run') {
+    return { fill: '#3b82f6', bg: 'rgba(59, 130, 246, 0.18)', border: 'rgba(59, 130, 246, 0.35)' };
+  }
+  return { fill: '#10b981', bg: 'rgba(16, 185, 129, 0.16)', border: 'rgba(16, 185, 129, 0.35)' };
+}
+
+function tickerTone(kind: string) {
+  if (kind === 'fail') return { dot: 'var(--c-red)', text: 'var(--c-red-text)', label: 'failed' };
+  if (kind === 'retry') return { dot: 'var(--c-amber)', text: 'var(--c-amber-text)', label: 'retried' };
+  return { dot: 'var(--c-green)', text: 'var(--c-green-text)', label: 'completed' };
+}
+
+function codeColor(tag: string) {
+  switch (tag) {
+    case 'k':
+    case 'n':
+      return 'var(--c-accent-text)';
+    case 'd':
+      return 'var(--c-amber-text)';
+    case 's':
+      return 'var(--c-green-text)';
+    case 'c':
+      return 'var(--c-text-muted)';
+    case 'fn':
+      return '#a855f7';
+    default:
+      return 'var(--c-text-primary)';
+  }
 }
