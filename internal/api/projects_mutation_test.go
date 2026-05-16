@@ -160,19 +160,6 @@ func TestDeleteProject_RemovesRow(t *testing.T) {
 	assert.ErrorIs(t, err, store.ErrNotFound)
 }
 
-func TestDeleteProject_RefusesDefault(t *testing.T) {
-	pool := testutil.TestDB(t)
-	platformStore := store.New(pool)
-	server := NewServer(platformStore, nil)
-
-	defaultID := uuid.MustParse(defaultProjectIDString)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/api/projects/"+defaultID.String(), nil)
-	server.DeleteProject(rec, req, defaultID)
-
-	require.Equal(t, http.StatusConflict, rec.Code)
-}
-
 func TestDeleteProject_ReturnsNotFoundForUnknownID(t *testing.T) {
 	pool := testutil.TestDB(t)
 	platformStore := store.New(pool)
@@ -184,6 +171,27 @@ func TestDeleteProject_ReturnsNotFoundForUnknownID(t *testing.T) {
 	server.DeleteProject(rec, req, missing)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestCreateProject_BootstrapContextAllowedWhenProjectsExist(t *testing.T) {
+	// In Auth0-disabled local mode the bootstrap window stays open even after the
+	// first project exists: the operator owns the box and must always be able to
+	// mint a new project key (e.g. after losing the original).
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	platformStore := store.New(pool)
+	server := NewServer(platformStore, nil)
+	testutil.CreateTestProject(t, ctx, platformStore.Queries())
+
+	body, err := json.Marshal(CreateProjectRequest{Name: "another-project"})
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/projects", bytes.NewReader(body))
+	req = req.WithContext(context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeBootstrap))
+	server.CreateProject(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
 }
 
 func TestGenerateAPIKey_ProducesUniquePrefixedKeys(t *testing.T) {

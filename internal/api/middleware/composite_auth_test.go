@@ -233,6 +233,14 @@ func TestCompositeAuthStillRejectsProjectListWithoutCredentialsInPublicDemo(t *t
 	assert.Equal(t, "missing_credentials", resp["code"])
 }
 
+func TestProjectBootstrapRouteOnlyMatchesFirstRunProjectSurface(t *testing.T) {
+	assert.True(t, isProjectBootstrapRoute(http.MethodGet, "/api/projects"))
+	assert.True(t, isProjectBootstrapRoute(http.MethodPost, "/api/projects"))
+	assert.False(t, isProjectBootstrapRoute(http.MethodPatch, "/api/projects"))
+	assert.False(t, isProjectBootstrapRoute(http.MethodGet, "/api/projects/project-id"))
+	assert.False(t, isProjectBootstrapRoute(http.MethodGet, "/api/traces"))
+}
+
 func createCompositeAuthProject(
 	ctx context.Context,
 	t *testing.T,

@@ -644,6 +644,11 @@ export interface components {
             updated_at: string;
         };
         ProjectList: {
+            /**
+             * Format: uuid
+             * @description Project bound to the current API key when the request is API-key authenticated. Omitted for operator or unauthenticated bootstrap requests.
+             */
+            authenticated_project_id?: string;
             projects: components["schemas"]["Project"][];
         };
         /** @description Project metadata including the plaintext API key. Returned only on create or rotate; never retrievable again. */

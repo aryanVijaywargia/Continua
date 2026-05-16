@@ -34,6 +34,7 @@ const (
 	AuthModeAPIKey     AuthMode = "api_key"
 	AuthModeOperator   AuthMode = "operator"
 	AuthModePublicDemo AuthMode = "public_demo"
+	AuthModeBootstrap  AuthMode = "bootstrap"
 )
 
 type routeProtection int
@@ -166,6 +167,9 @@ func (a *Authenticator) serveComposite(next http.Handler, w http.ResponseWriter,
 
 	bearerToken := extractBearerToken(r)
 	if bearerToken == "" {
+		if a.serveProjectBootstrap(next, w, r) {
+			return
+		}
 		writeAuthError(w, http.StatusUnauthorized, "missing_credentials", "Authentication required")
 		return
 	}
@@ -210,6 +214,22 @@ func (a *Authenticator) servePublicDemoRead(next http.Handler, w http.ResponseWr
 	ctx := context.WithValue(r.Context(), ProjectIDKey, a.publicDemo.projectID)
 	ctx = context.WithValue(ctx, AuthModeKey, AuthModePublicDemo)
 	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (a *Authenticator) serveProjectBootstrap(next http.Handler, w http.ResponseWriter, r *http.Request) bool {
+	// Local-mode bootstrap: when Auth0 and the public demo are both disabled, the
+	// deployment is single-tenant and the operator owns the box. We let
+	// unauthenticated callers list and create projects on /api/projects so a fresh
+	// install (or an operator who has lost their API key) can always self-recover
+	// without wiping the database. Deployments that need cross-tenant isolation
+	// must enable Auth0, which closes this path entirely.
+	if a.auth0 != nil || a.publicDemo != nil || !isProjectBootstrapRoute(r.Method, r.URL.Path) {
+		return false
+	}
+
+	ctx := context.WithValue(r.Context(), AuthModeKey, AuthModeBootstrap)
+	next.ServeHTTP(w, r.WithContext(ctx))
+	return true
 }
 
 func (a *Authenticator) apiKeyContext(
@@ -300,6 +320,10 @@ func isPublicDemoReadRequest(method, path string) bool {
 	default:
 		return false
 	}
+}
+
+func isProjectBootstrapRoute(method, path string) bool {
+	return path == "/api/projects" && (method == http.MethodGet || method == http.MethodPost)
 }
 
 func matchesPathPattern(path, pattern string) bool {
