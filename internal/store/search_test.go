@@ -128,6 +128,47 @@ func TestSearch_ByUserID(t *testing.T) {
 	assert.Equal(t, trace1.ID, results.Traces[0].ID)
 }
 
+func TestSearch_BySessionExternalID(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	session, err := q.CreateSession(ctx, platform.CreateSessionParams{
+		ProjectID:  projectID,
+		ExternalID: "demo-checkout-session",
+		Name:       testutil.StrPtr("Checkout session"),
+		UserID:     testutil.StrPtr("user-123"),
+	})
+	require.NoError(t, err)
+
+	matchingTrace, err := q.UpsertTrace(ctx, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		SessionID: testutil.PgtypeUUID(session.ID),
+		TraceID:   "trace-with-session",
+		Name:      testutil.StrPtr("payment flow"),
+	})
+	require.NoError(t, err)
+
+	_, err = q.UpsertTrace(ctx, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "trace-without-session",
+		Name:      testutil.StrPtr("checkout unrelated"),
+	})
+	require.NoError(t, err)
+
+	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID: projectID,
+		Query:     "demo-checkout-session",
+		Limit:     10,
+	})
+	require.NoError(t, err)
+
+	require.Len(t, results.Traces, 1)
+	assert.Equal(t, matchingTrace.ID, results.Traces[0].ID)
+}
+
 // TestSearch_EmptyQuery tests that empty query returns all traces (no FTS filter).
 func TestSearch_EmptyQuery(t *testing.T) {
 	// Scenario: Empty query

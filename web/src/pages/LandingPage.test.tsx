@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RuntimeAuthStateProvider, type RuntimeAuthState } from '../auth/runtime';
 import { ThemeProvider } from '../hooks/ThemeProvider';
 import { LandingPage } from './LandingPage';
@@ -8,6 +8,25 @@ import { LandingPage } from './LandingPage';
 const GITHUB_REPO_URL = 'https://github.com/aryanVijaywargia/Continua';
 const DOCS_URL = 'https://www.continua.in/docs';
 const RUN_LOCALLY_DOCS_URL = `${DOCS_URL}/guides/installation`;
+const originalIntersectionObserver = globalThis.IntersectionObserver;
+const originalFetch = globalThis.fetch;
+
+let intersectionCallback: IntersectionObserverCallback | null = null;
+
+class MockIntersectionObserver implements IntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = '';
+  readonly thresholds = [];
+
+  constructor(callback: IntersectionObserverCallback) {
+    intersectionCallback = callback;
+  }
+
+  disconnect = vi.fn();
+  observe = vi.fn();
+  takeRecords = vi.fn(() => []);
+  unobserve = vi.fn();
+}
 
 function renderLandingPage(auth?: Partial<RuntimeAuthState>) {
   const runtimeAuth: RuntimeAuthState = {
@@ -28,6 +47,24 @@ function renderLandingPage(auth?: Partial<RuntimeAuthState>) {
 }
 
 describe('LandingPage', () => {
+  afterEach(() => {
+    intersectionCallback = null;
+    Object.defineProperty(window, 'IntersectionObserver', {
+      configurable: true,
+      value: originalIntersectionObserver,
+    });
+    Object.defineProperty(globalThis, 'IntersectionObserver', {
+      configurable: true,
+      value: originalIntersectionObserver,
+    });
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value: originalFetch,
+    });
+    window.history.replaceState(null, '', '/');
+    vi.restoreAllMocks();
+  });
+
   it('uses Continua branding and wires the primary landing actions', () => {
     renderLandingPage();
 
@@ -66,6 +103,8 @@ describe('LandingPage', () => {
     expect(screen.getByRole('tablist', { name: 'Python SDK examples' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'agent.py' })).toHaveAttribute('aria-selected', 'true');
     expect(document.body).toHaveTextContent(/MIT licensed/i);
+    expect(screen.getByText('Release')).toBeInTheDocument();
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/Apache 2\.0/i);
     expect(document.body).not.toHaveTextContent(/1,247/i);
     expect(document.body).not.toHaveTextContent(/pip install continua/i);
@@ -93,6 +132,62 @@ describe('LandingPage', () => {
         .getAllByRole('link', { name: 'Docs' })
         .some((link) => link.getAttribute('href') === DOCS_URL)
     ).toBe(true);
+  });
+
+  it('updates the hash as landing sections become active while scrolling', () => {
+    Object.defineProperty(window, 'IntersectionObserver', {
+      configurable: true,
+      value: MockIntersectionObserver,
+    });
+    Object.defineProperty(globalThis, 'IntersectionObserver', {
+      configurable: true,
+      value: MockIntersectionObserver,
+    });
+
+    renderLandingPage();
+    const sdkSection = document.getElementById('sdk');
+    expect(sdkSection).not.toBeNull();
+
+    act(() => {
+      intersectionCallback?.(
+        [
+          {
+            isIntersecting: true,
+            intersectionRatio: 0.75,
+            target: sdkSection!,
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver
+      );
+    });
+
+    expect(window.location.hash).toBe('#sdk');
+  });
+
+  it('loads commit activity from the GitHub API when available', async () => {
+    const weeks = Array.from({ length: 26 }, (_, index) => ({
+      days: [1, 0, 0, 0, 0, 0, index === 25 ? 6 : 0],
+      total: index === 25 ? 7 : 1,
+      week: index,
+    }));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(weeks),
+    });
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value: fetchMock,
+    });
+
+    renderLandingPage();
+
+    await waitFor(() => {
+      expect(document.body).toHaveTextContent('32 commits · last 26 weeks · live');
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/aryanVijaywargia/Continua/stats/commit_activity',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
   });
 
   it('switches landing CTAs to the public demo flow when demo mode is enabled', () => {

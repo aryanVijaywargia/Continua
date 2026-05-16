@@ -58,7 +58,7 @@ func buildSessionQueryPlan(filter *SessionFilter) sessionQueryPlan {
 	hasSearch := trimmedQuery != ""
 	if hasSearch {
 		whereClauses = append(whereClauses,
-			fmt.Sprintf("(s.external_id ILIKE $%d OR COALESCE(s.name, '') ILIKE $%d)", nextArgNum, nextArgNum))
+			fmt.Sprintf("(s.external_id ILIKE $%d OR COALESCE(s.name, '') ILIKE $%d OR COALESCE(s.user_id, '') ILIKE $%d)", nextArgNum, nextArgNum, nextArgNum))
 		projectIDArg = append(projectIDArg, "%"+trimmedQuery+"%")
 		nextArgNum++
 	}
@@ -90,9 +90,11 @@ func buildSessionOrderBy(filter *SessionFilter, plan *sessionQueryPlan) string {
 	if plan.hasSearch {
 		return fmt.Sprintf(`CASE
 			WHEN LOWER(s.external_id) = LOWER($%d) THEN 0
-			WHEN s.external_id ILIKE $%d THEN 1
-			ELSE 2
-		END ASC, s.created_at DESC, s.id DESC`, plan.exactArgNum, plan.prefixArgNum)
+			WHEN LOWER(COALESCE(s.user_id, '')) = LOWER($%d) THEN 1
+			WHEN s.external_id ILIKE $%d THEN 2
+			WHEN COALESCE(s.user_id, '') ILIKE $%d THEN 3
+			ELSE 4
+		END ASC, s.created_at DESC, s.id DESC`, plan.exactArgNum, plan.exactArgNum, plan.prefixArgNum, plan.prefixArgNum)
 	}
 
 	sortBy := normalizeSessionSortBy(filter.SortBy)
