@@ -61,6 +61,8 @@ tmp/
 .cache/
 
 # Private/local documentation kept out of the public repository
+.claude/
+.codex/
 docs/001_initial_schema.sql
 docs/CONTINUA_ARCHITECTURE_PLAN_v1.md
 docs/CONTINUA_DESIGN_DECISIONS_v1.md
