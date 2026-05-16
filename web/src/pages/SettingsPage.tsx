@@ -231,7 +231,7 @@ function LocalApiKeySettings({
           autoComplete="off"
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
-          placeholder="default"
+          placeholder="pk_..."
         />
       </div>
 

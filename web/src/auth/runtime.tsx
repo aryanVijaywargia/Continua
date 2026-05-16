@@ -12,8 +12,10 @@ import {
 } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  fetchProjects,
   fetchRuntimeAuthConfig,
   getApiKey,
+  LOCAL_API_KEY_CHANGED_EVENT,
   setAccessTokenProvider,
   setApiKey,
   setPublicDemoMode,
@@ -306,9 +308,13 @@ export function ProtectedRoute({ auth }: { auth: RuntimeAuthState }) {
 }
 
 function LocalApiKeyProtectedOutlet() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [draftKey, setDraftKey] = useState(() => getApiKey() ?? '');
   const [storedKey, setStoredKey] = useState(() => getApiKey());
   const [error, setError] = useState<string | null>(null);
+  const [bootstrapChecked, setBootstrapChecked] = useState(false);
+  const isProjectBootstrapRoute = location.pathname === '/projects';
 
   useLayoutEffect(() => {
     if (!storedKey) {
@@ -321,8 +327,61 @@ function LocalApiKeyProtectedOutlet() {
     };
   }, [storedKey]);
 
+  useEffect(() => {
+    const syncStoredKey = () => {
+      const nextKey = getApiKey();
+      setStoredKey(nextKey);
+      if (nextKey) {
+        setDraftKey(nextKey);
+      }
+    };
+
+    window.addEventListener(LOCAL_API_KEY_CHANGED_EVENT, syncStoredKey);
+    return () => {
+      window.removeEventListener(LOCAL_API_KEY_CHANGED_EVENT, syncStoredKey);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (storedKey || isProjectBootstrapRoute) {
+      setBootstrapChecked(true);
+      return;
+    }
+
+    let cancelled = false;
+    setBootstrapChecked(false);
+    void fetchProjects()
+      .then((projectList) => {
+        if (cancelled) {
+          return;
+        }
+        if (projectList.projects.length === 0) {
+          navigate('/projects', { replace: true });
+          return;
+        }
+        setBootstrapChecked(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBootstrapChecked(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isProjectBootstrapRoute, navigate, storedKey]);
+
   if (storedKey) {
     return <Outlet />;
+  }
+
+  if (isProjectBootstrapRoute) {
+    return <Outlet />;
+  }
+
+  if (!bootstrapChecked) {
+    return <RouteGateState message="Checking local project setup..." />;
   }
 
   return (
@@ -335,6 +394,15 @@ function LocalApiKeyProtectedOutlet() {
         <p className="mt-4 text-sm leading-7 text-[var(--continua-text-secondary)] sm:text-base">
           Auth0 is not configured for this deployment. For local self-hosting, use
           a project API key to inspect traces from your own database.
+        </p>
+        <p className="mt-3 text-sm leading-6 text-[var(--continua-text-secondary)]">
+          First time here?{' '}
+          <Link
+            to="/projects"
+            className="font-medium text-[var(--c-accent-text)] hover:underline"
+          >
+            Create your first project →
+          </Link>
         </p>
         <form
           className="mt-6 space-y-4"
@@ -362,7 +430,7 @@ function LocalApiKeyProtectedOutlet() {
               value={draftKey}
               onChange={(event) => setDraftKey(event.target.value)}
               className="app-input w-full"
-              placeholder="default"
+              placeholder="pk_..."
               type="password"
               autoComplete="off"
             />

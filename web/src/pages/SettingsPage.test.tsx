@@ -120,10 +120,10 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('heading', { name: 'Local API key' })).toBeInTheDocument();
     expect(screen.getByText('No key saved')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Project API key'), 'default');
+    await user.type(screen.getByLabelText('Project API key'), 'pk_settings_key');
     await user.click(screen.getByRole('button', { name: 'Save local key' }));
 
-    expect(window.localStorage.getItem('continua_api_key')).toBe('default');
+    expect(window.localStorage.getItem('continua_api_key')).toBe('pk_settings_key');
     expect(screen.getByText('Saved in this browser')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Clear local key' }));

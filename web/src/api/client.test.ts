@@ -4,6 +4,10 @@ import {
   clearApiKey,
   fetchAPI,
   fetchRuntimeAuthConfig,
+  forgetProjectApiKey,
+  getFallbackProjectApiKey,
+  getKnownProjectApiKey,
+  rememberProjectApiKey,
   setAccessTokenProvider,
   setPublicDemoMode,
   setSelectedProjectIdProvider,
@@ -16,6 +20,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
+  window.localStorage.clear();
   clearApiKey();
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
@@ -184,5 +189,16 @@ describe('client', () => {
     ).not.toMatchObject({
       Authorization: expect.anything(),
     });
+  });
+
+  it('remembers project API keys and exposes a surviving fallback key', () => {
+    rememberProjectApiKey('project-a', 'pk_project_a');
+    rememberProjectApiKey('project-b', 'pk_project_b');
+
+    expect(getKnownProjectApiKey('project-a')).toBe('pk_project_a');
+    forgetProjectApiKey('project-a');
+    expect(getKnownProjectApiKey('project-a')).toBeNull();
+    expect(getFallbackProjectApiKey()).toBe('pk_project_b');
+    expect(getFallbackProjectApiKey('pk_project_b')).toBeNull();
   });
 });

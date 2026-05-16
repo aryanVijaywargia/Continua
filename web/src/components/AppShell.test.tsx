@@ -4,7 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearApiKey, setApiKey } from '../api/client';
+import {
+  clearApiKey,
+  getKnownProjectApiKey,
+  rememberProjectApiKey,
+  setApiKey,
+} from '../api/client';
 import {
   RuntimeAuthStateProvider,
   type RuntimeAuthState,
@@ -68,61 +73,74 @@ async function renderShell(
     ...auth,
   };
 
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <RuntimeAuthStateProvider auth={runtimeAuth}>
-          <MemoryRouter initialEntries={[initialEntry]}>
-            <Routes>
-              <Route element={<AppShell />}>
-                <Route
-                  path="/dashboard"
-                  element={
-                    <>
-                      <div>Overview content</div>
-                      <LocationProbe />
-                    </>
-                  }
-                />
-                <Route
-                  path="/traces"
-                  element={
-                    <>
-                      <div>Trace list content</div>
-                      <LocationProbe />
-                    </>
-                  }
-                />
-                <Route
-                  path="/sessions"
-                  element={
-                    <>
-                      <div>Session list content</div>
-                      <LocationProbe />
-                    </>
-                  }
-                />
-                <Route
-                  path="/settings"
-                  element={
-                    <>
-                      <div>Settings content</div>
-                      <LocationProbe />
-                    </>
-                  }
-                />
-              </Route>
-            </Routes>
-          </MemoryRouter>
-        </RuntimeAuthStateProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
-  );
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <RuntimeAuthStateProvider auth={runtimeAuth}>
+            <MemoryRouter initialEntries={[initialEntry]}>
+              <Routes>
+                <Route element={<AppShell />}>
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <>
+                        <div>Overview content</div>
+                        <LocationProbe />
+                      </>
+                    }
+                  />
+                  <Route
+                    path="/traces"
+                    element={
+                      <>
+                        <div>Trace list content</div>
+                        <LocationProbe />
+                      </>
+                    }
+                  />
+                  <Route
+                    path="/sessions"
+                    element={
+                      <>
+                        <div>Session list content</div>
+                        <LocationProbe />
+                      </>
+                    }
+                  />
+                  <Route
+                    path="/settings"
+                    element={
+                      <>
+                        <div>Settings content</div>
+                        <LocationProbe />
+                      </>
+                    }
+                  />
+                  <Route
+                    path="/projects"
+                    element={
+                      <>
+                        <div>Projects content</div>
+                        <LocationProbe />
+                      </>
+                    }
+                  />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </RuntimeAuthStateProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    ),
+  };
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  window.localStorage.clear();
   fetchMock = vi.fn(async (input, init) => {
     const requestUrl =
       typeof input === 'string'
@@ -279,10 +297,34 @@ describe('AppShell', () => {
     });
   });
 
+  it('shows the projects route for local first-run when no key exists', async () => {
+    auth0State.isAuthenticated = false;
+    clearApiKey();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ projects: [] }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    );
+
+    await renderShell('/projects', {
+      enabled: false,
+    });
+
+    expect(await screen.findByText('Projects content')).toBeInTheDocument();
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
+    ).not.toMatchObject({
+      Authorization: expect.anything(),
+    });
+  });
+
   it('shows project loading failures instead of staying on the loading state', async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ code: 'invalid_api_key', message: 'Invalid API key' }), {
-        status: 401,
+      new Response(JSON.stringify({ code: 'internal_error', message: 'Database unreachable' }), {
+        status: 500,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -294,8 +336,167 @@ describe('AppShell', () => {
     });
 
     expect(await screen.findByText('Project loading failed')).toBeInTheDocument();
-    expect(screen.getByText('Invalid API key')).toBeInTheDocument();
+    expect(screen.getByText('Database unreachable')).toBeInTheDocument();
     expect(screen.queryByText('Loading projects')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open settings/i })).toBeInTheDocument();
+  });
+
+  it('auto-clears a stale local API key when the projects fetch returns 401', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: 'invalid_api_key', message: 'Invalid API key' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    setApiKey('stale-key');
+
+    await renderShell('/dashboard', {
+      enabled: false,
+    });
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem('continua_api_key')).toBeNull();
+    });
+    expect(await screen.findByText('Local API key required')).toBeInTheDocument();
+  });
+
+  it('switches to a remembered fallback key when the current local key goes stale', async () => {
+    auth0State.isAuthenticated = false;
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: 'invalid_api_key', message: 'Invalid API key' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    setApiKey('stale-key');
+    rememberProjectApiKey(SECONDARY_PROJECT_ID, 'pk_fallback');
+
+    await renderShell('/dashboard', {
+      enabled: false,
+    });
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem('continua_api_key')).toBe('pk_fallback');
+    });
+  });
+
+  it('learns a pasted local key when the deployment has exactly one project', async () => {
+    auth0State.isAuthenticated = false;
+    setApiKey('pk_manually_pasted');
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          projects: [
+            {
+              id: PRIMARY_PROJECT_ID,
+              name: 'Primary Project',
+              created_at: '2026-03-14T10:00:00.000Z',
+              updated_at: '2026-03-14T10:00:00.000Z',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    );
+
+    await renderShell('/dashboard', {
+      enabled: false,
+    });
+
+    expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getKnownProjectApiKey(PRIMARY_PROJECT_ID)).toBe('pk_manually_pasted');
+    });
+  });
+
+  it('learns the active local key owner from project metadata when multiple projects exist', async () => {
+    auth0State.isAuthenticated = false;
+    setApiKey('pk_manually_pasted');
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          authenticated_project_id: SECONDARY_PROJECT_ID,
+          projects: [
+            {
+              id: PRIMARY_PROJECT_ID,
+              name: 'Primary Project',
+              created_at: '2026-03-14T10:00:00.000Z',
+              updated_at: '2026-03-14T10:00:00.000Z',
+            },
+            {
+              id: SECONDARY_PROJECT_ID,
+              name: 'Secondary Project',
+              created_at: '2026-03-15T10:00:00.000Z',
+              updated_at: '2026-03-15T10:00:00.000Z',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    );
+
+    await renderShell('/dashboard', {
+      enabled: false,
+    });
+
+    expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getKnownProjectApiKey(SECONDARY_PROJECT_ID)).toBe('pk_manually_pasted');
+    });
+  });
+
+  it('auto-clears a stale local API key when a project-list refetch returns 401', async () => {
+    auth0State.isAuthenticated = false;
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            projects: [
+              {
+                id: PRIMARY_PROJECT_ID,
+                name: 'Primary Project',
+                created_at: '2026-03-14T10:00:00.000Z',
+                updated_at: '2026-03-14T10:00:00.000Z',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'invalid_api_key', message: 'Invalid API key' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+
+    setApiKey('stale-key');
+
+    const { queryClient } = await renderShell('/dashboard', {
+      enabled: false,
+    });
+
+    expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
+
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+    });
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem('continua_api_key')).toBeNull();
+    });
   });
 
   it('refetches projects when the local API key changes', async () => {
