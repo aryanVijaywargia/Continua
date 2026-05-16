@@ -15,7 +15,7 @@
 //   }
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -58,12 +58,43 @@ function writeFallback(reason) {
   console.warn(`[gen-repo-stats] git unavailable, wrote empty stats: ${reason}`);
 }
 
+function readExistingStats() {
+  if (!existsSync(outPath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(outPath, 'utf8'));
+    if (
+      typeof parsed?.commitTotal === 'number' &&
+      Array.isArray(parsed?.weeks) &&
+      parsed.weeks.length > 0
+    ) {
+      return parsed;
+    }
+  } catch {
+    // Fall through: malformed cached data should not block regeneration.
+  }
+
+  return null;
+}
+
 if (!tryGit(['rev-parse', '--show-toplevel'])) {
   writeFallback('not a git checkout');
   process.exit(0);
 }
 
 const branch = tryGit(['rev-parse', '--abbrev-ref', 'HEAD']) || 'HEAD';
+const isShallowRepository = tryGit(['rev-parse', '--is-shallow-repository']) === 'true';
+const existingStats = readExistingStats();
+
+if (isShallowRepository && existingStats) {
+  console.warn(
+    `[gen-repo-stats] shallow git checkout detected; keeping bundled stats with ${existingStats.commitTotal} commits`
+  );
+  process.exit(0);
+}
+
 const log = tryGit(['log', '--no-merges', '--pretty=format:%at']);
 if (!log) {
   writeFallback('git log returned no commits');
