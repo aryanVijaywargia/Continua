@@ -110,6 +110,8 @@ func NewTestDatabase(t *testing.T) *TestDatabase {
 		adminPool.Close()
 	})
 
+	EnsurePlatformProject(t, pool, DefaultPlatformProjectID)
+
 	return &TestDatabase{
 		Pool:        pool,
 		DatabaseURL: databaseURL,
