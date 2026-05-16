@@ -18,7 +18,7 @@ import {
 
 const PROJECT_ID = '11111111-1111-1111-1111-111111111111';
 const RUN_LOCALLY_DOCS_URL =
-  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/setup.md';
+  'https://www.continua.in/docs/guides/installation';
 
 const auth0State = vi.hoisted(() => ({
   error: undefined as Error | undefined,

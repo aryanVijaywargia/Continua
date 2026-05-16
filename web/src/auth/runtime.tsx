@@ -21,7 +21,7 @@ import {
 } from '../api/client';
 
 const RUN_LOCALLY_DOCS_URL =
-  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/setup.md';
+  'https://www.continua.in/docs/guides/installation';
 
 type RuntimeAuthStatus = 'loading' | 'ready' | 'error';
 
