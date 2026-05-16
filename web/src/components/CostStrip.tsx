@@ -41,11 +41,11 @@ export function CostStrip({ series, window }: CostStripProps) {
   const labelLeftPercent = clamp(lastPoint.leftPercent + 1, 8, 82);
 
   return (
-    <div className="grid grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)_5rem] border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)]">
-      <div className="px-6 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--continua-text-muted)]">
+    <div className="grid grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)_5rem] border-b border-[var(--c-border)] bg-[var(--c-surface-elevated)]">
+      <div className="px-6 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--c-text-muted)]">
         Cumulative cost
       </div>
-      <div className="relative border-l border-[var(--continua-border-soft)] px-4 py-3">
+      <div className="relative border-l border-[var(--c-border)] px-4 py-3">
         <svg
           aria-label="Cumulative cost chart"
           className="h-12 w-full overflow-visible"
@@ -78,7 +78,7 @@ export function CostStrip({ series, window }: CostStripProps) {
           className="pointer-events-none absolute top-1/2 -translate-y-1/2"
           style={{ left: `${labelLeftPercent}%` }}
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1 text-xs font-medium text-[var(--continua-text-secondary)] shadow-sm">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--c-border)] bg-[var(--c-surface-elevated)] px-3 py-1 text-xs font-medium text-[var(--c-text-secondary)] shadow-sm">
             <span>{formatCost(series.totalCostUsd)}</span>
             {series.partial ? (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">

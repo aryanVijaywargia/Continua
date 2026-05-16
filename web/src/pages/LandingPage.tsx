@@ -15,6 +15,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useTheme } from '../hooks/useTheme';
 
 const GITHUB_REPO_URL = 'https://github.com/aryanVijaywargia/Continua';
+const GITHUB_REPO_API_URL = 'https://api.github.com/repos/aryanVijaywargia/Continua';
 const DOCS_URL = 'https://www.continua.in/docs';
 const GITHUB_LICENSE_URL = `${GITHUB_REPO_URL}/blob/main/LICENSE`;
 const API_REFERENCE_URL = `${DOCS_URL}/api-reference`;
@@ -81,6 +82,8 @@ const TICKER_ITEMS = [
   ['trc_c91f0a', 'tool_executor', '0.9s', 'retry'],
 ] as const;
 
+const LANDING_SECTION_IDS = ['product', 'how', 'sdk', 'open-source'] as const;
+
 const CODE_TABS = [
   {
     label: 'Basic agent',
@@ -131,6 +134,8 @@ export function LandingPage() {
   const isConsoleAvailable = runtimeAuth.console_available !== false;
   const consoleLabel = isPublicDemo ? 'Open Demo' : isConsoleAvailable ? 'Open Console' : 'Run Locally';
 
+  useLandingSectionHashSync();
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-[var(--c-app-bg)] text-[var(--c-text-primary)]">
       <StatusBanner isPublicDemo={isPublicDemo} />
@@ -165,6 +170,55 @@ export function LandingPage() {
       />
     </div>
   );
+}
+
+function useLandingSectionHashSync() {
+  useEffect(() => {
+    if (typeof IntersectionObserver !== 'function') {
+      return;
+    }
+
+    const sections = LANDING_SECTION_IDS.map((id) => document.getElementById(id)).filter(
+      (section): section is HTMLElement => Boolean(section)
+    );
+    if (sections.length === 0) {
+      return;
+    }
+
+    let activeSectionId = window.location.hash.slice(1);
+    const updateHash = (sectionId: string) => {
+      if (activeSectionId === sectionId) {
+        return;
+      }
+
+      activeSectionId = sectionId;
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${window.location.pathname}${window.location.search}#${sectionId}`
+      );
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntry = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+
+        if (visibleEntry?.target.id) {
+          updateHash(visibleEntry.target.id);
+        }
+      },
+      {
+        rootMargin: '-35% 0px -50% 0px',
+        threshold: [0, 0.2, 0.5, 0.8],
+      }
+    );
+
+    sections.forEach((section) => observer.observe(section));
+
+    return () => observer.disconnect();
+  }, []);
 }
 
 function StatusBanner({ isPublicDemo }: { isPublicDemo: boolean }) {
@@ -1389,6 +1443,74 @@ const COMMIT_HEATMAP_DAYS: readonly number[] = [
   0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 4, 11, 22, 9,
 ];
 
+interface GitHubCommitActivityWeek {
+  days: number[];
+  total: number;
+  week: number;
+}
+
+interface RepoActivity {
+  commitDays: readonly number[];
+  commitTotal: number;
+  updatedFromGitHub: boolean;
+}
+
+const FALLBACK_REPO_ACTIVITY: RepoActivity = {
+  commitDays: COMMIT_HEATMAP_DAYS,
+  commitTotal: COMMIT_HEATMAP_TOTAL,
+  updatedFromGitHub: false,
+};
+
+function useRepoActivity(): RepoActivity {
+  const [activity, setActivity] = useState<RepoActivity>(FALLBACK_REPO_ACTIVITY);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function fetchRepoActivity() {
+      try {
+        const response = await fetch(`${GITHUB_REPO_API_URL}/stats/commit_activity`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const weeks = (await response.json()) as GitHubCommitActivityWeek[];
+        if (!Array.isArray(weeks) || weeks.length === 0) {
+          return;
+        }
+
+        const recentWeeks = weeks.slice(-COMMIT_HEATMAP_WEEKS);
+        const commitDays = recentWeeks.flatMap((week) =>
+          Array.isArray(week.days) ? week.days.slice(0, 7) : []
+        );
+
+        if (commitDays.length === 0) {
+          return;
+        }
+
+        setActivity({
+          commitDays,
+          commitTotal: recentWeeks.reduce((total, week) => total + (week.total ?? 0), 0),
+          updatedFromGitHub: true,
+        });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+      }
+    }
+
+    void fetchRepoActivity();
+
+    return () => controller.abort();
+  }, []);
+
+  return activity;
+}
+
 function commitLevel(count: number): 0 | 1 | 2 | 3 | 4 {
   if (count <= 0) return 0;
   if (count <= 2) return 1;
@@ -1397,11 +1519,14 @@ function commitLevel(count: number): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
-function CommitHeatmap() {
+function CommitHeatmap({ activity }: { activity: RepoActivity }) {
   const cells: number[][] = Array.from({ length: COMMIT_HEATMAP_WEEKS }, () => []);
-  for (let i = 0; i < COMMIT_HEATMAP_DAYS.length; i += 1) {
+  for (let i = 0; i < activity.commitDays.length; i += 1) {
     const week = Math.floor(i / 7);
-    cells[week].push(COMMIT_HEATMAP_DAYS[i]);
+    if (week >= cells.length) {
+      break;
+    }
+    cells[week].push(activity.commitDays[i]);
   }
   const monthLabels = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
 
@@ -1412,7 +1537,8 @@ function CommitHeatmap() {
           Commit activity
         </div>
         <span className="font-mono text-[10px] text-[var(--c-text-muted)]">
-          <span className="text-[var(--c-text-primary)]">{COMMIT_HEATMAP_TOTAL}</span> commits · last 26 weeks
+          <span className="text-[var(--c-text-primary)]">{activity.commitTotal}</span> commits · last 26 weeks
+          {activity.updatedFromGitHub ? ' · live' : ''}
         </span>
       </div>
       <div className="mt-2.5 flex gap-[3px]" aria-hidden="true">
@@ -1476,10 +1602,11 @@ function CommitHeatmap() {
 }
 
 function RepoCard() {
+  const activity = useRepoActivity();
   const repoFacts = [
     ['License', 'MIT'],
-    ['Docs', 'continua.in/docs'],
-    ['Commits', String(COMMIT_HEATMAP_TOTAL)],
+    ['Release', 'Alpha'],
+    ['Commits', String(activity.commitTotal)],
   ] as const;
 
   return (
@@ -1495,7 +1622,7 @@ function RepoCard() {
           <Github size={14} className="text-[var(--c-text-secondary)]" />
           <span className="font-mono text-[12px] text-[var(--c-text-primary)]">aryanVijaywargia/Continua</span>
         </a>
-        <CommitHeatmap />
+        <CommitHeatmap activity={activity} />
         <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
           <div className="flex items-center justify-between">
             <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Current surface</div>

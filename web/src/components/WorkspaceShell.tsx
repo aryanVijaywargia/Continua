@@ -37,9 +37,9 @@ export function WorkspaceShell({
 }: WorkspaceShellProps) {
   if (isDesktop) {
     return (
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)]">
-        <div className="min-w-0 min-h-0">{waterfall}</div>
-        <div className="min-w-0 min-h-0 border-l border-[var(--c-border)]">{inspector}</div>
+      <div className="grid h-full min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)]">
+        <div className="min-h-0 min-w-0">{waterfall}</div>
+        <div className="min-h-0 min-w-0 border-l border-[var(--c-border)]">{inspector}</div>
       </div>
     );
   }

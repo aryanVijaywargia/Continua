@@ -16,8 +16,7 @@ import {
 const E2E_OPERATOR_TOKEN = 'e2e-operator-token';
 const PRIMARY_PROJECT_ID = '11111111-1111-1111-1111-111111111111';
 const SECONDARY_PROJECT_ID = '22222222-2222-2222-2222-222222222222';
-const RUN_LOCALLY_DOCS_URL =
-  'https://github.com/aryanVijaywargia/Continua/blob/main/docs/guides/run-locally.md';
+const RUN_LOCALLY_DOCS_URL = 'https://www.continua.in/docs/guides/installation';
 
 const TRACE_DETAILS = new Map([
   [TRACE_ONE.id, TRACE_DETAIL],
@@ -194,7 +193,8 @@ function filterSessions(url: URL) {
     sessions = sessions.filter(
       (session) =>
         session.external_id.toLowerCase().includes(q) ||
-        session.name?.toLowerCase().includes(q)
+        session.name?.toLowerCase().includes(q) ||
+        session.user_id?.toLowerCase().includes(q)
     );
   }
 
@@ -442,6 +442,9 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
   if (!isMobile) {
     await page.setViewportSize({ width: 1024, height: 900 });
   }
+  await page.addInitScript(() => {
+    window.localStorage.setItem('continua_theme_mode', 'dark');
+  });
 
   await mockApiRoutes(page, 'public-demo');
 
@@ -469,6 +472,16 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
       ? page.getByRole('button', { name: 'Summary' })
       : page.getByRole('heading', { name: 'Execution Waterfall' })
   ).toBeVisible();
+  if (!isMobile) {
+    const costStrip = page
+      .locator('svg[aria-label="Cumulative cost chart"]')
+      .locator('xpath=ancestor::div[contains(@class, "grid")][1]');
+    await expect(costStrip).toBeVisible();
+    await expect(costStrip).not.toHaveCSS(
+      'background-color',
+      'rgb(255, 255, 255)'
+    );
+  }
 
   await page.goto(`/sessions/${SESSION_ID}`);
   await expect(page.getByRole('heading', { name: 'Session journey' })).toBeVisible();
