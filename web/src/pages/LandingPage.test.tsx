@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RuntimeAuthStateProvider, type RuntimeAuthState } from '../auth/runtime';
@@ -98,7 +98,7 @@ describe('LandingPage', () => {
     expect(screen.getByText(/The Python SDK batches spans/i)).toBeInTheDocument();
     expect(screen.queryByText(/TypeScript SDK/i)).not.toBeInTheDocument();
     expect(document.body).toHaveTextContent(/from continua import Continua, span, trace/i);
-    expect(screen.getByRole('heading', { name: /Debug your agents today\. Run them durably tomorrow/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Your agent's black box\. Opened\./i })).toBeInTheDocument();
     expect(document.body).toHaveTextContent(/AI agent observability today, durable execution tomorrow/i);
     expect(screen.getByRole('tablist', { name: 'Python SDK examples' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'agent.py' })).toHaveAttribute('aria-selected', 'true');
@@ -164,30 +164,11 @@ describe('LandingPage', () => {
     expect(window.location.hash).toBe('#sdk');
   });
 
-  it('loads commit activity from the GitHub API when available', async () => {
-    const weeks = Array.from({ length: 26 }, (_, index) => ({
-      days: [1, 0, 0, 0, 0, 0, index === 25 ? 6 : 0],
-      total: index === 25 ? 7 : 1,
-      week: index,
-    }));
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue(weeks),
-    });
-    Object.defineProperty(globalThis, 'fetch', {
-      configurable: true,
-      value: fetchMock,
-    });
-
+  it('renders commit activity from the bundled repo stats', () => {
     renderLandingPage();
 
-    await waitFor(() => {
-      expect(document.body).toHaveTextContent('32 commits · last 26 weeks · live');
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.github.com/repos/aryanVijaywargia/Continua/stats/commit_activity',
-      expect.objectContaining({ signal: expect.any(AbortSignal) })
-    );
+    expect(document.body).toHaveTextContent(/\d+ commits · since [A-Z][a-z]{2} \d{4}/);
+    expect(document.body).not.toHaveTextContent(/last 26 weeks/);
   });
 
   it('switches landing CTAs to the public demo flow when demo mode is enabled', () => {
