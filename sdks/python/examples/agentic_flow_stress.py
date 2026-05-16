@@ -8,7 +8,7 @@ through raw REST, then verifies traces and sessions through Continua read APIs.
 
 Required for live execution:
     CONTINUA_API_URL=http://localhost:8080
-    CONTINUA_API_KEY=default
+    CONTINUA_API_KEY=<project-api-key>
     OPENAI_API_KEY=...
 
 Optional:
@@ -47,7 +47,7 @@ LOGGER = logging.getLogger("continua.agentic_flow_stress")
 
 DEFAULT_CONTINUA_API_URL = "http://localhost:8080"
 DEFAULT_CONTINUA_APP_URL = "http://localhost:3000"
-DEFAULT_CONTINUA_API_KEY = "default"
+DEFAULT_CONTINUA_API_KEY = ""
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_MODEL = "gpt-5.4-nano"
 DEFAULT_INGEST_MODE = "sync"
@@ -1226,6 +1226,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not config.openai_api_key:
         print("OPENAI_API_KEY is required to run live agentic flow stress tests.", file=sys.stderr)
+        return 2
+    if not config.continua_api_key:
+        print(
+            "CONTINUA_API_KEY is required. Create a project in the debugger UI and use the generated project API key.",
+            file=sys.stderr,
+        )
         return 2
 
     selected_flows = tuple(args.flow) if args.flow else ALL_FLOWS

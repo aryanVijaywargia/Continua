@@ -203,13 +203,16 @@ def api_headers() -> dict[str, str]:
 def resolve_api_key() -> str:
     """Resolve a working local demo API key.
 
-    Fresh local databases accept `default` after the hash-fix migration.
-    Older persisted dev volumes may still use `test-api-key-12345`.
+    Create a project from the local debugger UI and pass its key via
+    CONTINUA_API_KEY.
     """
-    if API_KEY:
-        candidates = [API_KEY]
-    else:
-        candidates = ["default", "test-api-key-12345"]
+    if not API_KEY:
+        raise RuntimeError(
+            "CONTINUA_API_KEY is required. Create a project in the debugger UI "
+            "and use the generated project API key."
+        )
+
+    candidates = [API_KEY]
 
     seen = set()
     deduped_candidates = []
@@ -251,11 +254,7 @@ def resolve_api_key() -> str:
 
             return candidate
 
-    if API_KEY:
-        raise RuntimeError("CONTINUA_API_KEY was provided but did not validate against the API server")
-
-    tried = ", ".join(deduped_candidates)
-    raise RuntimeError(f"Could not resolve a working API key. Tried: {tried}")
+    raise RuntimeError("CONTINUA_API_KEY was provided but did not validate against the API server")
 
 
 def printable_api_key(api_key: str) -> str:

@@ -92,15 +92,16 @@ In another terminal:
 make dev-web
 ```
 
-Open `http://localhost:3000/dashboard`. For a fresh local database, use API key `default`
-when the UI asks for a project API key.
+Open `http://localhost:3000/projects`. For a fresh local database, create your first
+project in the UI. Continua shows the generated project API key once; use that key
+for SDK ingest and future local console access.
 
 ### Emit private traces
 
 ```bash
 cd sdks/python
 CONTINUA_API_URL="http://localhost:8080" \
-CONTINUA_API_KEY="default" \
+CONTINUA_API_KEY="<project-api-key>" \
 uv run python examples/e2e_demo.py
 ```
 
@@ -173,7 +174,8 @@ Native UI cannot load data:
 
 - Confirm the backend is running on `http://localhost:8080`.
 - Confirm Vite is running on `http://localhost:3000`.
-- Confirm the UI has API key `default` in `/settings`.
+- Confirm the UI has a project API key in `/settings`, or create the first project
+  from `/projects` if the database is empty.
 
 ## Current product boundary
 
