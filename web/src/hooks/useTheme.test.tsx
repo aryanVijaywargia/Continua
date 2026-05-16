@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setMatchMediaMatches } from '../test/matchMedia';
 import { ThemeProvider } from './ThemeProvider';
 import { THEME_STORAGE_KEY, useTheme } from './useTheme';
+import { LEGACY_THEME_STORAGE_KEY } from './themeContext';
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <ThemeProvider>{children}</ThemeProvider>;
@@ -48,5 +49,28 @@ describe('useTheme', () => {
     expect(result.current.resolvedTheme).toBe('dark');
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it('migrates the legacy landing-page theme key into the shared docs theme key', () => {
+    setMatchMediaMatches(false);
+    localStorage.setItem(LEGACY_THEME_STORAGE_KEY, 'dark');
+
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    expect(result.current.mode).toBe('dark');
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+    expect(localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBe('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it('normalizes legacy docs boolean theme values from the shared key', () => {
+    setMatchMediaMatches(false);
+    localStorage.setItem(THEME_STORAGE_KEY, 'true');
+
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    expect(result.current.mode).toBe('dark');
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+    expect(localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBe('dark');
   });
 });
