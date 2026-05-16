@@ -125,7 +125,7 @@ export function buildWaterfallTicks(
     ];
   }
 
-  return Array.from({ length: tickCount }, (_, index) => {
+  const ticks = Array.from({ length: tickCount }, (_, index) => {
     const leftPercent = (index / (tickCount - 1)) * 100;
     const offsetMs = window.durationMs * (leftPercent / 100);
 
@@ -134,6 +134,16 @@ export function buildWaterfallTicks(
       leftPercent,
     };
   });
+
+  const dedupedTicks = new Map<string, WaterfallTick>();
+  const lastTickLabel = ticks[ticks.length - 1]?.label;
+  for (const tick of ticks) {
+    if (!dedupedTicks.has(tick.label) || tick.label === lastTickLabel) {
+      dedupedTicks.set(tick.label, tick);
+    }
+  }
+
+  return Array.from(dedupedTicks.values());
 }
 
 function parseTimestamp(value: string | undefined | null) {

@@ -5,6 +5,7 @@ import {
   resetTestEntityCounter,
 } from '../test/traceFixtures';
 import {
+  buildWaterfallTicks,
   deriveWaterfallWindow,
   getWaterfallBarLayout,
 } from './waterfallTime';
@@ -105,5 +106,18 @@ describe('waterfallTime', () => {
     expect(layout.isRunning).toBe(true);
     expect(layout.durationMs).toBe(3000);
     expect(layout.widthPercent).toBe(60);
+  });
+
+  it('deduplicates short-window tick labels so instant traces do not crowd the axis', () => {
+    const ticks = buildWaterfallTicks({
+      startMs: 0,
+      endMs: 1,
+      durationMs: 1,
+    });
+
+    expect(ticks).toEqual([
+      { label: '0ms', leftPercent: 0 },
+      { label: '1ms', leftPercent: 100 },
+    ]);
   });
 });

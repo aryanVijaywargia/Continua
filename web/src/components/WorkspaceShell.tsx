@@ -45,17 +45,17 @@ export function WorkspaceShell({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface)]">
-      <div className="border-b border-[var(--c-border)] bg-[var(--c-surface-muted)] px-3 py-3">
-        <div className="flex flex-wrap items-center gap-2">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--c-app-bg)]">
+      <div className="border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-4">
+        <div className="flex overflow-x-auto">
           {MOBILE_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
+              className={`-mb-px shrink-0 border-b-2 px-3.5 py-2 text-[13px] font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)] ${
                 activeMobileTab === tab.id
-                  ? 'border border-[var(--c-accent-border)] bg-[var(--c-accent-faint)] text-[var(--c-accent-text)]'
-                  : 'border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-secondary)] hover:border-[var(--c-border-strong)] hover:text-[var(--c-text-primary)]'
+                  ? 'border-[var(--c-accent)] text-[var(--c-text-primary)]'
+                  : 'border-transparent text-[var(--c-text-secondary)] hover:text-[var(--c-text-primary)]'
               }`}
               aria-pressed={activeMobileTab === tab.id}
               onClick={() => onMobileTabChange(tab.id)}
@@ -107,19 +107,19 @@ function MobileExecutionPane({
   const [mode, setMode] = useState<'waterfall' | 'tree'>('waterfall');
 
   return (
-    <div className="h-full" style={{ display: active ? 'block' : 'none' }}>
-      <div className="border-b border-[var(--c-border)] bg-[var(--c-surface-muted)] px-3 py-2">
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="h-full flex-col" style={{ display: active ? 'flex' : 'none' }}>
+      <div className="border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-4">
+        <div className="flex overflow-x-auto">
           {(['waterfall', 'tree'] as const).map((nextMode) => (
             <button
               key={nextMode}
               type="button"
               aria-pressed={mode === nextMode}
               onClick={() => setMode(nextMode)}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] ${
+              className={`-mb-px shrink-0 border-b-2 px-3.5 py-2 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)] ${
                 mode === nextMode
-                  ? 'border border-[var(--c-accent-border)] bg-[var(--c-accent-faint)] text-[var(--c-accent-text)]'
-                  : 'border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-secondary)]'
+                  ? 'border-[var(--c-accent)] text-[var(--c-text-primary)]'
+                  : 'border-transparent text-[var(--c-text-secondary)] hover:text-[var(--c-text-primary)]'
               }`}
             >
               {nextMode === 'waterfall' ? 'Waterfall' : 'Tree'}
@@ -128,7 +128,7 @@ function MobileExecutionPane({
         </div>
       </div>
 
-      <div className="h-[calc(100%-3.5rem)]">
+      <div className="min-h-0 flex-1">
         <div className="h-full" style={{ display: mode === 'waterfall' ? 'block' : 'none' }}>
           {waterfall}
         </div>

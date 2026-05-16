@@ -13,8 +13,8 @@ export function DecisionValuePill({
     <span
       className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
         tone === 'accent'
-          ? 'border-[var(--continua-accent)] bg-[var(--continua-accent-faint)] text-[var(--continua-accent)]'
-          : 'border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] text-[var(--continua-text-secondary)]'
+          ? 'border-[var(--c-accent-border)] bg-[var(--c-accent-faint)] text-[var(--c-accent-text)]'
+          : 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-secondary)]'
       }`}
     >
       {children}
