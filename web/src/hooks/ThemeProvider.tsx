@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  LEGACY_THEME_STORAGE_KEY,
   ThemeContext,
   THEME_STORAGE_KEY,
   type ResolvedTheme,
@@ -14,12 +15,27 @@ function readInitialMode(): ThemeMode {
     return 'system';
   }
 
-  const storedMode = window.localStorage.getItem(THEME_STORAGE_KEY);
-  if (storedMode === 'light' || storedMode === 'dark' || storedMode === 'system') {
-    return storedMode;
+  const storedMode =
+    window.localStorage.getItem(THEME_STORAGE_KEY) ??
+    window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+  const normalizedMode = normalizeStoredMode(storedMode);
+  if (normalizedMode) {
+    return normalizedMode;
   }
 
   return 'system';
+}
+
+function normalizeStoredMode(mode: string | null): ThemeMode | null {
+  if (mode === 'true') {
+    return 'dark';
+  }
+
+  if (mode === 'false') {
+    return 'light';
+  }
+
+  return mode === 'light' || mode === 'dark' || mode === 'system' ? mode : null;
 }
 
 function resolveTheme(mode: ThemeMode, prefersDark: boolean): ResolvedTheme {
@@ -41,6 +57,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
 
     window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+    window.localStorage.setItem(LEGACY_THEME_STORAGE_KEY, mode);
   }, [mode]);
 
   useEffect(() => {

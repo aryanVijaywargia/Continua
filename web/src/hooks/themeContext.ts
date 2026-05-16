@@ -3,7 +3,8 @@ import { createContext } from 'react';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type ResolvedTheme = 'light' | 'dark';
 
-export const THEME_STORAGE_KEY = 'continua_theme_mode';
+export const THEME_STORAGE_KEY = 'isDarkMode';
+export const LEGACY_THEME_STORAGE_KEY = 'continua_theme_mode';
 
 export interface ThemeContextValue {
   mode: ThemeMode;
