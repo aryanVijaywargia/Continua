@@ -203,13 +203,11 @@ def api_headers() -> dict[str, str]:
 def resolve_api_key() -> str:
     """Resolve a working local demo API key.
 
-    Fresh local databases accept `default` after the hash-fix migration.
-    Older persisted dev volumes may still use `test-api-key-12345`.
+    If CONTINUA_API_KEY is unset, bootstrap a local project against an
+    Auth0-disabled development server. Hosted or authenticated deployments should
+    pass CONTINUA_API_KEY explicitly.
     """
-    if API_KEY:
-        candidates = [API_KEY]
-    else:
-        candidates = ["default", "test-api-key-12345"]
+    candidates = [API_KEY]
 
     seen = set()
     deduped_candidates = []
@@ -219,6 +217,25 @@ def resolve_api_key() -> str:
             seen.add(candidate)
 
     with httpx.Client(timeout=5.0) as client:
+        if not deduped_candidates:
+            response = client.post(
+                f"{API_URL}/api/projects",
+                json={"name": f"e2e-demo-{DEMO_RUN_ID}"},
+            )
+            if response.status_code != 201:
+                raise RuntimeError(
+                    "CONTINUA_API_KEY is required. Create a project in the debugger UI "
+                    "and use the generated project API key."
+                )
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise RuntimeError("Project creation response did not contain JSON") from exc
+            created_key = str(payload.get("api_key", "")).strip()
+            if not created_key:
+                raise RuntimeError("Project creation response did not include api_key")
+            return created_key
+
         for candidate in deduped_candidates:
             try:
                 response = client.get(
@@ -251,11 +268,7 @@ def resolve_api_key() -> str:
 
             return candidate
 
-    if API_KEY:
-        raise RuntimeError("CONTINUA_API_KEY was provided but did not validate against the API server")
-
-    tried = ", ".join(deduped_candidates)
-    raise RuntimeError(f"Could not resolve a working API key. Tried: {tried}")
+    raise RuntimeError("CONTINUA_API_KEY was provided but did not validate against the API server")
 
 
 def printable_api_key(api_key: str) -> str:

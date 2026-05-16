@@ -183,7 +183,7 @@ def make_config(stress):
     return stress.StressConfig(
         continua_api_url="http://continua.test",
         continua_app_url="http://app.test",
-        continua_api_key="default",
+        continua_api_key="pk_test_project_key",
         continua_project_id=None,
         openai_api_key="test-openai-api-key",
         openai_base_url="https://api.openai.test/v1",

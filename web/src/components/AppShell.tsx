@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Activity,
   ChevronDown,
   ChevronRight,
   Clock,
+  FolderKanban,
   LayoutDashboard,
   Menu,
   Moon,
@@ -18,8 +19,15 @@ import {
 } from 'lucide-react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  clearApiKey,
   fetchProjects,
+  getFallbackProjectApiKey,
+  getApiKey,
+  getKnownProjectApiKey,
+  isAuthError,
   LOCAL_API_KEY_CHANGED_EVENT,
+  rememberProjectApiKey,
+  setApiKey,
   setSelectedProjectIdProvider,
 } from '../api/client';
 import { useOperatorAuth, useRuntimeAuth } from '../auth/runtime';
@@ -43,6 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { path: '/traces', label: 'Traces', icon: Activity },
   { path: '/sessions', label: 'Sessions', icon: Waypoints },
+  { path: '/projects', label: 'Projects', icon: FolderKanban },
   { path: '/settings', label: 'Settings', icon: Settings2 },
 ];
 
@@ -54,6 +63,12 @@ export function AppShell() {
   const { resolvedTheme, toggleTheme } = useTheme();
   const isPublicDemo = runtimeAuth.public_demo_enabled === true;
   const publicDemoLabel = runtimeAuth.public_demo_label ?? 'Sample data';
+  const isProjectsRoute = location.pathname === '/projects';
+  const canAttemptProjectBootstrap =
+    runtimeAuth.status === 'ready' &&
+    !runtimeAuth.enabled &&
+    !isAuthenticated &&
+    isProjectsRoute;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [lastProjectId, setLastProjectId] = useState<string | undefined>();
   const [localAuthVersion, setLocalAuthVersion] = useState(0);
@@ -63,10 +78,13 @@ export function AppShell() {
   const projectsQuery = useQuery({
     queryKey: ['projects', localAuthVersion],
     queryFn: fetchProjects,
-    enabled: isAuthenticated && !isPublicDemo,
+    enabled: !isPublicDemo && (isAuthenticated || canAttemptProjectBootstrap),
     retry: false,
   });
-  const projects = projectsQuery.data?.projects ?? [];
+  const projects = useMemo(
+    () => projectsQuery.data?.projects ?? [],
+    [projectsQuery.data?.projects]
+  );
   const effectiveProjectId = currentProjectId ?? lastProjectId;
   const selectedProject =
     projects.find((project) => project.id === effectiveProjectId) ??
@@ -78,23 +96,84 @@ export function AppShell() {
     setMobileOpen(false);
   }, [location.pathname, location.search]);
 
+  const queryClient = useQueryClient();
   useEffect(() => {
     const handleLocalAuthChange = () => {
       setLastProjectId(undefined);
       setLocalAuthVersion((version) => version + 1);
+      // Cascade the auth change to every cache entry that scopes data by the
+      // current API key so page-level queries (e.g. ProjectsPage's separate
+      // ['projects'] query) refetch under the new auth instead of staying
+      // stuck on a stale 401.
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     };
 
     window.addEventListener(LOCAL_API_KEY_CHANGED_EVENT, handleLocalAuthChange);
     return () => {
       window.removeEventListener(LOCAL_API_KEY_CHANGED_EVENT, handleLocalAuthChange);
     };
-  }, []);
+  }, [queryClient]);
+
+  const staleKeyClearedFor = useRef<number | null>(null);
+  const isLocalMode = !isPublicDemo && !runtimeAuth.enabled;
+  useEffect(() => {
+    if (!isLocalMode || !projectsQuery.error) {
+      return;
+    }
+    if (!isAuthError(projectsQuery.error)) {
+      return;
+    }
+    if (staleKeyClearedFor.current === localAuthVersion) {
+      return;
+    }
+    if (!getApiKey()) {
+      return;
+    }
+    staleKeyClearedFor.current = localAuthVersion;
+    const currentLocalKey = getApiKey();
+    const fallbackKey = getFallbackProjectApiKey(currentLocalKey);
+    if (fallbackKey) {
+      setApiKey(fallbackKey);
+      return;
+    }
+    clearApiKey();
+  }, [
+    isLocalMode,
+    localAuthVersion,
+    projectsQuery.error,
+  ]);
 
   useEffect(() => {
     if (selectedProjectId) {
       setLastProjectId(selectedProjectId);
     }
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!isLocalMode || !projectsQuery.isSuccess) {
+      return;
+    }
+
+    const currentLocalKey = getApiKey();
+    if (!currentLocalKey) {
+      return;
+    }
+
+    const authenticatedProjectId =
+      projectsQuery.data.authenticated_project_id ??
+      (projects.length === 1 ? projects[0]?.id : undefined);
+    if (
+      !authenticatedProjectId ||
+      getKnownProjectApiKey(authenticatedProjectId) === currentLocalKey
+    ) {
+      return;
+    }
+
+    // The API identifies the project that owns the active local key. The
+    // single-project fallback covers older servers that do not expose that
+    // metadata yet.
+    rememberProjectApiKey(authenticatedProjectId, currentLocalKey);
+  }, [isLocalMode, projects, projectsQuery.data, projectsQuery.isSuccess]);
 
   useEffect(() => {
     if (isPublicDemo) {
@@ -110,8 +189,8 @@ export function AppShell() {
     if (
       isPublicDemo ||
       !projectsQuery.isSuccess ||
-      projects.length === 0 ||
       !selectedProjectId ||
+      projects.length === 0 ||
       currentProjectId === selectedProjectId
     ) {
       return;
@@ -137,6 +216,25 @@ export function AppShell() {
     selectedProjectId,
   ]);
 
+  useEffect(() => {
+    if (
+      isPublicDemo ||
+      !projectsQuery.isSuccess ||
+      projects.length !== 0 ||
+      isProjectsRoute
+    ) {
+      return;
+    }
+
+    navigate('/projects', { replace: true });
+  }, [
+    isProjectsRoute,
+    isPublicDemo,
+    navigate,
+    projects.length,
+    projectsQuery.isSuccess,
+  ]);
+
   const visibleNavItems = useMemo(
     () => NAV_ITEMS.filter((item) => !(isPublicDemo && item.path === '/settings')),
     [isPublicDemo]
@@ -160,6 +258,12 @@ export function AppShell() {
         title: 'Go to Sessions',
         keywords: ['navigate', 'sessions'],
         action: () => navigate(buildProjectPath('/sessions', selectedProjectId)),
+      },
+      {
+        id: 'go-projects',
+        title: 'Go to Projects',
+        keywords: ['navigate', 'projects', 'keys'],
+        action: () => navigate(buildProjectPath('/projects', selectedProjectId)),
       },
     ];
 
@@ -200,22 +304,45 @@ export function AppShell() {
 
   const content = isPublicDemo ? (
     <Outlet />
+  ) : canAttemptProjectBootstrap ? (
+    <Outlet />
   ) : !isAuthenticated ? (
     <ShellStateCard
       title="Local API key required"
       message="Enter a project API key to load the local debugger workspace."
     />
   ) : projectsQuery.isError ? (
-    <ShellStateCard title="Project loading failed" message={projectsErrorMessage} />
+    <ShellStateCard
+      title="Project loading failed"
+      message={projectsErrorMessage}
+      actions={
+        <>
+          <button
+            type="button"
+            className="app-button-primary"
+            onClick={() => {
+              void projectsQuery.refetch();
+            }}
+          >
+            Retry
+          </button>
+          <Link to="/settings" className="app-button-secondary">
+            Open settings
+          </Link>
+        </>
+      }
+    />
   ) : projectsQuery.isPending || !projectsReady ? (
     <ShellStateCard
       title="Loading projects"
       message="Resolving the project list for this operator session."
     />
+  ) : projects.length === 0 && isProjectsRoute ? (
+    <Outlet />
   ) : projects.length === 0 ? (
     <ShellStateCard
       title="No projects available"
-      message="Create or ingest into a project first, then reload the debugger."
+      message="Create a project to get an API key and start loading the debugger workspace."
     />
   ) : (
     <Outlet />
@@ -438,7 +565,9 @@ function SidebarNav({
   projectId?: string;
 }) {
   const primaryItems = items.filter((item) => item.path !== '/settings');
+  const projectItem = items.find((item) => item.path === '/projects');
   const settingsItem = items.find((item) => item.path === '/settings');
+  const mainItems = primaryItems.filter((item) => item.path !== '/projects');
 
   return (
     <nav
@@ -446,7 +575,7 @@ function SidebarNav({
       className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 pb-4"
     >
       <div>
-        {primaryItems.map((item) => (
+        {mainItems.map((item) => (
           <SidebarNavLink key={item.path} item={item} projectId={projectId} />
         ))}
       </div>
@@ -464,6 +593,9 @@ function SidebarNav({
           <div className="px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
             Workspace
           </div>
+          {projectItem ? (
+            <SidebarNavLink item={projectItem} projectId={projectId} />
+          ) : null}
           <SidebarNavLink item={settingsItem} projectId={projectId} />
         </div>
       ) : null}
@@ -632,9 +764,11 @@ function PublicDemoBanner({
 }
 
 function ShellStateCard({
+  actions,
   message,
   title,
 }: {
+  actions?: ReactNode;
   message: string;
   title: string;
 }) {
@@ -649,6 +783,7 @@ function ShellStateCard({
       <p className="mt-3 text-sm leading-6 text-[var(--c-text-secondary)]">
         {message}
       </p>
+      {actions ? <div className="mt-5 flex flex-wrap gap-2">{actions}</div> : null}
     </section>
   );
 }
@@ -669,6 +804,9 @@ function buildBreadcrumbs(pathname: string): string[] {
   }
   if (segments[0] === 'settings') {
     return ['Settings'];
+  }
+  if (segments[0] === 'projects') {
+    return ['Projects'];
   }
   return [segments[0] ?? 'Overview'];
 }

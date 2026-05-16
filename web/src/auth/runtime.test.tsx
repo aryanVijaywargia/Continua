@@ -256,6 +256,20 @@ describe('runtime auth', () => {
 
   it('lets local self-hosted consoles continue with a project API key when Auth0 is disabled', async () => {
     const user = userEvent.setup();
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'missing_credentials',
+          message: 'Authentication required',
+        }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+    );
 
     render(
       <MemoryRouter initialEntries={['/traces']}>
@@ -276,13 +290,46 @@ describe('runtime auth', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Enter a local project API key.')).toBeInTheDocument();
+    expect(await screen.findByText('Enter a local project API key.')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Project API key'), 'default');
+    await user.type(screen.getByLabelText('Project API key'), 'pk_runtime_key');
     await user.click(screen.getByRole('button', { name: 'Open local console' }));
 
     expect(screen.getByText('Local traces')).toBeInTheDocument();
-    expect(window.localStorage.getItem('continua_api_key')).toBe('default');
+    expect(window.localStorage.getItem('continua_api_key')).toBe('pk_runtime_key');
+  });
+
+  it('routes local first-run consoles to project creation when no projects exist', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ projects: [] }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/traces']}>
+        <Routes>
+          <Route
+            element={
+              <ProtectedRoute
+                auth={{
+                  status: 'ready',
+                  enabled: false,
+                }}
+              />
+            }
+          >
+            <Route path="/traces" element={<div>Local traces</div>} />
+            <Route path="/projects" element={<div>Create first project</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Create first project')).toBeInTheDocument();
   });
 
   it('redirects signed-out operators to Auth0 and preserves the current returnTo URL', async () => {

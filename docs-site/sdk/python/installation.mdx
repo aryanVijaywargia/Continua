@@ -94,7 +94,7 @@ This flushes the batch queue and closes the underlying `httpx.Client`.
 ```python
 from continua import Continua, span, trace
 
-Continua.init(api_key="default", endpoint="http://localhost:8080")
+Continua.init(api_key="<project-api-key>", endpoint="http://localhost:8080")
 
 @trace(name="connectivity_check")
 def ping():

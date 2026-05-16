@@ -36,6 +36,11 @@ func (s *Store) ListProjects(ctx context.Context, limit, offset int32) ([]platfo
 	})
 }
 
+// CountProjects returns the total number of configured projects.
+func (s *Store) CountProjects(ctx context.Context) (int64, error) {
+	return s.q.CountProjects(ctx)
+}
+
 // CreateProject inserts a new project row. apiKeyHash must be the SHA-256 hash
 // of the plaintext key that will be returned to the caller exactly once.
 func (s *Store) CreateProject(ctx context.Context, name, apiKeyHash string) (platform.Project, error) {

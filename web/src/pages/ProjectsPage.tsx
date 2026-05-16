@@ -1,23 +1,33 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   ApiError,
+  clearApiKey,
   createProject,
   deleteProject,
   fetchProjects,
+  forgetProjectApiKey,
+  getFallbackProjectApiKey,
+  getApiKey,
+  getKnownProjectApiKey,
+  isAuthError,
   renameProject,
+  rememberProjectApiKey,
   rotateProjectApiKey,
+  setApiKey,
   type Project,
   type ProjectWithKey,
 } from '../api/client';
 import { PageHeader } from '../components/DebuggerKit';
 import { CopyButton } from '../components/CopyButton';
+import { buildProjectPath } from '../utils/projectSearchParams';
 
 const PROJECTS_QUERY_KEY = ['projects'] as const;
-const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000001';
 
 export function ProjectsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: PROJECTS_QUERY_KEY,
     queryFn: fetchProjects,
@@ -28,10 +38,21 @@ export function ProjectsPage() {
   const [rotateTarget, setRotateTarget] = useState<Project | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [revealedKey, setRevealedKey] = useState<ProjectWithKey | null>(null);
+  const [postRevealPath, setPostRevealPath] = useState<string | null>(null);
+  const [activateRevealedKey, setActivateRevealedKey] = useState(false);
 
   const invalidateProjects = () => {
     queryClient.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY });
   };
+
+  useEffect(() => {
+    const authenticatedProjectId = data?.authenticated_project_id;
+    const currentLocalKey = getApiKey();
+    if (!authenticatedProjectId || !currentLocalKey) {
+      return;
+    }
+    rememberProjectApiKey(authenticatedProjectId, currentLocalKey);
+  }, [data?.authenticated_project_id]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -66,6 +87,8 @@ export function ProjectsPage() {
             onRotate={setRotateTarget}
             onDelete={setDeleteTarget}
           />
+        ) : !getApiKey() ? (
+          <FirstRunHero onCreate={() => setCreateOpen(true)} />
         ) : (
           <EmptyState onCreate={() => setCreateOpen(true)} />
         )}
@@ -75,7 +98,12 @@ export function ProjectsPage() {
         <CreateProjectDialog
           onClose={() => setCreateOpen(false)}
           onCreated={(project) => {
-            invalidateProjects();
+            const isFirstProject = !getApiKey() && (data?.projects.length ?? 0) === 0;
+            if (isFirstProject) {
+              setPostRevealPath(buildProjectPath('/dashboard', project.id));
+            } else {
+              invalidateProjects();
+            }
             setCreateOpen(false);
             setRevealedKey(project);
           }}
@@ -98,8 +126,8 @@ export function ProjectsPage() {
           project={rotateTarget}
           onClose={() => setRotateTarget(null)}
           onRotated={(project) => {
-            invalidateProjects();
             setRotateTarget(null);
+            setActivateRevealedKey(true);
             setRevealedKey(project);
           }}
         />
@@ -110,6 +138,19 @@ export function ProjectsPage() {
           project={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onDeleted={() => {
+            const deletedProjectKey = getKnownProjectApiKey(deleteTarget.id);
+            const deletedCurrentLocalKey =
+              deleteTarget.id === data?.authenticated_project_id ||
+              (deletedProjectKey !== null && deletedProjectKey === getApiKey());
+            forgetProjectApiKey(deleteTarget.id);
+            if (deletedCurrentLocalKey) {
+              const fallbackKey = getFallbackProjectApiKey();
+              if (fallbackKey) {
+                setApiKey(fallbackKey);
+              } else {
+                clearApiKey();
+              }
+            }
             invalidateProjects();
             setDeleteTarget(null);
           }}
@@ -119,7 +160,27 @@ export function ProjectsPage() {
       {revealedKey ? (
         <RevealKeyDialog
           project={revealedKey}
-          onClose={() => setRevealedKey(null)}
+          onClose={() => {
+            const nextPath = postRevealPath;
+            const revealedProject = revealedKey;
+            const shouldActivateRevealedKey = activateRevealedKey;
+            setRevealedKey(null);
+            setPostRevealPath(null);
+            setActivateRevealedKey(false);
+            if (revealedProject) {
+              rememberProjectApiKey(revealedProject.id, revealedProject.api_key);
+            }
+            if (
+              revealedProject &&
+              (shouldActivateRevealedKey || !getApiKey())
+            ) {
+              setApiKey(revealedProject.api_key);
+            }
+            invalidateProjects();
+            if (nextPath) {
+              navigate(nextPath, { replace: true });
+            }
+          }}
         />
       ) : null}
     </div>
@@ -158,16 +219,10 @@ function ProjectsTable({
         </thead>
         <tbody className="divide-y divide-[var(--c-border)]">
           {projects.map((project) => {
-            const isDefault = project.id === DEFAULT_PROJECT_ID;
             return (
               <tr key={project.id} data-testid={`project-row-${project.id}`}>
                 <td className="px-4 py-3 text-sm font-medium text-[var(--c-text-primary)]">
                   {project.name}
-                  {isDefault ? (
-                    <span className="ml-2 rounded-full border border-[var(--c-border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--c-text-muted)]">
-                      Default
-                    </span>
-                  ) : null}
                 </td>
                 <td className="px-4 py-3 font-mono text-xs text-[var(--c-text-secondary)]">
                   {project.id}
@@ -195,8 +250,6 @@ function ProjectsTable({
                       type="button"
                       className="app-button-secondary"
                       onClick={() => onDelete(project)}
-                      disabled={isDefault}
-                      title={isDefault ? 'The seeded default project cannot be deleted' : undefined}
                     >
                       Delete
                     </button>
@@ -220,6 +273,42 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       <button type="button" className="app-button-primary mt-4" onClick={onCreate}>
         Create project
       </button>
+    </div>
+  );
+}
+
+const QUICKSTART_DOCS_URL = 'https://www.continua.in/docs/guides/quickstart';
+
+function FirstRunHero({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div
+      data-testid="projects-first-run-hero"
+      className="app-surface-muted p-10"
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
+        Welcome to Continua
+      </p>
+      <h2 className="mt-3 text-xl font-semibold text-[var(--c-text-primary)]">
+        Create your first project to mint an API key
+      </h2>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--c-text-secondary)]">
+        Projects isolate trace data and own the API key your SDK uses to ingest
+        runs. We'll show the new key exactly once after creation — copy it then
+        and store it somewhere safe.
+      </p>
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <button type="button" className="app-button-primary" onClick={onCreate}>
+          Create project
+        </button>
+        <a
+          href={QUICKSTART_DOCS_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium text-[var(--c-accent-text)] hover:underline"
+        >
+          Read the quickstart →
+        </a>
+      </div>
     </div>
   );
 }
@@ -399,10 +488,27 @@ function DeleteProjectDialog({
   onDeleted: () => void;
 }) {
   const [confirm, setConfirm] = useState('');
+  const [retriedWithFallback, setRetriedWithFallback] = useState(false);
   const mutation = useMutation({
     mutationFn: () => deleteProject(project.id),
     onSuccess: onDeleted,
   });
+
+  useEffect(() => {
+    if (retriedWithFallback || !isAuthError(mutation.error)) {
+      return;
+    }
+
+    const fallbackKey = getFallbackProjectApiKey(getApiKey());
+    if (!fallbackKey) {
+      return;
+    }
+
+    setRetriedWithFallback(true);
+    setApiKey(fallbackKey);
+    mutation.reset();
+    mutation.mutate();
+  }, [mutation, mutation.error, mutation.mutate, mutation.reset, retriedWithFallback]);
 
   const canSubmit = confirm === project.name && !mutation.isPending;
 
@@ -449,7 +555,7 @@ function RevealKeyDialog({
 }) {
   return (
     <DialogShell title={`API key for "${project.name}"`} onClose={onClose}>
-      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-[var(--c-text-primary)]">
+      <div className="rounded-md border border-[var(--c-amber-border)] bg-[var(--c-amber-faint)] p-3 text-sm text-[var(--c-text-primary)]">
         Copy this key now. It will not be shown again. If you lose it, rotate the key
         to issue a new one.
       </div>
@@ -498,7 +604,7 @@ function DialogShell({
   children: ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111318]/45 px-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
       <button
         type="button"
         aria-label={`Close ${title} dialog`}
@@ -509,9 +615,9 @@ function DialogShell({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative z-10 w-full max-w-xl rounded-[1rem] border border-[var(--continua-border-strong)] bg-[var(--continua-surface)] p-5 shadow-[var(--continua-shadow-soft)]"
+        className="relative z-10 w-full max-w-xl rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-5 shadow-xl"
       >
-        <h3 className="mb-4 text-xl font-black tight-headline text-[var(--continua-text-primary)]">
+        <h3 className="mb-4 text-lg font-semibold text-[var(--c-text-primary)]">
           {title}
         </h3>
         {children}
@@ -568,7 +674,7 @@ function MutationError({ error }: { error: unknown }) {
   return (
     <p
       role="alert"
-      className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-[var(--c-text-primary)]"
+      className="mt-3 rounded-md border border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-3 py-2 text-sm text-[var(--c-text-primary)]"
     >
       {message}
     </p>

@@ -31,6 +31,10 @@ class FakeHTTPClient:
         self.requests.append((url, kwargs))
         return self.response
 
+    def post(self, url, **kwargs):
+        self.requests.append((url, kwargs))
+        return self.response
+
 
 def test_resolve_api_key_uses_only_explicit_key(monkeypatch):
     demo = load_e2e_demo_module()
@@ -53,6 +57,31 @@ def test_resolve_api_key_uses_only_explicit_key(monkeypatch):
     assert len(requests) == 1
     assert requests[0][0] == "http://localhost:8080/api/projects"
     assert requests[0][1]["headers"] == {"X-API-Key": "explicit-key"}
+
+
+def test_resolve_api_key_bootstraps_local_project_when_key_missing(monkeypatch):
+    demo = load_e2e_demo_module()
+    requests = []
+
+    demo.API_URL = "http://localhost:8080"
+    demo.API_KEY = ""
+    demo.DEMO_RUN_ID = "ci"
+    monkeypatch.setattr(
+        demo.httpx,
+        "Client",
+        lambda **_kwargs: FakeHTTPClient(
+            requests,
+            httpx.Response(201, json={"api_key": "created-key"}),
+        ),
+    )
+
+    assert demo.resolve_api_key() == "created-key"
+    assert requests == [
+        (
+            "http://localhost:8080/api/projects",
+            {"json": {"name": "e2e-demo-ci"}},
+        )
+    ]
 
 
 def test_resolve_api_key_rejects_wrong_demo_project(monkeypatch):

@@ -22,9 +22,17 @@ func TestRunMigrationsDownRejectsTerminatedTracesWithIdentifiers(t *testing.T) {
 	db := newIsolatedPlatformTestDatabase(t)
 	t.Setenv("DATABASE_URL", db.databaseURL)
 
+	_, err := db.pool.Exec(context.Background(), `
+		INSERT INTO projects (id, name, api_key_hash)
+		VALUES ($1, $2, $3)
+	`, defaultPlatformProjectID, "rollback guard test", "test-api-key-hash")
+	if err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
 	traceRowID := uuid.New()
 	traceExternalID := "terminated-rollback-trace"
-	_, err := db.pool.Exec(context.Background(), `
+	_, err = db.pool.Exec(context.Background(), `
 		INSERT INTO traces (
 		    id,
 		    project_id,

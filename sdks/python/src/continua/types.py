@@ -39,6 +39,10 @@ class Project(BaseModel):
 
 
 class ProjectList(BaseModel):
+    authenticated_project_id: UUID | None = Field(
+        None,
+        description="Project bound to the current API key when the request is API-key authenticated. Omitted for operator or unauthenticated bootstrap requests.",
+    )
     projects: list[Project]
 
 

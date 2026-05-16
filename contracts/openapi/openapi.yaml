@@ -1676,6 +1676,10 @@ components:
       type: object
       required: [projects]
       properties:
+        authenticated_project_id:
+          type: string
+          format: uuid
+          description: Project bound to the current API key when the request is API-key authenticated. Omitted for operator or unauthenticated bootstrap requests.
         projects:
           type: array
           items:

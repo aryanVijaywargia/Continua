@@ -9,6 +9,9 @@ SELECT * FROM projects
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2;
 
+-- name: CountProjects :one
+SELECT COUNT(*) FROM projects;
+
 -- name: CreateProject :one
 INSERT INTO projects (name, api_key_hash)
 VALUES ($1, $2)
@@ -28,6 +31,3 @@ RETURNING *;
 
 -- name: DeleteProject :execrows
 DELETE FROM projects WHERE id = $1;
-
--- name: GetDefaultProject :one
-SELECT * FROM projects WHERE id = '00000000-0000-0000-0000-000000000001';

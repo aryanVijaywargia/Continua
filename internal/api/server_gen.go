@@ -954,7 +954,9 @@ type Project struct {
 
 // ProjectList defines model for ProjectList.
 type ProjectList struct {
-	Projects []Project `json:"projects"`
+	// AuthenticatedProjectId Project bound to the current API key when the request is API-key authenticated. Omitted for operator or unauthenticated bootstrap requests.
+	AuthenticatedProjectId *openapi_types.UUID `json:"authenticated_project_id,omitempty"`
+	Projects               []Project           `json:"projects"`
 }
 
 // ProjectWithKey Project metadata including the plaintext API key. Returned only on create or rotate; never retrievable again.

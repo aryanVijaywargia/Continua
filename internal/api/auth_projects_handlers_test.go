@@ -129,7 +129,7 @@ func TestListProjects_OperatorReturnsAllVisibleProjects(t *testing.T) {
 func TestListProjects_APIKeyContextSeesAllProjects(t *testing.T) {
 	// Local-first design: an authenticated caller — including one bound to a single
 	// project via API key — can enumerate every project so the management UI works
-	// with just the seeded default key. In remote multi-tenant deployments, this
+	// with just a locally created project key. In remote multi-tenant deployments, this
 	// surface should be gated by operator auth (Auth0).
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
@@ -147,6 +147,8 @@ func TestListProjects_APIKeyContextSeesAllProjects(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	resp := decodeJSONBody[ProjectList](t, rec)
+	require.NotNil(t, resp.AuthenticatedProjectId)
+	assert.Equal(t, projectAID, *resp.AuthenticatedProjectId)
 	ids := make(map[string]struct{}, len(resp.Projects))
 	for _, project := range resp.Projects {
 		ids[project.Id.String()] = struct{}{}

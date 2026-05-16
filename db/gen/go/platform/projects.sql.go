@@ -11,6 +11,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const countProjects = `-- name: CountProjects :one
+SELECT COUNT(*) FROM projects
+`
+
+func (q *Queries) CountProjects(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countProjects)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (name, api_key_hash)
 VALUES ($1, $2)
@@ -45,23 +56,6 @@ func (q *Queries) DeleteProject(ctx context.Context, id uuid.UUID) (int64, error
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const getDefaultProject = `-- name: GetDefaultProject :one
-SELECT id, name, api_key_hash, created_at, updated_at FROM projects WHERE id = '00000000-0000-0000-0000-000000000001'
-`
-
-func (q *Queries) GetDefaultProject(ctx context.Context) (Project, error) {
-	row := q.db.QueryRow(ctx, getDefaultProject)
-	var i Project
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.ApiKeyHash,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }
 
 const getProject = `-- name: GetProject :one

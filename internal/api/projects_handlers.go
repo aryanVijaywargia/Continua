@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	visibleProjectsPageSize int32  = 500
-	maxProjectNameLength    int    = 100
-	defaultProjectIDString  string = "00000000-0000-0000-0000-000000000001"
+	visibleProjectsPageSize int32 = 500
+	maxProjectNameLength    int   = 100
 )
 
 // ListProjects returns every project in the deployment.
@@ -24,6 +23,10 @@ const (
 func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request) {
 	if !s.requireOperatorWhenAuth0Enabled(w, r) {
 		return
+	}
+	var authenticatedProjectID *openapi_types.UUID
+	if projectID, ok := middleware.GetProjectID(r.Context()); ok {
+		authenticatedProjectID = &projectID
 	}
 	apiProjects := make([]Project, 0, visibleProjectsPageSize)
 	for offset := int32(0); ; offset += visibleProjectsPageSize {
@@ -40,7 +43,10 @@ func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, ProjectList{Projects: apiProjects})
+	writeJSON(w, http.StatusOK, ProjectList{
+		AuthenticatedProjectId: authenticatedProjectID,
+		Projects:               apiProjects,
+	})
 }
 
 // CreateProject generates a fresh API key and returns it once.
@@ -117,13 +123,9 @@ func (s *Server) RotateProjectAPIKey(w http.ResponseWriter, r *http.Request, id 
 	writeJSON(w, http.StatusOK, projectWithKeyResponse(&project, plaintextKey))
 }
 
-// DeleteProject removes a project and cascades its data via FK. The seeded default cannot be deleted.
+// DeleteProject removes a project and cascades its data via FK.
 func (s *Server) DeleteProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	if !s.requireOperatorWhenAuth0Enabled(w, r) {
-		return
-	}
-	if id.String() == defaultProjectIDString {
-		writeError(w, http.StatusConflict, "default_project_protected", "The seeded default project cannot be deleted")
 		return
 	}
 
@@ -139,8 +141,8 @@ func (s *Server) DeleteProject(w http.ResponseWriter, r *http.Request, id openap
 // when Auth0 is configured. In local-first mode (Auth0 disabled) the API-key holder is
 // the operator and is allowed through.
 //
-// Deliberate trade-off: in Auth0-disabled local mode, *any* valid project API key —
-// not just the seeded `default` — can list, create, rename, rotate, and delete any
+// Deliberate trade-off: in Auth0-disabled local mode, *any* valid project API key
+// can list, create, rename, rotate, and delete any
 // project. This is acceptable because local mode is single-tenant: the key holder
 // owns the box. Deployments that need cross-tenant isolation must enable Auth0,
 // which causes API-key callers to receive 403 on every endpoint guarded here.

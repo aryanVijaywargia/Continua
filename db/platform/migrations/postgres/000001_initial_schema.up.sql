@@ -208,10 +208,3 @@ CREATE INDEX IF NOT EXISTS idx_ingest_batches_status ON ingest_batches(status);
 
 -- Payloads
 CREATE INDEX IF NOT EXISTS idx_payloads_span_id ON payloads(span_id);
-
--- =============================================================================
--- Default project for v1 (single-tenant mode)
--- =============================================================================
-INSERT INTO projects (id, name, api_key_hash)
-VALUES ('00000000-0000-0000-0000-000000000001', 'Default Project', 'default')
-ON CONFLICT DO NOTHING;

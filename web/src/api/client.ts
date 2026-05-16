@@ -16,10 +16,14 @@ const ENGINE_PREVIEW_HEADER = 'X-Continua-Engine-Preview';
 const ENGINE_PREVIEW_HEADER_VALUE = '1';
 const DEFAULT_API_ORIGIN = 'http://localhost';
 const LOCAL_API_KEY_STORAGE_KEY = 'continua_api_key';
+const LOCAL_PROJECT_API_KEYS_STORAGE_KEY = 'continua_project_api_keys';
 export const LOCAL_API_KEY_CHANGED_EVENT = 'continua:local-api-key-changed';
 
 type AccessTokenProvider = () => Promise<string | null>;
 type SelectedProjectIdProvider = () => string | null;
+type FetchAPIOptions = RequestInit & {
+  allowUnauthenticated?: boolean;
+};
 
 let accessTokenProvider: AccessTokenProvider | null = null;
 let selectedProjectIdProvider: SelectedProjectIdProvider | null = null;
@@ -77,6 +81,88 @@ export function clearApiKey(): void {
     window.dispatchEvent(new Event(LOCAL_API_KEY_CHANGED_EVENT));
   }
   setAccessTokenProvider(null);
+}
+
+export function rememberProjectApiKey(projectId: string, apiKey: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const trimmedProjectId = projectId.trim();
+  const trimmedApiKey = apiKey.trim();
+  if (trimmedProjectId === '' || trimmedApiKey === '') {
+    return;
+  }
+
+  const knownKeys = getKnownProjectApiKeys();
+  knownKeys[trimmedProjectId] = trimmedApiKey;
+  window.localStorage.setItem(
+    LOCAL_PROJECT_API_KEYS_STORAGE_KEY,
+    JSON.stringify(knownKeys)
+  );
+}
+
+export function getKnownProjectApiKey(projectId: string): string | null {
+  return getKnownProjectApiKeys()[projectId] ?? null;
+}
+
+export function forgetProjectApiKey(projectId: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const knownKeys = getKnownProjectApiKeys();
+  if (!(projectId in knownKeys)) {
+    return;
+  }
+
+  delete knownKeys[projectId];
+  if (Object.keys(knownKeys).length === 0) {
+    window.localStorage.removeItem(LOCAL_PROJECT_API_KEYS_STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(
+    LOCAL_PROJECT_API_KEYS_STORAGE_KEY,
+    JSON.stringify(knownKeys)
+  );
+}
+
+export function getFallbackProjectApiKey(excludedApiKey?: string | null): string | null {
+  return (
+    Object.values(getKnownProjectApiKeys()).find(
+      (apiKey) => apiKey !== excludedApiKey
+    ) ?? null
+  );
+}
+
+function getKnownProjectApiKeys(): Record<string, string> {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  const stored = window.localStorage.getItem(LOCAL_PROJECT_API_KEYS_STORAGE_KEY);
+  if (!stored) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([projectId, apiKey]) =>
+          projectId.trim() !== '' &&
+          typeof apiKey === 'string' &&
+          apiKey.trim() !== ''
+      )
+    ) as Record<string, string>;
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -140,6 +226,7 @@ export interface Project {
 }
 
 export interface ProjectList {
+  authenticated_project_id?: string;
   projects: Project[];
 }
 
@@ -152,11 +239,17 @@ export interface ProjectWithKey extends Project {
  */
 export async function fetchAPI<T>(
   path: string,
-  options: RequestInit = {}
+  options: FetchAPIOptions = {}
 ): Promise<T> {
+  const { allowUnauthenticated = false, ...requestOptions } = options;
   const localApiKey = publicDemoModeEnabled ? null : getApiKey();
 
-  if (!accessTokenProvider && !localApiKey && !publicDemoModeEnabled) {
+  if (
+    !allowUnauthenticated &&
+    !accessTokenProvider &&
+    !localApiKey &&
+    !publicDemoModeEnabled
+  ) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
 
@@ -173,21 +266,21 @@ export async function fetchAPI<T>(
     }
   }
 
-  if (!accessToken && !publicDemoModeEnabled) {
+  if (!accessToken && !publicDemoModeEnabled && !allowUnauthenticated) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
 
   const requestUrl = buildRequestUrl(path);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> | undefined),
+    ...(requestOptions.headers as Record<string, string> | undefined),
   };
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
   const response = await fetch(requestUrl.toString(), {
-    ...options,
+    ...requestOptions,
     headers,
   });
 
@@ -688,7 +781,7 @@ export async function fetchRuntimeAuthConfig(): Promise<RuntimeAuthConfig> {
 }
 
 export async function fetchProjects(): Promise<ProjectList> {
-  return fetchAPI<ProjectList>('/api/projects');
+  return fetchAPI<ProjectList>('/api/projects', { allowUnauthenticated: true });
 }
 
 async function fetchAPIEmpty(
@@ -733,6 +826,7 @@ async function fetchAPIEmpty(
 
 export async function createProject(name: string): Promise<ProjectWithKey> {
   return fetchAPI<ProjectWithKey>('/api/projects', {
+    allowUnauthenticated: true,
     method: 'POST',
     body: JSON.stringify({ name }),
   });
