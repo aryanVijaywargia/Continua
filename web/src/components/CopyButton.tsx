@@ -72,7 +72,7 @@ export function CopyButton({
     <button
       {...buttonProps}
       type={type}
-      className={`inline-flex items-center justify-center rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-2.5 py-1 text-xs font-medium text-[var(--continua-text-secondary)] transition hover:bg-[var(--continua-surface-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] disabled:cursor-not-allowed disabled:opacity-60 ${className}`.trim()}
+      className={`inline-flex items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 py-1 text-xs font-medium text-[var(--c-text-secondary)] transition hover:border-[var(--c-border-strong)] hover:text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)] disabled:cursor-not-allowed disabled:opacity-60 ${className}`.trim()}
       data-copy-status={status}
       onClick={handleClick}
     >

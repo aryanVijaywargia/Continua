@@ -171,8 +171,8 @@ export function PayloadInspector({
 
   if (tree === null) {
     return (
-        <div
-        className={`rounded-lg border border-dashed border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-4 py-6 text-sm text-[var(--continua-text-muted)] ${className}`.trim()}
+      <div
+        className={`rounded-md border border-dashed border-[var(--c-border)] bg-[var(--c-surface-muted)] px-4 py-6 text-sm text-[var(--c-text-muted)] ${className}`.trim()}
       >
         No data
       </div>
@@ -187,9 +187,9 @@ export function PayloadInspector({
 
   return (
     <section
-      className={`flex min-h-0 flex-col rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] ${className}`.trim()}
+      className={`flex min-h-0 flex-col overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] ${className}`.trim()}
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] p-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] bg-[var(--c-surface-muted)] p-3">
         <label className="sr-only" htmlFor={searchInputId}>
           Search payload
         </label>
@@ -200,11 +200,11 @@ export function PayloadInspector({
           onChange={(event) => setSearchQuery(event.target.value)}
           placeholder="Search payload"
           aria-label="Search payload"
-          className="min-w-0 flex-1 rounded-lg border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-2 text-sm text-[var(--continua-text-primary)] shadow-sm transition focus:border-[var(--continua-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
+          className="min-w-[11rem] flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-app-bg)] px-3 py-2 text-sm text-[var(--c-text-primary)] transition placeholder:text-[var(--c-text-muted)] focus:border-[var(--c-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)]"
         />
         <button
           type="button"
-          className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--continua-text-secondary)] transition hover:bg-[var(--continua-surface-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-1.5 text-xs font-medium text-[var(--c-text-secondary)] transition hover:border-[var(--c-border-strong)] hover:text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)] disabled:cursor-not-allowed disabled:opacity-60"
           disabled={matchCount === 0}
           onClick={() =>
             setActiveMatchIndex((index) =>
@@ -216,7 +216,7 @@ export function PayloadInspector({
         </button>
         <button
           type="button"
-          className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--continua-text-secondary)] transition hover:bg-[var(--continua-surface-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-1.5 text-xs font-medium text-[var(--c-text-secondary)] transition hover:border-[var(--c-border-strong)] hover:text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)] disabled:cursor-not-allowed disabled:opacity-60"
           disabled={matchCount === 0}
           onClick={() =>
             setActiveMatchIndex((index) =>
@@ -228,7 +228,7 @@ export function PayloadInspector({
         </button>
         <button
           type="button"
-          className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--continua-text-secondary)] transition hover:bg-[var(--continua-surface-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-1.5 text-xs font-medium text-[var(--c-text-secondary)] transition hover:border-[var(--c-border-strong)] hover:text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)] disabled:cursor-not-allowed disabled:opacity-60"
           title={
             expandAllDisabled
               ? 'Expand all is disabled for payloads with more than 5,000 nodes.'
@@ -241,7 +241,7 @@ export function PayloadInspector({
         </button>
         <button
           type="button"
-          className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--continua-text-secondary)] transition hover:bg-[var(--continua-surface-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
+          className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-1.5 text-xs font-medium text-[var(--c-text-secondary)] transition hover:border-[var(--c-border-strong)] hover:text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)]"
           onClick={handleCollapseAll}
         >
           Collapse all
@@ -252,11 +252,11 @@ export function PayloadInspector({
           idleLabel="Copy full JSON"
           successLabel="Copied JSON"
         />
-        <span className="ml-auto text-xs text-[var(--continua-text-muted)]">{matchSummary}</span>
+        <span className="ml-auto text-xs text-[var(--c-text-muted)]">{matchSummary}</span>
       </div>
 
       <div className="min-h-0 overflow-auto p-3">
-        <div className="font-mono text-xs leading-6 text-[var(--continua-text-primary)]">
+        <div className="font-mono text-xs leading-6 text-[var(--c-text-primary)]">
           <PayloadNodeRow
             node={tree}
             activeMatchId={activeMatch?.id ?? null}
@@ -304,13 +304,13 @@ function PayloadNodeRow({
           <button
             type="button"
             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${describeNode(node)}`}
-            className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--continua-text-muted)] transition hover:bg-[var(--continua-surface-muted)] hover:text-[var(--continua-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--continua-accent-faint)]"
+            className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--c-text-muted)] transition hover:bg-[var(--c-row-hover-bg)] hover:text-[var(--c-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)]"
             onClick={() => onToggleExpanded(node.path)}
           >
             {isExpanded ? '-' : '+'}
           </button>
         ) : (
-          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-[var(--continua-border-soft)]">
+          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-[var(--c-text-muted)]">
             -
           </span>
         )}
@@ -321,14 +321,14 @@ function PayloadNodeRow({
               <>
                 <HighlightableText
                   activeMatchId={activeMatchId}
-                  className="break-all text-[var(--continua-accent)]"
+                  className="break-all text-[var(--c-accent-text)]"
                   isMatch={keyMatch}
                   matchId={keyMatchId}
                   registerMatchElement={registerMatchElement}
                 >
                   {String(node.key)}
                 </HighlightableText>
-                <span className="text-[var(--continua-text-muted)]">:</span>
+                <span className="text-[var(--c-text-muted)]">:</span>
               </>
             )}
 
@@ -339,8 +339,8 @@ function PayloadNodeRow({
                 activeMatchId={activeMatchId}
                 className={
                   typeof node.value === 'string'
-                    ? 'max-h-36 overflow-auto whitespace-pre-wrap break-words text-emerald-700 dark:text-emerald-300'
-                    : 'break-all text-[var(--continua-text-primary)]'
+                    ? 'max-h-36 overflow-auto whitespace-pre-wrap break-words text-[var(--c-green-text)]'
+                    : 'break-all text-[var(--c-text-primary)]'
                 }
                 isMatch={valueMatch}
                 matchId={valueMatchId}
@@ -395,8 +395,8 @@ function CollectionSummary({ node }: { node: TreeNode }) {
 
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
-      <span className="text-[var(--continua-text-muted)]">{node.type === 'object' ? '{}' : '[]'}</span>
-      <span className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--continua-text-secondary)]">
+      <span className="text-[var(--c-text-muted)]">{node.type === 'object' ? '{}' : '[]'}</span>
+      <span className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--c-text-secondary)]">
         {describeCollection(node)}
       </span>
     </span>
@@ -426,8 +426,8 @@ function HighlightableText({
       className={`${className} ${
         isMatch
           ? activeMatchId === matchId
-            ? 'rounded bg-amber-200 px-1 dark:bg-amber-400/40'
-            : 'rounded bg-yellow-100 px-1 dark:bg-yellow-400/20'
+            ? 'rounded bg-[var(--c-amber-faint)] px-1 text-[var(--c-amber-text)] ring-1 ring-[var(--c-amber-border)]'
+            : 'rounded bg-[var(--c-amber-faint)] px-1 text-[var(--c-amber-text)]'
           : ''
       }`.trim()}
       data-match-state={
