@@ -14,7 +14,7 @@
     <a href="#features"><b>Features</b></a> ·
     <a href="#architecture"><b>Architecture</b></a> ·
     <a href="#python-sdk"><b>Python SDK</b></a> ·
-    <a href="./docs-site/"><b>Docs</b></a> ·
+    <a href="https://www.continua.in/docs"><b>Docs</b></a> ·
     <a href="https://github.com/aryanVijaywargia/Continua/issues"><b>Issues</b></a>
   </p>
 
@@ -22,7 +22,7 @@
     <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0EA5E9?style=flat-square"></a>
     <img alt="Docker demo" src="https://img.shields.io/badge/demo-Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white">
     <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-F59E0B?style=flat-square">
-    <a href="./docs-site/"><img alt="Docs" src="https://img.shields.io/badge/docs-Mintlify-22D3EE?style=flat-square"></a>
+    <a href="https://www.continua.in/docs"><img alt="Docs" src="https://img.shields.io/badge/docs-Mintlify-22D3EE?style=flat-square"></a>
   </p>
 
 </div>
