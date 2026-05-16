@@ -1378,20 +1378,124 @@ function CodeOutputPanel({
   );
 }
 
+const COMMIT_HEATMAP_TOTAL = 240;
+const COMMIT_HEATMAP_WEEKS = 26;
+const COMMIT_HEATMAP_DAYS: readonly number[] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 3, 21, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 4, 0, 0, 2, 3, 3, 0, 2, 0, 0, 7, 8, 2, 0, 0, 0, 0, 4, 1,
+  2, 2, 0, 0, 0, 0, 12, 0, 10, 0, 4, 0, 11, 11, 7, 8, 0, 0, 0, 21, 5, 3, 1, 0, 0, 5, 2, 0, 0, 0,
+  0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 4, 11, 22, 9,
+];
+
+function commitLevel(count: number): 0 | 1 | 2 | 3 | 4 {
+  if (count <= 0) return 0;
+  if (count <= 2) return 1;
+  if (count <= 5) return 2;
+  if (count <= 10) return 3;
+  return 4;
+}
+
+function CommitHeatmap() {
+  const cells: number[][] = Array.from({ length: COMMIT_HEATMAP_WEEKS }, () => []);
+  for (let i = 0; i < COMMIT_HEATMAP_DAYS.length; i += 1) {
+    const week = Math.floor(i / 7);
+    cells[week].push(COMMIT_HEATMAP_DAYS[i]);
+  }
+  const monthLabels = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
+
+  return (
+    <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="flex items-center justify-between">
+        <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
+          Commit activity
+        </div>
+        <span className="font-mono text-[10px] text-[var(--c-text-muted)]">
+          <span className="text-[var(--c-text-primary)]">{COMMIT_HEATMAP_TOTAL}</span> commits · last 26 weeks
+        </span>
+      </div>
+      <div className="mt-2.5 flex gap-[3px]" aria-hidden="true">
+        {cells.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-[3px]">
+            {week.map((c, di) => {
+              const level = commitLevel(c);
+              const bg =
+                level === 0
+                  ? 'var(--c-app-bg)'
+                  : level === 1
+                    ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)'
+                    : level === 2
+                      ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)'
+                      : level === 3
+                        ? 'color-mix(in srgb, var(--c-accent) 75%, transparent)'
+                        : 'var(--c-accent)';
+              return (
+                <div
+                  key={di}
+                  className="h-[9px] w-[9px] rounded-[2px] border"
+                  style={{ background: bg, borderColor: 'var(--c-border)' }}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[9.5px] font-mono text-[var(--c-text-muted)]">
+        <div className="flex gap-2">
+          {monthLabels.map((m) => (
+            <span key={m}>{m}</span>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <span>less</span>
+          {[0, 1, 2, 3, 4].map((lvl) => (
+            <span
+              key={lvl}
+              className="inline-block h-[8px] w-[8px] rounded-[2px] border"
+              style={{
+                borderColor: 'var(--c-border)',
+                background:
+                  lvl === 0
+                    ? 'var(--c-app-bg)'
+                    : lvl === 1
+                      ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)'
+                      : lvl === 2
+                        ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)'
+                        : lvl === 3
+                          ? 'color-mix(in srgb, var(--c-accent) 75%, transparent)'
+                          : 'var(--c-accent)',
+              }}
+            />
+          ))}
+          <span>more</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RepoCard() {
   const repoFacts = [
     ['License', 'MIT'],
     ['Docs', 'continua.in/docs'],
-    ['Engine', 'preview'],
+    ['Commits', String(COMMIT_HEATMAP_TOTAL)],
   ] as const;
 
   return (
     <Reveal>
       <div className="rounded-xl border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
-        <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
+        <a
+          href={GITHUB_REPO_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 border-b px-4 py-3 transition hover:bg-[var(--c-app-bg)]"
+          style={{ borderColor: 'var(--c-border)' }}
+        >
           <Github size={14} className="text-[var(--c-text-secondary)]" />
           <span className="font-mono text-[12px] text-[var(--c-text-primary)]">aryanVijaywargia/Continua</span>
-        </div>
+        </a>
+        <CommitHeatmap />
         <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
           <div className="flex items-center justify-between">
             <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Current surface</div>
@@ -1441,6 +1545,16 @@ function RepoCard() {
   );
 }
 
+function isSameOriginHref(href: string): boolean {
+  if (typeof window === 'undefined') return false;
+  if (href.startsWith('/') || href.startsWith('#')) return true;
+  try {
+    return new URL(href, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 function ExternalLink({
   href,
   children,
@@ -1452,8 +1566,14 @@ function ExternalLink({
   className?: string;
   style?: CSSProperties;
 }) {
+  const sameOrigin = isSameOriginHref(href);
   return (
-    <a href={href} target="_blank" rel="noreferrer" className={className} style={style}>
+    <a
+      href={href}
+      {...(sameOrigin ? {} : { target: '_blank', rel: 'noreferrer' })}
+      className={className}
+      style={style}
+    >
       {children}
     </a>
   );

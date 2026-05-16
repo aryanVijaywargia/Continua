@@ -9,10 +9,13 @@
     "dark": "#0369A1"
   },
   "favicon": "/favicon.svg",
+  "appearance": {
+    "default": "system"
+  },
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg",
-    "href": "https://github.com/aryanVijaywargia/Continua"
+    "href": "https://www.continua.in"
   },
   "navigation": {
     "tabs": [
