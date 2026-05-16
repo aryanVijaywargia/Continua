@@ -374,21 +374,21 @@ function Hero({
           <div className="min-w-0 max-w-2xl">
             <SpanEyebrow idx={0} kind="TRACE" name="introducing_continua" dur="alpha" status="ok" />
             <h1
-              aria-label={`${isPublicDemo ? 'Explore agent traces' : 'Debug your agents'} today. Run them durably tomorrow.`}
+              aria-label="Your agent's black box. Opened."
               className="landing-display mt-6 text-[52px] font-bold tracking-[-0.035em] text-[var(--c-text-primary)] sm:text-[68px] lg:text-[76px]"
             >
-              <span className="block">{isPublicDemo ? 'Explore agent traces' : 'Debug your agents'}</span>
+              <span className="block">Your agent's black box.</span>
               <span
                 className="inline-block rounded-[2px] bg-[var(--c-accent)] px-[0.2em] pb-[0.08em] pt-[0.04em] text-white"
                 style={{ transform: 'rotate(-0.6deg) translateY(2px)' }}
               >
-                run durably tomorrow.
+                Opened.
               </span>
             </h1>
             <p className="mt-6 max-w-xl text-[15.5px] leading-relaxed text-[var(--c-text-secondary)]">
-              Continua is the open-source control plane for AI agent observability today and
-              durable execution tomorrow. Ship traces into a self-hosted operator console now;
-              use the engine preview surface as the runtime foundation evolves.
+              Open-source observability for AI agents. Capture every retry, payload, and state
+              transition as it happens — and inspect them from a self-hosted console that runs in
+              one binary.
             </p>
             {isPublicDemo ? (
               <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">

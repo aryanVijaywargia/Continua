@@ -98,7 +98,7 @@ describe('LandingPage', () => {
     expect(screen.getByText(/The Python SDK batches spans/i)).toBeInTheDocument();
     expect(screen.queryByText(/TypeScript SDK/i)).not.toBeInTheDocument();
     expect(document.body).toHaveTextContent(/from continua import Continua, span, trace/i);
-    expect(screen.getByRole('heading', { name: /Debug your agents today\. Run them durably tomorrow/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Your agent's black box\. Opened\./i })).toBeInTheDocument();
     expect(document.body).toHaveTextContent(/AI agent observability today, durable execution tomorrow/i);
     expect(screen.getByRole('tablist', { name: 'Python SDK examples' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'agent.py' })).toHaveAttribute('aria-selected', 'true');
