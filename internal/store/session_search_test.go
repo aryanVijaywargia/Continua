@@ -113,6 +113,31 @@ func TestListSessionsFiltered_SearchRankingAndUserFilter(t *testing.T) {
 	assert.Equal(t, []uuid.UUID{exact.ID, prefix.ID, nameOnly.ID}, sessionIDs(result.Sessions))
 }
 
+func TestListSessionsFiltered_SearchMatchesUserID(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+
+	matching := createSessionAt(t, ctx, s, projectID, "sess-alpha", "Alpha", "demo-user-42", base)
+	_ = createSessionAt(t, ctx, s, projectID, "sess-beta", "Beta", "demo-user-99", base.Add(time.Hour))
+
+	result, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
+		ProjectID: projectID,
+		Query:     "demo-user-42",
+		Limit:     10,
+		Offset:    0,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1), result.Total)
+	require.Len(t, result.Sessions, 1)
+	assert.Equal(t, matching.ID, result.Sessions[0].ID)
+}
+
 func TestListSessionsFiltered_ProjectScopingAndStablePagination(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()

@@ -81,17 +81,26 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	if hasSearchQuery {
 		searchArgNum = argNum
 		fromClause = fmt.Sprintf("%s CROSS JOIN (SELECT plainto_tsquery('english', $%d) AS search_query) q", fromClause, searchArgNum)
-		// Search traces.search_vector OR any span.search_vector matches
+		// Search generated FTS vectors plus ID-style fields that operators paste
+		// from related screens.
 		// Use EXISTS for efficient span search with proper project scoping
-		whereClauses = append(whereClauses, `(
+		whereClauses = append(whereClauses, fmt.Sprintf(`(
 			t.search_vector @@ q.search_query
+			OR t.trace_id ILIKE '%%' || $%[1]d || '%%'
+			OR COALESCE(t.name, '') ILIKE '%%' || $%[1]d || '%%'
+			OR COALESCE(t.user_id, '') ILIKE '%%' || $%[1]d || '%%'
+			OR COALESCE(sess.external_id, '') ILIKE '%%' || $%[1]d || '%%'
 			OR EXISTS (
 				SELECT 1 FROM spans s
 				WHERE s.trace_id = t.id
 				AND s.project_id = t.project_id
-				AND s.search_vector @@ q.search_query
+				AND (
+					s.search_vector @@ q.search_query
+					OR COALESCE(s.name, '') ILIKE '%%' || $%[1]d || '%%'
+					OR s.span_id ILIKE '%%' || $%[1]d || '%%'
+				)
 			)
-		)`)
+		)`, searchArgNum))
 		args = append(args, searchQuery)
 		argNum++
 	}

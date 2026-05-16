@@ -540,7 +540,7 @@ function TracesContent() {
               setSearchDraft('');
               setFilters({ q: undefined }, 'push');
             }}
-            placeholder="Search trace name or ID…"
+            placeholder="Search trace, span, session, or user…"
           />
           <span className="sr-only">Search names, user IDs, and matching span names.</span>
           {activeChips.map((chip) => (
