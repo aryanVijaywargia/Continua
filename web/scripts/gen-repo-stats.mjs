@@ -95,7 +95,7 @@ if (isShallowRepository && existingStats) {
   process.exit(0);
 }
 
-const log = tryGit(['log', '--no-merges', '--pretty=format:%at']);
+const log = tryGit(['log', '--pretty=format:%at']);
 if (!log) {
   writeFallback('git log returned no commits');
   process.exit(0);
