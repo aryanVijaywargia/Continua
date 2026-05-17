@@ -5,6 +5,7 @@ import {
   Copy,
   Github,
   Moon,
+  Star,
   Sun,
   Terminal,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useTheme } from '../hooks/useTheme';
 
 const GITHUB_REPO_URL = 'https://github.com/aryanVijaywargia/Continua';
+const GITHUB_REPO_API_URL = 'https://api.github.com/repos/aryanVijaywargia/Continua';
 const DOCS_URL = 'https://www.continua.in/docs';
 const GITHUB_LICENSE_URL = `${GITHUB_REPO_URL}/blob/main/LICENSE`;
 const API_REFERENCE_URL = `${DOCS_URL}/api-reference`;
@@ -89,7 +91,7 @@ const CODE_TABS = [
     file: 'agent.py',
     rows: [
       ['k', 'from '], ['m', 'continua'], ['k', ' import '], ['_', 'Continua, span, trace\n\n'],
-      ['t', 'client'], ['_', ' = Continua.init(\n    api_key='], ['s', '"<project-api-key>"'], ['_', ',\n    endpoint='], ['s', '"http://localhost:8080"'], ['_', ',\n)\n\n'],
+      ['t', 'client'], ['_', ' = Continua.init(\n    api_key='], ['s', '"default"'], ['_', ',\n    endpoint='], ['s', '"http://localhost:8080"'], ['_', ',\n)\n\n'],
       ['d', '@trace'], ['_', '(name='], ['s', '"research_agent"'], ['_', ')\n'],
       ['k', 'def '], ['fn', 'run'], ['_', '(query):\n    '],
       ['k', 'with '], ['_', 'span('], ['s', '"plan"'], ['_', ', kind='], ['s', '"llm"'], ['_', ') '], ['k', 'as '], ['_', 's:\n        s.set_input({'], ['s', '"query"'], ['_', ': query})\n        result = call_llm(query)\n        s.set_llm_response('], ['s', '"gpt-4"'], ['_', ', query, result)\n\n    '],
@@ -373,21 +375,21 @@ function Hero({
           <div className="min-w-0 max-w-2xl">
             <SpanEyebrow idx={0} kind="TRACE" name="introducing_continua" dur="alpha" status="ok" />
             <h1
-              aria-label="Your agent's black box. Opened."
+              aria-label={`${isPublicDemo ? 'Explore agent traces' : 'Debug your agents'} today. Run them durably tomorrow.`}
               className="landing-display mt-6 text-[52px] font-bold tracking-[-0.035em] text-[var(--c-text-primary)] sm:text-[68px] lg:text-[76px]"
             >
-              <span className="block">Your agent's black box.</span>
+              <span className="block">{isPublicDemo ? 'Explore agent traces' : 'Debug your agents'}</span>
               <span
                 className="inline-block rounded-[2px] bg-[var(--c-accent)] px-[0.2em] pb-[0.08em] pt-[0.04em] text-white"
                 style={{ transform: 'rotate(-0.6deg) translateY(2px)' }}
               >
-                Opened.
+                run durably tomorrow.
               </span>
             </h1>
             <p className="mt-6 max-w-xl text-[15.5px] leading-relaxed text-[var(--c-text-secondary)]">
-              Open-source observability for AI agents. Capture every retry, payload, and state
-              transition as it happens — and inspect them from a self-hosted console that runs in
-              one binary.
+              Continua is the open-source control plane for AI agent observability today and
+              durable execution tomorrow. Ship traces into a self-hosted operator console now;
+              use the engine preview surface as the runtime foundation evolves.
             </p>
             {isPublicDemo ? (
               <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">
@@ -1431,72 +1433,125 @@ function CodeOutputPanel({
   );
 }
 
-import repoStatsJson from '../data/repo-stats.json';
+const COMMIT_HEATMAP_TOTAL = 240;
+const COMMIT_HEATMAP_WEEKS = 26;
+const COMMIT_HEATMAP_DAYS: readonly number[] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 3, 21, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 4, 0, 0, 2, 3, 3, 0, 2, 0, 0, 7, 8, 2, 0, 0, 0, 0, 4, 1,
+  2, 2, 0, 0, 0, 0, 12, 0, 10, 0, 4, 0, 11, 11, 7, 8, 0, 0, 0, 21, 5, 3, 1, 0, 0, 5, 2, 0, 0, 0,
+  0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 4, 11, 22, 9,
+];
 
-interface RepoStatsWeek {
-  weekStart: string;
-  total: number;
+interface GitHubCommitActivityWeek {
   days: number[];
-}
-
-interface RepoStatsFile {
-  generatedAt: string;
-  branch: string | null;
-  commitTotal: number;
-  firstCommitAt: string | null;
-  weeks: RepoStatsWeek[];
+  total: number;
+  week: number;
 }
 
 interface RepoActivity {
-  weeks: RepoStatsWeek[];
+  commitDays: readonly number[];
   commitTotal: number;
-  sinceLabel: string;
-  monthLabels: string[];
+  allTimeCommitTotal: number | null;
+  updatedFromGitHub: boolean;
 }
 
-const MAX_HEATMAP_WEEKS = 52;
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+interface GitHubContributorStats {
+  total: number;
+  author?: { login?: string } | null;
+}
 
-function buildRepoActivity(): RepoActivity {
-  const stats = repoStatsJson as RepoStatsFile;
-  const raw = Array.isArray(stats.weeks) ? stats.weeks : [];
+const FALLBACK_REPO_ACTIVITY: RepoActivity = {
+  commitDays: COMMIT_HEATMAP_DAYS,
+  commitTotal: COMMIT_HEATMAP_TOTAL,
+  allTimeCommitTotal: null,
+  updatedFromGitHub: false,
+};
 
-  // Drop leading zero-commit weeks so the heatmap starts on the first real week of activity.
-  let start = 0;
-  while (start < raw.length && raw[start].total === 0) start += 1;
-  let trimmed = raw.slice(start);
+function useRepoActivity(): RepoActivity {
+  const [activity, setActivity] = useState<RepoActivity>(FALLBACK_REPO_ACTIVITY);
 
-  // Cap window so very old repos don't blow out the row width.
-  if (trimmed.length > MAX_HEATMAP_WEEKS) {
-    trimmed = trimmed.slice(trimmed.length - MAX_HEATMAP_WEEKS);
-  }
+  useEffect(() => {
+    const controller = new AbortController();
 
-  const commitTotal = trimmed.reduce((acc, w) => acc + (w.total ?? 0), 0);
+    async function fetchCommitActivity() {
+      try {
+        const response = await fetch(`${GITHUB_REPO_API_URL}/stats/commit_activity`, {
+          signal: controller.signal,
+        });
 
-  let sinceLabel = '—';
-  const monthLabels: string[] = [];
-  if (trimmed.length > 0) {
-    const first = new Date(`${trimmed[0].weekStart}T00:00:00Z`);
-    sinceLabel = `${MONTH_NAMES[first.getUTCMonth()]} ${first.getUTCFullYear()}`;
+        if (!response.ok) {
+          return;
+        }
 
-    let prevMonth = -1;
-    let prevYear = -1;
-    for (const w of trimmed) {
-      const d = new Date(`${w.weekStart}T00:00:00Z`);
-      const m = d.getUTCMonth();
-      const y = d.getUTCFullYear();
-      if (m !== prevMonth || y !== prevYear) {
-        monthLabels.push(MONTH_NAMES[m]);
-        prevMonth = m;
-        prevYear = y;
+        const weeks = (await response.json()) as GitHubCommitActivityWeek[];
+        if (!Array.isArray(weeks) || weeks.length === 0) {
+          return;
+        }
+
+        const recentWeeks = weeks.slice(-COMMIT_HEATMAP_WEEKS);
+        const commitDays = recentWeeks.flatMap((week) =>
+          Array.isArray(week.days) ? week.days.slice(0, 7) : []
+        );
+
+        if (commitDays.length === 0) {
+          return;
+        }
+
+        setActivity((prev) => ({
+          ...prev,
+          commitDays,
+          commitTotal: recentWeeks.reduce((total, week) => total + (week.total ?? 0), 0),
+          updatedFromGitHub: true,
+        }));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
       }
     }
-  }
 
-  return { weeks: trimmed, commitTotal, sinceLabel, monthLabels };
+    async function fetchAllTimeCommitTotal() {
+      try {
+        const response = await fetch(`${GITHUB_REPO_API_URL}/stats/contributors`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const contributors = (await response.json()) as GitHubContributorStats[];
+        if (!Array.isArray(contributors) || contributors.length === 0) {
+          return;
+        }
+
+        const allTime = contributors.reduce(
+          (total, contributor) => total + (contributor.total ?? 0),
+          0,
+        );
+
+        if (allTime <= 0) {
+          return;
+        }
+
+        setActivity((prev) => ({ ...prev, allTimeCommitTotal: allTime }));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+      }
+    }
+
+    void fetchCommitActivity();
+    void fetchAllTimeCommitTotal();
+
+    return () => controller.abort();
+  }, []);
+
+  return activity;
 }
-
-const REPO_ACTIVITY: RepoActivity = buildRepoActivity();
 
 function commitLevel(count: number): 0 | 1 | 2 | 3 | 4 {
   if (count <= 0) return 0;
@@ -1507,6 +1562,16 @@ function commitLevel(count: number): 0 | 1 | 2 | 3 | 4 {
 }
 
 function CommitHeatmap({ activity }: { activity: RepoActivity }) {
+  const cells: number[][] = Array.from({ length: COMMIT_HEATMAP_WEEKS }, () => []);
+  for (let i = 0; i < activity.commitDays.length; i += 1) {
+    const week = Math.floor(i / 7);
+    if (week >= cells.length) {
+      break;
+    }
+    cells[week].push(activity.commitDays[i]);
+  }
+  const monthLabels = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
+
   return (
     <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
       <div className="flex items-center justify-between">
@@ -1514,13 +1579,14 @@ function CommitHeatmap({ activity }: { activity: RepoActivity }) {
           Commit activity
         </div>
         <span className="font-mono text-[10px] text-[var(--c-text-muted)]">
-          <span className="text-[var(--c-text-primary)]">{activity.commitTotal}</span> commits · since {activity.sinceLabel}
+          <span className="text-[var(--c-text-primary)]">{activity.commitTotal}</span> commits · last 26 weeks
+          {activity.updatedFromGitHub ? ' · live' : ''}
         </span>
       </div>
       <div className="mt-2.5 flex gap-[3px]" aria-hidden="true">
-        {activity.weeks.map((week, wi) => (
-          <div key={`${week.weekStart}-${wi}`} className="flex flex-col gap-[3px]">
-            {week.days.map((c, di) => {
+        {cells.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-[3px]">
+            {week.map((c, di) => {
               const level = commitLevel(c);
               const bg =
                 level === 0
@@ -1545,8 +1611,8 @@ function CommitHeatmap({ activity }: { activity: RepoActivity }) {
       </div>
       <div className="mt-2 flex items-center justify-between text-[9.5px] font-mono text-[var(--c-text-muted)]">
         <div className="flex gap-2">
-          {activity.monthLabels.map((m, i) => (
-            <span key={`${m}-${i}`}>{m}</span>
+          {monthLabels.map((m) => (
+            <span key={m}>{m}</span>
           ))}
         </div>
         <div className="flex items-center gap-1">
@@ -1578,26 +1644,42 @@ function CommitHeatmap({ activity }: { activity: RepoActivity }) {
 }
 
 function RepoCard() {
-  const activity = REPO_ACTIVITY;
+  const activity = useRepoActivity();
+  const commitsDisplay = activity.allTimeCommitTotal ?? activity.commitTotal;
   const repoFacts = [
     ['License', 'MIT'],
     ['Release', 'Alpha'],
-    ['Commits', String(activity.commitTotal)],
+    ['Commits', String(commitsDisplay)],
   ] as const;
 
   return (
     <Reveal>
       <div className="rounded-xl border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
-        <a
-          href={GITHUB_REPO_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-2 border-b px-4 py-3 transition hover:bg-[var(--c-app-bg)]"
+        <div
+          className="flex items-center justify-between gap-2 border-b px-4 py-3"
           style={{ borderColor: 'var(--c-border)' }}
         >
-          <Github size={14} className="text-[var(--c-text-secondary)]" />
-          <span className="font-mono text-[12px] text-[var(--c-text-primary)]">aryanVijaywargia/Continua</span>
-        </a>
+          <a
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-w-0 items-center gap-2 transition hover:text-[var(--c-accent-text)]"
+          >
+            <Github size={14} className="text-[var(--c-text-secondary)]" />
+            <span className="truncate font-mono text-[12px] text-[var(--c-text-primary)]">aryanVijaywargia/Continua</span>
+          </a>
+          <a
+            href={`${GITHUB_REPO_URL}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--c-accent-text)] transition hover:bg-[var(--c-accent-faint)]"
+            style={{ borderColor: 'var(--c-accent-border)' }}
+            aria-label="Star this repo on GitHub"
+          >
+            <Star size={11} className="fill-current" />
+            Star repo
+          </a>
+        </div>
         <CommitHeatmap activity={activity} />
         <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
           <div className="flex items-center justify-between">
