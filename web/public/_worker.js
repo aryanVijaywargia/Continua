@@ -517,14 +517,21 @@ function handleApi(url) {
 
   if (/^\/api\/traces\/[^/]+\/spans$/.test(url.pathname)) {
     const traceId = url.pathname.split('/').at(-2);
+    if (!traceDetails.has(traceId)) {
+      return notFound();
+    }
     return json(traceSpansByTrace.get(traceId) ?? emptySpans);
   }
 
   if (/^\/api\/traces\/[^/]+\/events$/.test(url.pathname)) {
     const traceId = url.pathname.split('/').at(-2);
+    const detail = traceDetails.get(traceId);
+    if (!detail) {
+      return notFound();
+    }
     const timeline =
       traceTimelinesByTrace.get(traceId) ??
-      { ...emptyTimeline, trace_status: traceDetails.get(traceId)?.status ?? 'RUNNING' };
+      { ...emptyTimeline, trace_status: detail.status };
     return json(timeline);
   }
 
