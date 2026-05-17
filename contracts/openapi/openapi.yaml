@@ -1449,7 +1449,7 @@ paths:
             default: 0
         - name: q
           in: query
-          description: Search sessions by external ID or name
+          description: Search sessions by internal ID, external ID, user ID, or name
           schema:
             type: string
         - name: user_id

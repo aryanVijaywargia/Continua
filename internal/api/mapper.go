@@ -475,7 +475,7 @@ func sessionCompareSpanDiffToAPI(row *store.SessionCompareSpanDiffRow) sessionCo
 		DiffStatus:     CompareDiffStatus(row.DiffStatus),
 		MatchSource:    compareMatchSourceToAPI(row.MatchSource),
 		MatchReason:    row.MatchReason,
-		ChangedFields:  append([]string(nil), row.ChangedFields...),
+		ChangedFields:  cloneStringSlice(row.ChangedFields),
 		BaselineSpan:   compareSpanSummaryToAPI(row.BaselineSpan),
 		CandidateSpan:  compareSpanSummaryToAPI(row.CandidateSpan),
 		SemanticGroups: semanticGroups,
@@ -489,10 +489,18 @@ func sessionCompareSemanticDiffToAPI(group *store.SessionCompareSemanticDiffGrou
 		DiffStatus:     CompareDiffStatus(group.DiffStatus),
 		MatchSource:    compareMatchSourceToAPI(group.MatchSource),
 		MatchReason:    group.MatchReason,
-		ChangedFields:  append([]string(nil), group.ChangedFields...),
+		ChangedFields:  cloneStringSlice(group.ChangedFields),
 		BaselineEvent:  compareSemanticSummaryToAPI(group.BaselineEvent),
 		CandidateEvent: compareSemanticSummaryToAPI(group.CandidateEvent),
 	}
+}
+
+func cloneStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+
+	return append([]string(nil), values...)
 }
 
 func compareSpanSummaryToAPI(summary *store.SessionCompareSpanSummary) *CompareSpanSummary {
