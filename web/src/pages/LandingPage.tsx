@@ -300,11 +300,11 @@ function Nav({
           </ExternalLink>
           <ExternalLink
             href={GITHUB_REPO_URL}
-            className="hidden h-7 items-center gap-1.5 rounded-md border bg-[var(--c-surface)] px-2.5 text-[12px] font-medium text-[var(--c-text-primary)] sm:inline-flex"
+            className="hidden h-7 items-center gap-1.5 rounded-md border bg-[var(--c-surface)] px-2.5 text-[12px] font-medium text-[var(--c-text-primary)] transition hover:bg-[var(--c-accent-faint)] hover:text-[var(--c-accent-text)] sm:inline-flex"
             style={{ borderColor: 'var(--c-border)' }}
           >
-            <Github size={13} />
-            <span>GitHub</span>
+            <Star size={13} className="fill-current text-[var(--c-accent-text)]" />
+            <span>Star on GitHub</span>
           </ExternalLink>
           {isConsoleAvailable ? (
             <Link
