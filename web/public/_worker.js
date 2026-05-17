@@ -264,114 +264,162 @@ const traceTimelinesByTrace = new Map([
 const emptySpans = { spans: [] };
 const emptyTimeline = { events: [], trace_status: 'RUNNING', has_more: false };
 
-const sessionNarrative = {
-  summary: {
-    total_trace_count: 2,
-    returned_trace_count: 2,
-    truncated: false,
-    running_trace_count: 0,
-    completed_trace_count: 1,
-    failed_trace_count: 1,
-    total_cost_usd: 0.13,
-    total_tokens_in: 140,
-    total_tokens_out: 90,
-    started_at: '2026-03-14T09:00:00.000Z',
-    last_activity_at: '2026-03-14T10:00:02.000Z',
-    explicit_link_count: 0,
-    inferred_link_count: 1,
-    unlinked_trace_count: 1,
-  },
-  traces: [
+const sessionNarrativesBySession = new Map([
+  [
+    sessionId,
     {
-      id: 'trace-alpha',
-      trace_id: 'external-trace-alpha',
-      name: 'Alpha Narrative',
-      status: 'COMPLETED',
-      started_at: '2026-03-14T09:00:00.000Z',
-      ended_at: '2026-03-14T09:00:03.000Z',
-      duration_ms: 3000,
-      error_count: 0,
-      total_cost_usd: 0.01,
-      total_tokens_in: 20,
-      total_tokens_out: 10,
-      latest_activity_at: '2026-03-14T09:00:03.000Z',
-      semantic_events: [],
-      lineage: { type: 'unlinked' },
-    },
-    {
-      id: 'trace-checkout',
-      trace_id: 'external-trace-checkout',
-      name: 'Checkout Narrative',
-      status: 'FAILED',
-      started_at: '2026-03-14T10:00:00.000Z',
-      ended_at: '2026-03-14T10:00:02.000Z',
-      duration_ms: 2000,
-      error_count: 2,
-      total_cost_usd: 0.12,
-      total_tokens_in: 120,
-      total_tokens_out: 80,
-      latest_activity_at: '2026-03-14T10:00:02.000Z',
-      semantic_events: [],
-      lineage: { type: 'inferred', parent_trace_id: 'external-trace-alpha' },
-    },
-  ],
-};
-
-const sessionCompare = {
-  session: {
-    id: sessionId,
-    external_id: sessionExternalId,
-    name: 'Checkout Session',
-  },
-  baseline: {
-    id: 'trace-alpha',
-    trace_id: 'external-trace-alpha',
-    name: 'Alpha Narrative',
-    status: 'COMPLETED',
-    started_at: '2026-03-14T09:00:00.000Z',
-    ended_at: '2026-03-14T09:00:03.000Z',
-    duration_ms: 3000,
-    error_count: 0,
-  },
-  candidate: {
-    id: 'trace-checkout',
-    trace_id: 'external-trace-checkout',
-    name: 'Checkout Narrative',
-    status: 'FAILED',
-    started_at: '2026-03-14T10:00:00.000Z',
-    ended_at: '2026-03-14T10:00:02.000Z',
-    duration_ms: 2000,
-    error_count: 2,
-  },
-  summary: {
-    compared_span_count: 2,
-    changed_span_count: 1,
-    baseline_only_count: 0,
-    candidate_only_count: 1,
-    semantic_event_delta: 1,
-  },
-  span_diffs: [
-    {
-      key: 'root',
-      name: 'Checkout root',
-      status: 'changed',
-      baseline_span: null,
-      candidate_span: {
-        span_id: 'root',
-        name: 'Checkout root',
-        kind: 'CHAIN',
-        status: 'FAILED',
-        latency_ms: 2000,
-        tokens_in: 120,
-        tokens_out: 80,
-        cost_usd: 0.12,
+      summary: {
+        total_trace_count: 2,
+        returned_trace_count: 2,
+        truncated: false,
+        running_trace_count: 0,
+        completed_trace_count: 1,
+        failed_trace_count: 1,
+        total_cost_usd: 0.13,
+        total_tokens_in: 140,
+        total_tokens_out: 90,
+        started_at: '2026-03-14T09:00:00.000Z',
+        last_activity_at: '2026-03-14T10:00:02.000Z',
+        explicit_link_count: 0,
+        inferred_link_count: 1,
+        unlinked_trace_count: 1,
       },
-      changed_fields: ['status', 'latency_ms'],
-      semantic_groups: [],
-      depth: 0,
+      traces: [
+        {
+          id: 'trace-alpha',
+          trace_id: 'external-trace-alpha',
+          name: 'Alpha Narrative',
+          status: 'COMPLETED',
+          started_at: '2026-03-14T09:00:00.000Z',
+          ended_at: '2026-03-14T09:00:03.000Z',
+          duration_ms: 3000,
+          error_count: 0,
+          total_cost_usd: 0.01,
+          total_tokens_in: 20,
+          total_tokens_out: 10,
+          latest_activity_at: '2026-03-14T09:00:03.000Z',
+          semantic_events: [],
+          lineage: { type: 'unlinked' },
+        },
+        {
+          id: 'trace-checkout',
+          trace_id: 'external-trace-checkout',
+          name: 'Checkout Narrative',
+          status: 'FAILED',
+          started_at: '2026-03-14T10:00:00.000Z',
+          ended_at: '2026-03-14T10:00:02.000Z',
+          duration_ms: 2000,
+          error_count: 2,
+          total_cost_usd: 0.12,
+          total_tokens_in: 120,
+          total_tokens_out: 80,
+          latest_activity_at: '2026-03-14T10:00:02.000Z',
+          semantic_events: [],
+          lineage: { type: 'inferred', parent_trace_id: 'external-trace-alpha' },
+        },
+      ],
     },
   ],
-};
+  [
+    otherSessionId,
+    {
+      summary: {
+        total_trace_count: 1,
+        returned_trace_count: 1,
+        truncated: false,
+        running_trace_count: 1,
+        completed_trace_count: 0,
+        failed_trace_count: 0,
+        total_cost_usd: 0.03,
+        total_tokens_in: 50,
+        total_tokens_out: 25,
+        started_at: '2026-03-14T11:00:00.000Z',
+        last_activity_at: '2026-03-14T11:00:00.000Z',
+        explicit_link_count: 0,
+        inferred_link_count: 0,
+        unlinked_trace_count: 1,
+      },
+      traces: [
+        {
+          id: 'trace-latency',
+          trace_id: 'external-trace-latency',
+          name: 'Latency Narrative',
+          status: 'RUNNING',
+          started_at: '2026-03-14T11:00:00.000Z',
+          duration_ms: null,
+          error_count: 0,
+          total_cost_usd: 0.03,
+          total_tokens_in: 50,
+          total_tokens_out: 25,
+          latest_activity_at: '2026-03-14T11:00:00.000Z',
+          semantic_events: [],
+          lineage: { type: 'unlinked' },
+        },
+      ],
+    },
+  ],
+]);
+
+const sessionComparesBySession = new Map([
+  [
+    sessionId,
+    {
+      session: {
+        id: sessionId,
+        external_id: sessionExternalId,
+        name: 'Checkout Session',
+      },
+      baseline: {
+        id: 'trace-alpha',
+        trace_id: 'external-trace-alpha',
+        name: 'Alpha Narrative',
+        status: 'COMPLETED',
+        started_at: '2026-03-14T09:00:00.000Z',
+        ended_at: '2026-03-14T09:00:03.000Z',
+        duration_ms: 3000,
+        error_count: 0,
+      },
+      candidate: {
+        id: 'trace-checkout',
+        trace_id: 'external-trace-checkout',
+        name: 'Checkout Narrative',
+        status: 'FAILED',
+        started_at: '2026-03-14T10:00:00.000Z',
+        ended_at: '2026-03-14T10:00:02.000Z',
+        duration_ms: 2000,
+        error_count: 2,
+      },
+      summary: {
+        compared_span_count: 2,
+        changed_span_count: 1,
+        baseline_only_count: 0,
+        candidate_only_count: 1,
+        semantic_event_delta: 1,
+      },
+      span_diffs: [
+        {
+          key: 'root',
+          name: 'Checkout root',
+          status: 'changed',
+          baseline_span: null,
+          candidate_span: {
+            span_id: 'root',
+            name: 'Checkout root',
+            kind: 'CHAIN',
+            status: 'FAILED',
+            latency_ms: 2000,
+            tokens_in: 120,
+            tokens_out: 80,
+            cost_usd: 0.12,
+          },
+          changed_fields: ['status', 'latency_ms'],
+          semantic_groups: [],
+          depth: 0,
+        },
+      ],
+    },
+  ],
+]);
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -494,11 +542,15 @@ function handleApi(url) {
   }
 
   if (/^\/api\/sessions\/[^/]+\/narrative$/.test(url.pathname)) {
-    return json(sessionNarrative);
+    const id = url.pathname.split('/').at(-2);
+    const narrative = sessionNarrativesBySession.get(id);
+    return narrative ? json(narrative) : notFound();
   }
 
   if (/^\/api\/sessions\/[^/]+\/compare$/.test(url.pathname)) {
-    return json(sessionCompare);
+    const id = url.pathname.split('/').at(-2);
+    const compare = sessionComparesBySession.get(id);
+    return compare ? json(compare) : notFound();
   }
 
   if (/^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
