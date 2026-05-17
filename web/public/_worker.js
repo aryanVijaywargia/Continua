@@ -482,8 +482,10 @@ function filterSessions(url) {
   if (q) {
     filtered = filtered.filter(
       (session) =>
+        session.id.toLowerCase().includes(q) ||
         session.external_id.toLowerCase().includes(q) ||
-        session.name?.toLowerCase().includes(q)
+        session.name?.toLowerCase().includes(q) ||
+        session.user_id?.toLowerCase().includes(q)
     );
   }
   if (userId) {
