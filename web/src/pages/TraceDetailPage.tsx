@@ -33,6 +33,7 @@ import { StateDiffViewer } from '../components/StateDiffViewer';
 import { StatusBadge } from '../components/StatusBadge';
 import { TreeRail } from '../components/TreeRail';
 import { Timeline } from '../components/Timeline';
+import { TruncationBanner } from '../components/TruncationBanner';
 import {
   MobileWorkspaceTabId,
   WorkspaceShell,
@@ -1323,7 +1324,15 @@ function SpanInspectorPanel({
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {activeTab === 'input' ? (
           selectedSpan.input !== undefined ? (
-            <CompactPayloadInspector value={selectedSpan.input} />
+            <>
+              <TruncationBanner
+                title="Input payload"
+                truncated={selectedSpan.input_truncated}
+                originalSizeBytes={selectedSpan.input_original_size_bytes}
+                reason={selectedSpan.input_truncation_reason}
+              />
+              <CompactPayloadInspector value={selectedSpan.input} />
+            </>
           ) : (
             <InspectorEmptyState>No input payload recorded.</InspectorEmptyState>
           )
@@ -1331,7 +1340,15 @@ function SpanInspectorPanel({
 
         {activeTab === 'output' ? (
           selectedSpan.output !== undefined ? (
-            <CompactPayloadInspector value={selectedSpan.output} />
+            <>
+              <TruncationBanner
+                title="Output payload"
+                truncated={selectedSpan.output_truncated}
+                originalSizeBytes={selectedSpan.output_original_size_bytes}
+                reason={selectedSpan.output_truncation_reason}
+              />
+              <CompactPayloadInspector value={selectedSpan.output} />
+            </>
           ) : selectedSpan.error_message ? (
             <pre className="whitespace-pre-wrap rounded border border-[var(--c-red-border)] bg-[var(--c-red-faint)] p-3 font-mono text-xs leading-6 text-[var(--c-red-text)]">
               {selectedSpan.error_message}
