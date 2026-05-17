@@ -324,6 +324,36 @@ describe('SessionComparePage', () => {
     expect(screen.queryByRole('button', { name: 'Show semantic details' })).not.toBeInTheDocument();
   });
 
+  it('survives null changed-field arrays from older compare responses', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionCompare: () =>
+          jsonResponse({
+            ...SESSION_COMPARE,
+            span_diffs: [
+              {
+                ...SESSION_COMPARE.span_diffs[1],
+                changed_fields: null,
+                semantic_groups: SESSION_COMPARE.span_diffs[1].semantic_groups.map((group) => ({
+                  ...group,
+                  changed_fields: null,
+                })),
+              },
+            ],
+          }),
+      })
+    );
+
+    renderTraceRoutes([
+      `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
+    ]);
+
+    expect(
+      await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Retry Tool')).toBeInTheDocument();
+  });
+
   it('renders the 422 comparison ceiling detail state', async () => {
     fetchMock.mockImplementation(
       buildFetchHandler({
