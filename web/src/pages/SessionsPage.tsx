@@ -181,7 +181,7 @@ function SessionsContent() {
             setSearchDraft('');
             setFilters({ q: undefined, user_id: undefined }, 'push');
           }}
-          placeholder="Search external ID, user, or name…"
+          placeholder="Search ID, external ID, user, or name…"
         />
         {filters.q && filters.user_id ? (
           <Chip
