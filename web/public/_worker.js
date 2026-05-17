@@ -101,58 +101,168 @@ const traceDetails = new Map([
   ],
 ]);
 
-const traceSpans = {
-  spans: [
+const traceSpansByTrace = new Map([
+  [
+    'trace-checkout',
     {
-      id: 'span-root',
-      trace_id: 'trace-checkout',
-      span_id: 'root',
-      name: 'Checkout root',
-      kind: 'CHAIN',
-      status: 'FAILED',
-      started_at: traces[0].started_at,
-      ended_at: traces[0].ended_at,
-      latency_ms: 2000,
-      tokens_in: 120,
-      tokens_out: 80,
-      cost_usd: 0.12,
-      metadata: { phase: 'checkout' },
-    },
-    {
-      id: 'span-tool',
-      trace_id: 'trace-checkout',
-      span_id: 'tool-call',
-      parent_span_id: 'root',
-      name: 'Checkout tool',
-      kind: 'TOOL',
-      status: 'FAILED',
-      started_at: '2026-03-14T10:00:01.000Z',
-      ended_at: '2026-03-14T10:00:02.000Z',
-      latency_ms: 1000,
-      error_message: 'Gateway timeout',
-      metadata: { tool: 'charge-card' },
+      spans: [
+        {
+          id: 'span-checkout-root',
+          trace_id: 'trace-checkout',
+          span_id: 'root',
+          name: 'Checkout root',
+          kind: 'CHAIN',
+          status: 'FAILED',
+          started_at: traces[0].started_at,
+          ended_at: traces[0].ended_at,
+          latency_ms: 2000,
+          tokens_in: 120,
+          tokens_out: 80,
+          cost_usd: 0.12,
+          input: { cart_id: 'cart-789', items: 3, total_usd: 42.5 },
+          output: { ok: false, error: 'Gateway timeout' },
+          metadata: { phase: 'checkout' },
+        },
+        {
+          id: 'span-checkout-tool',
+          trace_id: 'trace-checkout',
+          span_id: 'tool-call',
+          parent_span_id: 'root',
+          name: 'Checkout tool',
+          kind: 'TOOL',
+          status: 'FAILED',
+          started_at: '2026-03-14T10:00:01.000Z',
+          ended_at: '2026-03-14T10:00:02.000Z',
+          latency_ms: 1000,
+          input: { card_last4: '4242', amount_usd: 42.5 },
+          output: { ok: false, code: 'gateway_timeout' },
+          error_message: 'Gateway timeout',
+          metadata: { tool: 'charge-card' },
+        },
+      ],
     },
   ],
-};
+  [
+    'trace-alpha',
+    {
+      spans: [
+        {
+          id: 'span-alpha-root',
+          trace_id: 'trace-alpha',
+          span_id: 'alpha-root',
+          name: 'Alpha root',
+          kind: 'CHAIN',
+          status: 'COMPLETED',
+          started_at: traces[2].started_at,
+          ended_at: traces[2].ended_at,
+          latency_ms: 3000,
+          tokens_in: 20,
+          tokens_out: 10,
+          cost_usd: 0.01,
+          input: { prompt: 'alpha' },
+          output: { answer: 'complete' },
+          metadata: { phase: 'alpha' },
+        },
+        {
+          id: 'span-alpha-llm',
+          trace_id: 'trace-alpha',
+          span_id: 'alpha-llm',
+          parent_span_id: 'alpha-root',
+          name: 'Alpha LLM call',
+          kind: 'LLM',
+          status: 'COMPLETED',
+          started_at: '2026-03-14T09:00:00.500Z',
+          ended_at: '2026-03-14T09:00:02.500Z',
+          latency_ms: 2000,
+          tokens_in: 20,
+          tokens_out: 10,
+          cost_usd: 0.01,
+          input: { messages: [{ role: 'user', content: 'alpha' }] },
+          output: { content: 'complete' },
+          metadata: { model: 'gpt-4o-mini', provider: 'openai' },
+        },
+      ],
+    },
+  ],
+  [
+    'trace-latency',
+    {
+      spans: [
+        {
+          id: 'span-latency-root',
+          trace_id: 'trace-latency',
+          span_id: 'latency-root',
+          name: 'Latency root',
+          kind: 'CHAIN',
+          status: 'STARTED',
+          started_at: traces[1].started_at,
+          latency_ms: null,
+          tokens_in: 50,
+          tokens_out: 25,
+          cost_usd: 0.03,
+          input: { prompt: 'latency check' },
+          metadata: { phase: 'latency' },
+        },
+      ],
+    },
+  ],
+]);
 
-const traceTimeline = {
-  events: [
+const traceTimelinesByTrace = new Map([
+  [
+    'trace-checkout',
     {
-      id: 'timeline-error',
-      trace_id: 'trace-checkout',
-      span_id: 'tool-call',
-      span_name: 'Checkout tool',
-      event_type: 'error',
-      timestamp: '2026-03-14T10:00:02.000Z',
-      source: 'explicit',
-      level: 'error',
-      message: 'Gateway timeout',
-      payload: { code: 'gateway_timeout' },
+      events: [
+        {
+          id: 'timeline-checkout-error',
+          trace_id: 'trace-checkout',
+          span_id: 'tool-call',
+          span_name: 'Checkout tool',
+          event_type: 'error',
+          timestamp: '2026-03-14T10:00:02.000Z',
+          source: 'explicit',
+          level: 'error',
+          message: 'Gateway timeout',
+          payload: { code: 'gateway_timeout' },
+        },
+      ],
+      trace_status: 'FAILED',
+      has_more: false,
     },
   ],
-  trace_status: 'FAILED',
-  has_more: false,
-};
+  [
+    'trace-alpha',
+    {
+      events: [
+        {
+          id: 'timeline-alpha-complete',
+          trace_id: 'trace-alpha',
+          span_id: 'alpha-llm',
+          span_name: 'Alpha LLM call',
+          event_type: 'log',
+          timestamp: '2026-03-14T09:00:02.500Z',
+          source: 'explicit',
+          level: 'info',
+          message: 'LLM call completed',
+          payload: { tokens_out: 10 },
+        },
+      ],
+      trace_status: 'COMPLETED',
+      has_more: false,
+    },
+  ],
+  [
+    'trace-latency',
+    {
+      events: [],
+      trace_status: 'RUNNING',
+      has_more: false,
+    },
+  ],
+]);
+
+const emptySpans = { spans: [] };
+const emptyTimeline = { events: [], trace_status: 'RUNNING', has_more: false };
 
 const sessionNarrative = {
   summary: {
@@ -358,16 +468,25 @@ function handleApi(url) {
   }
 
   if (/^\/api\/traces\/[^/]+\/spans$/.test(url.pathname)) {
-    return json(traceSpans);
+    const traceId = url.pathname.split('/').at(-2);
+    return json(traceSpansByTrace.get(traceId) ?? emptySpans);
   }
 
   if (/^\/api\/traces\/[^/]+\/events$/.test(url.pathname)) {
-    return json(traceTimeline);
+    const traceId = url.pathname.split('/').at(-2);
+    const timeline =
+      traceTimelinesByTrace.get(traceId) ??
+      { ...emptyTimeline, trace_status: traceDetails.get(traceId)?.status ?? 'RUNNING' };
+    return json(timeline);
   }
 
   if (/^\/api\/traces\/[^/]+$/.test(url.pathname)) {
     const traceId = url.pathname.split('/').at(-1);
-    return json(traceDetails.get(traceId) ?? { ...traceDetails.get('trace-checkout'), id: traceId });
+    const detail = traceDetails.get(traceId);
+    if (!detail) {
+      return notFound();
+    }
+    return json(detail);
   }
 
   if (url.pathname === '/api/sessions') {
