@@ -403,7 +403,7 @@ function CompareSpanRow({
         <div className="flex flex-wrap items-center gap-2">
           <DiffStatusPill diffStatus={row.diff_status} />
           {row.match_source ? <MatchSourcePill matchSource={row.match_source} matchReason={row.match_reason} /> : null}
-          {row.changed_fields.map((field) => (
+          {(row.changed_fields ?? []).map((field) => (
             <span
               key={field}
               className="rounded-full border border-[var(--continua-border-soft)] bg-[var(--continua-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--continua-text-secondary)]"
@@ -527,7 +527,7 @@ function CompareSemanticGroupRow({
         </span>
         <DiffStatusPill diffStatus={group.diff_status} small />
         {group.match_source ? <MatchSourcePill matchSource={group.match_source} matchReason={group.match_reason} small /> : null}
-        {group.changed_fields.map((field) => (
+        {(group.changed_fields ?? []).map((field) => (
           <span
             key={field}
             className="rounded-full bg-[var(--continua-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--continua-text-secondary)]"

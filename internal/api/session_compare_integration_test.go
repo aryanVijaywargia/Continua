@@ -278,6 +278,74 @@ func TestGetSessionCompare_EmptyComparisonReturns200(t *testing.T) {
 	assert.Equal(t, 0, resp.Summary.TotalSemanticCandidate)
 }
 
+func TestGetSessionCompare_EmptyChangedFieldsStayArraysOnWire(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	session := createSessionRecord(t, ctx, s, projectID, "compare-empty-fields", "Empty Fields", "user-42", time.Date(2026, 3, 25, 15, 30, 0, 0, time.UTC))
+	baseline := createCompareTraceRecord(ctx, t, pool, q, projectID, session.ID, "trace-b", "Baseline", "completed", time.Date(2026, 3, 25, 15, 30, 0, 0, time.UTC), timePtr(time.Date(2026, 3, 25, 15, 31, 0, 0, time.UTC)))
+	candidate := createCompareTraceRecord(ctx, t, pool, q, projectID, session.ID, "trace-c", "Candidate", "completed", time.Date(2026, 3, 25, 15, 32, 0, 0, time.UTC), timePtr(time.Date(2026, 3, 25, 15, 33, 0, 0, time.UTC)))
+
+	createCompareSpanRecord(
+		ctx,
+		t,
+		q,
+		projectID,
+		baseline.ID,
+		"baseline-only",
+		nil,
+		"Baseline only",
+		"tool",
+		"completed",
+		time.Date(2026, 3, 25, 15, 30, 0, 0, time.UTC),
+		timePtr(time.Date(2026, 3, 25, 15, 30, 1, 0, time.UTC)),
+		nil,
+		nil,
+		nil,
+		0,
+		0,
+	)
+	createCompareSemanticEventRecord(
+		ctx,
+		t,
+		q,
+		projectID,
+		baseline.ID,
+		"baseline-only",
+		"decision",
+		time.Date(2026, 3, 25, 15, 30, 0, 500_000_000, time.UTC),
+		int32PtrCompare(1),
+		"Choose baseline",
+		map[string]any{"question": "Choose?", "chosen": "baseline"},
+	)
+
+	rec := invokeGetSessionCompare(t, server, projectID, session.ID, baseline.ID, candidate.ID)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+
+	spanDiffs, ok := body["span_diffs"].([]any)
+	require.True(t, ok)
+	require.Len(t, spanDiffs, 1)
+
+	row, ok := spanDiffs[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{}, row["changed_fields"])
+
+	semanticGroups, ok := row["semantic_groups"].([]any)
+	require.True(t, ok)
+	require.Len(t, semanticGroups, 1)
+
+	group, ok := semanticGroups[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{}, group["changed_fields"])
+}
+
 func TestGetSessionCompare_ReportsCatchingUpProjectionStateWhenHistoryCheckpointIsStale(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))

@@ -3040,7 +3040,7 @@ export interface operations {
                 project_id?: components["parameters"]["SelectedProjectId"];
                 limit?: number;
                 offset?: number;
-                /** @description Search sessions by external ID or name */
+                /** @description Search sessions by internal ID, external ID, user ID, or name */
                 q?: string;
                 /** @description Filter sessions by exact user ID */
                 user_id?: string;

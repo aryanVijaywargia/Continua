@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-05-16T20:33:26.803Z",
-  "branch": "codex/demo-search-landing-polish",
-  "commitTotal": 189,
+  "generatedAt": "2026-05-17T13:32:09.196Z",
+  "branch": "fix/landing-and-trace-detail-mock",
+  "commitTotal": 208,
   "firstCommitAt": "2025-12-30T13:26:25.000Z",
   "weeks": [
     {
@@ -253,7 +253,7 @@
     },
     {
       "weekStart": "2026-05-10",
-      "total": 42,
+      "total": 57,
       "days": [
         0,
         2,
@@ -261,7 +261,20 @@
         5,
         17,
         4,
-        14
+        29
+      ]
+    },
+    {
+      "weekStart": "2026-05-17",
+      "total": 4,
+      "days": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
       ]
     }
   ]
