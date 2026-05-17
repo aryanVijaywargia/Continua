@@ -5,6 +5,7 @@ import {
   Copy,
   Github,
   Moon,
+  Star,
   Sun,
   Terminal,
 } from 'lucide-react';
@@ -1588,16 +1589,31 @@ function RepoCard() {
   return (
     <Reveal>
       <div className="rounded-xl border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
-        <a
-          href={GITHUB_REPO_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-2 border-b px-4 py-3 transition hover:bg-[var(--c-app-bg)]"
+        <div
+          className="flex items-center justify-between gap-2 border-b px-4 py-3"
           style={{ borderColor: 'var(--c-border)' }}
         >
-          <Github size={14} className="text-[var(--c-text-secondary)]" />
-          <span className="font-mono text-[12px] text-[var(--c-text-primary)]">aryanVijaywargia/Continua</span>
-        </a>
+          <a
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-w-0 items-center gap-2 transition hover:text-[var(--c-accent-text)]"
+          >
+            <Github size={14} className="text-[var(--c-text-secondary)]" />
+            <span className="truncate font-mono text-[12px] text-[var(--c-text-primary)]">aryanVijaywargia/Continua</span>
+          </a>
+          <a
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--c-accent-text)] transition hover:bg-[var(--c-accent-faint)]"
+            style={{ borderColor: 'var(--c-accent-border)' }}
+            aria-label="Star this repo on GitHub"
+          >
+            <Star size={11} className="fill-current" />
+            Star repo
+          </a>
+        </div>
         <CommitHeatmap activity={activity} />
         <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
           <div className="flex items-center justify-between">

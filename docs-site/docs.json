@@ -4,9 +4,9 @@
   "name": "Continua",
   "description": "Self-hosted debugging for AI agent runs. Traces, spans, sessions, and events for production agents.",
   "colors": {
-    "primary": "#0EA5E9",
-    "light": "#38BDF8",
-    "dark": "#0369A1"
+    "primary": "#0075d6",
+    "light": "#7aaeff",
+    "dark": "#005cab"
   },
   "favicon": "/favicon.svg",
   "appearance": {
