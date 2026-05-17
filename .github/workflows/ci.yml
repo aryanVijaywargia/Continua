@@ -89,13 +89,13 @@ jobs:
         run: pnpm install
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v1.64.8
           args: --timeout=5m
 
       - name: Lint engine module
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v1.64.8
           working-directory: engine
