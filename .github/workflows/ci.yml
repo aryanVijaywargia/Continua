@@ -33,9 +33,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 9
+        uses: pnpm/action-setup@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -81,9 +79,7 @@ jobs:
           node-version: '20'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 9
+        uses: pnpm/action-setup@v6
 
       - name: Install dependencies
         run: pnpm install
@@ -170,9 +166,7 @@ jobs:
           node-version: '20'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 9
+        uses: pnpm/action-setup@v6
 
       - name: Install dependencies
         run: pnpm install
@@ -233,9 +227,7 @@ jobs:
           node-version: '20'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 9
+        uses: pnpm/action-setup@v6
 
       - name: Install dependencies
         run: pnpm install
