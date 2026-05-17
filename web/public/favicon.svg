@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Continua" fill="none">
   <defs>
-    <linearGradient id="cont-grad-favicon" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+    <linearGradient id="cont-favicon-grad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#0075d6"/>
       <stop offset="1" stop-color="#005cab"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="url(#cont-grad-favicon)"/>
+  <rect width="64" height="64" rx="14" fill="url(#cont-favicon-grad)"/>
   <path d="M 46 18 A 18 18 0 1 0 46 46" stroke="#ffffff" stroke-width="6" stroke-linecap="round" fill="none"/>
   <circle cx="46" cy="18" r="4" fill="#ffffff"/>
   <circle cx="46" cy="46" r="4" fill="#ffffff"/>
