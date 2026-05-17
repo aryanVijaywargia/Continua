@@ -1289,7 +1289,7 @@ type ListSessionsParams struct {
 	Limit     *int               `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset    *int               `form:"offset,omitempty" json:"offset,omitempty"`
 
-	// Q Search sessions by external ID or name
+	// Q Search sessions by internal ID, external ID, user ID, or name
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// UserId Filter sessions by exact user ID
