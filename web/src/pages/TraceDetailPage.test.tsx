@@ -206,6 +206,35 @@ describe('TraceDetailPage', () => {
     expect(screen.getByRole('heading', { name: 'Execution Waterfall' })).toBeInTheDocument();
   });
 
+  it('shows truncation metadata inside the active span inspector', async () => {
+    const truncatedSpan = createSpan({
+      span_id: 'truncated',
+      name: 'Truncated payload span',
+      input: { prompt: 'shortened' },
+      input_truncated: true,
+      input_original_size_bytes: 70_000,
+      input_truncation_reason: 'max_bytes_exceeded',
+      output: { answer: 'shortened' },
+      output_truncated: true,
+      output_original_size_bytes: 80_000,
+      output_truncation_reason: 'max_bytes_exceeded',
+    });
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        spans: () => jsonResponse({ spans: [truncatedSpan] }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}?span=truncated`]);
+
+    expect(await screen.findByRole('heading', { name: 'Truncated payload span' })).toBeInTheDocument();
+    expect(screen.getByText('Input payload was truncated before storage.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Output' }));
+
+    expect(screen.getByText('Output payload was truncated before storage.')).toBeInTheDocument();
+  });
+
   it('exposes the replay preview only when the explicit feature flag is enabled', async () => {
     vi.stubEnv('VITE_CONTINUA_REPLAY_PREVIEW', '1');
     fetchMock.mockImplementation(buildFetchHandler());
