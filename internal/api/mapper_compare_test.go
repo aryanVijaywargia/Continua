@@ -3,8 +3,9 @@ package api
 import (
 	"testing"
 
-	"github.com/continua-ai/continua/internal/store"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/continua-ai/continua/internal/store"
 )
 
 func TestSessionCompareSpanDiffToAPI_PreservesEmptyChangedFieldsAsArray(t *testing.T) {
