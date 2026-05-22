@@ -1,0 +1,31 @@
+---
+title: "Week of May 22, 2026"
+description: "Hosted docs, project key lifecycle, broader debugger search, and landing page polish."
+---
+
+## New features
+
+**Hosted documentation site.** Continua docs are now hosted on Mintlify and proxied through `/docs` on the main site. The README and in-app setup links point to the new hosted location, so you can search and browse reference material without cloning the repo. See [Quickstart](/guides/quickstart).
+
+**Generated project API keys.** New self-hosted installations now bootstrap a local project with a generated API key instead of using a hardcoded default. Existing setups should regenerate their keys before tracing. See [Installation](/guides/installation) and the [Python SDK installation guide](/sdk/python/installation).
+
+**Broader debugger search.** The debugger search now covers a wider range of span and event fields, so you can find traces by payload contents, attributes, and identifiers that previously weren't indexed.
+
+**Commit heatmap on the landing page.** The Continua landing page now shows a contribution heatmap and surfaces total commit count, including merge commits, alongside a Star repo CTA.
+
+## Updates
+
+**Per-session narrative and compare endpoints.** Session narrative and trace compare views now return data scoped to the requested session, making it easier to diff runs without cross-contamination from other sessions.
+
+**Demo mock data is now per-trace.** The interactive demo returns spans, timelines, and payloads for the specific trace you're viewing instead of shared fixtures, so the demo more accurately reflects how the real product behaves.
+
+**Refreshed landing page.** Updated hero copy, polished trace layout, and a real favicon across the site.
+
+**Theme preference now syncs across sites.** Dark and light mode preferences are shared between the docs and the landing page, so switching once applies everywhere.
+
+## Bug fixes
+
+- Trace detail layout now renders correctly on mobile, including theme colors.
+- Unknown trace and event IDs return a proper 404 instead of empty data.
+- Same-origin docs links on the landing page now open in the same tab.
+- Landing page repo stats now fall back gracefully when running against a shallow clone.

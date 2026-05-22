@@ -73,6 +73,18 @@
       {
         "tab": "API Reference",
         "openapi": "/api-reference/openapi.yaml"
+      },
+      {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Changelog",
+            "pages": [
+              "changelog/overview",
+              "changelog/2026-05-22"
+            ]
+          }
+        ]
       }
     ],
     "global": {
