@@ -2,9 +2,7 @@ import { useState, type ReactNode } from 'react';
 
 export type MobileWorkspaceTabId =
   | 'summary'
-  | 'execution'
-  | 'timeline'
-  | 'state';
+  | 'execution';
 
 interface WorkspaceShellProps {
   isDesktop: boolean;
@@ -12,8 +10,6 @@ interface WorkspaceShellProps {
   waterfall: ReactNode;
   inspector: ReactNode;
   mobileSummary: ReactNode;
-  mobileTimeline: ReactNode;
-  mobileState: ReactNode;
   activeMobileTab: MobileWorkspaceTabId;
   onMobileTabChange: (tab: MobileWorkspaceTabId) => void;
 }
@@ -21,8 +17,6 @@ interface WorkspaceShellProps {
 const MOBILE_TABS: Array<{ id: MobileWorkspaceTabId; label: string }> = [
   { id: 'summary', label: 'Summary' },
   { id: 'execution', label: 'Execution' },
-  { id: 'timeline', label: 'Timeline' },
-  { id: 'state', label: 'State' },
 ];
 export function WorkspaceShell({
   isDesktop,
@@ -30,8 +24,6 @@ export function WorkspaceShell({
   waterfall,
   inspector,
   mobileSummary,
-  mobileTimeline,
-  mobileState,
   activeMobileTab,
   onMobileTabChange,
 }: WorkspaceShellProps) {
@@ -46,7 +38,10 @@ export function WorkspaceShell({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--c-app-bg)]">
-      <div className="border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-4">
+      <nav
+        aria-label="Mobile trace workspace"
+        className="border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-4"
+      >
         <div className="flex overflow-x-auto">
           {MOBILE_TABS.map((tab) => (
             <button
@@ -64,7 +59,7 @@ export function WorkspaceShell({
             </button>
           ))}
         </div>
-      </div>
+      </nav>
 
       <div className="min-h-0 flex-1">
         <div
@@ -78,18 +73,6 @@ export function WorkspaceShell({
           treeRail={treeRail}
           waterfall={waterfall}
         />
-        <div
-          className="h-full"
-          style={{ display: activeMobileTab === 'timeline' ? 'block' : 'none' }}
-        >
-          {mobileTimeline}
-        </div>
-        <div
-          className="h-full"
-          style={{ display: activeMobileTab === 'state' ? 'block' : 'none' }}
-        >
-          {mobileState}
-        </div>
       </div>
     </section>
   );

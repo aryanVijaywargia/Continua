@@ -335,6 +335,7 @@ describe('TraceDetailPage', () => {
   });
 
   it('renders engine projection, wait summary, tabs, and control actions', async () => {
+    const user = userEvent.setup();
     fetchMock.mockImplementation(
       buildFetchHandler({
         detail: () => jsonResponse(createEngineTraceDetail()),
@@ -344,12 +345,24 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect(await screen.findByText('checkout')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Engine state' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Engine state' }));
+
+    expect(screen.getByRole('button', { name: 'Overview 0' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: 'Pending 0' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Engine history 0' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Result 0' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Summary retained' })).toBeInTheDocument();
     expect(screen.getByText('Waiting on signal')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Signal' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Signal' })).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Pending 0' }));
+    expect(screen.getAllByRole('button', { name: 'Signal' })).toHaveLength(1);
   });
 
   it('shows pending engine work in the mobile summary workspace', async () => {
@@ -401,6 +414,39 @@ describe('TraceDetailPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Summary' }));
     expect(screen.getAllByText('Needle child').length).toBeGreaterThan(0);
+  });
+
+  it('does not expose duplicate mobile timeline and state workspaces inside overview', async () => {
+    setMatchMediaMatches(false);
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        timeline: () =>
+          jsonResponse({
+            events: [
+              createTimelineEvent({
+                event_type: 'span_started',
+                message: 'checkout started',
+              }),
+            ],
+            trace_status: 'RUNNING',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    const mobileWorkspace = await screen.findByRole('navigation', {
+      name: 'Mobile trace workspace',
+    });
+    expect(within(mobileWorkspace).getByRole('button', { name: 'Summary' })).toBeInTheDocument();
+    expect(within(mobileWorkspace).getByRole('button', { name: 'Execution' })).toBeInTheDocument();
+    expect(within(mobileWorkspace).queryByRole('button', { name: 'Timeline' })).not.toBeInTheDocument();
+    expect(within(mobileWorkspace).queryByRole('button', { name: 'State' })).not.toBeInTheDocument();
+
+    const sectionTabs = screen.getByRole('navigation', { name: 'Trace detail sections' });
+    await userEvent.click(within(sectionTabs).getByRole('button', { name: /Timeline/i }));
+    expect(screen.getByRole('heading', { name: 'Timeline' })).toBeInTheDocument();
   });
 
   it('surfaces failure-first guidance in the mobile summary workspace', async () => {

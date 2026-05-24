@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   useMemo,
   type Dispatch,
@@ -13,8 +14,11 @@ import {
   fetchTraces,
   fetchSpans,
   fetchTrace,
+  fetchEngineRunHistory,
+  fetchEngineRunResult,
   isAuthError,
   type EngineRunStatus,
+  type EngineHistoryEvent,
   type Span,
   type Trace,
   type TimelineEvent,
@@ -29,10 +33,8 @@ import { ExecutionWaterfall } from '../components/ExecutionWaterfall';
 import { FailureSummary } from '../components/FailureSummary';
 import { ReasoningTab } from '../components/ReasoningTab';
 import { SpanDetail } from '../components/SpanDetail';
-import { StateDiffViewer } from '../components/StateDiffViewer';
 import { StatusBadge } from '../components/StatusBadge';
 import { TreeRail } from '../components/TreeRail';
-import { Timeline } from '../components/Timeline';
 import { TruncationBanner } from '../components/TruncationBanner';
 import {
   MobileWorkspaceTabId,
@@ -66,7 +68,6 @@ import {
   buildSpanIndex,
 } from '../utils/failureAnalysis';
 import { getWaitDetails } from '../utils/eventSemantics';
-import { extractStateChanges } from '../utils/stateChanges';
 import {
   buildReasoningEntries,
   buildTraceCostSeries,
@@ -209,10 +210,6 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const totalTokens = trace
     ? (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0)
     : 0;
-  const stateChanges = useMemo(
-    () => extractStateChanges(timeline.events),
-    [timeline.events]
-  );
   const reasoningEntries = useMemo(
     () => buildReasoningEntries(timeline.events, spans),
     [spans, timeline.events]
@@ -368,25 +365,12 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
     />
   );
 
-  const timelineContent = (
-    <Timeline
-      events={timeline.events}
-      traceStatus={timelineStatus}
-      isLive={timeline.isLive}
-      isLoading={timeline.isLoading}
-      error={timelineAuthError ? null : timeline.error}
-      selectedSpanId={selectedSpanExternalId}
-      onSelectSpan={handleSelectSpanAndShowDetails}
-      spanIndex={spanIndex}
-    />
-  );
   const reasoningContent = (
     <ReasoningTab
       entries={reasoningEntries}
       onSelectSpan={handleSelectSpanAndShowDetails}
     />
   );
-  const stateContent = <StateDiffViewer changes={stateChanges} />;
   const mobileSummaryContent = (
     <div className="grid h-full gap-4 overflow-y-auto p-4">
       <TraceLineageCard
@@ -430,9 +414,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       spanIndex={spanIndex}
       spanTree={spanTree}
       spans={spans}
-      stateContent={stateContent}
       traceCostSeries={traceCostSeries}
-      timelineContent={timelineContent}
       traceEndedAt={trace.ended_at}
       traceStartedAt={trace.started_at}
     />
@@ -497,6 +479,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
           pendingWork={pendingWorkQuery.data}
           runningStateAssessment={waitStallAssessment}
           spanIndex={spanIndex}
+          traceId={traceId}
         />
       </TraceSectionSurface>
     ) : activeSection === 'replay' && replayPreviewEnabled ? (
@@ -525,10 +508,20 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
             <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--c-text-muted)]">
               <Link
                 to={returnTo}
-                aria-label={returnTo.startsWith('/sessions/') ? '← Session' : '← Traces'}
+                aria-label={
+                  returnTo.startsWith('/sessions/')
+                    ? '← Session'
+                    : returnTo.startsWith('/engine/runs')
+                      ? '← Engine Runs'
+                      : '← Traces'
+                }
                 className="inline-flex items-center gap-1 font-medium text-[var(--c-text-secondary)] transition hover:text-[var(--c-accent-text)]"
               >
-                ‹ {returnTo.startsWith('/sessions/') ? 'Session' : 'Traces'}
+                ‹ {returnTo.startsWith('/sessions/')
+                  ? 'Session'
+                  : returnTo.startsWith('/engine/runs')
+                    ? 'Engine Runs'
+                    : 'Traces'}
               </Link>
               <span aria-hidden="true">›</span>
               <span className="font-mono">{trace.trace_id ?? trace.id}</span>
@@ -661,17 +654,9 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
         <AuthErrorBanner message={queryErrorMessage(timeline.rawError)} />
       ) : null}
 
-      <EngineProjectionBanner projectionState={trace.engine?.projection_state} />
       {trace.engine?.failure?.error_code === 'definition_version_mismatch' ? (
         <DefinitionVersionMismatchBanner />
       ) : null}
-      {trace.engine ? (
-        <EngineControlBar
-          engine={trace.engine}
-          traceId={traceId}
-        />
-      ) : null}
-
       <div className="flex min-h-0 flex-1 flex-col">
         {sectionContent}
       </div>
@@ -1149,9 +1134,7 @@ interface TraceWorkspaceProps {
   spanIndex: ReadonlyMap<string, Span>;
   spanTree: SpanTreeNode[];
   spans: Span[];
-  stateContent: ReactNode;
   traceCostSeries: TraceCostSeries | null;
-  timelineContent: ReactNode;
   traceEndedAt?: string;
   traceStartedAt?: string;
 }
@@ -1179,9 +1162,7 @@ function TraceWorkspace({
   spanIndex,
   spanTree,
   spans,
-  stateContent,
   traceCostSeries,
-  timelineContent,
   traceEndedAt,
   traceStartedAt,
 }: TraceWorkspaceProps) {
@@ -1239,8 +1220,6 @@ function TraceWorkspace({
         />
       }
       mobileSummary={mobileSummaryContent}
-      mobileTimeline={timelineContent}
-      mobileState={stateContent}
       activeMobileTab={activeMobileTab}
       onMobileTabChange={onMobileTabChange}
     />
@@ -1538,6 +1517,8 @@ function getReturnToDestination(state: unknown): string {
   const { returnTo } = state;
   return returnTo === '/traces' ||
     returnTo.startsWith('/traces?') ||
+    returnTo === '/engine/runs' ||
+    returnTo.startsWith('/engine/runs?') ||
     returnTo.startsWith('/sessions/')
     ? returnTo
     : '/traces';
@@ -2854,7 +2835,7 @@ function TraceMetricsPanel({
   );
 }
 
-type EngineStatePane = 'journal' | 'pending' | 'wait' | 'failure';
+type EngineStatePane = 'overview' | 'pending' | 'history' | 'result';
 
 interface StateMachineStep {
   id: string;
@@ -2968,10 +2949,10 @@ function EngineKvSmall({ label, value }: { label: string; value: string }) {
 }
 
 const ENGINE_PANES: Array<{ id: EngineStatePane; label: string }> = [
-  { id: 'journal', label: 'Journal' },
-  { id: 'pending', label: 'Pending tasks' },
-  { id: 'wait', label: 'Wait state' },
-  { id: 'failure', label: 'Failure' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'pending', label: 'Pending' },
+  { id: 'history', label: 'Engine history' },
+  { id: 'result', label: 'Result' },
 ];
 
 function TraceEngineStatePanel({
@@ -2985,6 +2966,7 @@ function TraceEngineStatePanel({
   pendingWork,
   runningStateAssessment,
   spanIndex,
+  traceId,
 }: {
   engine: TraceDetail['engine'];
   errorMessage: string;
@@ -2996,8 +2978,9 @@ function TraceEngineStatePanel({
   pendingWork: EnginePendingWorkResponse | undefined;
   runningStateAssessment: WaitStallAssessment | null;
   spanIndex: ReadonlyMap<string, Span>;
+  traceId: string;
 }) {
-  const [pane, setPane] = useState<EngineStatePane>('journal');
+  const [pane, setPane] = useState<EngineStatePane>('overview');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   if (!engine) {
@@ -3017,6 +3000,9 @@ function TraceEngineStatePanel({
 
   const checkpointCount = events.filter((event) => event.event_type === 'snapshot_marker').length;
   const stateChangeCount = events.filter((event) => event.event_type === 'state_change').length;
+  const decisionCount = events.filter((event) => event.event_type === 'decision').length;
+  const effectCount = events.filter((event) => event.event_type === 'effect').length;
+  const waitCount = events.filter((event) => event.event_type === 'wait').length;
   const pendingCount =
     (pendingWork?.activities.length ?? 0) +
     (pendingWork?.timers.length ?? 0) +
@@ -3026,10 +3012,10 @@ function TraceEngineStatePanel({
   const hasWait = Boolean(waitState && Object.keys(waitState).length > 0);
 
   const paneCounts: Record<EngineStatePane, number> = {
-    journal: journalEvents.length,
+    overview: journalEvents.length,
     pending: pendingCount,
-    wait: hasWait ? 1 : 0,
-    failure: hasFailure ? 1 : 0,
+    history: 0,
+    result: engine.status === 'COMPLETED' || hasFailure ? 1 : 0,
   };
 
   const selectedEvent = selectedEventId
@@ -3083,6 +3069,11 @@ function TraceEngineStatePanel({
           <StateMachine steps={stateMachine} />
         </div>
 
+        <div className="mt-4 space-y-3">
+          <EngineControlBar engine={engine} traceId={traceId} />
+          <EngineProjectionBanner projectionState={engine.projection_state} />
+        </div>
+
         <div className="mt-4 flex border-b border-[var(--c-border)]">
           {ENGINE_PANES.map((tab) => {
             const active = pane === tab.id;
@@ -3108,72 +3099,29 @@ function TraceEngineStatePanel({
         </div>
 
         <div className="mt-3">
-          {pane === 'journal' ? (
-            journalEvents.length === 0 ? (
-              <EngineEmptyCard>No engine semantic events recorded for this run.</EngineEmptyCard>
-            ) : (
-              <div className="overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
-                <div
-                  className="grid border-b border-[var(--c-border)] bg-[var(--c-table-head-bg)] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--c-text-muted)]"
-                  style={{ gridTemplateColumns: '50px 110px 200px minmax(0,1fr)' }}
-                >
-                  <span>Seq</span>
-                  <span>Time</span>
-                  <span>Event</span>
-                  <span>Detail</span>
-                </div>
-                {journalEvents.map((event, index) => {
-                  const isCheckpoint = event.event_type === 'snapshot_marker';
-                  const isError = event.event_type === 'span_failed';
-                  return (
-                    <button
-                      key={event.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedEventId(event.id);
-                        if (event.span_id && spanIndex.has(event.span_id)) {
-                          onSelectSpan(event.span_id);
-                        }
-                      }}
-                      className={`grid w-full items-baseline gap-0 px-3.5 py-1.5 text-left font-mono text-[11.5px] transition ${
-                        selectedEventId === event.id
-                          ? 'bg-[var(--c-row-selected-bg)]'
-                          : 'hover:bg-[var(--c-row-hover-bg)]'
-                      }`}
-                      style={{
-                        gridTemplateColumns: '50px 110px 200px minmax(0,1fr)',
-                        borderBottom:
-                          index < journalEvents.length - 1
-                            ? '1px solid var(--c-border-subtle)'
-                            : 'none',
-                      }}
-                    >
-                      <span className="tabular-nums text-[var(--c-text-muted)]">
-                        {event.sequence ?? index + 1}
-                      </span>
-                      <span className="text-[var(--c-text-muted)]">
-                        {formatTimestamp(event.timestamp)}
-                      </span>
-                      <span
-                        className="truncate font-semibold"
-                        style={{
-                          color: isError
-                            ? 'var(--c-red-text)'
-                            : isCheckpoint
-                              ? 'var(--c-accent-text)'
-                              : 'var(--c-text-primary)',
-                        }}
-                      >
-                        {event.event_type}
-                      </span>
-                      <span className="truncate text-[var(--c-text-secondary)]">
-                        {event.message ?? event.span_name ?? '—'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )
+          {pane === 'overview' ? (
+            <EngineOverviewPane
+              checkpointCount={checkpointCount}
+              decisionCount={decisionCount}
+              effectCount={effectCount}
+              engine={engine}
+              events={journalEvents}
+              hasWait={hasWait}
+              onSelectEvent={(event) => {
+                setSelectedEventId(event.id);
+                if (event.span_id && spanIndex.has(event.span_id)) {
+                  onSelectSpan(event.span_id);
+                }
+              }}
+              runningStateAssessment={runningStateAssessment}
+              openWaits={openWaits}
+              selectedEventId={selectedEventId}
+              spanIndex={spanIndex}
+              stateChangeCount={stateChangeCount}
+              waitCount={waitCount}
+              waitState={waitState}
+              onSelectSpan={onSelectSpan}
+            />
           ) : pane === 'pending' ? (
             isLoading ? (
               <EngineEmptyCard>Loading pending work…</EngineEmptyCard>
@@ -3187,43 +3135,10 @@ function TraceEngineStatePanel({
                 errorMessage={errorMessage}
               />
             )
-          ) : pane === 'wait' ? (
-            runningStateAssessment ? (
-              <RunningStatePanel
-                assessment={runningStateAssessment}
-                events={events}
-                openWaits={openWaits}
-                spanIndex={spanIndex}
-                onSelectSpan={onSelectSpan}
-              />
-            ) : hasWait && waitState ? (
-              <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3.5">
-                <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--c-text-muted)]">
-                  Current wait
-                </div>
-                <div className="mt-3 rounded border border-[var(--c-border-subtle)] bg-[var(--c-app-bg)] p-3">
-                  <CompactPayloadInspector value={waitState} />
-                </div>
-              </div>
-            ) : (
-              <EngineEmptyCard>No wait state for this run.</EngineEmptyCard>
-            )
-          ) : pane === 'failure' ? (
-            engine.failure ? (
-              <div className="rounded-lg border border-[var(--c-red-border)] bg-[var(--c-red-faint)] p-3.5">
-                <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--c-red-text)]">
-                  Failure
-                </div>
-                <div className="mt-2 font-mono text-xs text-[var(--c-red-text)]">
-                  {engine.failure.error_code}
-                </div>
-                <p className="mt-2 text-sm text-[var(--c-text-primary)]">
-                  {engine.failure.error_message}
-                </p>
-              </div>
-            ) : (
-              <EngineEmptyCard>This run terminated cleanly.</EngineEmptyCard>
-            )
+          ) : pane === 'history' ? (
+            <EngineHistoryPane runId={engine.run_id} />
+          ) : pane === 'result' ? (
+            <EngineResultPane runId={engine.run_id} status={engine.status} />
           ) : null}
         </div>
 
@@ -3262,6 +3177,331 @@ function TraceEngineStatePanel({
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function EngineOverviewPane({
+  checkpointCount,
+  decisionCount,
+  effectCount,
+  engine,
+  events,
+  hasWait,
+  onSelectEvent,
+  onSelectSpan,
+  openWaits,
+  runningStateAssessment,
+  selectedEventId,
+  spanIndex,
+  stateChangeCount,
+  waitCount,
+  waitState,
+}: {
+  checkpointCount: number;
+  decisionCount: number;
+  effectCount: number;
+  engine: NonNullable<TraceDetail['engine']>;
+  events: TimelineEvent[];
+  hasWait: boolean;
+  onSelectEvent: (event: TimelineEvent) => void;
+  onSelectSpan: (spanId: string) => void;
+  openWaits: OpenWait[];
+  runningStateAssessment: WaitStallAssessment | null;
+  selectedEventId: string | null;
+  spanIndex: ReadonlyMap<string, Span>;
+  stateChangeCount: number;
+  waitCount: number;
+  waitState: EnginePendingWorkResponse['current_wait'] | NonNullable<TraceDetail['engine']>['wait_state'] | null;
+}) {
+  return (
+    <div className="space-y-4">
+      {hasWait && runningStateAssessment ? (
+        <RunningStatePanel
+          assessment={runningStateAssessment}
+          events={events}
+          openWaits={openWaits}
+          spanIndex={spanIndex}
+          onSelectSpan={onSelectSpan}
+        />
+      ) : hasWait && waitState ? (
+        <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3.5">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--c-text-muted)]">
+            Current wait
+          </div>
+          <div className="mt-3 rounded border border-[var(--c-border-subtle)] bg-[var(--c-app-bg)] p-3">
+            <CompactPayloadInspector value={waitState} />
+          </div>
+        </div>
+      ) : (
+        <EngineEmptyCard>No wait state for this run.</EngineEmptyCard>
+      )}
+
+      {engine.failure ? (
+        <div className="rounded-lg border border-[var(--c-red-border)] bg-[var(--c-red-faint)] p-3.5">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--c-red-text)]">
+            Failure
+          </div>
+          <div className="mt-2 font-mono text-xs text-[var(--c-red-text)]">
+            {engine.failure.error_code}
+          </div>
+          <p className="mt-2 text-sm text-[var(--c-text-primary)]">
+            {engine.failure.error_message}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <EngineKvSmall label="Run" value={engine.run_id} />
+        <EngineKvSmall label="Instance" value={engine.instance_key ?? '—'} />
+        <EngineKvSmall label="Definition" value={engine.definition_name ?? '—'} />
+        <EngineKvSmall label="Version" value={engine.definition_version ?? '—'} />
+        <EngineKvSmall label="Updated" value={formatTimestamp(engine.updated_at)} />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-5">
+        <JournalCount label="State changes" value={stateChangeCount} />
+        <JournalCount label="Decisions" value={decisionCount} />
+        <JournalCount label="Effects" value={effectCount} />
+        <JournalCount label="Waits" value={waitCount} />
+        <JournalCount label="Snapshots" value={checkpointCount} />
+      </div>
+
+      {events.length === 0 ? (
+        <EngineEmptyCard>No projected journal summary is available for this run.</EngineEmptyCard>
+      ) : (
+        <ProjectedJournalSummary
+          events={events}
+          onSelectEvent={onSelectEvent}
+          selectedEventId={selectedEventId}
+          spanIndex={spanIndex}
+        />
+      )}
+    </div>
+  );
+}
+
+function JournalCount({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2">
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--c-text-muted)]">
+        {label}
+      </div>
+      <div className="mt-1 font-mono text-lg font-semibold text-[var(--c-text-primary)]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ProjectedJournalSummary({
+  events,
+  onSelectEvent,
+  selectedEventId,
+}: {
+  events: TimelineEvent[];
+  onSelectEvent: (event: TimelineEvent) => void;
+  selectedEventId: string | null;
+  spanIndex: ReadonlyMap<string, Span>;
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+      <div
+        className="grid border-b border-[var(--c-border)] bg-[var(--c-table-head-bg)] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--c-text-muted)]"
+        style={{ gridTemplateColumns: '50px 110px 200px minmax(0,1fr)' }}
+      >
+        <span>Seq</span>
+        <span>Time</span>
+        <span>Event</span>
+        <span>Detail</span>
+      </div>
+      {events.slice(0, 12).map((event, index) => {
+        const isCheckpoint = event.event_type === 'snapshot_marker';
+        const isError = event.event_type === 'span_failed';
+        return (
+          <button
+            key={event.id}
+            type="button"
+            onClick={() => onSelectEvent(event)}
+            className={`grid w-full items-baseline gap-0 px-3.5 py-1.5 text-left font-mono text-[11.5px] transition ${
+              selectedEventId === event.id
+                ? 'bg-[var(--c-row-selected-bg)]'
+                : 'hover:bg-[var(--c-row-hover-bg)]'
+            }`}
+            style={{
+              gridTemplateColumns: '50px 110px 200px minmax(0,1fr)',
+              borderBottom:
+                index < Math.min(events.length, 12) - 1
+                  ? '1px solid var(--c-border-subtle)'
+                  : 'none',
+            }}
+          >
+            <span className="tabular-nums text-[var(--c-text-muted)]">
+              {event.sequence ?? index + 1}
+            </span>
+            <span className="text-[var(--c-text-muted)]">
+              {formatTimestamp(event.timestamp)}
+            </span>
+            <span
+              className="truncate font-semibold"
+              style={{
+                color: isError
+                  ? 'var(--c-red-text)'
+                  : isCheckpoint
+                    ? 'var(--c-accent-text)'
+                    : 'var(--c-text-primary)',
+              }}
+            >
+              {event.event_type}
+            </span>
+            <span className="truncate text-[var(--c-text-secondary)]">
+              {event.message ?? event.span_name ?? '—'}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EngineHistoryPane({ runId }: { runId: string }) {
+  const [after, setAfter] = useState<number | undefined>();
+  const [events, setEvents] = useState<EngineHistoryEvent[]>([]);
+  const loadedPageKeys = useRef(new Set<string>());
+  const historyQuery = useQuery({
+    queryKey: ['engineRunHistory', runId, after ?? null],
+    queryFn: () => fetchEngineRunHistory(runId, { after, limit: 50 }),
+  });
+
+  useEffect(() => {
+    if (!historyQuery.data) {
+      return;
+    }
+    const pageKey = after === undefined ? 'initial' : String(after);
+    if (loadedPageKeys.current.has(pageKey)) {
+      return;
+    }
+    loadedPageKeys.current.add(pageKey);
+    setEvents((current) => [...current, ...historyQuery.data.events]);
+  }, [after, historyQuery.data]);
+
+  if (historyQuery.isLoading && events.length === 0) {
+    return <EngineEmptyCard>Loading engine history…</EngineEmptyCard>;
+  }
+  if (historyQuery.isError) {
+    return <EngineEmptyCard>Engine history is temporarily unavailable.</EngineEmptyCard>;
+  }
+  if (historyQuery.data?.expired) {
+    return <EngineEmptyCard>History expired. Retained history for this run has been purged.</EngineEmptyCard>;
+  }
+  if (events.length === 0) {
+    return <EngineEmptyCard>No retained engine history events.</EngineEmptyCard>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+        {events.map((event, index) => (
+          <div
+            key={`${event.id}-${index}`}
+            className="grid gap-3 border-b border-[var(--c-border-subtle)] px-3.5 py-2 last:border-b-0"
+            style={{ gridTemplateColumns: '70px 150px minmax(0,1fr)' }}
+          >
+            <span className="font-mono text-xs text-[var(--c-text-muted)]">
+              {event.sequence_no}
+            </span>
+            <span className="font-mono text-xs text-[var(--c-text-secondary)]">
+              {formatTimestamp(event.created_at)}
+            </span>
+            <div className="min-w-0">
+              <div className="font-mono text-xs font-semibold text-[var(--c-text-primary)]">
+                {event.event_type}
+              </div>
+              {event.payload ? (
+                <div className="mt-2 rounded border border-[var(--c-border-subtle)] bg-[var(--c-app-bg)] p-2">
+                  <CompactPayloadInspector value={event.payload} />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      {historyQuery.data?.has_more && historyQuery.data.next_after !== undefined ? (
+        <Btn
+          kind="secondary"
+          type="button"
+          disabled={historyQuery.isFetching}
+          onClick={() => setAfter(historyQuery.data?.next_after)}
+        >
+          {historyQuery.isFetching ? 'Loading…' : 'Load more'}
+        </Btn>
+      ) : null}
+    </div>
+  );
+}
+
+function EngineResultPane({
+  runId,
+  status,
+}: {
+  runId: string;
+  status: EngineRunStatus;
+}) {
+  const terminal =
+    status === 'COMPLETED' ||
+    status === 'FAILED' ||
+    status === 'CANCELLED' ||
+    status === 'TERMINATED' ||
+    status === 'CONTINUED_AS_NEW';
+  const resultQuery = useQuery({
+    queryKey: ['engineRunResult', runId],
+    queryFn: () => fetchEngineRunResult(runId),
+    enabled: terminal,
+  });
+
+  if (!terminal) {
+    return <EngineEmptyCard>Result is not available until the run reaches a terminal state.</EngineEmptyCard>;
+  }
+  if (resultQuery.isLoading) {
+    return <EngineEmptyCard>Loading engine result…</EngineEmptyCard>;
+  }
+  if (resultQuery.isError || !resultQuery.data) {
+    return <EngineEmptyCard>Engine result is temporarily unavailable.</EngineEmptyCard>;
+  }
+
+  const result = resultQuery.data;
+  if (result.status === 'COMPLETED') {
+    return (
+      <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3.5">
+        <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--c-text-muted)]">
+          Completed result
+        </div>
+        <div className="mt-3 rounded border border-[var(--c-border-subtle)] bg-[var(--c-app-bg)] p-3">
+          <CompactPayloadInspector value={result.result} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-[var(--c-red-border)] bg-[var(--c-red-faint)] p-3.5">
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--c-red-text)]">
+        {result.status} result shell
+      </div>
+      {result.failure ? (
+        <>
+          <div className="mt-2 font-mono text-xs text-[var(--c-red-text)]">
+            {result.failure.error_code}
+          </div>
+          <p className="mt-2 text-sm text-[var(--c-text-primary)]">
+            {result.failure.error_message}
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 text-sm text-[var(--c-text-primary)]">
+          Workflow result payload is null for this terminal shell.
+        </p>
+      )}
     </div>
   );
 }
