@@ -83,11 +83,13 @@ It's most useful when you need to answer: what failed first, what changed during
 ![Continua features at a glance](./assets/diagrams/feature-strip.svg)
 
 - **Trace debugger** — span tree, execution waterfall, selected spans, payload inspection, breadcrumbs, truncation banners, and merged timeline events.
-- **Session workflows** — browse sessions, open session detail, and compare baseline vs. candidate traces from the same workflow.
+- **Session workflows** — browse sessions, open session detail, read the experimental narrative summary, and compare baseline vs. candidate traces from the same workflow.
 - **Durable ingest path** — project-scoped API key auth, idempotent batches via `batch_key`, sync ingest, opt-in async ingest (`X-Continua-Async-Version: 2`), and batch polling.
 - **Background processing** — River workers handle async ingest, trace rollups, and payload cleanup.
-- **Embedded operator console** — the Vite React app is built into `internal/web/static/` and served by the Go binary.
-- **Python SDK** — `trace`, `span`, `session`, `event`, batching, retries, async polling, and engine-control helpers live under `sdks/python`.
+- **Embedded operator console** — the Vite React app is built into `internal/web/static/` and served by the Go binary. Includes a `⌘K` command palette, dark/light/system theming, and URL-driven filter state.
+- **Project & operator auth** — first-class `POST /api/projects` with rotate/delete/list endpoints, plus optional Auth0 operator login gated by an email allow-list (see [Auth0 setup](./docs-site/guides/auth0-setup.mdx)).
+- **Engine runs console** — `/engine/runs` lists durable engine runs, surfaces pending activity and inbox work, and exposes signal / suspend / resume / cancel / terminate against the engine control endpoints (preview).
+- **Python SDK** — `trace`, `span`, `session`, `event`, batching, retries, and async polling live under `sdks/python`. SDK also exports engine-control helpers for the scaffolded engine surface — see [Roadmap](./docs-site/roadmap.mdx) before relying on them.
 - **Typed events** — Continua emits 11 event kinds (`log`, `error`, `exception`, `message`, `metric`, `custom`, `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`); see the [events concept guide](./docs-site/concepts/events.mdx).
 
 ![Implemented event types](./assets/diagrams/event-types.svg)
@@ -169,28 +171,24 @@ After changing OpenAPI, sqlc queries, WebSocket schemas, or migrations that affe
 
 ## Roadmap
 
-Continua is in alpha. Shipped today: authenticated REST ingest, Postgres persistence, River background jobs, trace/session/timeline/compare read APIs, the embedded React debugger, the Python SDK, and the engine schema/store/CLI foundation.
+Continua is in alpha. The authoritative status breakdown — what's shippable, what's scaffolded, and what's coming next — lives at [`docs-site/roadmap.mdx`](./docs-site/roadmap.mdx).
 
-Upcoming:
+Shippable today: authenticated REST ingest, Postgres persistence, River background jobs, trace/session/timeline/compare read APIs, the embedded React debugger (incl. engine runs console), project & API-key management, Auth0 operator login, the Python SDK, and the engine schema/store/control endpoints.
 
-- Live WebSocket runtime for streaming trace updates
-- Proxy capture for zero-code instrumentation
-- Replay execution runtime
-- Feature-complete TypeScript SDK
-- Durable engine workflow execution and a debugger UI for engine state
-- Score/eval APIs, alerts, and telemetry surfaces
-
-These signals come from the current source tree, not from shipped behavior.
+Scaffolded (don't rely on yet): live WebSocket runtime, proxy capture, replay execution, full TypeScript SDK, end-to-end engine workflow execution.
 
 ## Documentation
 
-The full documentation site lives under [`docs-site/`](./docs-site/) (Mintlify). Source markdown for individual topics:
+The full documentation site lives under [`docs-site/`](./docs-site/) (Mintlify) and is organised into six tabs:
 
-- [`docs-site/`](./docs-site/) — Mintlify docs site (guides, concepts, Python SDK reference, API reference)
-- [`docs-site/guides/installation.mdx`](./docs-site/guides/installation.mdx) — canonical setup guide for humans and agents
-- [`docs-site/concepts/overview.mdx`](./docs-site/concepts/overview.mdx) — runtime architecture overview
-- [`docs-site/concepts/events.mdx`](./docs-site/concepts/events.mdx) — debugger-facing event semantics
-- [`engine/README.md`](./engine/README.md) — durable-execution foundation (schema/store/CLI only today)
+- **Guides** — quickstart, [instrument your app](./docs-site/guides/instrument-your-app.mdx), [installation](./docs-site/guides/installation.mdx), [self-hosting](./docs-site/guides/self-hosting.mdx), [Auth0 setup](./docs-site/guides/auth0-setup.mdx), [managing projects](./docs-site/guides/managing-projects.mdx), and failure-debugging workflows.
+- **Concepts** — [architecture overview](./docs-site/concepts/overview.mdx), [data model](./docs-site/concepts/data-model.mdx), [traces / spans / sessions](./docs-site/concepts/traces-spans-sessions.mdx), [events](./docs-site/concepts/events.mdx), [ingest lifecycle](./docs-site/concepts/ingest-lifecycle.mdx), [cost & tokens](./docs-site/concepts/cost-and-tokens.mdx), [projects & auth](./docs-site/concepts/projects-and-auth.mdx), [engine foundation](./docs-site/concepts/engine-foundation.mdx).
+- **Debugger** — [tour of the UI](./docs-site/debugger/overview.mdx) plus per-page references for traces, trace detail, sessions, session compare, engine runs, command palette, and settings.
+- **Python SDK** — [overview](./docs-site/sdk/python/overview.mdx), tracing, sessions, span events, batching & ingest modes, exceptions.
+- **API Reference** — [auth & headers](./docs-site/api-reference/auth-and-headers.mdx) intro plus the auto-rendered OpenAPI playground.
+- **Roadmap** — [shippable vs scaffolded status](./docs-site/roadmap.mdx).
+
+Related: [`engine/README.md`](./engine/README.md) for the engine binary's CLI commands, and [`sdks/python/README.md`](./sdks/python/README.md) for SDK-local development.
 
 ## Contributing
 
