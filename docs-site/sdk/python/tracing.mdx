@@ -101,8 +101,23 @@ def span(
 | Parameter | Description |
 | --- | --- |
 | `name` | Span name (required). |
-| `kind` | One of `"llm"`, `"tool"`, `"agent"`, `"default"`. Hints at the span's role. |
+| `kind` | Span role hint. See the table below for the full set. |
 | `metadata` | Optional metadata dictionary. |
+
+#### Span kinds
+
+`SpanKind` is a literal type defined in `continua.span`. Valid values:
+
+| Kind | Use for |
+| --- | --- |
+| `"llm"` | A direct LLM call (model inference). |
+| `"tool"` | A tool / function invocation made by the agent. |
+| `"agent"` | A nested agent or sub-agent loop. |
+| `"chain"` | A sequence of steps composed as a unit (e.g. a LangChain-style chain). |
+| `"retrieval"` | A retrieval / search step (vector store, BM25, etc.). |
+| `"embedding"` | An embedding model call. |
+| `"generation"` | A non-chat generation step (image, audio, structured output). |
+| `"default"` | Anything that doesn't fit the categories above. |
 
 ### `SpanContext` event methods
 
@@ -124,7 +139,11 @@ current = get_current_span()  # SpanContext | None
 
 ## `session`
 
-Groups traces under a shared external session identifier.
+`@session` groups traces under a shared external identifier and lives on its own
+reference page:
+
+→ See [Sessions](/sdk/python/sessions) for the signature, propagation rules, manual
+linking, and common pitfalls.
 
 ```python
 from continua import session, trace
@@ -133,36 +152,7 @@ with session("user-conversation-42"):
     @trace(name="turn_1")
     def turn_1(): ...
 
-    @trace(name="turn_2")
-    def turn_2(): ...
-
     turn_1()
-    turn_2()
-```
-
-### Signature
-
-```python
-def session(
-    session_id: str | None = None,
-    *,
-    user_id: str | None = None,
-    metadata: dict[str, Any] | None = None,
-) -> SessionContext: ...
-```
-
-| Parameter | Description |
-| --- | --- |
-| `session_id` | External session identifier. If `None`, no session key is attached. |
-| `user_id` | Optional user identifier. |
-| `metadata` | Optional metadata dictionary. |
-
-### Accessing the current session
-
-```python
-from continua import get_current_session
-
-current = get_current_session()  # SessionContext | None
 ```
 
 ## How context propagates
@@ -193,5 +183,4 @@ def run():
 
 ### Nested sessions are not supported
 
-`session()` is meant to wrap the outermost agent loop. Don't nest sessions; instead, set
-`session_id` directly on `@trace` if you need a different session inside.
+See [Sessions → common pitfalls](/sdk/python/sessions#common-pitfalls).
