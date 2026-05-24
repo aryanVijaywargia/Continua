@@ -365,6 +365,29 @@ describe('TraceDetailPage', () => {
     expect(screen.getAllByRole('button', { name: 'Signal' })).toHaveLength(1);
   });
 
+  it('counts terminal engine result panes without requiring failure context', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(
+            createEngineTraceDetail({
+              engine: {
+                ...createEngineTraceDetail().engine!,
+                status: 'TERMINATED',
+                failure: undefined,
+              },
+            })
+          ),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    expect(screen.getByRole('button', { name: 'Result 1' })).toBeInTheDocument();
+  });
+
   it('shows pending engine work in the mobile summary workspace', async () => {
     setMatchMediaMatches(false);
     fetchMock.mockImplementation(

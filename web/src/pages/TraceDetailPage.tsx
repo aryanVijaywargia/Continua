@@ -3015,7 +3015,7 @@ function TraceEngineStatePanel({
     overview: journalEvents.length,
     pending: pendingCount,
     history: 0,
-    result: engine.status === 'COMPLETED' || hasFailure ? 1 : 0,
+    result: isTerminalEngineStatus(engine.status) || hasFailure ? 1 : 0,
   };
 
   const selectedEvent = selectedEventId
@@ -3447,12 +3447,7 @@ function EngineResultPane({
   runId: string;
   status: EngineRunStatus;
 }) {
-  const terminal =
-    status === 'COMPLETED' ||
-    status === 'FAILED' ||
-    status === 'CANCELLED' ||
-    status === 'TERMINATED' ||
-    status === 'CONTINUED_AS_NEW';
+  const terminal = isTerminalEngineStatus(status);
   const resultQuery = useQuery({
     queryKey: ['engineRunResult', runId],
     queryFn: () => fetchEngineRunResult(runId),
@@ -3503,6 +3498,16 @@ function EngineResultPane({
         </p>
       )}
     </div>
+  );
+}
+
+function isTerminalEngineStatus(status: EngineRunStatus): boolean {
+  return (
+    status === 'COMPLETED' ||
+    status === 'FAILED' ||
+    status === 'CANCELLED' ||
+    status === 'TERMINATED' ||
+    status === 'CONTINUED_AS_NEW'
   );
 }
 

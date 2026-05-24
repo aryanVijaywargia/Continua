@@ -1533,7 +1533,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;

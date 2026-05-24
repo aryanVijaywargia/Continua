@@ -174,6 +174,33 @@ describe('tracesSearchParams', () => {
     );
   });
 
+  it('round-trips engine-only URL filter params', () => {
+    const parsed = parseTracesParams(
+      new URLSearchParams({
+        engine_only: 'true',
+        offset: '20',
+      })
+    );
+
+    expect(parsed).toMatchObject({
+      limit: 20,
+      offset: 20,
+      engine_only: true,
+    });
+    expect(serializeTracesParams(parsed).toString()).toBe(
+      'offset=20&engine_only=true'
+    );
+    expect(deriveActiveChips(parsed)).toContainEqual({
+      key: 'engine_only',
+      label: 'Engine runs',
+      value: 'Only engine-backed traces',
+    });
+    expect(clearChip(parsed, 'engine_only')).toMatchObject({
+      offset: 0,
+      engine_only: undefined,
+    });
+  });
+
   it('derives human-readable engine filter chips and clears them individually', () => {
     const state = parseTracesParams(
       new URLSearchParams({
