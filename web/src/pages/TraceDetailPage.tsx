@@ -2867,7 +2867,7 @@ function buildEngineStateMachine(status: EngineRunStatus): StateMachineStep[] {
     },
     {
       id: 'closed',
-      label: isFailed ? 'Failed' : status === 'COMPLETED' ? 'Closed' : 'Closing',
+      label: isFailed ? 'Failed' : isClosed ? 'Closed' : 'Closing',
       done: isClosed,
       current: isClosed,
       error: isFailed,

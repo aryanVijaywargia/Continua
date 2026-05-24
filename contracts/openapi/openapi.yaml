@@ -71,7 +71,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized - missing or invalid credentials
+          description: Unauthorized - missing or invalid API key
           content:
             application/json:
               schema:

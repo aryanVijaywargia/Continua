@@ -365,7 +365,7 @@ describe('TraceDetailPage', () => {
     expect(screen.getAllByRole('button', { name: 'Signal' })).toHaveLength(1);
   });
 
-  it('counts terminal engine result panes without requiring failure context', async () => {
+  it('counts continued-as-new engine result panes and marks the state closed', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(
       buildFetchHandler({
@@ -374,7 +374,7 @@ describe('TraceDetailPage', () => {
             createEngineTraceDetail({
               engine: {
                 ...createEngineTraceDetail().engine!,
-                status: 'TERMINATED',
+                status: 'CONTINUED_AS_NEW',
                 failure: undefined,
               },
             })
@@ -386,6 +386,8 @@ describe('TraceDetailPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Engine state' }));
     expect(screen.getByRole('button', { name: 'Result 1' })).toBeInTheDocument();
+    expect(screen.getAllByText('Closed').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Closing')).toHaveLength(0);
   });
 
   it('shows pending engine work in the mobile summary workspace', async () => {
