@@ -1,0 +1,65 @@
+---
+title: "Comparing baseline and candidate"
+description: "Use session compare to diff a known-good trace against a suspect one in the same session."
+---
+
+[Session compare](/debugger/session-compare) is the right tool when you want to answer:
+**"what changed between this run and the run that worked?"**
+
+This guide is a how-to for two common scenarios.
+
+## Scenario A: prompt change regression
+
+You shipped a new prompt yesterday. A user reports the agent is now hallucinating on a
+specific question that worked last week.
+
+1. Open the [Sessions page](/debugger/sessions), filter by the user id.
+2. Open the user's session.
+3. In the traces table, identify:
+   - **Baseline**: the trace from before yesterday's deploy (last known-good).
+   - **Candidate**: today's failing trace.
+4. Click **Compare**. The compare URL pins both trace ids so you can paste it into
+   Slack.
+5. In the diff:
+   - Look at the span where you call your LLM. The **Input** diff should show the new
+     prompt vs the old one.
+   - Look at the **Output** diff for the failure pattern.
+   - Look at downstream spans — sometimes a prompt change shifts cost or token counts
+     even when the answer looks the same.
+
+## Scenario B: model swap impact
+
+You're evaluating moving from one model to another. You want to measure the impact on
+the same user conversation.
+
+1. Re-run the same conversation against the new model in a staging environment, tagged
+   `tags=["model-eval-v2"]`.
+2. Find the original session id (assuming you re-used the `external_id`).
+3. In the staging deployment, open the session and pick:
+   - **Baseline**: the original-model trace.
+   - **Candidate**: the new-model trace.
+4. In the compare view:
+   - **Header**: cost delta, token delta, duration delta at a glance.
+   - **Per-span diff**: which model calls changed, and by how much.
+   - **Semantic summary**: which spans were added, removed, reordered.
+
+Capture the compare URL and add it to your evaluation write-up.
+
+## When compare won't help
+
+- **Cross-session diff** isn't supported. The two traces must share a session id.
+- **Re-execution** isn't supported. Compare is a static diff over recorded data.
+- **Very long traces** can exceed the comparison payload budget. The page shows a
+  `ComparisonTooLargeError` banner with the offending limit. Mitigations:
+  - Truncate large payloads with `set_metadata` instead of full `set_output`.
+  - Use [Trace detail](/debugger/trace-detail) on each side separately and diff by eye.
+
+## Tips for compare-friendly traces
+
+- **Stabilise non-deterministic fields** (timestamps, request ids) before setting them
+  on spans — otherwise every compare shows churn on those fields.
+- **Use `set_metadata` for version pins** (model name, prompt hash, retrieval index
+  version) — the compare view surfaces metadata deltas, so version pins become the most
+  legible part of any diff.
+- **Tag deploys** (`tags=["release-v42"]`) so you can find a candidate trace from a
+  specific release quickly.

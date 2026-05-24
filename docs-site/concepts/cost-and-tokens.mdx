@@ -1,0 +1,72 @@
+---
+title: "Cost & tokens"
+description: "How per-span token counts and cost values roll up into trace and session totals."
+---
+
+Cost and token counts are first-class in Continua. The SDK lets you attach them to any
+span; the platform rolls them up to the trace level and the debugger surfaces them in
+multiple places.
+
+## The data path
+
+1. Inside a span, the SDK records counts via `set_tokens` and `set_cost`:
+
+   ```python
+   with span("call_model", kind="llm") as s:
+       answer = call_model(prompt)
+       s.set_tokens(prompt=120, completion=48)
+       s.set_cost(0.0023)
+   ```
+
+2. The ingest path persists these on the span row.
+3. A rollup River worker recomputes per-trace totals (sum of cost, sum of token counts
+   per bucket, max duration, terminal status) whenever new spans arrive.
+4. The debugger reads the rollup on trace list / session list / overview pages, and the
+   raw values on the trace detail page.
+
+This means **trace-level totals can lag span ingestion slightly** in async mode — the
+rollup runs after a batch is processed.
+
+## Token buckets
+
+`set_tokens` accepts named buckets:
+
+| Bucket | What it represents |
+| --- | --- |
+| `prompt` | Input / context tokens |
+| `completion` | Output / generation tokens |
+| `total` | Optional override if you compute it yourself |
+| Reasoning buckets | Provider-specific (e.g. Claude reasoning tokens). Surfaced in the [Reasoning tab](/debugger/trace-detail#payload-inspector) |
+
+If you only set `prompt` and `completion`, the SDK and server compute `total` for you.
+
+## Cost
+
+`set_cost(value)` accepts a `float` (USD by default — Continua does not enforce a
+currency). Costs are summed across spans into the trace and session totals.
+
+If your provider reports costs in micro-units, convert before calling `set_cost` so
+totals are comparable across providers.
+
+## Where you see it in the debugger
+
+- [Traces list](/debugger/traces): per-row cost and token columns.
+- [Trace detail](/debugger/trace-detail) header: trace-level cost and token totals.
+- Span detail Reasoning tab: when reasoning tokens are present.
+- `CostStrip` component on session detail: session-level cost stripe with per-trace
+  breakdown.
+- [Session compare](/debugger/session-compare): cost and token deltas between baseline
+  and candidate.
+
+## Modelling tips
+
+- **Set costs on the leaf span that incurred them**, not on intermediate composite spans
+  — rollups will sum to the right total either way, but per-span costs are more useful
+  for debugging.
+- For agents that retry a call, set cost on each attempt span individually. The
+  trace-level total will reflect the real spend even if the final logical answer used
+  only one attempt.
+- If a span doesn't have cost data (e.g. a tool call to a free API), leave it unset —
+  the rollup treats missing values as zero.
+- Combine `set_cost` with `set_metadata("pricing_tier", "...")` so you can later filter
+  high-cost traces by tier.

@@ -1,0 +1,108 @@
+---
+title: "Managing projects"
+description: "Create, rotate, update, and delete projects via the debugger UI or REST API."
+---
+
+A project is the unit of multi-tenancy in Continua. Every API key, trace, span, session,
+and ingest batch belongs to exactly one project.
+
+## From the debugger UI
+
+The Projects page at `/projects` (sign in with Auth0 first if it's enabled) lists every
+project and lets you:
+
+- **Create** a project — name + description. On create, the UI shows the plaintext API
+  key **once**. Copy it before you navigate away.
+- **Rotate** the API key — the old key is invalidated immediately and a new plaintext
+  key is shown once.
+- **Update** name / description.
+- **Delete** the project (soft delete).
+
+## From the REST API
+
+All project endpoints live under `/api/projects` and accept either an API key or an
+Auth0 operator JWT (when Auth0 is enabled).
+
+### Create a project
+
+```bash
+curl -X POST https://continua.example.com/api/projects \
+  -H "X-API-Key: <admin-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "checkout-agent", "description": "Production agent for checkout flow"}'
+```
+
+Response (truncated):
+
+```json
+{
+  "id": "01J4Z8K6...",
+  "name": "checkout-agent",
+  "api_key": "ctn_a1b2c3..."
+}
+```
+
+The `api_key` field appears **only on this response**. Store it in your secrets manager
+immediately.
+
+### Rotate the API key
+
+```bash
+curl -X POST https://continua.example.com/api/projects/{id}/rotate \
+  -H "X-API-Key: <admin-key>"
+```
+
+The old key stops working immediately on success. The response includes the new
+plaintext key — again, only on this response. Rotate when:
+
+- A key is suspected of being compromised.
+- An employee with access to the key leaves.
+- You're cycling keys on a regular cadence (recommended).
+
+### Update metadata
+
+```bash
+curl -X PATCH https://continua.example.com/api/projects/{id} \
+  -H "X-API-Key: <admin-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "checkout-agent-v2"}'
+```
+
+### Delete
+
+```bash
+curl -X DELETE https://continua.example.com/api/projects/{id} \
+  -H "X-API-Key: <admin-key>"
+```
+
+This soft-deletes the project. Historical data remains in Postgres until you prune it
+manually.
+
+### List
+
+```bash
+curl https://continua.example.com/api/projects \
+  -H "X-API-Key: <admin-key>"
+```
+
+<Note>
+  Listing all projects is forbidden for API-key callers when Auth0 is enabled — only
+  operator JWTs can list. API keys are scoped to the project they belong to.
+</Note>
+
+## Conventions worth adopting
+
+- **One project per environment.** Don't share a project across staging and production.
+  The traces and sessions get mixed in the debugger; failure-rate signals stop being
+  useful.
+- **Rotate keys on a schedule.** A quarterly rotation is enough for most teams. Plug
+  rotation into your existing secret-rotation tooling.
+- **Don't commit keys to source control.** The server never returns them after create /
+  rotate, so a leaked key is a rotation event, not a "delete from git history" event.
+
+## See also
+
+- [Projects & auth](/concepts/projects-and-auth) — the auth model end to end.
+- [Auth0 setup](/guides/auth0-setup) — operator login.
+- API reference: every project endpoint is listed under
+  [API Reference → Endpoints](/api-reference/auth-and-headers).
