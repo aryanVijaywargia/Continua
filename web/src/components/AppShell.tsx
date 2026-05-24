@@ -4,7 +4,6 @@ import {
   Activity,
   ChevronDown,
   ChevronRight,
-  Clock,
   FolderKanban,
   LayoutDashboard,
   Menu,
@@ -13,8 +12,8 @@ import {
   Settings2,
   Sun,
   Waypoints,
+  Workflow,
   X,
-  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -50,6 +49,7 @@ const RUN_LOCALLY_DOCS_URL =
 const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { path: '/traces', label: 'Traces', icon: Activity },
+  { path: '/engine/runs', label: 'Engine Runs', icon: Workflow },
   { path: '/sessions', label: 'Sessions', icon: Waypoints },
   { path: '/projects', label: 'Projects', icon: FolderKanban },
   { path: '/settings', label: 'Settings', icon: Settings2 },
@@ -580,14 +580,6 @@ function SidebarNav({
         ))}
       </div>
 
-      <div>
-        <div className="px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-          Engine
-        </div>
-        <DisabledEngineItem icon={Zap} label="Definitions" />
-        <DisabledEngineItem icon={Clock} label="Schedules" />
-      </div>
-
       {!isPublicDemo && settingsItem ? (
         <div>
           <div className="px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
@@ -627,26 +619,6 @@ function SidebarNavLink({
       <Icon className="h-4 w-4 text-[var(--c-text-muted)]" />
       {item.label}
     </NavLink>
-  );
-}
-
-function DisabledEngineItem({
-  icon: Icon,
-  label,
-}: {
-  icon: LucideIcon;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      disabled
-      title="Engine controls are available on engine-backed traces."
-      className="mb-0.5 flex w-full items-center gap-2.5 rounded-[5px] px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--c-text-muted)] opacity-70"
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </button>
   );
 }
 
@@ -795,6 +767,12 @@ function buildBreadcrumbs(pathname: string): string[] {
   }
   if (segments[0] === 'traces') {
     return segments[1] ? ['Traces', segments[1]] : ['Traces'];
+  }
+  if (segments[0] === 'engine') {
+    return ['Engine Runs'];
+  }
+  if (segments[0] === 'tools' && segments[1] === 'engine-projections') {
+    return ['Settings', 'Engine projection repair'];
   }
   if (segments[0] === 'sessions') {
     if (segments[2] === 'compare') {

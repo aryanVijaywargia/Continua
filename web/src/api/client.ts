@@ -318,7 +318,7 @@ function buildRequestUrl(path: string): URL {
 
   if (
     selectedProjectId &&
-    url.pathname.startsWith('/api/') &&
+    (url.pathname.startsWith('/api/') || url.pathname.startsWith('/v1/engine/')) &&
     !url.searchParams.has('project_id')
   ) {
     url.searchParams.set('project_id', selectedProjectId);
@@ -362,6 +362,11 @@ export type EngineRepairReason =
   | 'repair_requested'
   | 'already_catching_up';
 
+export type EngineProjectionBackfillAction =
+  | 'would_repair'
+  | 'repair_requested'
+  | 'skipped';
+
 export type EnginePurgeMode = 'projection_only' | 'full';
 
 export interface EngineTraceInfo {
@@ -369,6 +374,11 @@ export interface EngineTraceInfo {
   definition_name: string;
   definition_version: string;
   projection_state: EngineProjectionState;
+  instance_key?: string;
+  status?: EngineRunStatus;
+  wait_state?: EngineWaitState;
+  pending_work?: EnginePendingWork;
+  updated_at?: string;
   parent_run_id?: string;
   root_run_id?: string;
   child_key?: string;
@@ -459,6 +469,28 @@ export interface EngineRunResponse extends EngineRunSummary {
   instance_id: string;
 }
 
+export interface EngineInstanceResponse {
+  instance_id: string;
+  instance_key: string;
+  definition_name: string;
+  status: string;
+  current_run: EngineRunSummary;
+}
+
+export interface EngineStartRunRequest {
+  instance_key: string;
+  definition_name: string;
+  definition_version: string;
+  request_key: string;
+  input?: JsonValue;
+}
+
+export interface EngineStartRunResponse {
+  run_id: string;
+  instance_key: string;
+  trace_id: string;
+}
+
 export interface EngineRunResultResponse {
   run_id: string;
   continued_from_run_id?: string;
@@ -468,6 +500,21 @@ export interface EngineRunResultResponse {
   status: EngineRunStatus;
   result: JsonValue | null;
   failure?: EngineFailureSummary;
+}
+
+export interface EngineHistoryEvent {
+  id: number;
+  sequence_no: number;
+  event_type: string;
+  payload?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface EngineRunHistoryResponse {
+  events: EngineHistoryEvent[];
+  has_more: boolean;
+  next_after?: number;
+  expired?: boolean;
 }
 
 export interface EngineControlResponse {
@@ -494,6 +541,33 @@ export interface EngineRepairResponse {
   accepted: boolean;
   reason: EngineRepairReason;
   projection_state: EngineProjectionState;
+}
+
+export interface EngineProjectionBackfillRequest {
+  dry_run: boolean;
+  limit?: number;
+  older_than?: string;
+  engine_instance_key?: string;
+  engine_definition_name?: string;
+  engine_run_status?: EngineRunStatus;
+  engine_projection_state?: EngineProjectionState;
+}
+
+export interface EngineProjectionBackfillRunResult {
+  run_id: string;
+  trace_id: string;
+  projection_state: EngineProjectionState;
+  action: EngineProjectionBackfillAction;
+  reason?: EngineRepairReason;
+}
+
+export interface EngineProjectionBackfillResponse {
+  dry_run: boolean;
+  limit: number;
+  eligible_count: number;
+  repair_requested_count: number;
+  skipped_count: number;
+  results: EngineProjectionBackfillRunResult[];
 }
 
 export interface Trace {
@@ -1055,4 +1129,53 @@ export async function fetchEnginePendingWork(
   runId: string
 ): Promise<EnginePendingWorkResponse> {
   return fetchAPI<EnginePendingWorkResponse>(`/v1/engine/runs/${runId}/pending-work`);
+}
+
+export async function fetchEngineInstance(
+  instanceKey: string
+): Promise<EngineInstanceResponse> {
+  return fetchAPI<EngineInstanceResponse>(
+    `/v1/engine/instances/${encodeURIComponent(instanceKey)}`
+  );
+}
+
+export async function startEngineRun(
+  request: EngineStartRunRequest
+): Promise<EngineStartRunResponse> {
+  return fetchAPI<EngineStartRunResponse>(
+    '/v1/engine/runs',
+    withEnginePreviewHeader(withJsonBody(request))
+  );
+}
+
+export async function fetchEngineRunHistory(
+  runId: string,
+  options: { after?: number; limit?: number } = {}
+): Promise<EngineRunHistoryResponse> {
+  const params = new URLSearchParams();
+  if (options.after !== undefined) {
+    params.set('after', String(options.after));
+  }
+  if (options.limit !== undefined) {
+    params.set('limit', String(options.limit));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return fetchAPI<EngineRunHistoryResponse>(
+    `/v1/engine/runs/${runId}/history${query}`
+  );
+}
+
+export async function fetchEngineRunResult(
+  runId: string
+): Promise<EngineRunResultResponse> {
+  return fetchAPI<EngineRunResultResponse>(`/v1/engine/runs/${runId}/result`);
+}
+
+export async function backfillEngineProjections(
+  request: EngineProjectionBackfillRequest
+): Promise<EngineProjectionBackfillResponse> {
+  return fetchAPI<EngineProjectionBackfillResponse>(
+    '/v1/engine/projections/backfill',
+    withEnginePreviewHeader(withJsonBody(request))
+  );
 }

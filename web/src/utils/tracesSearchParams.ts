@@ -80,6 +80,7 @@ export interface FetchTracesParams {
   engine_child_key?: string;
   engine_child_depth?: number;
   engine_projection_state?: EngineProjectionStateFilter;
+  engine_only?: boolean;
   has_errors?: boolean;
   min_duration_ms?: number;
 }
@@ -163,6 +164,7 @@ const CANONICAL_PARAM_ORDER: Array<keyof FetchTracesParams> = [
   'engine_child_key',
   'engine_child_depth',
   'engine_projection_state',
+  'engine_only',
   'has_errors',
   'min_duration_ms',
 ];
@@ -307,6 +309,7 @@ function normalizeTracesParams(
     engine_projection_state: normalizeEngineProjectionState(
       params.engine_projection_state
     ),
+    engine_only: normalizeBooleanTrue(params.engine_only),
     has_errors: normalizeBooleanTrue(params.has_errors),
     min_duration_ms: normalizePositiveInteger(params.min_duration_ms),
   };
@@ -385,6 +388,9 @@ function toQueryEntries(
   }
   if (params.engine_projection_state) {
     entries.push(['engine_projection_state', params.engine_projection_state]);
+  }
+  if (params.engine_only !== undefined) {
+    entries.push(['engine_only', params.engine_only ? 'true' : 'false']);
   }
   if (params.has_errors) {
     entries.push(['has_errors', 'true']);

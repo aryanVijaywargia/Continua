@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { clearApiKey, getApiKey, setApiKey } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { useOperatorAuth, useRuntimeAuth } from '../auth/runtime';
 import { PageHeader } from '../components/DebuggerKit';
+import {
+  buildProjectPath,
+  getProjectIdFromSearchParams,
+} from '../utils/projectSearchParams';
 
 const THEME_OPTIONS = [
   { id: 'system', label: 'System' },
@@ -12,6 +16,7 @@ const THEME_OPTIONS = [
 ] as const;
 
 export function SettingsPage() {
+  const location = useLocation();
   const runtimeAuth = useRuntimeAuth();
   const { logout, user } = useOperatorAuth();
   const { mode, resolvedTheme, setMode } = useTheme();
@@ -21,6 +26,7 @@ export function SettingsPage() {
     runtimeAuth.public_demo_enabled !== true;
   const [localApiKeyDraft, setLocalApiKeyDraft] = useState(() => getApiKey() ?? '');
   const [localApiKeySaved, setLocalApiKeySaved] = useState(() => Boolean(getApiKey()));
+  const projectId = getProjectIdFromSearchParams(new URLSearchParams(location.search));
 
   if (runtimeAuth.public_demo_enabled) {
     return <Navigate to="/dashboard" replace />;
@@ -120,6 +126,28 @@ export function SettingsPage() {
               {resolvedTheme}
             </div>
           </div>
+
+          <section className="mt-8">
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold text-[var(--c-text-primary)]">
+                Operations
+              </h2>
+              <p className="mt-1 text-sm text-[var(--c-text-secondary)]">
+                Operator tools for maintaining engine projections.
+              </p>
+            </div>
+            <Link
+              className="block rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3 transition hover:border-[var(--c-border-strong)]"
+              to={buildProjectPath('/tools/engine-projections', projectId)}
+            >
+              <span className="block text-sm font-semibold text-[var(--c-text-primary)]">
+                Engine projection repair
+              </span>
+              <span className="mt-1 block text-sm text-[var(--c-text-secondary)]">
+                Re-run engine projections for stale or expired runs.
+              </span>
+            </Link>
+          </section>
         </section>
       </div>
     </div>

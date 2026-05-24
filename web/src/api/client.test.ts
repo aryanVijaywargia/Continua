@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ApiError,
+  backfillEngineProjections,
   clearApiKey,
   fetchAPI,
   fetchRuntimeAuthConfig,
@@ -65,7 +66,7 @@ describe('client', () => {
     });
   });
 
-  it('does not append project_id to engine requests', async () => {
+  it('sends the selected project_id on engine operator requests', async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ run_id: 'run-1' }), {
         status: 200,
@@ -85,7 +86,54 @@ describe('client', () => {
       'http://localhost'
     );
     expect(requestUrl.pathname).toBe('/v1/engine/runs/run-1/pending-work');
-    expect(requestUrl.searchParams.get('project_id')).toBeNull();
+    expect(requestUrl.searchParams.get('project_id')).toBe(PROJECT_ID);
+  });
+
+  it('posts projection backfill requests with the engine preview header', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          dry_run: true,
+          limit: 50,
+          eligible_count: 0,
+          repair_requested_count: 0,
+          skipped_count: 0,
+          results: [],
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+    );
+    setAccessTokenProvider(async () => 'operator-token');
+    setSelectedProjectIdProvider(() => PROJECT_ID);
+
+    await backfillEngineProjections({
+      dry_run: true,
+      limit: 50,
+      engine_projection_state: 'summary_only',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestUrl = new URL(
+      String(fetchMock.mock.calls[0]?.[0]),
+      'http://localhost'
+    );
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(requestUrl.pathname).toBe('/v1/engine/projections/backfill');
+    expect(requestUrl.searchParams.get('project_id')).toBe(PROJECT_ID);
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toMatchObject({
+      'X-Continua-Engine-Preview': '1',
+    });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      dry_run: true,
+      limit: 50,
+      engine_projection_state: 'summary_only',
+    });
   });
 
   it('loads runtime auth config from the public endpoint without debugger auth', async () => {
