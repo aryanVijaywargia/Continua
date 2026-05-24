@@ -101,6 +101,15 @@ async function renderShell(
                     }
                   />
                   <Route
+                    path="/engine/runs"
+                    element={
+                      <>
+                        <div>Engine runs content</div>
+                        <LocationProbe />
+                      </>
+                    }
+                  />
+                  <Route
                     path="/sessions"
                     element={
                       <>
@@ -218,10 +227,17 @@ describe('AppShell', () => {
       'href',
       `/traces?project_id=${PRIMARY_PROJECT_ID}`
     );
+    expect(within(primaryNav).getByText('Engine Runs').closest('a')).toHaveAttribute(
+      'href',
+      `/engine/runs?project_id=${PRIMARY_PROJECT_ID}`
+    );
     expect(within(primaryNav).getByText('Sessions').closest('a')).toHaveAttribute(
       'aria-current',
       'page'
     );
+    expect(within(primaryNav).queryByText('Definitions')).not.toBeInTheDocument();
+    expect(within(primaryNav).queryByText('Schedules')).not.toBeInTheDocument();
+    expect(within(primaryNav).queryByText('Engine')).not.toBeInTheDocument();
     expect(screen.getByTestId('location-probe')).toHaveTextContent(
       `/sessions?project_id=${PRIMARY_PROJECT_ID}`
     );

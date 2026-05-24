@@ -345,7 +345,7 @@ func projectedEngineRunStatusFromTrace(trace *store.TraceRead) EngineRunStatus {
 }
 
 func engineTraceInfoFromTrace(trace *store.TraceRead) *EngineTraceInfo {
-	return engineTraceInfoFromParts(
+	info := engineTraceInfoFromParts(
 		pgUUIDPtr(trace.EngineRunID),
 		trace.EngineDefinitionName,
 		trace.EngineDefinitionVersion,
@@ -355,6 +355,21 @@ func engineTraceInfoFromTrace(trace *store.TraceRead) *EngineTraceInfo {
 		trace.EngineChildKey,
 		trace.EngineChildDepth,
 	)
+	if info == nil {
+		return nil
+	}
+
+	instanceKey := projectedEngineInstanceKey(trace)
+	info.InstanceKey = &instanceKey
+	status := projectedEngineRunStatusFromTrace(trace)
+	info.Status = &status
+	info.PendingWork = &EnginePendingWork{
+		PendingActivityTasks: derefInt64(trace.EnginePendingActivityTasks),
+		PendingInboxItems:    derefInt64(trace.EnginePendingInboxItems),
+	}
+	info.UpdatedAt = &trace.UpdatedAt
+	info.WaitState = parseOptionalWaitState(cloneTraceJSON(trace.EngineWaitState))
+	return info
 }
 
 func engineTraceInfoFromCompareHeader(header *store.SessionCompareTraceHeader) *EngineTraceInfo {

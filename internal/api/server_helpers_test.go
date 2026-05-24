@@ -1,6 +1,10 @@
 package api
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/uuid"
+)
 
 func TestNormalizePagination_Defaults(t *testing.T) {
 	limit, offset := normalizePagination(nil, nil)
@@ -39,5 +43,35 @@ func TestNormalizePagination_ClampsNonPositiveLimit(t *testing.T) {
 	limitNeg, _ := normalizePagination(&neg, nil)
 	if limitNeg != 1 {
 		t.Fatalf("expected limit 1 for negative input, got %d", limitNeg)
+	}
+}
+
+func TestTraceFilterFromParams_EngineOnlyUsesDynamicQuery(t *testing.T) {
+	engineOnly := true
+
+	filter := traceFilterFromParams(uuid.New(), &ListTracesParams{
+		EngineOnly: &engineOnly,
+	}, 50, 0)
+
+	if !filter.EngineOnly {
+		t.Fatal("expected engine_only to map into the store filter")
+	}
+	if !traceNeedsDynamicQuery(&filter) {
+		t.Fatal("expected engine_only=true to use the dynamic trace query")
+	}
+}
+
+func TestTraceFilterFromParams_EngineOnlyFalseIsDefaultPath(t *testing.T) {
+	engineOnly := false
+
+	filter := traceFilterFromParams(uuid.New(), &ListTracesParams{
+		EngineOnly: &engineOnly,
+	}, 50, 0)
+
+	if filter.EngineOnly {
+		t.Fatal("expected engine_only=false to leave the store filter disabled")
+	}
+	if traceNeedsDynamicQuery(&filter) {
+		t.Fatal("expected engine_only=false alone to preserve the default trace query path")
 	}
 }

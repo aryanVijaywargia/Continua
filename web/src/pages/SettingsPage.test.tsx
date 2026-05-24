@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearApiKey } from '../api/client';
 import { RuntimeAuthStateProvider } from '../auth/runtime';
 import { ThemeProvider } from '../hooks/ThemeProvider';
+import { buildProjectPath } from '../utils/projectSearchParams';
 import { renderTraceRoutes } from './testUtils';
 import { SettingsPage } from './SettingsPage';
 
@@ -97,6 +98,36 @@ describe('SettingsPage', () => {
     );
 
     expect(screen.getByText('Demo dashboard')).toBeInTheDocument();
+  });
+
+  it('links to engine projection repair while preserving project scope', () => {
+    const projectId = '123e4567-e89b-12d3-a456-426614174000';
+
+    render(
+      <ThemeProvider>
+        <RuntimeAuthStateProvider
+          auth={{
+            status: 'ready',
+            enabled: true,
+          }}
+        >
+          <MemoryRouter initialEntries={[`/settings?project_id=${projectId}`]}>
+            <Routes>
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
+          </MemoryRouter>
+        </RuntimeAuthStateProvider>
+      </ThemeProvider>
+    );
+
+    const link = screen
+      .getByText('Engine projection repair')
+      .closest('a');
+
+    expect(link).toHaveAttribute(
+      'href',
+      buildProjectPath('/tools/engine-projections', projectId)
+    );
   });
 
   it('lets local self-hosted users save and clear the project API key', async () => {

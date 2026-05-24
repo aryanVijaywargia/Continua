@@ -23,9 +23,9 @@ func TestClassifyRouteProtection_MatchesOperatorAuthPlan(t *testing.T) {
 	assert.Equal(t, routeProtectionAPIKeyOnly, classifyRouteProtection("/v1/ingest"))
 	assert.Equal(t, routeProtectionComposite, classifyRouteProtection("/api/traces"))
 	assert.Equal(t, routeProtectionComposite, classifyRouteProtection("/api/projects"))
-	assert.Equal(t, routeProtectionAPIKeyOnly, classifyRouteProtection("/v1/engine/runs"))
-	assert.Equal(t, routeProtectionAPIKeyOnly, classifyRouteProtection("/v1/engine/instances/customer-123"))
-	assert.Equal(t, routeProtectionAPIKeyOnly, classifyRouteProtection("/v1/engine/projections/backfill"))
+	assert.Equal(t, routeProtectionComposite, classifyRouteProtection("/v1/engine/runs"))
+	assert.Equal(t, routeProtectionComposite, classifyRouteProtection("/v1/engine/instances/customer-123"))
+	assert.Equal(t, routeProtectionComposite, classifyRouteProtection("/v1/engine/projections/backfill"))
 	assert.Equal(t, routeProtectionComposite, classifyRouteProtection("/v1/engine/runs/11111111-1111-1111-1111-111111111111"))
 	assert.Equal(
 		t,
@@ -49,9 +49,17 @@ func TestPublicDemoReadRequest_OnlyMatchesDebuggerReadRoutes(t *testing.T) {
 	assert.True(t, isPublicDemoReadRequest(http.MethodGet, "/api/sessions/session-123"))
 	assert.True(t, isPublicDemoReadRequest(http.MethodGet, "/api/sessions/session-123/narrative"))
 	assert.True(t, isPublicDemoReadRequest(http.MethodGet, "/api/sessions/session-123/compare"))
+	assert.True(t, isPublicDemoReadRequest(http.MethodGet, "/v1/engine/instances/customer-123"))
+	assert.True(t, isPublicDemoReadRequest(http.MethodGet, "/v1/engine/runs/run-123"))
+	assert.True(t, isPublicDemoReadRequest(http.MethodGet, "/v1/engine/runs/run-123/pending-work"))
+	assert.True(t, isPublicDemoReadRequest(http.MethodGet, "/v1/engine/runs/run-123/history"))
+	assert.True(t, isPublicDemoReadRequest(http.MethodGet, "/v1/engine/runs/run-123/result"))
 	assert.False(t, isPublicDemoReadRequest(http.MethodGet, "/api/traces/trace-123/export"))
 	assert.False(t, isPublicDemoReadRequest(http.MethodGet, "/api/sessions/session-123/admin"))
 	assert.False(t, isPublicDemoReadRequest(http.MethodPost, "/api/traces"))
+	assert.False(t, isPublicDemoReadRequest(http.MethodPost, "/v1/engine/runs"))
+	assert.False(t, isPublicDemoReadRequest(http.MethodPost, "/v1/engine/runs/run-123/signal"))
+	assert.False(t, isPublicDemoReadRequest(http.MethodPost, "/v1/engine/projections/backfill"))
 	assert.False(t, isPublicDemoReadRequest(http.MethodGet, "/api/projects"))
 	assert.False(t, isPublicDemoReadRequest(http.MethodGet, "/v1/ingest"))
 }
@@ -155,6 +163,71 @@ func TestCompositeAuthAcceptsAllowlistedOperatorBearerOnDebuggerRoutes(t *testin
 	assert.Equal(t, "google-oauth2|operator", receivedSubject)
 }
 
+func TestCompositeAuthAcceptsAllowlistedOperatorBearerOnEngineProjectionBackfill(t *testing.T) {
+	authenticator := &Authenticator{
+		auth0: &auth0Authenticator{
+			validateToken: func(context.Context, string) (any, error) {
+				return validatedAuth0Claims("Operator@Example.com", time.Now().Add(time.Hour)), nil
+			},
+			allowedEmails: map[string]struct{}{"operator@example.com": {}},
+		},
+	}
+
+	var receivedMode AuthMode
+	protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var ok bool
+		receivedMode, ok = GetAuthMode(r.Context())
+		require.True(t, ok)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/projections/backfill", nil)
+	req.Header.Set("Authorization", "Bearer header.payload.signature")
+	rec := httptest.NewRecorder()
+
+	protectedHandler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	assert.Equal(t, AuthModeOperator, receivedMode)
+}
+
+func TestCompositeAuthAcceptsAllowlistedOperatorBearerOnEngineConsoleRoutes(t *testing.T) {
+	authenticator := &Authenticator{
+		auth0: &auth0Authenticator{
+			validateToken: func(context.Context, string) (any, error) {
+				return validatedAuth0Claims("Operator@Example.com", time.Now().Add(time.Hour)), nil
+			},
+			allowedEmails: map[string]struct{}{"operator@example.com": {}},
+		},
+	}
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{name: "start run", method: http.MethodPost, path: "/v1/engine/runs"},
+		{name: "instance lookup", method: http.MethodGet, path: "/v1/engine/instances/customer-123"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var receivedMode AuthMode
+			protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var ok bool
+				receivedMode, ok = GetAuthMode(r.Context())
+				require.True(t, ok)
+				w.WriteHeader(http.StatusNoContent)
+			}))
+
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer header.payload.signature")
+			rec := httptest.NewRecorder()
+
+			protectedHandler.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusNoContent, rec.Code)
+			assert.Equal(t, AuthModeOperator, receivedMode)
+		})
+	}
+}
+
 func TestCompositeAuthAcceptsLegacyAPIKeyBearerFallbackOnDebuggerRoutes(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
@@ -183,6 +256,77 @@ func TestCompositeAuthAcceptsLegacyAPIKeyBearerFallbackOnDebuggerRoutes(t *testi
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	assert.Equal(t, AuthModeAPIKey, receivedMode)
 	assert.Equal(t, project.ID, receivedProjectID)
+}
+
+func TestCompositeAuthAcceptsAPIKeyOnEngineProjectionBackfill(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	platformStore := store.New(pool)
+
+	apiKey := "projection-backfill-key-" + uuid.NewString()
+	project := createCompositeAuthProject(ctx, t, platformStore, apiKey)
+	authenticator := &Authenticator{store: platformStore}
+
+	var receivedMode AuthMode
+	var receivedProjectID uuid.UUID
+	protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var ok bool
+		receivedMode, ok = GetAuthMode(r.Context())
+		require.True(t, ok)
+		receivedProjectID, ok = GetProjectID(r.Context())
+		require.True(t, ok)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/projections/backfill", nil)
+	req.Header.Set("X-API-Key", apiKey)
+	rec := httptest.NewRecorder()
+
+	protectedHandler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	assert.Equal(t, AuthModeAPIKey, receivedMode)
+	assert.Equal(t, project.ID, receivedProjectID)
+}
+
+func TestCompositeAuthAcceptsAPIKeyOnEngineConsoleRoutes(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	platformStore := store.New(pool)
+
+	apiKey := "engine-console-key-" + uuid.NewString()
+	project := createCompositeAuthProject(ctx, t, platformStore, apiKey)
+	authenticator := &Authenticator{store: platformStore}
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{name: "start run", method: http.MethodPost, path: "/v1/engine/runs"},
+		{name: "instance lookup", method: http.MethodGet, path: "/v1/engine/instances/customer-123"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var receivedMode AuthMode
+			var receivedProjectID uuid.UUID
+			protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var ok bool
+				receivedMode, ok = GetAuthMode(r.Context())
+				require.True(t, ok)
+				receivedProjectID, ok = GetProjectID(r.Context())
+				require.True(t, ok)
+				w.WriteHeader(http.StatusNoContent)
+			}))
+
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("X-API-Key", apiKey)
+			rec := httptest.NewRecorder()
+
+			protectedHandler.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusNoContent, rec.Code)
+			assert.Equal(t, AuthModeAPIKey, receivedMode)
+			assert.Equal(t, project.ID, receivedProjectID)
+		})
+	}
 }
 
 func TestCompositeAuthAllowsPublicDemoReadWithoutCredentials(t *testing.T) {
