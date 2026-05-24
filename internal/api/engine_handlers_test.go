@@ -2243,6 +2243,62 @@ func TestBackfillEngineProjections_DryRunReturnsWouldRepairWithoutMutation(t *te
 	assert.Equal(t, "summary_only", projectionState)
 }
 
+func TestBackfillEngineProjections_PublicDemoAllowsOnlyDryRun(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-backfill-public-demo",
+		RequestKey:        "req-backfill-public-demo",
+	}))
+
+	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
+		ProjectID: projectID,
+		TraceID:   start.TraceId,
+	})
+	require.NoError(t, err)
+
+	latestHistoryID, err := engineQueries.GetLatestHistoryIDByRun(ctx, start.RunId)
+	require.NoError(t, err)
+	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", latestHistoryID, latestHistoryID-1)
+
+	dryRun := true
+	dryRunResp := decodeJSONBody[EngineProjectionBackfillResponse](t, invokeBackfillEngineProjectionsWithAuthMode(
+		t,
+		server,
+		projectID,
+		middleware.AuthModePublicDemo,
+		&EngineProjectionBackfillRequest{DryRun: &dryRun},
+	))
+	assert.True(t, dryRunResp.DryRun)
+	assert.Equal(t, 1, dryRunResp.EligibleCount)
+	require.Len(t, dryRunResp.Results, 1)
+	assert.Equal(t, EngineProjectionBackfillActionWouldRepair, dryRunResp.Results[0].Action)
+
+	apply := false
+	applyRec := invokeBackfillEngineProjectionsWithAuthMode(
+		t,
+		server,
+		projectID,
+		middleware.AuthModePublicDemo,
+		&EngineProjectionBackfillRequest{DryRun: &apply},
+	)
+	require.Equal(t, http.StatusForbidden, applyRec.Code)
+	applyResp := decodeJSONBody[Error](t, applyRec)
+	assert.Equal(t, "public_demo_read_only", applyResp.Code)
+
+	var projectionState string
+	err = platformStore.Pool().QueryRow(ctx, `
+		SELECT engine_projection_state
+		FROM traces
+		WHERE id = $1
+	`, trace.ID).Scan(&projectionState)
+	require.NoError(t, err)
+	assert.Equal(t, "summary_only", projectionState)
+}
+
 func TestBackfillEngineProjections_ApplyRequestsRepairAndFlipsState(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
@@ -3202,6 +3258,18 @@ func invokeBackfillEngineProjections(
 ) *httptest.ResponseRecorder {
 	t.Helper()
 
+	return invokeBackfillEngineProjectionsWithAuthMode(t, server, projectID, "", reqBody)
+}
+
+func invokeBackfillEngineProjectionsWithAuthMode(
+	t *testing.T,
+	server *Server,
+	projectID uuid.UUID,
+	authMode middleware.AuthMode,
+	reqBody *EngineProjectionBackfillRequest,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
 	var body *bytes.Reader
 	if reqBody != nil {
 		payload, err := json.Marshal(reqBody)
@@ -3214,6 +3282,9 @@ func invokeBackfillEngineProjections(
 	req := httptest.NewRequest(http.MethodPost, "/v1/engine/projections/backfill", body)
 	req.Header.Set(enginePreviewHeader, "1")
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
+	if authMode != "" {
+		req = req.WithContext(context.WithValue(req.Context(), middleware.AuthModeKey, authMode))
+	}
 	rec := httptest.NewRecorder()
 
 	server.BackfillEngineProjections(rec, req, BackfillEngineProjectionsParams{XContinuaEnginePreview: "1"})

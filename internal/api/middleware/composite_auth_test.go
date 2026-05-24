@@ -64,6 +64,14 @@ func TestPublicDemoReadRequest_OnlyMatchesDebuggerReadRoutes(t *testing.T) {
 	assert.False(t, isPublicDemoReadRequest(http.MethodGet, "/v1/ingest"))
 }
 
+func TestPublicDemoAllowedRequest_IncludesProjectionBackfillDryRunRoute(t *testing.T) {
+	assert.True(t, isPublicDemoAllowedRequest(http.MethodGet, "/api/traces"))
+	assert.True(t, isPublicDemoAllowedRequest(http.MethodPost, "/v1/engine/projections/backfill"))
+	assert.False(t, isPublicDemoAllowedRequest(http.MethodPost, "/v1/engine/runs"))
+	assert.False(t, isPublicDemoAllowedRequest(http.MethodPost, "/v1/engine/runs/run-123/signal"))
+	assert.False(t, isPublicDemoAllowedRequest(http.MethodPost, "/api/traces"))
+}
+
 func TestCompositeAuthRejectsMissingCredentialsOnDebuggerRoutes(t *testing.T) {
 	authenticator := &Authenticator{}
 	protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -351,6 +359,32 @@ func TestCompositeAuthAllowsPublicDemoReadWithoutCredentials(t *testing.T) {
 		"/api/traces?project_id=22222222-2222-2222-2222-222222222222",
 		nil,
 	)
+	rec := httptest.NewRecorder()
+
+	protectedHandler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	assert.Equal(t, AuthModePublicDemo, receivedMode)
+	assert.Equal(t, demoProjectID, receivedProjectID)
+}
+
+func TestCompositeAuthAllowsPublicDemoProjectionBackfillWithoutCredentials(t *testing.T) {
+	demoProjectID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	authenticator := &Authenticator{
+		publicDemo: &publicDemoAccess{projectID: demoProjectID},
+	}
+
+	var receivedMode AuthMode
+	var receivedProjectID uuid.UUID
+	protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var ok bool
+		receivedMode, ok = GetAuthMode(r.Context())
+		require.True(t, ok)
+		receivedProjectID, ok = GetProjectID(r.Context())
+		require.True(t, ok)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/engine/projections/backfill", nil)
 	rec := httptest.NewRecorder()
 
 	protectedHandler.ServeHTTP(rec, req)
