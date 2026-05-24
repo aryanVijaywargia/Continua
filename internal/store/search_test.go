@@ -1000,12 +1000,46 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	require.Len(t, combined.Traces, 1)
 	assert.Equal(t, engineTrace.ID, combined.Traces[0].ID)
 
+	engineOnly, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:  projectID,
+		EngineOnly: true,
+		Limit:      2,
+	})
+	require.NoError(t, err)
+	assert.Len(t, engineOnly.Traces, 2)
+	assert.Equal(t, int64(3), engineOnly.Total)
+	for _, trace := range engineOnly.Traces {
+		assert.True(t, trace.EngineRunID.Valid)
+		assert.NotEqual(t, nonEngineTrace.ID, trace.ID)
+	}
+
+	engineOnlyWaiting, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:       projectID,
+		EngineOnly:      true,
+		EngineRunStatus: "waiting",
+		Limit:           10,
+	})
+	require.NoError(t, err)
+	require.Len(t, engineOnlyWaiting.Traces, 1)
+	assert.Equal(t, int64(1), engineOnlyWaiting.Total)
+	assert.Equal(t, engineTrace.ID, engineOnlyWaiting.Traces[0].ID)
+
 	allTraces, err := s.ListTracesFiltered(ctx, store.TraceFilter{
 		ProjectID: projectID,
 		Limit:     10,
 	})
 	require.NoError(t, err)
 	assert.Len(t, allTraces.Traces, 4)
+	assert.Equal(t, int64(4), allTraces.Total)
+
+	engineOnlyFalse, err := s.ListTracesFiltered(ctx, store.TraceFilter{
+		ProjectID:  projectID,
+		EngineOnly: false,
+		Limit:      10,
+	})
+	require.NoError(t, err)
+	assert.Len(t, engineOnlyFalse.Traces, 4)
+	assert.Equal(t, int64(4), engineOnlyFalse.Total)
 
 	engineFilteredIDs := []uuid.UUID{byInstance.Traces[0].ID, combined.Traces[0].ID}
 	assert.NotContains(t, engineFilteredIDs, nonEngineTrace.ID)

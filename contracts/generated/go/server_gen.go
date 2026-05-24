@@ -788,10 +788,15 @@ type EngineTraceInfo struct {
 	ChildKey          *string               `json:"child_key,omitempty"`
 	DefinitionName    string                `json:"definition_name"`
 	DefinitionVersion string                `json:"definition_version"`
+	InstanceKey       *string               `json:"instance_key,omitempty"`
 	ParentRunId       *openapi_types.UUID   `json:"parent_run_id,omitempty"`
+	PendingWork       *EnginePendingWork    `json:"pending_work,omitempty"`
 	ProjectionState   EngineProjectionState `json:"projection_state"`
 	RootRunId         *openapi_types.UUID   `json:"root_run_id,omitempty"`
 	RunId             openapi_types.UUID    `json:"run_id"`
+	Status            *EngineRunStatus      `json:"status,omitempty"`
+	UpdatedAt         *time.Time            `json:"updated_at,omitempty"`
+	WaitState         *EngineWaitState      `json:"wait_state,omitempty"`
 }
 
 // EngineWaitState defines model for EngineWaitState.
@@ -1386,6 +1391,9 @@ type ListTracesParams struct {
 
 	// EngineProjectionState Filter by engine projection state
 	EngineProjectionState *EngineProjectionState `form:"engine_projection_state,omitempty" json:"engine_projection_state,omitempty"`
+
+	// EngineOnly When true, return only traces backed by an engine run.
+	EngineOnly *bool `form:"engine_only,omitempty" json:"engine_only,omitempty"`
 
 	// HasErrors Filter traces with errors (error_count > 0)
 	HasErrors *bool `form:"has_errors,omitempty" json:"has_errors,omitempty"`
@@ -2625,6 +2633,14 @@ func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "engine_only" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "engine_only", r.URL.Query(), &params.EngineOnly)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "engine_only", Err: err})
+		return
+	}
+
 	// ------------- Optional query parameter "has_errors" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "has_errors", r.URL.Query(), &params.HasErrors)
@@ -3043,6 +3059,8 @@ func (siw *ServerInterfaceWrapper) GetEngineInstance(w http.ResponseWriter, r *h
 
 	ctx := r.Context()
 
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3064,6 +3082,8 @@ func (siw *ServerInterfaceWrapper) BackfillEngineProjections(w http.ResponseWrit
 	var err error
 
 	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3114,6 +3134,8 @@ func (siw *ServerInterfaceWrapper) StartEngineRun(w http.ResponseWriter, r *http
 	var err error
 
 	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 

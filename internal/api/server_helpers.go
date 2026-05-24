@@ -263,6 +263,9 @@ func traceFilterFromParams(projectID uuid.UUID, params *ListTracesParams, limit,
 	if params.EngineProjectionState != nil {
 		filter.EngineProjectionState = string(*params.EngineProjectionState)
 	}
+	if params.EngineOnly != nil {
+		filter.EngineOnly = *params.EngineOnly
+	}
 	if params.SessionId != nil {
 		id := *params.SessionId
 		filter.SessionID = &id
@@ -297,6 +300,7 @@ func traceNeedsDynamicQuery(filter *store.TraceFilter) bool {
 		filter.EngineChildKey != "" ||
 		filter.EngineChildDepth != nil ||
 		filter.EngineProjectionState != "" ||
+		filter.EngineOnly ||
 		filter.HasErrors != nil ||
 		filter.MinDurationMs != nil
 }

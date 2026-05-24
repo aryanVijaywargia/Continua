@@ -260,6 +260,8 @@ func classifyRouteProtection(path string) routeProtection {
 		return routeProtectionAPIKeyOnly
 	case isEngineAPIKeyOnlyRoute(path):
 		return routeProtectionAPIKeyOnly
+	case isEngineConsoleRoute(path):
+		return routeProtectionComposite
 	case strings.HasPrefix(path, "/api/"), isEngineRunScopedRoute(path):
 		return routeProtectionComposite
 	default:
@@ -276,15 +278,15 @@ func isEngineAPIKeyOnlyRoute(path string) bool {
 			strings.HasSuffix(path, "/complete") ||
 			strings.HasSuffix(path, "/fail")):
 		return true
-	case path == "/v1/engine/runs":
-		return true
-	case path == "/v1/engine/projections/backfill":
-		return true
-	case strings.HasPrefix(path, "/v1/engine/instances/"):
-		return true
 	default:
 		return false
 	}
+}
+
+func isEngineConsoleRoute(path string) bool {
+	return path == "/v1/engine/runs" ||
+		strings.HasPrefix(path, "/v1/engine/instances/") ||
+		path == "/v1/engine/projections/backfill"
 }
 
 func isEngineRunScopedRoute(path string) bool {
@@ -316,6 +318,16 @@ func isPublicDemoReadRequest(method, path string) bool {
 	case matchesPathPattern(path, "/api/sessions/{id}/narrative"):
 		return true
 	case matchesPathPattern(path, "/api/sessions/{id}/compare"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/instances/{instance_key}"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/runs/{run_id}"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/runs/{run_id}/pending-work"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/runs/{run_id}/history"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/runs/{run_id}/result"):
 		return true
 	default:
 		return false
