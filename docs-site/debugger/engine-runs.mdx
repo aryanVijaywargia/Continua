@@ -1,0 +1,79 @@
+---
+title: "Engine runs console"
+description: "Inspect durable engine workflow runs — list, detail, pending work, projection repair."
+---
+
+The Engine runs console at `/engine/runs` is the operator surface for the durable engine.
+Use it to inspect run state, see what work is still pending, and (in operator workflows)
+repair projection state.
+
+<Warning>
+  The engine surface is in preview. Endpoints require `X-Continua-Engine-Preview` and
+  `ENGINE_PUBLIC_API_ENABLED=true` on the server. Engine workflow execution itself is not
+  yet a supported product path — see [Engine foundation](/concepts/engine-foundation) and
+  [Roadmap](/roadmap).
+</Warning>
+
+## Runs list
+
+The list page polls `GET /api/traces?engine_only=true` on a 5-second interval, so newly
+created runs appear without a manual refresh.
+
+Columns:
+
+| Column | Source |
+| --- | --- |
+| Run / trace | Run id and trace name |
+| Definition | `definition_name · definition_version` from the engine projection |
+| Status | Run status (RUNNING, COMPLETED, FAILED, SUSPENDED, etc.) |
+| Pending work | Activities + inbox items waiting. Hover shows the breakdown |
+| Updated | Last projection update; falls back to trace start |
+
+You can start a new run inline from the page (dev / preview only). It calls `POST
+/v1/engine/runs` with the chosen definition + a generated request key.
+
+## Run detail
+
+Clicking a row opens the [Trace detail](/debugger/trace-detail) page, with engine-aware
+panels enabled:
+
+- **Engine badge** in the header with the definition name and version.
+- **Pending work panel**
+  ([`EnginePendingWorkPanel`](https://github.com/aryanVijaywargia/Continua/blob/main/web/src/pages/EnginePendingWorkPanel.tsx))
+  listing pending activity tasks and inbox items, with retry / lease information.
+- **Engine control bar**
+  ([`EngineControlBar`](https://github.com/aryanVijaywargia/Continua/blob/main/web/src/pages/EngineControlBar.tsx))
+  exposing signal / suspend / resume / cancel / terminate. Each action calls the
+  matching `/v1/engine/runs/{run_id}/*` endpoint.
+
+The span waterfall on the underlying trace shows the workflow's emitted spans, so engine
+runs benefit from the same failure-first navigation as any other trace.
+
+## Projection repair
+
+The Projection repair page at `/tools/engine-projections` is an operator tool for
+inspecting and repairing the projection state on a run. Use it when:
+
+- The runs list shows a projection-state label that is unexpected (e.g. stuck in
+  rebuilding).
+- An incident requires backfilling projections from history.
+
+The page calls `POST /v1/engine/projections/backfill` and reports per-run progress.
+
+## What's real and what isn't
+
+**Real today:**
+
+- Engine schema + store with reversible migrations
+- Run lifecycle endpoints (start, get, suspend, resume, cancel, terminate, signal)
+- Activity-task endpoints (claim, heartbeat, complete, fail)
+- Projection backfill + repair tooling
+- Engine runs console UI (this page)
+
+**Not real today:**
+
+- End-to-end workflow execution against a real definition. The state machine accepts
+  control inputs and records history, but workflows do not run to completion in
+  production.
+
+For the full status breakdown, see [Engine foundation](/concepts/engine-foundation).

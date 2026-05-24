@@ -1,0 +1,55 @@
+---
+title: "Debugger overview"
+description: "A tour of the Continua debugger UI and when to reach for each page."
+---
+
+The Continua debugger is an embedded React app served by the platform binary at `/`. It
+gives operators and engineers a failure-first view of every trace, span, session, and
+engine run flowing through your Continua deployment.
+
+This page is a map. Each section links to a deeper page covering that surface.
+
+## Top-level pages
+
+| Page | Route | When to use |
+| --- | --- | --- |
+| [Overview](#dashboard) | `/dashboard` | Daily check-in — recent activity at a glance |
+| [Traces](/debugger/traces) | `/traces` | Find a specific run, filter by status / user / engine instance |
+| [Trace detail](/debugger/trace-detail) | `/traces/:id` | Debug a single run — waterfall, spans, payloads, events |
+| [Sessions](/debugger/sessions) | `/sessions` | Group traces by user / conversation |
+| [Session compare](/debugger/session-compare) | `/sessions/:id/compare` | Diff baseline vs candidate traces in the same session |
+| [Engine runs](/debugger/engine-runs) | `/engine/runs` | Inspect durable engine workflow runs |
+| Projection repair | `/tools/engine-projections` | Operator tool for repairing engine projection state |
+| Projects | `/projects` | Create projects, rotate API keys |
+| [Settings](/debugger/settings-and-theming) | `/settings` | API key, sign-out, theme |
+
+## Two modes the UI can run in
+
+**Local self-host (default).** The UI prompts for a project API key on the
+[Settings](/debugger/settings-and-theming) page and stores it in `localStorage`. Use this
+for single-operator deployments.
+
+**Auth0 operator login.** When `AUTH0_ENABLED=true`, the UI redirects to Auth0 for
+sign-in and checks the email against `AUTH0_ALLOWED_EMAILS`. See
+[Auth0 setup](/guides/auth0-setup).
+
+**Public demo mode.** When `PUBLIC_DEMO_ENABLED=true`, the UI loads a single read-only
+project without prompting for credentials. Useful for evaluations.
+
+## Productivity surfaces
+
+- [Command palette](/debugger/command-palette-and-shortcuts) — `⌘K` / `Ctrl+K` opens a
+  quick navigator.
+- [Settings & theming](/debugger/settings-and-theming) — dark / light / system theme,
+  API-key management, sign-out.
+- URL-driven state — every filter on Traces, Sessions, and Engine runs lives in the URL.
+  Bookmark and share links freely.
+
+## What the debugger does **not** do today
+
+- **Live updates over WebSocket.** Trace detail re-fetches the timeline on a short poll.
+  See [Roadmap](/roadmap).
+- **Mutate trace data.** All read endpoints are read-only. Use the SDK or REST `POST
+  /v1/ingest` to produce data.
+- **Replay execution.** [Session compare](/debugger/session-compare) gives an offline
+  diff, but the debugger doesn't re-run anything.

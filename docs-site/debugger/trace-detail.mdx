@@ -1,0 +1,79 @@
+---
+title: "Trace detail"
+description: "Waterfall, span tree, payload inspector, timeline, and failure summary for a single trace."
+---
+
+The Trace detail page at `/traces/:id` is where you actually debug a run. It's organised
+failure-first: when a span has errored, the page jumps you to the failing span and shows
+the surrounding context.
+
+## Layout
+
+The page is composed of these surfaces, all wired to the same selected span:
+
+| Surface | Component | What it shows |
+| --- | --- | --- |
+| Header | — | Trace name, status badge, duration, cost, token totals, copy-link button |
+| Failure summary | `FailureSummary` | When the trace failed, a breadcrumb to the failing span + the error message |
+| Execution waterfall | `ExecutionWaterfall` | Time-axis bars for every span; nesting shown by indentation; bar colour by status |
+| Span tree | `SpanTree` | Collapsible hierarchical view; useful when there are many short spans |
+| Span detail | `SpanDetail` | Right-hand pane for the currently selected span |
+| Inspector tabs | `InspectorTabs` | Inside `SpanDetail`: input / output / metadata / events / state diff / reasoning |
+| Timeline | `Timeline` | Merged explicit events + synthetic span lifecycle markers across the whole trace |
+| Payload inspector | `PayloadInspector` | Interactive JSON tree with search, copy, expand-all |
+
+## How the timeline works
+
+The timeline merges two sources:
+
+1. **Explicit events** that the SDK emitted into a span (`log`, `error`, `decision`,
+   `effect`, `wait`, `state_change`, `snapshot_marker`, `metric`).
+2. **Synthetic markers** the server generates from span start / end timestamps so you can
+   always see span lifecycle on the same axis.
+
+The timeline polls `GET /api/traces/{id}/events` on a short interval, so a running trace
+fills in live as new events arrive. There is no WebSocket today — see [Roadmap](/roadmap).
+
+## Payload inspector
+
+Click any span to populate the inspector. Tabs include:
+
+- **Input / Output** — the JSON payload set via `set_input` / `set_output` on the SDK.
+- **Metadata** — key/value pairs set via `set_metadata`.
+- **Events** — chronological list of explicit events on this span.
+- **State diff** — when consecutive `state_change` events exist, a visual diff between
+  before and after states.
+- **Reasoning** — when the span recorded reasoning tokens (Claude-style `set_tokens` with
+  a reasoning bucket), surfaces them in a focused tab.
+
+Payloads larger than the configured truncation threshold are stored with a marker; the
+inspector shows a [`TruncationBanner`](https://github.com/aryanVijaywargia/Continua/blob/main/web/src/components/TruncationBanner.tsx)
+explaining what was cut and why. Use server config to tune the truncation threshold if
+needed.
+
+## Failure-first navigation
+
+When you open a failed trace:
+
+1. The waterfall scrolls to the first failing span.
+2. The failure summary surfaces the error message + a breadcrumb of parent spans.
+3. The span detail pane opens to the **Events** tab so you can see the error event in
+   context.
+
+For passing traces, the page opens to the root span and the Input tab.
+
+## Engine runs
+
+When the trace is the projection of an engine run, the header gains an `EngineBadge`,
+the right rail shows the
+[`EnginePendingWorkPanel`](https://github.com/aryanVijaywargia/Continua/blob/main/web/src/pages/EnginePendingWorkPanel.tsx)
+(pending activities + inbox items), and an
+[`EngineControlBar`](https://github.com/aryanVijaywargia/Continua/blob/main/web/src/pages/EngineControlBar.tsx)
+offers signal / suspend / resume / cancel / terminate buttons. See
+[Engine runs](/debugger/engine-runs).
+
+## Copying things
+
+Most identifiers (`trace_id`, `span_id`, payload field paths) have a copy button via
+`CopyButton`. Useful when you need to drop an identifier into a Slack thread or a
+postmortem.
