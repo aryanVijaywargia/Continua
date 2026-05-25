@@ -23,9 +23,9 @@ type Worker struct {
 	activityLeaseTTL time.Duration
 }
 
-func NewWorker(store *store.Store, registry *Registry, activityLeaseTTL time.Duration) *Worker {
+func NewWorker(st *store.Store, registry *Registry, activityLeaseTTL time.Duration) *Worker {
 	return &Worker{
-		store:            store,
+		store:            st,
 		registry:         registry,
 		activityLeaseTTL: activityLeaseTTL,
 	}

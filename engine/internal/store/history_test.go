@@ -13,7 +13,7 @@ func TestHistoryOrdering(t *testing.T) {
 	second := ts.createHistory(t, projectID, instance.ID, runTwo.ID, 1, "run-two.started")
 	third := ts.createHistory(t, projectID, instance.ID, runOne.ID, 2, "run-one.completed")
 
-	if !(first.ID < second.ID && second.ID < third.ID) {
+	if first.ID >= second.ID || second.ID >= third.ID {
 		t.Fatalf("expected sequential inserts to have monotonic ids, got %d, %d, %d", first.ID, second.ID, third.ID)
 	}
 

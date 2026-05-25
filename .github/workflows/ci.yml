@@ -87,13 +87,13 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.64.8
+          version: v2.12.2
           args: --timeout=5m
 
       - name: Lint engine module
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.64.8
+          version: v2.12.2
           working-directory: engine
           args: --timeout=5m
 

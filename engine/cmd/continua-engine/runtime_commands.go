@@ -353,7 +353,7 @@ func signalCmd() *cobra.Command {
 					})
 					return createErr
 				}()
-				if createErr != nil && !(errors.Is(createErr, enginestore.ErrAlreadyExists) && dedupeKey != "") {
+				if createErr != nil && (!errors.Is(createErr, enginestore.ErrAlreadyExists) || dedupeKey == "") {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", createErr.Error())
 				}
 

@@ -1,80 +1,91 @@
+version: "2"
 run:
-  timeout: 5m
   modules-download-mode: readonly
-
 linters:
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gofmt
-    - goimports
-    - misspell
-    - unconvert
-    - unparam
-    - nakedret
-    - prealloc
     - copyloopvar
     - gocritic
+    - misspell
+    - nakedret
+    - prealloc
     - revive
-
-linters-settings:
-  gofmt:
-    simplify: true
-  goimports:
-    local-prefixes: github.com/continua-ai/continua
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-  revive:
+    - unconvert
+    - unparam
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: var-naming
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: exported
-      - name: increment-decrement
-      - name: var-naming
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: time-naming
-      - name: unexported-return
-      - name: indent-error-flow
-      - name: errorf
-
-issues:
-  exclude-rules:
-    - path: "_gen\\.go$"
-      linters:
-        - lll
-        - gocyclo
-        - dupl
-        - gocritic
-        - revive
-    - path: "db/gen/go/"
-      linters:
-        - lll
-        - gocyclo
-        - dupl
-        - gocritic
-        - revive
-    - path: "engine/db/gen/go/"
-      linters:
-        - lll
-        - gocyclo
-        - dupl
-        - gocritic
-        - revive
-    - path: "_test\\.go$"
-      linters:
-        - errcheck
-        - gocritic
+      - linters:
+          - dupl
+          - gocritic
+          - gocyclo
+          - lll
+          - revive
+        path: _gen\.go$
+      - linters:
+          - dupl
+          - gocritic
+          - gocyclo
+          - lll
+          - revive
+        path: db/gen/go/
+      - linters:
+          - dupl
+          - gocritic
+          - gocyclo
+          - lll
+          - revive
+        path: engine/db/gen/go/
+      - linters:
+          - errcheck
+          - gocritic
+        path: _test\.go$
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/continua-ai/continua
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
