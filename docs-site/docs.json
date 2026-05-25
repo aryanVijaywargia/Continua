@@ -27,8 +27,23 @@
             "pages": [
               "index",
               "guides/quickstart",
+              "guides/instrument-your-app",
               "guides/installation",
               "guides/self-hosting"
+            ]
+          },
+          {
+            "group": "Operate",
+            "pages": [
+              "guides/auth0-setup",
+              "guides/managing-projects"
+            ]
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "guides/debugging-failures",
+              "guides/comparing-sessions"
             ]
           }
         ]
@@ -40,7 +55,9 @@
             "group": "Architecture",
             "pages": [
               "concepts/overview",
-              "concepts/data-model"
+              "concepts/data-model",
+              "concepts/projects-and-auth",
+              "concepts/engine-foundation"
             ]
           },
           {
@@ -48,7 +65,46 @@
             "pages": [
               "concepts/traces-spans-sessions",
               "concepts/events",
-              "concepts/ingest-lifecycle"
+              "concepts/ingest-lifecycle",
+              "concepts/cost-and-tokens"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Debugger",
+        "groups": [
+          {
+            "group": "Tour",
+            "pages": [
+              "debugger/overview"
+            ]
+          },
+          {
+            "group": "Traces",
+            "pages": [
+              "debugger/traces",
+              "debugger/trace-detail"
+            ]
+          },
+          {
+            "group": "Sessions",
+            "pages": [
+              "debugger/sessions",
+              "debugger/session-compare"
+            ]
+          },
+          {
+            "group": "Engine",
+            "pages": [
+              "debugger/engine-runs"
+            ]
+          },
+          {
+            "group": "Productivity",
+            "pages": [
+              "debugger/command-palette-and-shortcuts",
+              "debugger/settings-and-theming"
             ]
           }
         ]
@@ -63,8 +119,8 @@
               "sdk/python/installation",
               "sdk/python/tracing",
               "sdk/python/span-events",
-              "sdk/python/activity-worker",
-              "sdk/python/engine-control",
+              "sdk/python/sessions",
+              "sdk/python/batching-and-ingest-modes",
               "sdk/python/exceptions"
             ]
           }
@@ -72,7 +128,29 @@
       },
       {
         "tab": "API Reference",
-        "openapi": "/api-reference/openapi.yaml"
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/auth-and-headers"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "openapi": "/api-reference/openapi.yaml"
+          }
+        ]
+      },
+      {
+        "tab": "Roadmap",
+        "groups": [
+          {
+            "group": "Status",
+            "pages": [
+              "roadmap"
+            ]
+          }
+        ]
       }
     ],
     "global": {

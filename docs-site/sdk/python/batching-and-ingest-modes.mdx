@@ -1,0 +1,122 @@
+---
+title: "Batching & ingest modes"
+description: "How the SDK batches writes, which ingest mode to pick, and how to poll for completion."
+---
+
+The Python SDK batches every write through a single in-process queue. This page covers
+how that queue works, the three ingest modes, and when to poll for completion.
+
+## The batch queue
+
+`Continua.init()` constructs a singleton `BatchQueue` that:
+
+1. Accepts trace / span / event writes from your application code.
+2. Flushes when it hits `batch_size` items **or** `flush_interval` seconds, whichever
+   comes first.
+3. Sends each flush as one `POST /v1/ingest` request.
+4. Retries transient failures with exponential backoff (`max_retries`, `base_delay`,
+   `max_delay`).
+5. Drains on process exit via an `atexit` handler.
+
+Tune the queue at init time:
+
+```python
+Continua.init(
+    api_key="...",
+    endpoint="...",
+    batch_size=100,        # default 100
+    flush_interval=5.0,    # default 5s
+    max_retries=3,
+    base_delay=0.5,
+    max_delay=30.0,
+)
+```
+
+## Ingest modes
+
+The server supports three ways to accept a batch. The SDK picks one via the
+`ingest_mode` parameter.
+
+| Mode | Request shape | When it returns | Read-after-write? |
+| --- | --- | --- | --- |
+| `"sync"` | `POST /v1/ingest?sync=true` | After all rows are written | Yes |
+| `"async_v2"` | `POST /v1/ingest` with `X-Continua-Async-Version: 2` | Immediately with a `batch_id` (`202 Accepted`) | No — must poll |
+| `"server_default"` | No mode header — server uses `INGEST_TRUE_ASYNC_DEFAULT` | Depends on server config | Depends |
+
+```python
+Continua.init(
+    api_key="...",
+    endpoint="...",
+    ingest_mode="async_v2",
+)
+```
+
+### Which mode to use
+
+- **`sync`** — Tests, CLIs, scripts where the next step needs to read what you just
+  wrote. Simple and predictable. Throughput is bounded by the HTTP round-trip + the
+  database write.
+- **`async_v2`** — Production agents and high-throughput services. The SDK returns
+  control to your code as soon as the server has durably accepted the batch into
+  `ingest_batches`. Background workers do the real work.
+- **`server_default`** — Library / framework code where the deployment owner gets to
+  pick. Pairs well with `INGEST_TRUE_ASYNC_DEFAULT` set per environment.
+
+See [Ingest lifecycle](/concepts/ingest-lifecycle) for the server-side state machine.
+
+## Idempotency with `batch_key`
+
+The server treats `batch_key` (a string you supply per batch) as an idempotency token.
+Repeating the same `batch_key` will not double-write. Use this when:
+
+- Retrying a batch after a network blip.
+- Re-running a deterministic pipeline step that may have partially succeeded.
+
+The SDK generates a `batch_key` per flush automatically; if you supply your own batch
+boundary, attach a stable key derived from your pipeline state.
+
+## Polling for async completion
+
+Async mode is **not read-after-write**. If you wrote a trace and immediately call `GET
+/api/traces`, the trace may not be there yet. Two options:
+
+### Option A: poll for the batch
+
+```python
+client = Continua.get_instance()
+batch_id = ...  # from your call site or returned by client.flush()
+result = client.wait_for_batch(batch_id, timeout=30, poll_interval=0.5)
+# result["status"] in {"completed", "failed"}
+```
+
+`wait_for_batch` polls `GET /v1/ingest/batches/{id}` until the batch reaches a terminal
+state or the timeout elapses. Useful in tests and CLI tools.
+
+### Option B: use `sync` mode for the call where you need read-after-write
+
+If only one call site needs to read its own writes (e.g. a debugging script), switch
+that init to `sync` and leave the rest of your app on `async_v2`.
+
+## Flushing and shutdown
+
+```python
+client = Continua.get_instance()
+client.flush()      # block until the in-process queue drains to the server
+client.shutdown()   # flush + close the underlying httpx.Client
+```
+
+The `atexit` handler calls `shutdown` automatically. Call it explicitly when you need
+deterministic ordering (CLI tools, tests).
+
+## Retry behavior
+
+The client transparently retries `5xx`, `429`, and network errors up to `max_retries`
+with exponential backoff bounded by `base_delay` and `max_delay`. Only after retries are
+exhausted does the corresponding `ContinuaError` propagate.
+
+## See also
+
+- [Ingest lifecycle](/concepts/ingest-lifecycle) — the server-side state machine.
+- [Exceptions](/sdk/python/exceptions) — which errors come back when.
+- [Self-hosting](/guides/self-hosting) — `INGEST_TRUE_ASYNC_DEFAULT`, retention,
+  worker queue sizing.

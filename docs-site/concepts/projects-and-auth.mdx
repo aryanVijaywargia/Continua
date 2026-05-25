@@ -1,0 +1,65 @@
+---
+title: "Projects & auth"
+description: "How projects, API keys, Auth0 operator login, and demo mode fit together."
+---
+
+A **project** is the unit of multi-tenancy in Continua. Every trace, span, session, and
+ingest batch is scoped to exactly one project. Every authenticated request must resolve
+to a project.
+
+## The three ways a request gets authenticated
+
+| Mechanism | Used by | How project_id is resolved |
+| --- | --- | --- |
+| **API key** (`X-API-Key`) | SDKs, ingest, REST integrators | Server hashes the key (SHA-256), looks it up in `projects`, injects the owning project into context |
+| **Auth0 bearer** (operator JWT) | Debugger UI when `AUTH0_ENABLED=true` | The UI picks a project explicitly via `selected_project_id` (query or header). Operator can switch projects |
+| **Public demo** (no credentials) | Read-only landing on the demo deployment | Project id is hard-coded in `PUBLIC_DEMO_PROJECT_ID` |
+
+API keys and Auth0 are not mutually exclusive — you can run Auth0 for the UI and still
+issue API keys for SDK ingest. Public demo mode is opt-in via env vars and serves a
+single read-only project to anyone.
+
+## Lifecycle of a project
+
+1. **Create** — `POST /api/projects` returns the project record plus the plaintext API
+   key. **This is the only time the key is returned in plaintext.** Store it; the server
+   only keeps the hash.
+2. **Use** — clients send `X-API-Key: <key>`. The middleware in
+   [`internal/api/middleware/auth.go`](https://github.com/aryanVijaywargia/Continua/blob/main/internal/api/middleware/auth.go)
+   resolves the key on every request.
+3. **Rotate** — `POST /api/projects/{id}/rotate` invalidates the old key and returns a
+   new plaintext key (also returned once). Rotation is the right tool for suspected key
+   compromise.
+4. **Update metadata** — `PATCH /api/projects/{id}` for renames, description changes.
+5. **Delete** — `DELETE /api/projects/{id}` soft-deletes the project.
+
+See the [Managing projects guide](/guides/managing-projects) for end-to-end how-to.
+
+## Project scoping on reads
+
+Every read endpoint applies a `WHERE project_id = ?` filter derived from the request
+context. There is no cross-project query API today. If you operate multiple projects, do
+the cross-project aggregation outside Continua (or in your data warehouse after export).
+
+For Auth0 operators, the UI passes `selected_project_id` so an operator can move between
+projects without re-authenticating. The selected project is persisted in URL query
+params, so links remain shareable.
+
+## Demo mode in detail
+
+When `PUBLIC_DEMO_ENABLED=true`:
+
+- The server bootstraps a `PublicDemoConfig` with the configured `PUBLIC_DEMO_PROJECT_ID`
+  and `PUBLIC_DEMO_LABEL`.
+- The UI loads without prompting for an API key.
+- Mutations are blocked — the demo is read-only.
+- The Settings page redirects to `/dashboard`.
+
+`make demo` boots a deployment with demo mode on, an idempotent demo project, and seeded
+traces — useful for evaluating Continua without standing up your own ingest pipeline.
+
+## See also
+
+- [Auth0 setup guide](/guides/auth0-setup) for the operator login flow.
+- [Managing projects guide](/guides/managing-projects) for create / rotate / delete.
+- [Self-hosting](/guides/self-hosting) for the env vars behind all three modes.

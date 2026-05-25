@@ -1,0 +1,89 @@
+---
+title: "Engine foundation"
+description: "The durable engine schema, store, and control surface — what's real today and where it stops."
+---
+
+Continua ships a durable engine **foundation** today. The schema, store, control
+endpoints, and runs console UI are real. The execution runtime that takes a workflow
+definition and runs it to completion is not.
+
+This page draws the line.
+
+<Warning>
+  The engine is preview. Endpoints require `X-Continua-Engine-Preview` and
+  `ENGINE_PUBLIC_API_ENABLED=true` on the server. Don't depend on engine workflow
+  execution for production work yet. See [Roadmap](/roadmap).
+</Warning>
+
+## What's implemented
+
+### Schema (real)
+
+A Postgres `engine` schema with reversible migrations under
+[`engine/db/migrations/`](https://github.com/aryanVijaywargia/Continua/tree/main/engine/db/migrations).
+Core tables:
+
+| Table | Holds |
+| --- | --- |
+| `engine.instances` | The logical workflow instance keyed by `instance_key` |
+| `engine.runs` | Per-run state (status, started_at, terminal_state) |
+| `engine.history` | Append-only event log per run |
+| `engine.inbox` | Pending inbox items (signals, child completions, etc.) |
+| `engine.activity_tasks` | Activity tasks ready for workers to claim |
+| `engine.request_dedupe` | Idempotency keys for engine control requests |
+| `engine.projection_checkpoints` | Projection rebuild progress |
+
+### Store (real)
+
+[`engine/db/gen/go/`](https://github.com/aryanVijaywargia/Continua/tree/main/engine/db/gen/go)
+is the sqlc-generated store. The engine uses its own pgx pool and transaction boundary —
+it does not share a connection pool with the platform server. The engine can optionally
+live in a separate Postgres via `ENGINE_DATABASE_URL`.
+
+### Control endpoints (real)
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /v1/engine/runs` | Start a run for a definition |
+| `GET /v1/engine/runs/{id}` | Read run state |
+| `GET /v1/engine/runs/{id}/result` | Read terminal result |
+| `GET /v1/engine/runs/{id}/history` | Read history events |
+| `GET /v1/engine/runs/{id}/pending-work` | Snapshot of pending activities + inbox |
+| `POST /v1/engine/runs/{id}/signal` | Send a signal |
+| `POST /v1/engine/runs/{id}/suspend` / `resume` / `cancel` / `terminate` | Lifecycle control |
+| `POST /v1/engine/runs/{id}/purge` / `repair` | Operator tools |
+| `GET /v1/engine/instances/{instance_key}` | Look up the instance + current run |
+| `POST /v1/engine/activities/claim` / `{id}/heartbeat` / `complete` / `fail` | Worker protocol |
+| `POST /v1/engine/projections/backfill` | Rebuild projection checkpoints |
+
+### CLI (real)
+
+A separate binary `continua-engine` with `version` and `migrate up` / `migrate down`
+commands. Migrations are independent from platform migrations.
+
+### Runs console UI (real)
+
+See [Engine runs](/debugger/engine-runs). Lists runs, shows pending work, and exposes
+the control bar. Polling-based.
+
+## What is **not** implemented
+
+- **Workflow definition execution.** There is no runtime that takes a workflow function,
+  hands activity tasks to workers, processes their results, drives the workflow forward,
+  and produces a terminal result. The state machine accepts the right inputs but the
+  end-to-end loop is incomplete.
+- **Workflow SDK.** The Python SDK exports `ActivityWorker`, `@activity`, and
+  `EngineControlClient` — they call the right endpoints, but without a working execution
+  layer they don't form a usable workflow runtime today.
+- **Run history replay.** History is written; replay-from-history is not wired.
+
+## When to use the engine surface today
+
+- **Operator tooling.** The control endpoints + console are useful for instrumenting an
+  external engine that posts run state into Continua.
+- **Schema-level prototyping.** If you want to model a durable workflow without
+  committing to an execution runtime, you can use the schema as a write target.
+
+For actual durable workflow execution, wait for the execution layer to land — track
+progress on [GitHub](https://github.com/aryanVijaywargia/Continua) or watch the
+[Roadmap](/roadmap) for status changes.

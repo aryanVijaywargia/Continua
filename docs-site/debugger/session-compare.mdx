@@ -1,0 +1,54 @@
+---
+title: "Session compare"
+description: "Diff a baseline and a candidate trace from the same session — span by span, payload by payload."
+---
+
+Session compare answers a specific question: **"what changed between these two runs of
+the same conversation?"** Typical triggers:
+
+- You shipped a new prompt and want to see how the same user turn now executes.
+- You switched models and want to confirm cost / token impact.
+- A user reports a regression on a specific scenario and you have a known-good baseline.
+
+## How to open it
+
+From the [Session detail](/debugger/sessions) page:
+
+1. Pick a **baseline trace** (e.g. the last known-good run).
+2. Pick a **candidate trace** (e.g. the suspect run).
+3. Click **Compare** to navigate to
+   `/sessions/:id/compare?baseline_trace_id=...&candidate_trace_id=...`.
+
+You can also build the URL by hand if you already have both trace ids.
+
+## What the page shows
+
+| Section | What it tells you |
+| --- | --- |
+| Header | Both traces side-by-side: status, duration, cost, token totals |
+| Semantic summary | High-level diff: which spans were added, removed, or changed |
+| Span diff table | Row per span pair — duration delta, payload delta, status delta |
+| Row expand | Inline payload diff for input, output, metadata, key events |
+| Engine projection state | When the traces are engine runs, projection-state labels for both sides |
+
+The page is read-only and computes the diff server-side via `GET
+/api/sessions/{id}/compare`.
+
+## When the comparison is too large
+
+For very long traces, the comparison can exceed the server's payload-diff budget. When
+that happens you'll see an inline `ComparisonTooLargeError` banner with the offending
+limit. Mitigation options:
+
+- Compare a shorter window of the session.
+- Use the [Trace detail](/debugger/trace-detail) page on each trace separately and diff
+  by eye.
+- Truncate payloads at ingest using SDK metadata so the comparison stays within budget.
+
+## Limitations
+
+- Compare works **within a single session**. Cross-session compare is not supported.
+- The diff is structural, not semantic — a JSON field reorder shows as a change even if
+  the meaning is identical.
+- Comparison is read-only. The debugger does not re-execute either trace. See
+  [Roadmap](/roadmap) for the replay workstream.

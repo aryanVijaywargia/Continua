@@ -1,0 +1,87 @@
+---
+title: "Debugging a failed run"
+description: "A guided workflow for taking a failing trace from notification to root cause in the debugger."
+---
+
+This guide walks the failure-first debugger workflow end to end. Use it as a runbook for
+your first real incident in Continua.
+
+## 1. Find the failing trace
+
+Open the [Traces page](/debugger/traces) and apply filters:
+
+- **Status**: `FAILED`
+- **User ID**: if a specific user reported the issue
+- **Start time**: a window around when the incident began
+
+Bookmark the resulting URL — you'll want to come back to it.
+
+## 2. Open the trace
+
+Click the row. The [Trace detail](/debugger/trace-detail) page auto-scrolls to the first
+failing span and opens the **Failure summary** at the top with:
+
+- The error message
+- A breadcrumb showing the chain of parent spans
+- A link to the failing span in the waterfall
+
+If you have many failing spans, the summary highlights the first one. Subsequent
+failures are still visible as red bars in the waterfall.
+
+## 3. Read the failing span
+
+The span detail pane on the right opens to the **Events** tab. Look for:
+
+- An `exception` event — usually contains the captured traceback.
+- A preceding `decision` or `state_change` event — tells you what the agent thought
+  before the failure.
+- A `wait` event with a long duration — points at a stalled tool or model call.
+
+Switch to **Input / Output** to see the payloads at the boundary of the failure. The
+inspector is searchable (`/` to focus) — useful for huge prompts.
+
+## 4. Look at the context
+
+A failure is rarely an isolated event. Walk up the span tree:
+
+- Click the parent span. Was its input what you expected?
+- Click sibling spans. Did an earlier sibling produce bad output that fed the failure?
+- Open the **Timeline** to see explicit events across the whole trace in order — a
+  `decision` event minutes earlier often explains the failure.
+
+## 5. Compare against a known-good run
+
+If you have a baseline (a previous run of the same conversation that succeeded):
+
+1. Note the failing trace's session id.
+2. Open the [Session detail page](/debugger/sessions) for that session.
+3. Pick the known-good trace as **baseline**, the failing trace as **candidate**.
+4. Click **Compare** to open [Session compare](/debugger/session-compare).
+
+The compare view highlights span-level deltas. Use it to confirm whether the failure is
+new behaviour or a longstanding flake.
+
+## 6. Capture the evidence
+
+Before closing the tab:
+
+- Copy the trace id (header `CopyButton`).
+- Copy the URL of the filtered traces list you started from.
+- Copy the URL of the compare view if you opened one.
+
+These three links are the evidence trail. Drop them in your incident channel or
+postmortem.
+
+## 7. Fix at the source
+
+The debugger is read-only — it tells you what happened, not why. From here you go back
+to the SDK-instrumented code, fix the offending span, and ship a release. Re-run the
+same scenario; the new trace should appear in your previously-bookmarked filtered list.
+
+## Tips
+
+- **Tag your traces at ingest** (`tags=["staging"]`, `tags=["release-v42"]`) so failure
+  filtering can isolate a single deploy.
+- **Set `user_id` on traces** so user-reported issues map cleanly to filterable rows.
+- **Use `set_metadata` to record version pins** (model name, prompt hash) — these become
+  diff-able fields in the compare view.

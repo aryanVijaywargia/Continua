@@ -29,19 +29,22 @@ The full public surface from `continua/__init__.py`:
 
 - [`Continua`](/sdk/python/installation) — the singleton client (`Continua.init()`,
   `add_trace()`, `add_span()`, `add_event()`, `flush()`, `wait_for_batch()`, `shutdown()`)
-- [`EngineControlClient`](/sdk/python/engine-control) — control plane for the durable
-  engine surface (scaffolded)
 
 ### Decorators and context managers
 
 - [`@trace`](/sdk/python/tracing) — wrap a top-level agent function
 - [`@span`](/sdk/python/tracing) — open a span context manager
-- [`@session`](/sdk/python/tracing) — group traces under a session
+- [`@session`](/sdk/python/sessions) — group traces under a session
 
 ### Context classes
 
-- `TraceContext`, `SpanContext`, `SessionContext`, `ActivityTaskContext`,
-  [`ActivityWorker`](/sdk/python/activity-worker)
+- `TraceContext`, `SpanContext`, `SessionContext`
+
+<Note>
+  The SDK also exports `EngineControlClient`, `ActivityWorker`, and `ActivityTaskContext`
+  for the durable engine surface. That surface is scaffolded today — see
+  [Roadmap & status](/roadmap) before depending on it.
+</Note>
 
 ### Context getters
 
@@ -57,11 +60,11 @@ The full public surface from `continua/__init__.py`:
 | --- | --- |
 | `continua.client` | `Continua` singleton, batching, retries, async polling |
 | `continua.trace` | `@trace` decorator + `TraceContext` |
-| `continua.span` | `@span` context manager + `SpanContext` and its 19 event methods |
+| `continua.span` | `@span` context manager + `SpanContext` (see [Span events](/sdk/python/span-events) for every method) |
 | `continua.session` | `@session` context manager + `SessionContext` |
-| `continua.worker` | `ActivityWorker`, `@activity` decorator (engine surface) |
-| `continua.engine_control` | `EngineControlClient` (engine surface) |
-| `continua.exceptions` | All 8 exception classes |
+| `continua.worker` | `ActivityWorker`, `@activity` decorator (engine surface — scaffolded, see [Roadmap](/roadmap)) |
+| `continua.engine_control` | `EngineControlClient` (engine surface — scaffolded, see [Roadmap](/roadmap)) |
+| `continua.exceptions` | Exception hierarchy — see [Exceptions](/sdk/python/exceptions) |
 | `continua.types` | Generated Pydantic models from the OpenAPI contract |
 
 ## Typical usage
@@ -98,10 +101,16 @@ def answer_question(question: str) -> str:
     Install, initialize, and configure ingest modes.
   </Card>
   <Card title="Tracing" icon="route" href="/sdk/python/tracing">
-    `@trace`, `@span`, `@session` — decorators and context managers in depth.
+    `@trace` and `@span` — decorators and context managers in depth.
+  </Card>
+  <Card title="Sessions" icon="layer-group" href="/sdk/python/sessions">
+    `@session` — group multiple traces under one conversation.
   </Card>
   <Card title="Span events" icon="list-tree" href="/sdk/python/span-events">
     Every method on `SpanContext` — `set_input`, `log`, `error`, `llm_response`, etc.
+  </Card>
+  <Card title="Batching & ingest modes" icon="rocket" href="/sdk/python/batching-and-ingest-modes">
+    Sync vs async, idempotency, `wait_for_batch`, tuning the queue.
   </Card>
   <Card title="Exceptions" icon="triangle-exclamation" href="/sdk/python/exceptions">
     How the SDK signals failures.

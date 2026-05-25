@@ -1,0 +1,107 @@
+---
+title: "Sessions"
+description: "Group traces under a shared session id with the @session context manager."
+---
+
+A **session** groups traces that belong together — usually one user conversation, one
+job, or one long-running interaction. Sessions are the right unit when you want to ask
+"what happened across all these turns?" rather than "what happened in this one call?".
+
+## Quick start
+
+```python
+from continua import session, trace
+
+with session("user-conversation-42"):
+    @trace(name="turn_1")
+    def turn_1(): ...
+
+    @trace(name="turn_2")
+    def turn_2(): ...
+
+    turn_1()
+    turn_2()
+```
+
+Both traces above are tagged with the session's external id and surface together on the
+[Session detail page](/debugger/sessions).
+
+## Signature
+
+```python
+def session(
+    session_id: str | None = None,
+    *,
+    user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> SessionContext: ...
+```
+
+| Parameter | Description |
+| --- | --- |
+| `session_id` | External session identifier. If `None`, no session key is attached |
+| `user_id` | Optional user identifier — propagates to every trace inside |
+| `metadata` | Optional metadata dictionary |
+
+## Accessing the current session
+
+```python
+from continua import get_current_session
+
+current = get_current_session()  # SessionContext | None
+```
+
+Use this inside a trace if you need to read session metadata to drive control flow (for
+example, picking a model based on a user tier set at session start).
+
+## How session context propagates
+
+The SDK uses Python `contextvars`:
+
+- `session()` sets the current session for the duration of the `with` block.
+- `@trace` reads the current session on entry and pins the trace to it.
+- `span()` doesn't need to read the session — it inherits via its parent trace.
+
+Async code that preserves `contextvars` (e.g. `asyncio`) propagates correctly. Threads
+need explicit context propagation.
+
+## Linking a trace to a session manually
+
+If you can't wrap your code in a `with session(...)` block, set the session id directly
+on the trace:
+
+```python
+@trace(name="background_job", session_id="user-conversation-42")
+def background_job(): ...
+```
+
+This is the right pattern when the session is decided by data inside the function (for
+example, a message queue consumer that learns the session id from the payload).
+
+## Common pitfalls
+
+### Nested sessions are not supported
+
+`session()` is meant to wrap the outermost agent loop. Don't nest sessions; the SDK
+guards against it. If you need a different session inside an existing one, set
+`session_id` directly on `@trace`.
+
+### Sessions are observability state, not product state
+
+Don't treat the session as your conversation store. Continua may truncate or compact
+data older than your retention window. Keep the authoritative session in your product
+database and use the Continua session id as a foreign key.
+
+### Re-using session ids across runs
+
+If you re-use the same `session_id` across re-runs (intentional or accidental), traces
+from both runs appear under the same session. That can be helpful — it's how
+[Session compare](/debugger/session-compare) finds baseline + candidate pairs. It can
+also surprise you. When in doubt, suffix the id with a run nonce.
+
+## See also
+
+- [Tracing](/sdk/python/tracing) — `@trace` and `@span` (where most of the work happens).
+- [Sessions page](/debugger/sessions) — how sessions render in the debugger.
+- [Session compare](/debugger/session-compare) — diff two traces in the same session.
+- [Comparing baseline and candidate](/guides/comparing-sessions) — guided workflow.

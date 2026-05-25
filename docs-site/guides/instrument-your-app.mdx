@@ -1,0 +1,148 @@
+---
+title: "Instrument your app"
+description: "End-to-end: install the SDK, wrap your agent's entry point, send your first real trace, and find it in the debugger."
+---
+
+This guide takes you from zero to a real, useful trace in your own app in about ten
+minutes. It assumes you have a running Continua server (see [Quickstart](/guides/quickstart))
+and a project API key.
+
+## 1. Install the SDK
+
+```bash
+pip install continua-sdk
+```
+
+## 2. Initialize once at process start
+
+```python
+# myagent/bootstrap.py
+import os
+from continua import Continua
+
+Continua.init(
+    api_key=os.environ["CONTINUA_API_KEY"],
+    endpoint=os.environ.get("CONTINUA_API_URL", "http://localhost:8080"),
+    ingest_mode="async_v2",  # use "sync" for tests / CLIs
+)
+```
+
+Import `bootstrap` once from your entry point (or whatever bootstrapping module your
+framework uses) before any traced code runs.
+
+## 3. Wrap the entry point with `@trace`
+
+A trace should represent **one unit of work** — usually one user turn, one job, one
+request. Anything narrower is a span, not a trace.
+
+```python
+from continua import trace, span
+
+@trace(name="answer_question")
+def answer_question(question: str, user_id: str) -> str:
+    with span("retrieve_context", kind="retrieval") as s:
+        s.set_input({"question": question})
+        context = retrieve(question)
+        s.set_output({"docs": [d.id for d in context]})
+
+    with span("call_model", kind="llm") as s:
+        s.set_input({"question": question, "context": context})
+        s.set_model("gpt-4.1-mini")
+        answer = call_model(question, context)
+        s.set_output({"answer": answer})
+        s.set_tokens(prompt=120, completion=48)
+        s.set_cost(0.0023)
+        return answer
+```
+
+This shape — one outer `@trace`, several `span()` blocks inside — covers most agent
+patterns. Reach for [`@session`](/sdk/python/sessions) when you want to group multiple
+turns under one user conversation.
+
+## 4. Pass user id for downstream filtering
+
+The debugger's most useful filter is **user id**. Pass it at the trace boundary:
+
+```python
+@trace(name="answer_question")
+def answer_question(question: str, user_id: str) -> str:
+    # ... your code ...
+
+# Or set it from inside if you don't have it at decoration time:
+from continua import get_current_trace
+
+def answer_question(question: str, user_id: str) -> str:
+    trace_ctx = get_current_trace()
+    if trace_ctx:
+        trace_ctx.set_metadata("user_id", user_id)
+    # ...
+```
+
+(The decorator also accepts `user_id` directly when you have it at definition time.)
+
+## 5. Add semantic events for the parts that matter
+
+The biggest debugger win comes from semantic events on spans:
+
+```python
+with span("plan_next_step", kind="agent") as s:
+    s.set_input({"goal": goal, "memory": memory})
+    plan = call_planner(goal, memory)
+    s.decision("Chose tool plan", chosen_value={"plan": plan})
+    s.set_output({"plan": plan})
+```
+
+See [Span events](/sdk/python/span-events) for the full set (`decision`, `effect`,
+`wait`, `state_change`, `snapshot_marker`, etc.). These show up on the
+[trace timeline](/debugger/trace-detail) and dramatically reduce debugging time.
+
+## 6. Tag releases and environments
+
+Tags make filtering across deploys trivial. Add them at decoration time:
+
+```python
+@trace(name="answer_question", tags=[os.environ["ENV"], f"release-{RELEASE_SHA}"])
+def answer_question(question: str): ...
+```
+
+Now you can filter the [Traces page](/debugger/traces) to a specific release at a
+specific environment in seconds.
+
+## 7. Run your app and find the trace
+
+Run a request through your app. Then:
+
+1. Open the debugger at `http://localhost:8080` (or your deployment URL).
+2. Go to **Traces**.
+3. Filter by your user id or tag.
+4. Click the trace.
+
+You should see the full waterfall, your semantic events on the timeline, and your
+payloads in the inspector.
+
+## 8. Iterate
+
+Common refinements once a basic trace exists:
+
+- **Promote retries to their own span** instead of swallowing them silently. Failed
+  retries become first-class rows in the waterfall.
+- **Record costs and tokens** on every LLM call. Trace-level totals start rolling up
+  automatically. See [Cost & tokens](/concepts/cost-and-tokens).
+- **Set `external_id` on sessions** so a re-run with the same id ends up in the same
+  session — that's what unlocks [Session compare](/debugger/session-compare).
+
+## When to switch ingest modes
+
+- Tests / CLIs / scripts that read what they just wrote → `sync`.
+- Production agents → `async_v2` (default for high throughput).
+- Library code embedded in someone else's deployment → `server_default`.
+
+See [Batching & ingest modes](/sdk/python/batching-and-ingest-modes) for the trade-offs.
+
+## See also
+
+- [Tracing](/sdk/python/tracing) — `@trace`, `@span` reference.
+- [Sessions](/sdk/python/sessions) — grouping traces.
+- [Span events](/sdk/python/span-events) — semantic events that make the timeline useful.
+- [Debugging a failed run](/guides/debugging-failures) — what to do when something
+  breaks.
