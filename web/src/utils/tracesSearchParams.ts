@@ -80,6 +80,7 @@ export interface FetchTracesParams {
   engine_child_key?: string;
   engine_child_depth?: number;
   engine_projection_state?: EngineProjectionStateFilter;
+  engine_only?: boolean;
   has_errors?: boolean;
   min_duration_ms?: number;
 }
@@ -106,6 +107,7 @@ export interface TracesFilterState {
   engine_child_key?: string;
   engine_child_depth?: number;
   engine_projection_state?: EngineProjectionStateFilter;
+  engine_only?: boolean;
   has_errors?: boolean;
   min_duration_ms?: number;
 }
@@ -163,6 +165,7 @@ const CANONICAL_PARAM_ORDER: Array<keyof FetchTracesParams> = [
   'engine_child_key',
   'engine_child_depth',
   'engine_projection_state',
+  'engine_only',
   'has_errors',
   'min_duration_ms',
 ];
@@ -307,6 +310,7 @@ function normalizeTracesParams(
     engine_projection_state: normalizeEngineProjectionState(
       params.engine_projection_state
     ),
+    engine_only: normalizeBooleanTrue(params.engine_only),
     has_errors: normalizeBooleanTrue(params.has_errors),
     min_duration_ms: normalizePositiveInteger(params.min_duration_ms),
   };
@@ -386,6 +390,9 @@ function toQueryEntries(
   if (params.engine_projection_state) {
     entries.push(['engine_projection_state', params.engine_projection_state]);
   }
+  if (params.engine_only !== undefined) {
+    entries.push(['engine_only', params.engine_only ? 'true' : 'false']);
+  }
   if (params.has_errors) {
     entries.push(['has_errors', 'true']);
   }
@@ -452,6 +459,7 @@ export function parseTracesParams(searchParams: URLSearchParams): TracesFilterSt
     engine_child_depth: searchParams.get('engine_child_depth') ?? undefined,
     engine_projection_state:
       searchParams.get('engine_projection_state') ?? undefined,
+    engine_only: searchParams.get('engine_only') ?? undefined,
     has_errors: searchParams.get('has_errors') ?? undefined,
     min_duration_ms: searchParams.get('min_duration_ms') ?? undefined,
   });
@@ -478,6 +486,7 @@ export function parseTracesParams(searchParams: URLSearchParams): TracesFilterSt
     engine_child_key: normalized.engine_child_key,
     engine_child_depth: normalized.engine_child_depth,
     engine_projection_state: normalized.engine_projection_state,
+    engine_only: normalized.engine_only,
     has_errors: normalized.has_errors,
     min_duration_ms: normalized.min_duration_ms,
   };
@@ -642,6 +651,13 @@ export function deriveActiveChips(state: TracesFilterState): Chip[] {
       ),
     });
   }
+  if (normalized.engine_only) {
+    chips.push({
+      key: 'engine_only',
+      label: 'Engine runs',
+      value: 'Only engine-backed traces',
+    });
+  }
   if (normalized.has_errors) {
     chips.push({ key: 'has_errors', label: 'Errors', value: 'Only traces with errors' });
   }
@@ -702,6 +718,8 @@ export function clearChip(
         ...normalized,
         engine_projection_state: undefined,
       });
+    case 'engine_only':
+      return resetOffset({ ...normalized, engine_only: undefined });
     case 'has_errors':
       return resetOffset({ ...normalized, has_errors: undefined });
     case 'min_duration_ms':

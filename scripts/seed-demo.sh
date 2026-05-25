@@ -48,6 +48,12 @@ VALUES (
 );
 SQL
 
+echo "==> Seeding deterministic engine demo fixtures"
+psql "${DATABASE_URL}" \
+  -v ON_ERROR_STOP=1 \
+  -v demo_project_id="${DEMO_PROJECT_ID}" \
+  -f "${ROOT_DIR}/scripts/seed-engine-demo.sql"
+
 echo "==> Seeding demo traces through the ingest API at ${API_URL}"
 (
   cd "${ROOT_DIR}/sdks/python"

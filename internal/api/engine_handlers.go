@@ -7,6 +7,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/enginecontrol"
 )
 
@@ -271,6 +272,10 @@ func (s *Server) BackfillEngineProjections(w http.ResponseWriter, r *http.Reques
 	backfillReq, err := engineProjectionBackfillRequestFromAPI(&req)
 	if err != nil {
 		writeEngineError(w, err, "Invalid engine projection backfill request")
+		return
+	}
+	if mode, ok := middleware.GetAuthMode(r.Context()); ok && mode == middleware.AuthModePublicDemo && !backfillReq.DryRun {
+		writeError(w, http.StatusForbidden, "public_demo_read_only", "Public demo projection repair only allows dry runs")
 		return
 	}
 

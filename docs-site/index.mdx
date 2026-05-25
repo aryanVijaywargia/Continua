@@ -4,9 +4,10 @@ description: "Self-hosted debugging for AI agent runs — traces, spans, session
 ---
 
 <Note>
-  Continua is in alpha. The Python SDK, REST ingest, and the embedded debugger UI are
-  production-shaped today. The TypeScript SDK, durable engine, proxy capture, and replay
-  runtime are scaffolded but not yet implemented.
+  Continua is in alpha. The Python SDK, REST ingest, debugger UI, project & API-key
+  management, Auth0 operator login, and the engine schema + runs console are shippable
+  today. The TypeScript SDK, WebSocket runtime, proxy capture, replay, and end-to-end
+  engine workflow execution are scaffolded — see [Roadmap & status](/roadmap).
 </Note>
 
 ## What is Continua?
@@ -33,14 +34,14 @@ Python SDK / custom client
   <Card title="Quickstart" icon="rocket" href="/guides/quickstart">
     Run Continua locally with Docker Compose and see seeded traces in the debugger.
   </Card>
-  <Card title="Install the Python SDK" icon="python" href="/sdk/python/installation">
-    `pip install continua-sdk` and ship your first trace in a few lines.
+  <Card title="Instrument your app" icon="python" href="/guides/instrument-your-app">
+    End-to-end: install the SDK, wrap your agent, and see your first real trace.
+  </Card>
+  <Card title="Debugger tour" icon="bug" href="/debugger/overview">
+    Traces, sessions, compare, engine runs — what each page in the UI does.
   </Card>
   <Card title="Concepts" icon="book-open" href="/concepts/overview">
     Traces, spans, sessions, events — and how the async ingest lifecycle works.
-  </Card>
-  <Card title="REST API" icon="code" href="/api-reference">
-    Auto-generated from the OpenAPI contract. Try it directly against `localhost:8080`.
   </Card>
 </CardGroup>
 
@@ -58,7 +59,9 @@ Python SDK / custom client
 
 | Section | What you'll find |
 | --- | --- |
-| **Guides** | Installation, Docker quickstart, self-hosting reference |
-| **Concepts** | Architecture, data model, traces/spans/sessions, events, ingest lifecycle |
-| **Python SDK** | Full reference for `continua-sdk` — decorators, span events, worker, exceptions |
-| **API Reference** | Auto-rendered OpenAPI — every endpoint with a live playground |
+| **Guides** | Quickstart, instrumentation, self-hosting, Auth0 setup, project management, failure-debugging workflows |
+| **Concepts** | Architecture, data model, observability model, projects & auth, cost & tokens, engine foundation |
+| **Debugger** | Tour of every page in the UI — traces, sessions, compare, engine runs, command palette, settings |
+| **Python SDK** | Full reference for `continua-sdk` — decorators, span events, sessions, batching, exceptions |
+| **API Reference** | Auth & headers intro plus auto-rendered OpenAPI with a live playground |
+| **Roadmap** | What's shippable, what's scaffolded, and what's coming |

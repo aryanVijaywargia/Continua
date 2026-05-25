@@ -72,6 +72,41 @@ def _control_response(wake_applied: bool = True) -> dict[str, object]:
     }
 
 
+def test_engine_trace_info_preserves_expanded_schema_fields():
+    from continua.types import EngineRunStatus, EngineTraceInfo
+
+    payload = {
+        "run_id": RUN_ID,
+        "definition_name": "checkout",
+        "definition_version": "v1",
+        "projection_state": "summary_only",
+        "instance_key": "instance-1",
+        "status": "CONTINUED_AS_NEW",
+        "wait_state": {
+            "kind": "signal",
+            "signal_name": "approval_received",
+        },
+        "pending_work": {
+            "pending_activity_tasks": 2,
+            "pending_inbox_items": 3,
+        },
+        "updated_at": "2026-04-06T10:00:00Z",
+    }
+
+    info = EngineTraceInfo.model_validate(payload)
+    serialized = info.model_dump(mode="json")
+    reparsed = EngineTraceInfo.model_validate(serialized)
+
+    assert info.status == EngineRunStatus.CONTINUED_AS_NEW
+    assert serialized["instance_key"] == "instance-1"
+    assert serialized["status"] == "CONTINUED_AS_NEW"
+    assert serialized["wait_state"]["signal_name"] == "approval_received"
+    assert serialized["pending_work"]["pending_activity_tasks"] == 2
+    assert serialized["pending_work"]["pending_inbox_items"] == 3
+    assert serialized["updated_at"] == "2026-04-06T10:00:00Z"
+    assert reparsed == info
+
+
 def _backfill_response(
     *,
     dry_run: bool,

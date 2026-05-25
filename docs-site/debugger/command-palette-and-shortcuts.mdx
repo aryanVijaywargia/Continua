@@ -1,0 +1,47 @@
+---
+title: "Command palette & shortcuts"
+description: "Open the command palette with ⌘K / Ctrl+K to jump anywhere in the debugger."
+---
+
+The debugger ships a command palette for fast navigation without leaving the keyboard.
+
+## Opening it
+
+| Platform | Shortcut |
+| --- | --- |
+| macOS | `⌘K` |
+| Windows / Linux | `Ctrl+K` |
+
+The palette is registered globally inside
+[`CommandPalette`](https://github.com/aryanVijaywargia/Continua/blob/main/web/src/components/CommandPalette.tsx)
+and works from any debugger page.
+
+## What's in it
+
+The palette lists every top-level page in the debugger plus a few utilities:
+
+- **Navigate** — jump to Overview, Traces, Sessions, Engine runs, Projects, Settings.
+- **Search** — type any text to filter the command list.
+- **Recent** — when applicable, recently visited resources surface at the top.
+
+Selecting an item with `Enter` navigates immediately and closes the palette. `Esc` closes
+without navigating.
+
+## In-page keyboard interactions
+
+Some pages add their own keyboard affordances:
+
+- **Traces / Sessions / Engine runs** — filter inputs respond to `Enter` to commit a
+  draft value and `Esc` to revert.
+- **Trace detail span tree** — `↑` / `↓` move the selection; `→` / `←` expand and
+  collapse children.
+- **Payload inspector** — `/` focuses the in-payload search input.
+
+These are wired locally inside each component; the goal is that any frequently-needed
+action can be reached without taking your hands off the keyboard.
+
+## What's not there yet
+
+There is no user-configurable keymap and no global "open last trace" shortcut yet. If
+you have a workflow that would benefit from one, open an issue on
+[GitHub](https://github.com/aryanVijaywargia/Continua/issues).

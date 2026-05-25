@@ -97,7 +97,7 @@ func (a *Authenticator) Middleware() func(http.Handler) http.Handler {
 			case routeProtectionAPIKeyOnly:
 				a.serveAPIKeyOnly(next, w, r)
 			case routeProtectionComposite:
-				if a.publicDemo != nil && isPublicDemoReadRequest(r.Method, r.URL.Path) {
+				if a.publicDemo != nil && isPublicDemoAllowedRequest(r.Method, r.URL.Path) {
 					a.servePublicDemoRead(next, w, r)
 					return
 				}
@@ -260,6 +260,8 @@ func classifyRouteProtection(path string) routeProtection {
 		return routeProtectionAPIKeyOnly
 	case isEngineAPIKeyOnlyRoute(path):
 		return routeProtectionAPIKeyOnly
+	case isEngineConsoleRoute(path):
+		return routeProtectionComposite
 	case strings.HasPrefix(path, "/api/"), isEngineRunScopedRoute(path):
 		return routeProtectionComposite
 	default:
@@ -276,15 +278,15 @@ func isEngineAPIKeyOnlyRoute(path string) bool {
 			strings.HasSuffix(path, "/complete") ||
 			strings.HasSuffix(path, "/fail")):
 		return true
-	case path == "/v1/engine/runs":
-		return true
-	case path == "/v1/engine/projections/backfill":
-		return true
-	case strings.HasPrefix(path, "/v1/engine/instances/"):
-		return true
 	default:
 		return false
 	}
+}
+
+func isEngineConsoleRoute(path string) bool {
+	return path == "/v1/engine/runs" ||
+		strings.HasPrefix(path, "/v1/engine/instances/") ||
+		path == "/v1/engine/projections/backfill"
 }
 
 func isEngineRunScopedRoute(path string) bool {
@@ -317,9 +319,26 @@ func isPublicDemoReadRequest(method, path string) bool {
 		return true
 	case matchesPathPattern(path, "/api/sessions/{id}/compare"):
 		return true
+	case matchesPathPattern(path, "/v1/engine/instances/{instance_key}"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/runs/{run_id}"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/runs/{run_id}/pending-work"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/runs/{run_id}/history"):
+		return true
+	case matchesPathPattern(path, "/v1/engine/runs/{run_id}/result"):
+		return true
 	default:
 		return false
 	}
+}
+
+func isPublicDemoAllowedRequest(method, path string) bool {
+	if isPublicDemoReadRequest(method, path) {
+		return true
+	}
+	return method == http.MethodPost && path == "/v1/engine/projections/backfill"
 }
 
 func isProjectBootstrapRoute(method, path string) bool {

@@ -126,16 +126,36 @@ Required:
 
 Common optional variables:
 
-| Variable | Purpose |
-| --- | --- |
-| `HOST`, `PORT` | Server bind address, defaults to `0.0.0.0:8080` |
-| `PUBLIC_DEMO_ENABLED` | Enables read-only seeded demo mode |
-| `PUBLIC_DEMO_PROJECT_ID` | Project shown in public demo mode |
-| `PUBLIC_DEMO_LABEL` | Demo workspace label in the UI |
-| `INGEST_TRUE_ASYNC_DEFAULT` | Server default async ingest behavior |
-| `INGEST_DEPENDENCY_RETRY_WINDOW` | Retry window for async batches waiting on dependencies |
-| `INGEST_FAILED_PAYLOAD_RETENTION` | Retention window for failed async ingest payloads |
-| `RIVER_QUEUE_*` | River worker pool sizes |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HOST` | `0.0.0.0` | Server bind host |
+| `PORT` | `8080` | Server bind port |
+| `INGEST_TRUE_ASYNC_DEFAULT` | `false` | Server default async ingest behavior |
+| `INGEST_DEPENDENCY_RETRY_WINDOW` | `15m` | Retry window for async batches waiting on dependencies |
+| `INGEST_FAILED_PAYLOAD_RETENTION` | `7d` | Retention window for failed async ingest payloads |
+| `RIVER_QUEUE_INGEST_WORKERS` | `4` | Ingest batch queue concurrency |
+| `RIVER_QUEUE_ROLLUP_WORKERS` | `10` | Rollup job concurrency |
+| `RIVER_QUEUE_MAINTENANCE_WORKERS` | `1` | Cleanup / maintenance job concurrency |
+| `RIVER_QUEUE_DEFAULT_WORKERS` | `1` | Catch-all queue concurrency |
+
+Engine surface (preview — see [Roadmap](/roadmap) for status):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ENGINE_PUBLIC_API_ENABLED` | `false` | Expose `/v1/engine/*` endpoints. Requires `X-Continua-Engine-Preview` on requests |
+| `ENGINE_DATABASE_URL` | falls back to `DATABASE_URL` | Optional separate Postgres for the engine schema |
+| `ENGINE_PROJECTION_RETENTION_AFTER` | unset | How long to retain projection state after a run reaches terminal state |
+| `ENGINE_HISTORY_RETENTION_AFTER` | unset | Retention window for run history. Must be greater than `ENGINE_PROJECTION_RETENTION_AFTER` |
+
+Demo / operator login (optional):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PUBLIC_DEMO_ENABLED` | `false` | Enables read-only seeded demo mode |
+| `PUBLIC_DEMO_PROJECT_ID` | unset | UUID of the project shown in public demo mode (required when demo enabled) |
+| `PUBLIC_DEMO_LABEL` | unset | Demo workspace label in the UI |
+| `AUTH0_ENABLED` | `false` | Enable Auth0 operator login |
+| `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_AUDIENCE`, `AUTH0_ALLOWED_EMAILS` | unset | Auth0 tenant configuration (required when `AUTH0_ENABLED=true`). See [Auth0 setup](/guides/auth0-setup) |
 
 `config.example.yaml` is a reference template only. The server does not read YAML
 configuration at runtime.

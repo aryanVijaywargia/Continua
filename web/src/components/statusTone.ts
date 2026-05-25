@@ -1,8 +1,23 @@
 export const STATUS_TONE = {
+  QUEUED: {
+    dot: 'var(--c-muted)',
+    text: 'var(--c-muted-text)',
+    label: 'Queued',
+  },
   RUNNING: {
     dot: 'var(--c-blue)',
     text: 'var(--c-blue-text)',
     label: 'Running',
+  },
+  WAITING: {
+    dot: 'var(--c-amber)',
+    text: 'var(--c-amber-text)',
+    label: 'Waiting',
+  },
+  SUSPENDED: {
+    dot: 'var(--c-amber)',
+    text: 'var(--c-amber-text)',
+    label: 'Suspended',
   },
   STARTED: {
     dot: 'var(--c-blue)',
@@ -18,6 +33,21 @@ export const STATUS_TONE = {
     dot: 'var(--c-red)',
     text: 'var(--c-red-text)',
     label: 'Failed',
+  },
+  CANCELLED: {
+    dot: 'var(--c-red)',
+    text: 'var(--c-red-text)',
+    label: 'Cancelled',
+  },
+  TERMINATED: {
+    dot: 'var(--c-red)',
+    text: 'var(--c-red-text)',
+    label: 'Terminated',
+  },
+  CONTINUED_AS_NEW: {
+    dot: 'var(--c-green)',
+    text: 'var(--c-green-text)',
+    label: 'Continued as new',
   },
   SCHEDULED: {
     dot: 'var(--c-muted)',

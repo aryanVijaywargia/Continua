@@ -1,0 +1,59 @@
+---
+title: "Traces page"
+description: "Find traces by status, user, engine instance, duration, or free-text search. Filters live in the URL."
+---
+
+The Traces page at `/traces` is the primary entry point for finding a specific run.
+
+## Filters
+
+All filters are URL-driven. The page reads them from `location.search` and writes them
+back as you change them — so any view is a shareable link.
+
+| Filter | Type | What it matches |
+| --- | --- | --- |
+| Search (`q`) | free text | Trace name, external `trace_id`, or session external id |
+| Status | `RUNNING` / `COMPLETED` / `FAILED` | Trace-level status. Status counts shown above the filter chips |
+| User ID | exact | Matches the `user_id` attached at ingest |
+| Engine instance key | exact | For runs created via the engine surface, matches the engine instance key |
+| Engine definition name | exact + version | Surfaces only when at least one returned trace has an engine definition |
+| Minimum duration (ms) | integer | Excludes traces shorter than the value |
+| Start time | date range | `start_time_from` / `start_time_to` |
+| Tags | list | Tags attached at ingest |
+
+Active filters render as chips above the table. Clicking the `×` on a chip clears just
+that filter; "Clear all" resets every filter.
+
+## Sorting & pagination
+
+The table supports a fixed sort by **start time descending**. Pagination uses
+`limit` + `offset` query params with a default page size set in `web/src/utils/pagination.ts`.
+
+## Status counts
+
+The header shows a count of `RUNNING`, `COMPLETED`, and `FAILED` traces in the current
+filtered window. Counts reflect the current page of results, not the global total — they
+are useful for quickly spotting unexpected state distributions during an incident.
+
+## Drilling in
+
+Click any row to open the [Trace detail](/debugger/trace-detail) page. The current
+filtered list URL is preserved as a "Back to traces" link on that page, so you can
+navigate detail → list → detail without losing your filters.
+
+## Sharing filtered views
+
+Because the page is URL-driven, you can:
+
+- Bookmark a saved filter (e.g. `?status=FAILED&user_id=alice@example.com`).
+- Paste a URL into Slack / a postmortem so a teammate sees the exact same rows.
+- Open the same view across browser windows without re-applying filters.
+
+## Performance notes
+
+The list endpoint (`GET /api/traces`) returns up to `limit` rows per request. The page
+uses TanStack Query's `keepPreviousData` so pagination feels instant — the previous page
+stays rendered while the next page loads.
+
+For very large projects, prefer narrower filters (a user id or a status) over loading
+many pages of all traces.

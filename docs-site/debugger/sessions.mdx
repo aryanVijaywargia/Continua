@@ -1,0 +1,58 @@
+---
+title: "Sessions page"
+description: "Group traces by session, browse session detail, read the experimental narrative summary."
+---
+
+Sessions group traces that belong together — usually one user conversation, one batch
+job, or one long-running task.
+
+## Sessions list (`/sessions`)
+
+| Filter | What it matches |
+| --- | --- |
+| Search (`q`) | Session name, `external_id`, or `user_id` |
+| User ID | Exact match on `user_id` |
+| Sort | Recently active by default |
+
+Like the [Traces page](/debugger/traces), filters live in the URL and are shareable.
+
+## Session detail (`/sessions/:id`)
+
+Each session detail page shows:
+
+- **Header** — external id, user id, started-at / last-activity timestamps, trace count.
+- **Traces table** — every trace linked to the session, with status, duration, cost, and
+  token totals.
+- **Narrative panel** — an experimental LLM-generated summary of what happened across
+  the session (see [Narrative](#narrative) below).
+
+Clicking a trace row opens the [Trace detail](/debugger/trace-detail) page for that run.
+The "Back to session" link preserves your place.
+
+## Narrative
+
+`GET /api/sessions/{id}/narrative` returns a server-generated summary of the session,
+written as a few short paragraphs. It's useful when:
+
+- You're triaging a user complaint and want a 30-second read of what they tried.
+- You're auditing an agent's behaviour across many turns.
+- You're writing a postmortem and want a starting draft.
+
+<Note>
+  The narrative is experimental. Treat it as a starting point, not a system of record —
+  inspect the raw traces for anything you'll act on.
+</Note>
+
+## Comparing two traces in a session
+
+From the session detail page you can pick a baseline trace and a candidate trace and
+open [Session compare](/debugger/session-compare). This is the right workflow when
+you've changed a prompt or model version and want to see what shifted across the same
+conversation.
+
+## What sessions are not
+
+- Not a persistent chat history. Sessions are an observability grouping, not a chat
+  store. Don't depend on them for product state.
+- Not nestable. The SDK guards against nested `session()` blocks — set `session_id`
+  directly on `@trace` if you need a different session inside.

@@ -2,10 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { TracesPage } from './pages/TracesPage';
 import { TraceDetailPage } from './pages/TraceDetailPage';
+import { EngineRunsPage } from './pages/EngineRunsPage';
 import { SessionsPage } from './pages/SessionsPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionComparePage } from './pages/SessionComparePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { EngineProjectionRepairPage } from './pages/EngineProjectionRepairPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AppShell } from './components/AppShell';
@@ -33,12 +35,14 @@ export function App() {
                 <Route element={<AppShell />}>
                   <Route path="/dashboard" element={<OverviewPage />} />
                   <Route path="/traces" element={<TracesPage />} />
+                  <Route path="/engine/runs" element={<EngineRunsPage />} />
                   <Route path="/traces/:id" element={<TraceDetailPage />} />
                   <Route path="/sessions" element={<SessionsPage />} />
                   <Route path="/sessions/:id" element={<SessionDetailPage />} />
                   <Route path="/sessions/:id/compare" element={<SessionComparePage />} />
                   <Route path="/projects" element={<ProjectsPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/tools/engine-projections" element={<EngineProjectionRepairPage />} />
                 </Route>
               </Route>
             </Routes>

@@ -51,7 +51,9 @@ After init, use `Continua.get_instance()` anywhere in your process to retrieve t
 
 ## Ingest modes
 
-See [Ingest lifecycle](/concepts/ingest-lifecycle) for the full model.
+A quick summary — see [Batching & ingest modes](/sdk/python/batching-and-ingest-modes)
+for the full trade-offs and [Ingest lifecycle](/concepts/ingest-lifecycle) for the
+server-side state machine.
 
 | Mode | When |
 | --- | --- |
@@ -65,17 +67,6 @@ Continua.init(
     endpoint="...",
     ingest_mode="async_v2",
 )
-```
-
-## Polling for async batches
-
-True async is **not read-after-write**. If your code needs the batch fully processed
-before reading data back, either use `sync` mode or poll:
-
-```python
-client = Continua.get_instance()
-result = client.wait_for_batch(batch_id, timeout=30, poll_interval=0.5)
-# result["status"] in {"completed", "failed"}
 ```
 
 ## Shutdown

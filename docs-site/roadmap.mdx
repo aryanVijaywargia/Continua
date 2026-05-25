@@ -1,0 +1,93 @@
+---
+title: "Roadmap & status"
+description: "What's shippable today, what's scaffolded, and what we'd reach for next."
+---
+
+This page is the honest line between the parts of Continua you can rely on today and the
+parts that are partially implemented or experimental. If a feature lives below the line,
+we may have endpoints, packages, or schema in the repo for it — but it isn't a supported
+product path yet.
+
+## Shippable today
+
+These surfaces have real implementations, end-to-end tests, and at least one production
+shape. Everything in the rest of this docs site assumes they exist.
+
+| Area | What's there |
+| --- | --- |
+| **REST ingest** | `POST /v1/ingest` (sync + true-async with durable batches and idempotency), `GET /v1/ingest/batches/{id}` for polling |
+| **REST reads** | Traces, spans, span events / merged timeline, sessions, session narrative, session compare |
+| **Project management** | Create / update / delete / rotate-key endpoints under `/api/projects`, API-key auth via `X-API-Key` |
+| **Auth0 operator login** | Optional bearer-auth for the debugger UI gated by `AUTH0_ALLOWED_EMAILS` |
+| **Public demo mode** | Read-only seeded project for evaluations |
+| **Python SDK** | Decorators, context managers, batching, sync / async / server-default ingest modes, polling helpers |
+| **Debugger UI** | Traces list, trace detail (waterfall, span tree, timeline, payload inspector), sessions list / detail / compare, settings, command palette, theming |
+| **Engine schema + control endpoints** | Postgres engine schema with reversible migrations, `/v1/engine/*` control endpoints behind a preview flag, runs console UI |
+| **Background jobs** | River workers for ingest, rollups, and payload cleanup |
+| **Self-hosting** | Single Go binary + Postgres, env-only config, embedded SPA, `continua migrate` + `continua-engine migrate` |
+
+## Scaffolded — not yet a supported product path
+
+These exist in the repo as types, schemas, or partial implementations. Don't depend on
+them. Calls into them won't get production behaviour, and the surface may change before
+they ship.
+
+### TypeScript SDK
+
+[`sdks/typescript/`](https://github.com/aryanVijaywargia/Continua/tree/main/sdks/typescript)
+contains a stub `ContinuaClient` and the generated OpenAPI types. There is no batching,
+no decorators, no ingest helpers. The package today is suitable only as a typed
+fetch client over the contracts.
+
+**Use the Python SDK** if you need real instrumentation today. TypeScript instrumentation
+is on the roadmap; tracking the work in the repo is the most reliable signal.
+
+### Engine workflow execution
+
+The engine schema, store, and control endpoints are real. **Workflow definition execution
+is not.** That means:
+
+- You can call `POST /v1/engine/runs` and it will durably record the run, but the
+  workflow body won't execute end-to-end.
+- `ActivityWorker` and the `@activity` decorator in the Python SDK exist and will poll
+  `/v1/engine/activities/claim`, but there is no production workload feeding the queue.
+- `EngineControlClient` exposes signal / suspend / resume / cancel / terminate, and the
+  state machine accepts them, but workflow continuation behaviour is incomplete.
+
+What **does** work today: the engine runs console UI for inspecting durable run state,
+history, pending activity tasks, and projection repair. See [Engine
+foundation](/concepts/engine-foundation) for the line between schema/control (real)
+and execution (not real).
+
+### Live WebSocket runtime
+
+The contract under [`contracts/websocket/events.ts`](https://github.com/aryanVijaywargia/Continua/tree/main/contracts/websocket)
+defines a live-update event schema. The debugger UI does **not** consume it today — trace
+detail is polling-based via `GET /api/traces/{id}/events`. Server-side WebSocket handlers
+are stubbed.
+
+### Proxy capture
+
+[`internal/proxy/`](https://github.com/aryanVijaywargia/Continua/tree/main/internal/proxy)
+is reserved for an HTTP-proxy capture mode that records LLM / tool calls without code
+changes to the agent. There is no production implementation. Instrument with the Python
+SDK instead.
+
+### Replay execution
+
+[`internal/replay/`](https://github.com/aryanVijaywargia/Continua/tree/main/internal/replay)
+is reserved for re-executing recorded runs against new code or model versions. Not
+implemented. Use [session compare](/debugger/session-compare) for offline diffing.
+
+## What we'd reach for next
+
+Rough ordering, subject to change as feedback comes in:
+
+1. Finish the TypeScript SDK to parity with Python for trace / span / session instrumentation.
+2. WebSocket runtime so the trace detail page can drop polling.
+3. End-to-end engine workflow execution on top of the existing schema and control surface.
+4. Proxy capture for zero-code instrumentation.
+5. Replay execution as a layer on top of finished engine workflows.
+
+If you have a strong opinion on the order, open an issue on
+[GitHub](https://github.com/aryanVijaywargia/Continua/issues) — we read every one.

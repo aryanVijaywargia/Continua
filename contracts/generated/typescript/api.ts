@@ -691,6 +691,12 @@ export interface components {
             definition_name: string;
             definition_version: string;
             projection_state: components["schemas"]["EngineProjectionState"];
+            instance_key?: string;
+            status?: components["schemas"]["EngineRunStatus"];
+            wait_state?: components["schemas"]["EngineWaitState"];
+            pending_work?: components["schemas"]["EnginePendingWork"];
+            /** Format: date-time */
+            updated_at?: string;
             /** Format: uuid */
             parent_run_id?: string;
             /** Format: uuid */
@@ -1621,7 +1627,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -1906,7 +1912,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineInstanceResponse"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2249,7 +2255,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Unauthorized - missing or invalid API key */
+            /** @description Unauthorized - missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2860,6 +2866,8 @@ export interface operations {
                 engine_child_depth?: number;
                 /** @description Filter by engine projection state */
                 engine_projection_state?: components["schemas"]["EngineProjectionState"];
+                /** @description When true, return only traces backed by an engine run. */
+                engine_only?: boolean;
                 /** @description Filter traces with errors (error_count > 0) */
                 has_errors?: boolean;
                 /** @description Filter traces with duration >= this value in milliseconds */

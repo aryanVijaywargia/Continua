@@ -122,17 +122,6 @@ class EngineRunStatus(Enum):
     CONTINUED_AS_NEW = "CONTINUED_AS_NEW"
 
 
-class EngineTraceInfo(BaseModel):
-    run_id: UUID
-    definition_name: str
-    definition_version: str
-    projection_state: EngineProjectionState
-    parent_run_id: UUID | None = None
-    root_run_id: UUID | None = None
-    child_key: str | None = None
-    child_depth: int | None = None
-
-
 class EngineWaitState(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -273,60 +262,10 @@ class EngineFailureSummary(BaseModel):
     status: str
 
 
-class EngineRunSummary(EngineTraceInfo):
-    status: EngineRunStatus
-    instance_key: str
-    continued_from_run_id: UUID | None = None
-    continued_to_run_id: UUID | None = None
-    continued_from_trace_id: str | None = None
-    continued_to_trace_id: str | None = None
-    custom_status: dict[str, Any] | None = None
-    wait_state: EngineWaitState | None = None
-    pending_work: EnginePendingWork
-    result: Any | None = Field(
-        None, description="Terminal workflow result payload when available."
-    )
-    failure: EngineFailureSummary | None = None
-    created_at: AwareDatetime
-    updated_at: AwareDatetime
-    completed_at: AwareDatetime | None = None
-
-
 class Status(Enum):
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
-
-
-class Trace(BaseModel):
-    id: UUID
-    session_id: UUID | None = None
-    session_external_id: str | None = None
-    name: str
-    status: Status
-    started_at: AwareDatetime
-    ended_at: AwareDatetime | None = None
-    total_tokens_in: int | None = None
-    total_tokens_out: int | None = None
-    total_cost_usd: float | None = None
-    error_count: int | None = Field(
-        None, description="Count of failed spans in this trace"
-    )
-    metadata: dict[str, Any] | None = None
-    engine: EngineTraceInfo | None = None
-
-
-class TraceDetail(Trace):
-    trace_id: str | None = None
-    user_id: str | None = None
-    tags: list[str] | None = None
-    environment: str | None = None
-    release: str | None = None
-    input: Any | None = Field(None, description="Trace input payload (any valid JSON)")
-    output: Any | None = Field(
-        None, description="Trace output payload (any valid JSON)"
-    )
-    engine: EngineRunSummary | None = None
 
 
 class EngineStartSession(BaseModel):
@@ -360,25 +299,6 @@ class EngineStartRunResponse(BaseModel):
     run_id: UUID
     instance_key: str
     trace_id: str
-
-
-class EngineInstanceResponse(BaseModel):
-    instance_id: UUID
-    instance_key: str
-    definition_name: str
-    status: str
-    current_run: EngineRunSummary
-
-
-class EngineRunResponse(EngineRunSummary):
-    """
-    Engine run detail. Clients can identify `definition_version_mismatch`
-    from the existing `definition_name`, `definition_version`, and
-    `failure.error_code` fields without a dedicated mismatch endpoint.
-
-    """
-
-    instance_id: UUID
 
 
 class EngineRunResultResponse(BaseModel):
@@ -444,11 +364,6 @@ class EngineControlResponse(BaseModel):
     instance_key: str
     accepted: bool
     wake_applied: bool
-
-
-class TraceList(BaseModel):
-    traces: list[Trace]
-    total: int
 
 
 class Kind(Enum):
@@ -597,22 +512,6 @@ class CompareSessionHeader(BaseModel):
     id: UUID
     external_id: str
     name: str | None = None
-
-
-class CompareTraceHeader(BaseModel):
-    id: UUID
-    trace_id: str
-    name: str
-    status: Status2
-    user_id: str | None = None
-    started_at: AwareDatetime
-    ended_at: AwareDatetime | None = None
-    duration_ms: int | None = None
-    error_count: int | None = None
-    total_cost_usd: float | None = None
-    total_tokens_in: int | None = None
-    total_tokens_out: int | None = None
-    engine: EngineTraceInfo | None = None
 
 
 class CompareSummary(BaseModel):
@@ -932,6 +831,96 @@ class BatchStatusResponse(BaseModel):
     last_error_message: str | None = None
 
 
+class EngineTraceInfo(BaseModel):
+    run_id: UUID
+    definition_name: str
+    definition_version: str
+    projection_state: EngineProjectionState
+    instance_key: str | None = None
+    status: EngineRunStatus | None = None
+    wait_state: EngineWaitState | None = None
+    pending_work: EnginePendingWork | None = None
+    updated_at: AwareDatetime | None = None
+    parent_run_id: UUID | None = None
+    root_run_id: UUID | None = None
+    child_key: str | None = None
+    child_depth: int | None = None
+
+
+class EngineRunSummary(EngineTraceInfo):
+    status: EngineRunStatus
+    instance_key: str
+    continued_from_run_id: UUID | None = None
+    continued_to_run_id: UUID | None = None
+    continued_from_trace_id: str | None = None
+    continued_to_trace_id: str | None = None
+    custom_status: dict[str, Any] | None = None
+    wait_state: EngineWaitState | None = None
+    pending_work: EnginePendingWork
+    result: Any | None = Field(
+        None, description="Terminal workflow result payload when available."
+    )
+    failure: EngineFailureSummary | None = None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    completed_at: AwareDatetime | None = None
+
+
+class Trace(BaseModel):
+    id: UUID
+    session_id: UUID | None = None
+    session_external_id: str | None = None
+    name: str
+    status: Status
+    started_at: AwareDatetime
+    ended_at: AwareDatetime | None = None
+    total_tokens_in: int | None = None
+    total_tokens_out: int | None = None
+    total_cost_usd: float | None = None
+    error_count: int | None = Field(
+        None, description="Count of failed spans in this trace"
+    )
+    metadata: dict[str, Any] | None = None
+    engine: EngineTraceInfo | None = None
+
+
+class TraceDetail(Trace):
+    trace_id: str | None = None
+    user_id: str | None = None
+    tags: list[str] | None = None
+    environment: str | None = None
+    release: str | None = None
+    input: Any | None = Field(None, description="Trace input payload (any valid JSON)")
+    output: Any | None = Field(
+        None, description="Trace output payload (any valid JSON)"
+    )
+    engine: EngineRunSummary | None = None
+
+
+class EngineInstanceResponse(BaseModel):
+    instance_id: UUID
+    instance_key: str
+    definition_name: str
+    status: str
+    current_run: EngineRunSummary
+
+
+class EngineRunResponse(EngineRunSummary):
+    """
+    Engine run detail. Clients can identify `definition_version_mismatch`
+    from the existing `definition_name`, `definition_version`, and
+    `failure.error_code` fields without a dedicated mismatch endpoint.
+
+    """
+
+    instance_id: UUID
+
+
+class TraceList(BaseModel):
+    traces: list[Trace]
+    total: int
+
+
 class SessionNarrativeTrace(BaseModel):
     id: UUID
     trace_id: str = Field(
@@ -959,6 +948,22 @@ class ComparisonTooLargeError(BaseModel):
     code: str
     message: str
     detail: ComparisonTooLargeErrorDetail
+
+
+class CompareTraceHeader(BaseModel):
+    id: UUID
+    trace_id: str
+    name: str
+    status: Status2
+    user_id: str | None = None
+    started_at: AwareDatetime
+    ended_at: AwareDatetime | None = None
+    duration_ms: int | None = None
+    error_count: int | None = None
+    total_cost_usd: float | None = None
+    total_tokens_in: int | None = None
+    total_tokens_out: int | None = None
+    engine: EngineTraceInfo | None = None
 
 
 class SemanticDiffGroup(BaseModel):

@@ -118,8 +118,6 @@ paths:
       summary: Start an engine workflow run
       tags:
         - Engine
-      security:
-        - apiKey: []
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
@@ -147,7 +145,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -376,8 +374,6 @@ paths:
       summary: Get an engine instance and current run
       tags:
         - Engine
-      security:
-        - apiKey: []
       parameters:
         - name: instance_key
           in: path
@@ -392,7 +388,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineInstanceResponse'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -675,8 +671,6 @@ paths:
         are not valid backfill targets.
       tags:
         - Engine
-      security:
-        - apiKey: []
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
@@ -704,7 +698,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized - missing or invalid API key
+          description: Unauthorized - missing or invalid credentials
           content:
             application/json:
               schema:
@@ -1299,6 +1293,12 @@ paths:
           description: Filter by engine projection state
           schema:
             $ref: '#/components/schemas/EngineProjectionState'
+        - name: engine_only
+          in: query
+          description: When true, return only traces backed by an engine run.
+          schema:
+            type: boolean
+            default: false
         - name: has_errors
           in: query
           description: Filter traces with errors (error_count > 0)
@@ -1810,6 +1810,17 @@ components:
           type: string
         projection_state:
           $ref: '#/components/schemas/EngineProjectionState'
+        instance_key:
+          type: string
+        status:
+          $ref: '#/components/schemas/EngineRunStatus'
+        wait_state:
+          $ref: '#/components/schemas/EngineWaitState'
+        pending_work:
+          $ref: '#/components/schemas/EnginePendingWork'
+        updated_at:
+          type: string
+          format: date-time
         parent_run_id:
           type: string
           format: uuid

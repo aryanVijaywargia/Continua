@@ -28,6 +28,7 @@ type TraceFilter struct {
 	EngineChildKey          string     // Filter by engine_child_key
 	EngineChildDepth        *int32     // Filter by engine_child_depth
 	EngineProjectionState   string     // Filter by engine_projection_state
+	EngineOnly              bool       // Filter to engine-backed traces
 	HasErrors               *bool      // Filter by error_count > 0
 	MinDurationMs           *int64     // Filter by duration in milliseconds
 	SortDir                 SortDirection
@@ -202,6 +203,10 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 		whereClauses = append(whereClauses, fmt.Sprintf("t.engine_projection_state = $%d", argNum))
 		args = append(args, strings.TrimSpace(filter.EngineProjectionState))
 		argNum++
+	}
+
+	if filter.EngineOnly {
+		whereClauses = append(whereClauses, "t.engine_run_id IS NOT NULL")
 	}
 
 	// Session ID filter

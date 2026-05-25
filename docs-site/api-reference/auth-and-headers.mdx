@@ -1,0 +1,107 @@
+---
+title: "Auth & headers"
+description: "What every Continua REST request looks like — auth schemes, project scoping, preview headers, and response codes."
+---
+
+Every Continua REST endpoint is generated from
+[`contracts/openapi/openapi.yaml`](https://github.com/aryanVijaywargia/Continua/blob/main/contracts/openapi/openapi.yaml).
+This page covers the cross-cutting concerns — auth, scoping, preview gates — that don't
+fit on individual endpoint pages.
+
+## Authentication
+
+Continua accepts two auth schemes, depending on the endpoint:
+
+### API key (`apiKey`)
+
+- Header: `X-API-Key: <project-api-key>`
+- Used by SDKs, ingest, and most read endpoints.
+- The server hashes the key, looks it up in `projects`, and injects the owning
+  `project_id` into request context.
+- API keys are project-scoped. There is no cross-project API-key access.
+
+### Auth0 bearer (`auth0Bearer`)
+
+- Header: `Authorization: Bearer <auth0-jwt>`
+- Used by the debugger UI when `AUTH0_ENABLED=true`.
+- Operators select a project explicitly via `selected_project_id` (query or header).
+- See [Auth0 setup](/guides/auth0-setup) for the configuration walk-through.
+
+Some endpoints (project listing) are gated by auth scheme — for example, listing all
+projects requires Auth0, not an API key.
+
+## Health checks
+
+`GET /api/health` and `GET /api/auth/config` are public — no auth required. Everything
+else is authenticated.
+
+## Scoping requests
+
+| Header / query | Purpose |
+| --- | --- |
+| `X-API-Key` | Resolves to a single project; that becomes the request's `project_id` |
+| `selected_project_id` (header or query) | Operator (Auth0) flow only. Selects which project the operator is acting on |
+
+When both an API key and an Auth0 token are present, the API key wins. There is no
+cross-project read endpoint today.
+
+## Preview headers
+
+Some endpoints are behind preview flags and require an explicit opt-in header:
+
+| Header | Required by | Notes |
+| --- | --- | --- |
+| `X-Continua-Async-Version: 2` | `POST /v1/ingest` for true-async durable ingest | Without it, the server may run sync or fall back to legacy async behaviour |
+| `X-Continua-Engine-Preview: 1` | All `/v1/engine/*` endpoints | Also requires `ENGINE_PUBLIC_API_ENABLED=true` server-side |
+
+Preview headers exist so we can ship surfaces under iteration without breaking
+non-preview clients. They will be relaxed or removed as those surfaces stabilise.
+
+## Response codes
+
+Continua follows standard REST semantics:
+
+| Code | Meaning |
+| --- | --- |
+| `200` | Success with response body |
+| `202` | Accepted (durable async ingest; result available later via batch polling) |
+| `204` | Success without response body |
+| `400` | Validation failure. Body includes a structured error |
+| `401` | Missing or invalid auth |
+| `403` | Authenticated but not authorised for the resource (e.g. wrong project, email not allow-listed) |
+| `404` | Resource doesn't exist or isn't visible to this caller |
+| `409` | Idempotency / conflict (e.g. `batch_key` mismatch) |
+| `413` | Payload too large (5MB limit on `POST /v1/ingest`) |
+| `429` | Rate-limited |
+| `5xx` | Server error. Retry with backoff |
+
+## Idempotency
+
+`POST /v1/ingest` accepts a `batch_key` (string). The server treats it as an
+idempotency token: re-sending the same `batch_key` will not double-write. Use this to
+make retries safe.
+
+Engine control endpoints accept an `Idempotency-Key` header for similar reasons —
+re-sending the same request key has no additional effect.
+
+## Pagination
+
+List endpoints use `limit` + `offset` query params. Defaults are conservative; tune
+`limit` per endpoint based on your needs. Responses include a `total` count when the
+underlying query supports it.
+
+## How to call from the playground
+
+The OpenAPI playground in this docs site is pre-configured to call
+`http://localhost:8080` with an `X-API-Key` header. Drop your project API key into the
+auth box at the top right and every endpoint becomes interactive.
+
+For a production deployment, change the base URL in the playground to your host and use
+a long-lived API key created specifically for docs / debugging.
+
+## See also
+
+- [Projects & auth](/concepts/projects-and-auth) — auth model.
+- [Managing projects](/guides/managing-projects) — issue and rotate API keys.
+- [Ingest lifecycle](/concepts/ingest-lifecycle) — what `POST /v1/ingest` actually does.
+- [Engine foundation](/concepts/engine-foundation) — what the engine preview covers.
