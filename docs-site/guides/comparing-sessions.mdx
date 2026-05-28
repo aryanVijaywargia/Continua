@@ -24,7 +24,7 @@ specific question that worked last week.
    - Look at the span where you call your LLM. The **Input** diff should show the new
      prompt vs the old one.
    - Look at the **Output** diff for the failure pattern.
-   - Look at downstream spans — sometimes a prompt change shifts cost or token counts
+   - Look at downstream spans. Sometimes a prompt change shifts cost or token counts
      even when the answer looks the same.
 
 ## Scenario B: model swap impact
@@ -57,9 +57,9 @@ Capture the compare URL and add it to your evaluation write-up.
 ## Tips for compare-friendly traces
 
 - **Stabilise non-deterministic fields** (timestamps, request ids) before setting them
-  on spans — otherwise every compare shows churn on those fields.
+  on spans. Otherwise every compare shows churn on those fields.
 - **Use `set_metadata` for version pins** (model name, prompt hash, retrieval index
-  version) — the compare view surfaces metadata deltas, so version pins become the most
+  version), and the compare view surfaces metadata deltas, so version pins become the most
   legible part of any diff.
 - **Tag deploys** (`tags=["release-v42"]`) so you can find a candidate trace from a
   specific release quickly.

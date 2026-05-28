@@ -24,7 +24,7 @@ multiple places.
 4. The debugger reads the rollup on trace list / session list / overview pages, and the
    raw values on the trace detail page.
 
-This means **trace-level totals can lag span ingestion slightly** in async mode — the
+This means **trace-level totals can lag span ingestion slightly** in async mode. The
 rollup runs after a batch is processed.
 
 ## Token buckets
@@ -42,7 +42,7 @@ If you only set `prompt` and `completion`, the SDK and server compute `total` fo
 
 ## Cost
 
-`set_cost(value)` accepts a `float` (USD by default — Continua does not enforce a
+`set_cost(value)` accepts a `float` (USD by default; Continua does not enforce a
 currency). Costs are summed across spans into the trace and session totals.
 
 If your provider reports costs in micro-units, convert before calling `set_cost` so
@@ -60,13 +60,13 @@ totals are comparable across providers.
 
 ## Modelling tips
 
-- **Set costs on the leaf span that incurred them**, not on intermediate composite spans
-  — rollups will sum to the right total either way, but per-span costs are more useful
+- **Set costs on the leaf span that incurred them**, not on intermediate composite spans.
+  Rollups will sum to the right total either way, but per-span costs are more useful
   for debugging.
 - For agents that retry a call, set cost on each attempt span individually. The
   trace-level total will reflect the real spend even if the final logical answer used
   only one attempt.
-- If a span doesn't have cost data (e.g. a tool call to a free API), leave it unset —
+- If a span doesn't have cost data (e.g. a tool call to a free API), leave it unset;
   the rollup treats missing values as zero.
 - Combine `set_cost` with `set_metadata("pricing_tier", "...")` so you can later filter
   high-cost traces by tier.

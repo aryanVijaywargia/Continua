@@ -81,14 +81,14 @@ GET /api/sessions
 GET /api/sessions/{id}
 GET /api/sessions/{id}/narrative
 GET /api/sessions/{id}/compare
-GET /api/projects             (list — Auth0 operators only)
+GET /api/projects             (list: Auth0 operators only)
 POST /api/projects            (create + receive plaintext key once)
 PATCH /api/projects/{id}      (update metadata)
 DELETE /api/projects/{id}     (soft delete)
 POST /api/projects/{id}/rotate (rotate API key)
 ```
 
-The full `/v1/engine/*` control surface is also implemented behind a preview flag — see
+The full `/v1/engine/*` control surface is also implemented behind a preview flag: see
 [Engine foundation](/concepts/engine-foundation).
 
 The trace detail UI does not use a live WebSocket runtime today. It polls the timeline API
@@ -107,13 +107,13 @@ Run `make generate` after changing any of the above.
 
 ## What is not implemented yet
 
-These surfaces are scaffolded — schema, types, or partial code exists, but they're not
+These surfaces are scaffolded: schema, types, or partial code exists, but they're not
 production-ready. See [Roadmap & status](/roadmap) for the full breakdown.
 
 - **Engine workflow execution.** The engine schema, store, control endpoints, and runs
-  console UI are real (see [Engine foundation](/concepts/engine-foundation)) — but the
+  console UI are real (see [Engine foundation](/concepts/engine-foundation)), but the
   runtime that takes a workflow definition and runs it to completion is not.
-- **Live WebSocket runtime** in `internal/ws` — trace detail is polling-based today.
+- **Live WebSocket runtime** in `internal/ws`: trace detail is polling-based today.
 - **Proxy capture runtime** in `internal/proxy`.
 - **Replay execution runtime** in `internal/replay`.
-- **Feature-complete TypeScript SDK** — the package is currently a typed-fetch stub.
+- **Feature-complete TypeScript SDK**: the package is currently a typed-fetch stub.

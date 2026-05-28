@@ -51,7 +51,7 @@ After init, use `Continua.get_instance()` anywhere in your process to retrieve t
 
 ## Ingest modes
 
-A quick summary — see [Batching & ingest modes](/sdk/python/batching-and-ingest-modes)
+A quick summary: see [Batching & ingest modes](/sdk/python/batching-and-ingest-modes)
 for the full trade-offs and [Ingest lifecycle](/concepts/ingest-lifecycle) for the
 server-side state machine.
 
@@ -96,12 +96,12 @@ ping()
 Continua.get_instance().flush()
 ```
 
-Open `http://localhost:8080/traces` — you should see a `connectivity_check` trace.
+Open `http://localhost:8080/traces`: you should see a `connectivity_check` trace.
 
 ## Examples
 
 The SDK ships with two runnable examples under `sdks/python/examples/`:
 
-- `e2e_demo.py` — end-to-end: traces with nested spans, LLM / tool / agent simulation,
+- `e2e_demo.py`: end-to-end: traces with nested spans, LLM / tool / agent simulation,
   API verification.
-- `agentic_flow_stress.py` — stress test with complex agent flows and OpenAI integration.
+- `agentic_flow_stress.py`: stress test with complex agent flows and OpenAI integration.

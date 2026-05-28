@@ -87,9 +87,9 @@ make migrate-create name=<short_description>
 River workers run **inside** the platform server process. There is no separate worker
 binary to deploy today. The implemented queues are:
 
-- **ingest** — processes accepted async batches
-- **rollups** — recomputes trace-level aggregates (status, duration, cost, token counts)
-- **cleanup** — deletes processed async payload blobs after retention
+- **ingest**: processes accepted async batches
+- **rollups**: recomputes trace-level aggregates (status, duration, cost, token counts)
+- **cleanup**: deletes processed async payload blobs after retention
 
 Scale by increasing process count or tuning `RIVER_QUEUE_*` pool sizes.
 

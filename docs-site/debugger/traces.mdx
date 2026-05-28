@@ -8,7 +8,7 @@ The Traces page at `/traces` is the primary entry point for finding a specific r
 ## Filters
 
 All filters are URL-driven. The page reads them from `location.search` and writes them
-back as you change them — so any view is a shareable link.
+back as you change them, so any view is a shareable link.
 
 | Filter | Type | What it matches |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ The table supports a fixed sort by **start time descending**. Pagination uses
 ## Status counts
 
 The header shows a count of `RUNNING`, `COMPLETED`, and `FAILED` traces in the current
-filtered window. Counts reflect the current page of results, not the global total — they
+filtered window. Counts reflect the current page of results, not the global total; they
 are useful for quickly spotting unexpected state distributions during an incident.
 
 ## Drilling in
@@ -52,7 +52,7 @@ Because the page is URL-driven, you can:
 ## Performance notes
 
 The list endpoint (`GET /api/traces`) returns up to `limit` rows per request. The page
-uses TanStack Query's `keepPreviousData` so pagination feels instant — the previous page
+uses TanStack Query's `keepPreviousData` so pagination feels instant; the previous page
 stays rendered while the next page loads.
 
 For very large projects, prefer narrower filters (a user id or a status) over loading

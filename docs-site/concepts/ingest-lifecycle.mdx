@@ -1,6 +1,6 @@
 ---
 title: "Ingest lifecycle"
-description: "How POST /v1/ingest works — sync vs. true-async, batch idempotency, and when to poll."
+description: "How POST /v1/ingest works: sync vs. true-async, batch idempotency, and when to poll."
 ---
 
 ```mermaid
@@ -30,7 +30,7 @@ via `ingest_mode` on `Continua.init(...)`:
 
 | Mode | When to use | Behavior |
 | --- | --- | --- |
-| `sync` | You need read-after-write — your code reads the data back immediately | Server writes synchronously and returns when persistence is complete |
+| `sync` | You need read-after-write: your code reads the data back immediately | Server writes synchronously and returns when persistence is complete |
 | `async_v2` | High throughput, fire-and-forget | Server accepts the batch, persists payload + idempotency, returns `202` with a `batch_id`. A River worker processes the batch shortly after. |
 | `server_default` | Defer to the server's rollout setting | Honors `INGEST_TRUE_ASYNC_DEFAULT` env var |
 
@@ -50,7 +50,7 @@ returns the existing batch row instead of duplicating writes.
 
 This means:
 
-- SDK retries are safe — a network blip will not double-ingest.
+- SDK retries are safe: a network blip will not double-ingest.
 - You can re-run a backfill script as long as `batch_key` is stable.
 
 The Python SDK generates `batch_key` per flush automatically.
@@ -80,8 +80,8 @@ The corresponding REST endpoint is
 | --- | --- |
 | `accepted` | Batch persisted, worker has not yet processed it |
 | `processing` | Worker is actively writing traces, spans, events |
-| `completed` | All writes succeeded — data is fully readable |
-| `failed` | Worker hit a non-retryable error — see batch row for details |
+| `completed` | All writes succeeded: data is fully readable |
+| `failed` | Worker hit a non-retryable error: see batch row for details |
 
 Failed batch payloads are retained for `INGEST_FAILED_PAYLOAD_RETENTION` before cleanup.
 
@@ -89,11 +89,11 @@ Failed batch payloads are retained for `INGEST_FAILED_PAYLOAD_RETENTION` before 
 
 Two River workers cooperate on the async path:
 
-- **Ingest batch worker** (`internal/jobs`) — reads accepted batches, validates, writes
+- **Ingest batch worker** (`internal/jobs`): reads accepted batches, validates, writes
   traces/spans/events through the shared write path in `internal/ingest/processor.go`.
-- **Trace rollup worker** — recomputes trace-level aggregate fields (status, duration,
+- **Trace rollup worker**: recomputes trace-level aggregate fields (status, duration,
   cost, token counts) after spans land.
-- **Cleanup worker** — deletes processed `ingest_batch_payloads` blobs after retention.
+- **Cleanup worker**: deletes processed `ingest_batch_payloads` blobs after retention.
 
 ## Choosing a mode
 

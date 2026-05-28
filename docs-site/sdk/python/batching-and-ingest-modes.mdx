@@ -40,8 +40,8 @@ The server supports three ways to accept a batch. The SDK picks one via the
 | Mode | Request shape | When it returns | Read-after-write? |
 | --- | --- | --- | --- |
 | `"sync"` | `POST /v1/ingest?sync=true` | After all rows are written | Yes |
-| `"async_v2"` | `POST /v1/ingest` with `X-Continua-Async-Version: 2` | Immediately with a `batch_id` (`202 Accepted`) | No — must poll |
-| `"server_default"` | No mode header — server uses `INGEST_TRUE_ASYNC_DEFAULT` | Depends on server config | Depends |
+| `"async_v2"` | `POST /v1/ingest` with `X-Continua-Async-Version: 2` | Immediately with a `batch_id` (`202 Accepted`) | No; must poll |
+| `"server_default"` | No mode header: server uses `INGEST_TRUE_ASYNC_DEFAULT` | Depends on server config | Depends |
 
 ```python
 Continua.init(
@@ -53,13 +53,13 @@ Continua.init(
 
 ### Which mode to use
 
-- **`sync`** — Tests, CLIs, scripts where the next step needs to read what you just
+- **`sync`**: Tests, CLIs, scripts where the next step needs to read what you just
   wrote. Simple and predictable. Throughput is bounded by the HTTP round-trip + the
   database write.
-- **`async_v2`** — Production agents and high-throughput services. The SDK returns
+- **`async_v2`**: Production agents and high-throughput services. The SDK returns
   control to your code as soon as the server has durably accepted the batch into
   `ingest_batches`. Background workers do the real work.
-- **`server_default`** — Library / framework code where the deployment owner gets to
+- **`server_default`**: Library / framework code where the deployment owner gets to
   pick. Pairs well with `INGEST_TRUE_ASYNC_DEFAULT` set per environment.
 
 See [Ingest lifecycle](/concepts/ingest-lifecycle) for the server-side state machine.
@@ -116,7 +116,7 @@ exhausted does the corresponding `ContinuaError` propagate.
 
 ## See also
 
-- [Ingest lifecycle](/concepts/ingest-lifecycle) — the server-side state machine.
-- [Exceptions](/sdk/python/exceptions) — which errors come back when.
-- [Self-hosting](/guides/self-hosting) — `INGEST_TRUE_ASYNC_DEFAULT`, retention,
+- [Ingest lifecycle](/concepts/ingest-lifecycle): the server-side state machine.
+- [Exceptions](/sdk/python/exceptions): which errors come back when.
+- [Self-hosting](/guides/self-hosting): `INGEST_TRUE_ASYNC_DEFAULT`, retention,
   worker queue sizing.

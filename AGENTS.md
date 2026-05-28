@@ -8,7 +8,7 @@ If `openspec/` is present in the working tree, open `@/openspec/AGENTS.md` when 
 - Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
 - Sounds ambiguous and you need the authoritative spec before coding
 
-`openspec/` is gitignored — it's the internal product-development record, present only on the maintainer's local checkout. External contributors will not have it; fall back to checked-in code and [docs-site/](./docs-site/) as the authoritative sources.
+`openspec/` is gitignored: it's the internal product-development record, present only on the maintainer's local checkout. External contributors will not have it; fall back to checked-in code and [docs-site/](./docs-site/) as the authoritative sources.
 
 Keep this managed block so 'openspec update' can refresh the instructions.
 
