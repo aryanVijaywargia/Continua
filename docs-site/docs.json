@@ -8,13 +8,13 @@
     "light": "#7aaeff",
     "dark": "#005cab"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/brand/continua-mark.svg",
   "appearance": {
     "default": "system"
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg",
+    "light": "/brand/continua-wordmark-light.svg",
+    "dark": "/brand/continua-wordmark-dark.svg",
     "href": "https://www.continua.in"
   },
   "navigation": {

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 56" role="img" aria-label="Continua" fill="none">
+  <defs>
+    <linearGradient id="cont-grad-dark" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(0, -4)">
+    <circle cx="32" cy="32" r="24" stroke="url(#cont-grad-dark)" stroke-width="3" stroke-linecap="round" stroke-dasharray="100 26 18 5" stroke-dashoffset="-28"/>
+    <path d="M 44 18 A 14.5 14.5 0 1 0 44 46" stroke="url(#cont-grad-dark)" stroke-width="3.75" stroke-linecap="round"/>
+    <circle cx="44" cy="18" r="2.6" fill="url(#cont-grad-dark)"/>
+    <circle cx="44" cy="46" r="2.6" fill="url(#cont-grad-dark)"/>
+  </g>
+  <text x="68" y="36" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="26" fill="#f8fafc">Continua</text>
+</svg>
