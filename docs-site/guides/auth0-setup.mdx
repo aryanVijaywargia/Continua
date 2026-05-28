@@ -4,8 +4,8 @@ description: "Gate the debugger UI behind Auth0 with an email allow-list."
 ---
 
 By default the debugger expects a project API key entered on the Settings page. For
-shared deployments — multiple operators, an internal tool, or anything you don't want
-behind a single shared key — turn on Auth0.
+shared deployments with multiple operators, an internal tool, or anything you don't want
+behind a single shared key, turn on Auth0.
 
 ## What Auth0 mode gives you
 
@@ -21,12 +21,12 @@ behind a single shared key — turn on Auth0.
 | Variable | Purpose |
 | --- | --- |
 | `AUTH0_ENABLED` | Master switch. Set to `true` to turn Auth0 on |
-| `AUTH0_DOMAIN` | Auth0 tenant domain (e.g. `your-tenant.us.auth0.com`) — host only, no scheme |
+| `AUTH0_DOMAIN` | Auth0 tenant domain (e.g. `your-tenant.us.auth0.com`): host only, no scheme |
 | `AUTH0_CLIENT_ID` | Auth0 SPA application client id |
 | `AUTH0_AUDIENCE` | API audience identifier from your Auth0 API config |
 | `AUTH0_ALLOWED_EMAILS` | Comma-separated allow-list. At least one required when enabled |
 
-All four are required when `AUTH0_ENABLED=true` — the server fails to start otherwise,
+All four are required when `AUTH0_ENABLED=true`: the server fails to start otherwise,
 listing the missing variables.
 
 ## End-to-end setup
@@ -39,12 +39,12 @@ In your Auth0 tenant:
 2. Set **Allowed Callback URLs** and **Allowed Logout URLs** to your debugger origin
    (e.g. `https://debugger.example.com`).
 3. Set **Allowed Web Origins** to the same value.
-4. Note the **Domain** and **Client ID** — you'll need them as env vars.
+4. Note the **Domain** and **Client ID**: you'll need them as env vars.
 
 ### 2. Create the Auth0 API
 
 1. **APIs → Create API.**
-2. Name it, pick a unique identifier (e.g. `https://continua/api`) — this is your
+2. Name it, pick a unique identifier (e.g. `https://continua/api`): this is your
    `AUTH0_AUDIENCE`.
 3. Leave the signing algorithm at the default.
 
@@ -89,19 +89,19 @@ keep Auth0 for operator deployments.
 
 ## Troubleshooting
 
-- **`AUTH0_DOMAIN must be a valid domain`** — drop `https://` from the value. Domain is
+- **`AUTH0_DOMAIN must be a valid domain`**: drop `https://` from the value. Domain is
   host-only.
-- **`AUTH0_ALLOWED_EMAILS must include at least one email address`** — at least one
+- **`AUTH0_ALLOWED_EMAILS must include at least one email address`**: at least one
   syntactically-valid email is required when Auth0 is on.
-- **Redirect loop after sign-in** — check that the **Allowed Callback URLs** in Auth0
+- **Redirect loop after sign-in**: check that the **Allowed Callback URLs** in Auth0
   exactly matches the debugger origin you're hitting (no trailing slash mismatch, no
   protocol mismatch).
-- **403 after Auth0 sign-in completes** — your email isn't on `AUTH0_ALLOWED_EMAILS`.
+- **403 after Auth0 sign-in completes**: your email isn't on `AUTH0_ALLOWED_EMAILS`.
 
 ## See also
 
-- [Projects & auth](/concepts/projects-and-auth) — how Auth0, API keys, and demo mode
+- [Projects & auth](/concepts/projects-and-auth): how Auth0, API keys, and demo mode
   interact.
-- [Managing projects](/guides/managing-projects) — create the projects that operators
+- [Managing projects](/guides/managing-projects): create the projects that operators
   will see.
-- [Self-hosting](/guides/self-hosting) — full env var reference.
+- [Self-hosting](/guides/self-hosting): full env var reference.

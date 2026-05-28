@@ -14,7 +14,7 @@ Open the [Traces page](/debugger/traces) and apply filters:
 - **User ID**: if a specific user reported the issue
 - **Start time**: a window around when the incident began
 
-Bookmark the resulting URL — you'll want to come back to it.
+Bookmark the resulting URL; you'll want to come back to it.
 
 ## 2. Open the trace
 
@@ -32,13 +32,13 @@ failures are still visible as red bars in the waterfall.
 
 The span detail pane on the right opens to the **Events** tab. Look for:
 
-- An `exception` event — usually contains the captured traceback.
-- A preceding `decision` or `state_change` event — tells you what the agent thought
+- An `exception` event, which usually contains the captured traceback.
+- A preceding `decision` or `state_change` event: tells you what the agent thought
   before the failure.
-- A `wait` event with a long duration — points at a stalled tool or model call.
+- A `wait` event with a long duration: points at a stalled tool or model call.
 
 Switch to **Input / Output** to see the payloads at the boundary of the failure. The
-inspector is searchable (`/` to focus) — useful for huge prompts.
+inspector is searchable (`/` to focus), which helps with huge prompts.
 
 ## 4. Look at the context
 
@@ -46,7 +46,7 @@ A failure is rarely an isolated event. Walk up the span tree:
 
 - Click the parent span. Was its input what you expected?
 - Click sibling spans. Did an earlier sibling produce bad output that fed the failure?
-- Open the **Timeline** to see explicit events across the whole trace in order — a
+- Open the **Timeline** to see explicit events across the whole trace in order: a
   `decision` event minutes earlier often explains the failure.
 
 ## 5. Compare against a known-good run
@@ -74,7 +74,7 @@ postmortem.
 
 ## 7. Fix at the source
 
-The debugger is read-only — it tells you what happened, not why. From here you go back
+The debugger is read-only. It tells you what happened, not why. From here you go back
 to the SDK-instrumented code, fix the offending span, and ship a release. Re-run the
 same scenario; the new trace should appear in your previously-bookmarked filtered list.
 
@@ -83,5 +83,5 @@ same scenario; the new trace should appear in your previously-bookmarked filtere
 - **Tag your traces at ingest** (`tags=["staging"]`, `tags=["release-v42"]`) so failure
   filtering can isolate a single deploy.
 - **Set `user_id` on traces** so user-reported issues map cleanly to filterable rows.
-- **Use `set_metadata` to record version pins** (model name, prompt hash) — these become
+- **Use `set_metadata` to record version pins** (model name, prompt hash). These become
   diff-able fields in the compare view.

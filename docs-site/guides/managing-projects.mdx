@@ -11,9 +11,9 @@ and ingest batch belongs to exactly one project.
 The Projects page at `/projects` (sign in with Auth0 first if it's enabled) lists every
 project and lets you:
 
-- **Create** a project — name + description. On create, the UI shows the plaintext API
+- **Create** a project: name + description. On create, the UI shows the plaintext API
   key **once**. Copy it before you navigate away.
-- **Rotate** the API key — the old key is invalidated immediately and a new plaintext
+- **Rotate** the API key: the old key is invalidated immediately and a new plaintext
   key is shown once.
 - **Update** name / description.
 - **Delete** the project (soft delete).
@@ -53,7 +53,7 @@ curl -X POST https://continua.example.com/api/projects/{id}/rotate \
 ```
 
 The old key stops working immediately on success. The response includes the new
-plaintext key — again, only on this response. Rotate when:
+plaintext key: again, only on this response. Rotate when:
 
 - A key is suspected of being compromised.
 - An employee with access to the key leaves.
@@ -86,7 +86,7 @@ curl https://continua.example.com/api/projects \
 ```
 
 <Note>
-  Listing all projects is forbidden for API-key callers when Auth0 is enabled — only
+  Listing all projects is forbidden for API-key callers when Auth0 is enabled: only
   operator JWTs can list. API keys are scoped to the project they belong to.
 </Note>
 
@@ -102,7 +102,7 @@ curl https://continua.example.com/api/projects \
 
 ## See also
 
-- [Projects & auth](/concepts/projects-and-auth) — the auth model end to end.
-- [Auth0 setup](/guides/auth0-setup) — operator login.
+- [Projects & auth](/concepts/projects-and-auth): the auth model end to end.
+- [Auth0 setup](/guides/auth0-setup): operator login.
 - API reference: every project endpoint is listed under
   [API Reference → Endpoints](/api-reference/auth-and-headers).

@@ -1,6 +1,6 @@
 ---
 title: "Session compare"
-description: "Diff a baseline and a candidate trace from the same session — span by span, payload by payload."
+description: "Diff a baseline and a candidate trace from the same session: span by span, payload by payload."
 ---
 
 Session compare answers a specific question: **"what changed between these two runs of
@@ -27,7 +27,7 @@ You can also build the URL by hand if you already have both trace ids.
 | --- | --- |
 | Header | Both traces side-by-side: status, duration, cost, token totals |
 | Semantic summary | High-level diff: which spans were added, removed, or changed |
-| Span diff table | Row per span pair — duration delta, payload delta, status delta |
+| Span diff table | Row per span pair: duration delta, payload delta, status delta |
 | Row expand | Inline payload diff for input, output, metadata, key events |
 | Engine projection state | When the traces are engine runs, projection-state labels for both sides |
 
@@ -48,7 +48,7 @@ limit. Mitigation options:
 ## Limitations
 
 - Compare works **within a single session**. Cross-session compare is not supported.
-- The diff is structural, not semantic — a JSON field reorder shows as a change even if
+- The diff is structural, not semantic: a JSON field reorder shows as a change even if
   the meaning is identical.
 - Comparison is read-only. The debugger does not re-execute either trace. See
   [Roadmap](/roadmap) for the replay workstream.

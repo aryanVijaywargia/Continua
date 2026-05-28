@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/banner.svg" alt="Continua — self-hosted debugging for AI agent runs" />
+  <img src="./assets/banner.svg" alt="Continua: self-hosted debugging for AI agent runs" />
 </p>
 
 <div align="center">
@@ -29,7 +29,7 @@
 
 ---
 
-Continua is a **local operator console for debugging AI agent executions**. It accepts traces over an authenticated REST ingest API, persists them in Postgres, processes async work with River, and serves a React debugger from the Go backend — in a single binary, on your own infrastructure.
+Continua is a **local operator console for debugging AI agent executions**. It accepts traces over an authenticated REST ingest API, persists them in Postgres, processes async work with River, and serves a React debugger from the Go backend as a single binary, on your own infrastructure.
 
 The current product is intentionally concrete: trace runs, inspect spans and payloads, compare session attempts, and keep enough durable state to understand why an agent failed, stalled, retried, or behaved differently than expected.
 
@@ -37,7 +37,7 @@ The current product is intentionally concrete: trace runs, inspect spans and pay
 > Public demo mode uses seeded sample traces only. Use the private local console path when you want to ingest and inspect your own traces.
 
 <p align="center">
-  <img src="./assets/screenshots/debugger-hero.png" alt="Continua debugger — failure-first trace view with execution waterfall and span detail" />
+  <img src="./assets/screenshots/debugger-hero.png" alt="Continua debugger: failure-first trace view with execution waterfall and span detail" />
 </p>
 
 ## Quickstart
@@ -82,15 +82,15 @@ It's most useful when you need to answer: what failed first, what changed during
 
 ![Continua features at a glance](./assets/diagrams/feature-strip.svg)
 
-- **Trace debugger** — span tree, execution waterfall, selected spans, payload inspection, breadcrumbs, truncation banners, and merged timeline events.
-- **Session workflows** — browse sessions, open session detail, read the experimental narrative summary, and compare baseline vs. candidate traces from the same workflow.
-- **Durable ingest path** — project-scoped API key auth, idempotent batches via `batch_key`, sync ingest, opt-in async ingest (`X-Continua-Async-Version: 2`), and batch polling.
-- **Background processing** — River workers handle async ingest, trace rollups, and payload cleanup.
-- **Embedded operator console** — the Vite React app is built into `internal/web/static/` and served by the Go binary. Includes a `⌘K` command palette, dark/light/system theming, and URL-driven filter state.
-- **Project & operator auth** — first-class `POST /api/projects` with rotate/delete/list endpoints, plus optional Auth0 operator login gated by an email allow-list (see [Auth0 setup](./docs-site/guides/auth0-setup.mdx)).
-- **Engine runs console** — `/engine/runs` lists durable engine runs, surfaces pending activity and inbox work, and exposes signal / suspend / resume / cancel / terminate against the engine control endpoints (preview).
-- **Python SDK** — `trace`, `span`, `session`, `event`, batching, retries, and async polling live under `sdks/python`. SDK also exports engine-control helpers for the scaffolded engine surface — see [Roadmap](./docs-site/roadmap.mdx) before relying on them.
-- **Typed events** — Continua emits 11 event kinds (`log`, `error`, `exception`, `message`, `metric`, `custom`, `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`); see the [events concept guide](./docs-site/concepts/events.mdx).
+- **Trace debugger**: span tree, execution waterfall, selected spans, payload inspection, breadcrumbs, truncation banners, and merged timeline events.
+- **Session workflows**: browse sessions, open session detail, read the experimental narrative summary, and compare baseline vs. candidate traces from the same workflow.
+- **Durable ingest path**: project-scoped API key auth, idempotent batches via `batch_key`, sync ingest, opt-in async ingest (`X-Continua-Async-Version: 2`), and batch polling.
+- **Background processing**: River workers handle async ingest, trace rollups, and payload cleanup.
+- **Embedded operator console**: the Vite React app is built into `internal/web/static/` and served by the Go binary. Includes a `⌘K` command palette, dark/light/system theming, and URL-driven filter state.
+- **Project & operator auth**: first-class `POST /api/projects` with rotate/delete/list endpoints, plus optional Auth0 operator login gated by an email allow-list (see [Auth0 setup](./docs-site/guides/auth0-setup.mdx)).
+- **Engine runs console**: `/engine/runs` lists durable engine runs, surfaces pending activity and inbox work, and exposes signal / suspend / resume / cancel / terminate against the engine control endpoints (preview).
+- **Python SDK**: `trace`, `span`, `session`, `event`, batching, retries, and async polling live under `sdks/python`. SDK also exports engine-control helpers for the scaffolded engine surface; see [Roadmap](./docs-site/roadmap.mdx) before relying on them.
+- **Typed events**: Continua emits 11 event kinds (`log`, `error`, `exception`, `message`, `metric`, `custom`, `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`); see the [events concept guide](./docs-site/concepts/events.mdx).
 
 ![Implemented event types](./assets/diagrams/event-types.svg)
 
@@ -112,7 +112,7 @@ flowchart LR
   postgres --> readapi --> ui
 ```
 
-A request hits the authenticated ingest API, gets validated and batched (sync or async), and lands in Postgres. River workers process async batches, compute rollups, and run cleanup. The debugger reads everything back through REST and polls `GET /api/traces/{id}/events` for live trace detail — there is no live WebSocket runtime in the current checkout.
+A request hits the authenticated ingest API, gets validated and batched (sync or async), and lands in Postgres. River workers process async batches, compute rollups, and run cleanup. The debugger reads everything back through REST and polls `GET /api/traces/{id}/events` for live trace detail. There is no live WebSocket runtime in the current checkout.
 
 ![Continua ingest flow](./assets/diagrams/ingest-flow.svg)
 
@@ -171,7 +171,7 @@ After changing OpenAPI, sqlc queries, WebSocket schemas, or migrations that affe
 
 ## Roadmap
 
-Continua is in alpha. The authoritative status breakdown — what's shippable, what's scaffolded, and what's coming next — lives at [`docs-site/roadmap.mdx`](./docs-site/roadmap.mdx).
+Continua is in alpha. The authoritative status breakdown of what's shippable, what's scaffolded, and what's coming next lives at [`docs-site/roadmap.mdx`](./docs-site/roadmap.mdx).
 
 Shippable today: authenticated REST ingest, Postgres persistence, River background jobs, trace/session/timeline/compare read APIs, the embedded React debugger (incl. engine runs console), project & API-key management, Auth0 operator login, the Python SDK, and the engine schema/store/control endpoints.
 
@@ -181,12 +181,12 @@ Scaffolded (don't rely on yet): live WebSocket runtime, proxy capture, replay ex
 
 The full documentation site lives under [`docs-site/`](./docs-site/) (Mintlify) and is organised into six tabs:
 
-- **Guides** — quickstart, [instrument your app](./docs-site/guides/instrument-your-app.mdx), [installation](./docs-site/guides/installation.mdx), [self-hosting](./docs-site/guides/self-hosting.mdx), [Auth0 setup](./docs-site/guides/auth0-setup.mdx), [managing projects](./docs-site/guides/managing-projects.mdx), and failure-debugging workflows.
-- **Concepts** — [architecture overview](./docs-site/concepts/overview.mdx), [data model](./docs-site/concepts/data-model.mdx), [traces / spans / sessions](./docs-site/concepts/traces-spans-sessions.mdx), [events](./docs-site/concepts/events.mdx), [ingest lifecycle](./docs-site/concepts/ingest-lifecycle.mdx), [cost & tokens](./docs-site/concepts/cost-and-tokens.mdx), [projects & auth](./docs-site/concepts/projects-and-auth.mdx), [engine foundation](./docs-site/concepts/engine-foundation.mdx).
-- **Debugger** — [tour of the UI](./docs-site/debugger/overview.mdx) plus per-page references for traces, trace detail, sessions, session compare, engine runs, command palette, and settings.
-- **Python SDK** — [overview](./docs-site/sdk/python/overview.mdx), tracing, sessions, span events, batching & ingest modes, exceptions.
-- **API Reference** — [auth & headers](./docs-site/api-reference/auth-and-headers.mdx) intro plus the auto-rendered OpenAPI playground.
-- **Roadmap** — [shippable vs scaffolded status](./docs-site/roadmap.mdx).
+- **Guides**: quickstart, [instrument your app](./docs-site/guides/instrument-your-app.mdx), [installation](./docs-site/guides/installation.mdx), [self-hosting](./docs-site/guides/self-hosting.mdx), [Auth0 setup](./docs-site/guides/auth0-setup.mdx), [managing projects](./docs-site/guides/managing-projects.mdx), and failure-debugging workflows.
+- **Concepts**: [architecture overview](./docs-site/concepts/overview.mdx), [data model](./docs-site/concepts/data-model.mdx), [traces / spans / sessions](./docs-site/concepts/traces-spans-sessions.mdx), [events](./docs-site/concepts/events.mdx), [ingest lifecycle](./docs-site/concepts/ingest-lifecycle.mdx), [cost & tokens](./docs-site/concepts/cost-and-tokens.mdx), [projects & auth](./docs-site/concepts/projects-and-auth.mdx), [engine foundation](./docs-site/concepts/engine-foundation.mdx).
+- **Debugger**: [tour of the UI](./docs-site/debugger/overview.mdx) plus per-page references for traces, trace detail, sessions, session compare, engine runs, command palette, and settings.
+- **Python SDK**: [overview](./docs-site/sdk/python/overview.mdx), tracing, sessions, span events, batching & ingest modes, exceptions.
+- **API Reference**: [auth & headers](./docs-site/api-reference/auth-and-headers.mdx) intro plus the auto-rendered OpenAPI playground.
+- **Roadmap**: [shippable vs scaffolded status](./docs-site/roadmap.mdx).
 
 Related: [`engine/README.md`](./engine/README.md) for the engine binary's CLI commands, and [`sdks/python/README.md`](./sdks/python/README.md) for SDK-local development.
 

@@ -1,6 +1,6 @@
 ---
 title: "Events"
-description: "Semantic event types that explain what happened inside a span — state changes, decisions, effects, waits, and more."
+description: "Semantic event types that explain what happened inside a span: state changes, decisions, effects, waits, and more."
 ---
 
 Continua events are **debugger-facing observability signals**. They explain *what
@@ -38,16 +38,16 @@ flowchart LR
 
 ## Choosing an event type
 
-- **`state_change`** — observable state transitions you want shown as `old → new` in the
+- **`state_change`**: observable state transitions you want shown as `old → new` in the
   debugger.
-- **`decision`** — branch points where the system chooses between alternatives.
-- **`effect`** — external actions, model invocations, or side effects worth surfacing.
-- **`wait`** — progress blocked on a human, external dependency, or timer.
-- **`snapshot_marker`** — first-class debugger milestones with a compact label.
-- **`message`** — lightweight narrative milestones.
-- **`log`**, **`error`**, **`exception`** — operational logging and failures.
-- **`metric`** — structured numeric measurements.
-- **`custom`** — domain-specific payloads when no semantic type fits.
+- **`decision`**: branch points where the system chooses between alternatives.
+- **`effect`**: external actions, model invocations, or side effects worth surfacing.
+- **`wait`**: progress blocked on a human, external dependency, or timer.
+- **`snapshot_marker`**: first-class debugger milestones with a compact label.
+- **`message`**: lightweight narrative milestones.
+- **`log`**, **`error`**, **`exception`**: operational logging and failures.
+- **`metric`**: structured numeric measurements.
+- **`custom`**: domain-specific payloads when no semantic type fits.
 
 ## Event type reference
 

@@ -5,7 +5,7 @@ description: "What's shippable today, what's scaffolded, and what we'd reach for
 
 This page is the honest line between the parts of Continua you can rely on today and the
 parts that are partially implemented or experimental. If a feature lives below the line,
-we may have endpoints, packages, or schema in the repo for it — but it isn't a supported
+we may have endpoints, packages, or schema in the repo for it, but it isn't a supported
 product path yet.
 
 ## Shippable today
@@ -26,7 +26,7 @@ shape. Everything in the rest of this docs site assumes they exist.
 | **Background jobs** | River workers for ingest, rollups, and payload cleanup |
 | **Self-hosting** | Single Go binary + Postgres, env-only config, embedded SPA, `continua migrate` + `continua-engine migrate` |
 
-## Scaffolded — not yet a supported product path
+## Scaffolded: not yet a supported product path
 
 These exist in the repo as types, schemas, or partial implementations. Don't depend on
 them. Calls into them won't get production behaviour, and the surface may change before
@@ -62,7 +62,7 @@ and execution (not real).
 ### Live WebSocket runtime
 
 The contract under [`contracts/websocket/events.ts`](https://github.com/aryanVijaywargia/Continua/tree/main/contracts/websocket)
-defines a live-update event schema. The debugger UI does **not** consume it today — trace
+defines a live-update event schema. The debugger UI does **not** consume it today: trace
 detail is polling-based via `GET /api/traces/{id}/events`. Server-side WebSocket handlers
 are stubbed.
 
@@ -90,4 +90,4 @@ Rough ordering, subject to change as feedback comes in:
 5. Replay execution as a layer on top of finished engine workflows.
 
 If you have a strong opinion on the order, open an issue on
-[GitHub](https://github.com/aryanVijaywargia/Continua/issues) — we read every one.
+[GitHub](https://github.com/aryanVijaywargia/Continua/issues): we read every one.

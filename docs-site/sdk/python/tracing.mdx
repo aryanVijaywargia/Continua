@@ -1,6 +1,6 @@
 ---
 title: "Tracing"
-description: "@trace, @span, and @session — decorators and context managers for instrumenting agent code."
+description: "@trace, @span, and @session: decorators and context managers for instrumenting agent code."
 ---
 
 The SDK exposes three context managers (also usable as decorators): `trace`, `span`, and
@@ -75,7 +75,7 @@ current = get_current_trace()  # TraceContext | None
 
 ## `span`
 
-Open a span as a context manager. Spans nest automatically — a `span()` opened inside
+Open a span as a context manager. Spans nest automatically: a `span()` opened inside
 another `span()` is a child of the outer one.
 
 ```python

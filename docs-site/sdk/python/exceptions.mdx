@@ -1,6 +1,6 @@
 ---
 title: "Exceptions"
-description: "Every exception class the SDK raises — when each is thrown and how to handle it."
+description: "Every exception class the SDK raises: when each is thrown and how to handle it."
 ---
 
 All exceptions inherit from `ContinuaError`. Catch that base class if you want to handle
@@ -30,7 +30,7 @@ ContinuaError
 ```
 
 `NonRetryableError` is raised **by you** inside an activity handler to mark a task as
-permanently failed — it does not derive from `ContinuaError`.
+permanently failed. It does not derive from `ContinuaError`.
 
 ## Ingest / client errors
 
@@ -85,7 +85,7 @@ except NetworkError as exc:
 ## Engine errors
 
 These are raised by `EngineControlClient` when interacting with the durable engine
-surface. The engine surface is scaffolded today — see [Roadmap](/roadmap) before
+surface. The engine surface is scaffolded today: see [Roadmap](/roadmap) before
 depending on it.
 
 ### `EngineRunNotTerminalError`

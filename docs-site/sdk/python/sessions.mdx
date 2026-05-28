@@ -3,7 +3,7 @@ title: "Sessions"
 description: "Group traces under a shared session id with the @session context manager."
 ---
 
-A **session** groups traces that belong together — usually one user conversation, one
+A **session** groups traces that belong together, usually one user conversation, one
 job, or one long-running interaction. Sessions are the right unit when you want to ask
 "what happened across all these turns?" rather than "what happened in this one call?".
 
@@ -40,7 +40,7 @@ def session(
 | Parameter | Description |
 | --- | --- |
 | `session_id` | External session identifier. If `None`, no session key is attached |
-| `user_id` | Optional user identifier — propagates to every trace inside |
+| `user_id` | Optional user identifier: propagates to every trace inside |
 | `metadata` | Optional metadata dictionary |
 
 ## Accessing the current session
@@ -60,7 +60,7 @@ The SDK uses Python `contextvars`:
 
 - `session()` sets the current session for the duration of the `with` block.
 - `@trace` reads the current session on entry and pins the trace to it.
-- `span()` doesn't need to read the session — it inherits via its parent trace.
+- `span()` doesn't need to read the session. It inherits via its parent trace.
 
 Async code that preserves `contextvars` (e.g. `asyncio`) propagates correctly. Threads
 need explicit context propagation.
@@ -95,13 +95,13 @@ database and use the Continua session id as a foreign key.
 ### Re-using session ids across runs
 
 If you re-use the same `session_id` across re-runs (intentional or accidental), traces
-from both runs appear under the same session. That can be helpful — it's how
+from both runs appear under the same session. That can be helpful: it's how
 [Session compare](/debugger/session-compare) finds baseline + candidate pairs. It can
 also surprise you. When in doubt, suffix the id with a run nonce.
 
 ## See also
 
-- [Tracing](/sdk/python/tracing) — `@trace` and `@span` (where most of the work happens).
-- [Sessions page](/debugger/sessions) — how sessions render in the debugger.
-- [Session compare](/debugger/session-compare) — diff two traces in the same session.
-- [Comparing baseline and candidate](/guides/comparing-sessions) — guided workflow.
+- [Tracing](/sdk/python/tracing): `@trace` and `@span` (where most of the work happens).
+- [Sessions page](/debugger/sessions): how sessions render in the debugger.
+- [Session compare](/debugger/session-compare): diff two traces in the same session.
+- [Comparing baseline and candidate](/guides/comparing-sessions): guided workflow.

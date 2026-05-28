@@ -1,16 +1,16 @@
 ---
 title: "Span events"
-description: "Every method on SpanContext — set_input/output, log, error, llm_response, tool_call, and the semantic events."
+description: "Every method on SpanContext: set_input/output, log, error, llm_response, tool_call, and the semantic events."
 ---
 
 `SpanContext` exposes a comprehensive set of methods for attaching data, events, and
 semantics to a span. They fall into four groups:
 
-1. **Payload setters** — `set_input`, `set_output`, metadata, tokens, cost, model
-2. **High-level helpers** — `set_llm_response`, `set_tool_call` (these also emit implicit
+1. **Payload setters**: `set_input`, `set_output`, metadata, tokens, cost, model
+2. **High-level helpers**: `set_llm_response`, `set_tool_call` (these also emit implicit
    `effect` events)
-3. **Explicit events** — `log`, `error`, `exception`, `metric`
-4. **Semantic events** — `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`
+3. **Explicit events**: `log`, `error`, `exception`, `metric`
+4. **Semantic events**: `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`
 
 For the conceptual model behind events, see [Events](/concepts/events).
 
@@ -43,7 +43,7 @@ s.set_model("gpt-4.1-mini", provider="openai")
 ### `set_tokens(*, prompt=None, completion=None, total=None)`
 
 Record token counts. Keyword-only. At least one of `prompt` or `completion` must be
-provided — `total` alone raises `ValueError`.
+provided: `total` alone raises `ValueError`.
 
 ```python
 s.set_tokens(prompt=120, completion=48)
@@ -232,7 +232,7 @@ s.snapshot_marker(
 
 | Method | Event type emitted | Default level |
 | --- | --- | --- |
-| `set_input`, `set_output`, `set_model`, `set_tokens`, `set_cost`, `set_metadata`, `set_error` | _(no event — fields on the span)_ | — |
+| `set_input`, `set_output`, `set_model`, `set_tokens`, `set_cost`, `set_metadata`, `set_error` | _(no event; fields on the span)_ | None |
 | `set_llm_response` | implicit `effect` (`model_call`) | `info` |
 | `set_tool_call` | implicit `effect` (`tool_call`) | `info` |
 | `log` | `log` | `info` |

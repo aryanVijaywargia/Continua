@@ -1,6 +1,6 @@
 ---
 title: "Engine foundation"
-description: "The durable engine schema, store, and control surface — what's real today and where it stops."
+description: "The durable engine schema, store, and control surface: what's real today and where it stops."
 ---
 
 Continua ships a durable engine **foundation** today. The schema, store, control
@@ -36,8 +36,8 @@ Core tables:
 ### Store (real)
 
 [`engine/db/gen/go/`](https://github.com/aryanVijaywargia/Continua/tree/main/engine/db/gen/go)
-is the sqlc-generated store. The engine uses its own pgx pool and transaction boundary —
-it does not share a connection pool with the platform server. The engine can optionally
+is the sqlc-generated store. The engine uses its own pgx pool and transaction boundary.
+It does not share a connection pool with the platform server. The engine can optionally
 live in a separate Postgres via `ENGINE_DATABASE_URL`.
 
 ### Control endpoints (real)
@@ -73,7 +73,7 @@ the control bar. Polling-based.
   and produces a terminal result. The state machine accepts the right inputs but the
   end-to-end loop is incomplete.
 - **Workflow SDK.** The Python SDK exports `ActivityWorker`, `@activity`, and
-  `EngineControlClient` — they call the right endpoints, but without a working execution
+  `EngineControlClient`. They call the right endpoints, but without a working execution
   layer they don't form a usable workflow runtime today.
 - **Run history replay.** History is written; replay-from-history is not wired.
 
@@ -84,6 +84,6 @@ the control bar. Polling-based.
 - **Schema-level prototyping.** If you want to model a durable workflow without
   committing to an execution runtime, you can use the schema as a write target.
 
-For actual durable workflow execution, wait for the execution layer to land — track
+For actual durable workflow execution, wait for the execution layer to land. Track
 progress on [GitHub](https://github.com/aryanVijaywargia/Continua) or watch the
 [Roadmap](/roadmap) for status changes.

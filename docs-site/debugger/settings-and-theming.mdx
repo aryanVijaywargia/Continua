@@ -19,7 +19,7 @@ The Settings page at `/settings` adapts to the runtime auth mode of your deploym
 - A **General** card shows the operator account (email, name).
 - A **Sign out** button calls Auth0's `logout`.
 - The Appearance card behaves the same as in local mode.
-- The API keys card is hidden — operator auth doesn't use a local API key.
+- The API keys card is hidden: operator auth doesn't use a local API key.
 
 **Public demo mode** (`PUBLIC_DEMO_ENABLED=true`)
 
@@ -44,11 +44,11 @@ up read access:
 2. Copy the key into the Settings → API keys card and save.
 3. The UI uses the saved key as `X-API-Key` on every read call.
 
-Clear the key with the **Clear key** button — this signs the local UI out, but it does
+Clear the key with the **Clear key** button. This signs the local UI out, but it does
 not revoke the key server-side. To revoke, use the project rotate-key flow.
 
 ## What lives elsewhere
 
-- **Creating / rotating / deleting projects** — [Projects](/guides/managing-projects).
-- **Configuring Auth0 itself** — [Auth0 setup](/guides/auth0-setup).
-- **Server-side settings** (env vars, retention, queue sizes) — [Self-hosting](/guides/self-hosting).
+- **Creating / rotating / deleting projects**: [Projects](/guides/managing-projects).
+- **Configuring Auth0 itself**: [Auth0 setup](/guides/auth0-setup).
+- **Server-side settings** (env vars, retention, queue sizes): [Self-hosting](/guides/self-hosting).

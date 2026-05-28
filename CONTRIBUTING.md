@@ -4,9 +4,9 @@
 
 Before making changes, skim:
 
-- [`docs-site/concepts/overview.mdx`](./docs-site/concepts/overview.mdx) — current architecture and runtime components
-- [`docs-site/concepts/data-model.mdx`](./docs-site/concepts/data-model.mdx) — persisted entity model and identity rules
-- [`AGENTS.md`](./AGENTS.md) — repo conventions, generated-file boundaries, testing expectations
+- [`docs-site/concepts/overview.mdx`](./docs-site/concepts/overview.mdx): current architecture and runtime components
+- [`docs-site/concepts/data-model.mdx`](./docs-site/concepts/data-model.mdx): persisted entity model and identity rules
+- [`AGENTS.md`](./AGENTS.md): repo conventions, generated-file boundaries, testing expectations
 
 ## Development workflow
 
