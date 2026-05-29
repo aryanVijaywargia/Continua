@@ -151,6 +151,18 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Updates",
+            "pages": [
+              "changelog/overview",
+              "changelog/2026-05-29"
+            ]
+          }
+        ]
       }
     ],
     "global": {
