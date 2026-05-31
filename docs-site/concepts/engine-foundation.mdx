@@ -26,7 +26,7 @@ Core tables:
 | Table | Holds |
 | --- | --- |
 | `engine.instances` | The logical workflow instance keyed by `instance_key` |
-| `engine.runs` | Per-run state (status, started_at, terminal_state) |
+| `engine.runs` | Per-run lifecycle state (status, run_number, attempt_count, claim/lease fields) |
 | `engine.history` | Append-only event log per run |
 | `engine.inbox` | Pending inbox items (signals, child completions, etc.) |
 | `engine.activity_tasks` | Activity tasks ready for workers to claim |
