@@ -5,7 +5,8 @@ SELECT * FROM sessions WHERE id = $1;
 SELECT s.*,
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
-WHERE s.id = $1;
+WHERE s.id = sqlc.arg(id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR s.project_id = sqlc.narg(project_filter_id)::uuid);
 
 -- name: ListSessions :many
 SELECT * FROM sessions

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countSessions = `-- name: CountSessions :one
@@ -113,7 +114,13 @@ SELECT s.id, s.project_id, s.name, s.user_id, s.metadata, s.created_at, s.update
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
 WHERE s.id = $1
+  AND ($2::uuid IS NULL OR s.project_id = $2::uuid)
 `
+
+type GetSessionWithTraceCountParams struct {
+	ID              uuid.UUID   `json:"id"`
+	ProjectFilterID pgtype.UUID `json:"project_filter_id"`
+}
 
 type GetSessionWithTraceCountRow struct {
 	ID         uuid.UUID `json:"id"`
@@ -127,8 +134,8 @@ type GetSessionWithTraceCountRow struct {
 	TraceCount int64     `json:"trace_count"`
 }
 
-func (q *Queries) GetSessionWithTraceCount(ctx context.Context, id uuid.UUID) (GetSessionWithTraceCountRow, error) {
-	row := q.db.QueryRow(ctx, getSessionWithTraceCount, id)
+func (q *Queries) GetSessionWithTraceCount(ctx context.Context, arg GetSessionWithTraceCountParams) (GetSessionWithTraceCountRow, error) {
+	row := q.db.QueryRow(ctx, getSessionWithTraceCount, arg.ID, arg.ProjectFilterID)
 	var i GetSessionWithTraceCountRow
 	err := row.Scan(
 		&i.ID,

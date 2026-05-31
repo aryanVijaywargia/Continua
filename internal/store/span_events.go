@@ -19,7 +19,10 @@ func (t *Tx) InsertSpanEvent(ctx context.Context, params *platform.InsertSpanEve
 	return id, err
 }
 
-// ListSpanEventsByTrace returns all events for a trace.
-func (s *Store) ListSpanEventsByTrace(ctx context.Context, traceUUID uuid.UUID) ([]platform.SpanEvent, error) {
-	return s.q.ListSpanEventsByTrace(ctx, traceUUID)
+// ListSpanEventsByTrace returns all events for a trace within the supplied scope.
+func (s *Store) ListSpanEventsByTrace(ctx context.Context, scope Scope, traceUUID uuid.UUID) ([]platform.SpanEvent, error) {
+	return s.q.ListSpanEventsByTrace(ctx, platform.ListSpanEventsByTraceParams{
+		TraceID:         traceUUID,
+		ProjectFilterID: scope.nullableProjectFilter(),
+	})
 }

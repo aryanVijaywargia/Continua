@@ -100,6 +100,43 @@ func (q *Queries) GetInstanceByProjectAndKey(ctx context.Context, arg GetInstanc
 	return i, err
 }
 
+const listInstancesByKey = `-- name: ListInstancesByKey :many
+SELECT id, project_id, instance_key, definition_name, status, metadata, created_at, updated_at
+FROM engine.instances
+WHERE instance_key = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 2
+`
+
+func (q *Queries) ListInstancesByKey(ctx context.Context, instanceKey string) ([]EngineInstance, error) {
+	rows, err := q.db.Query(ctx, listInstancesByKey, instanceKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineInstance{}
+	for rows.Next() {
+		var i EngineInstance
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceKey,
+			&i.DefinitionName,
+			&i.Status,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listInstancesByProject = `-- name: ListInstancesByProject :many
 SELECT id, project_id, instance_key, definition_name, status, metadata, created_at, updated_at
 FROM engine.instances

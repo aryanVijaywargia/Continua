@@ -55,9 +55,12 @@ func mapSessionWithCountRow[T sessionWithCountRow](row T) SessionWithCount {
 	}
 }
 
-// GetSessionWithTraceCount retrieves a session with its trace count.
-func (s *Store) GetSessionWithTraceCount(ctx context.Context, id uuid.UUID) (SessionWithCount, error) {
-	row, err := s.q.GetSessionWithTraceCount(ctx, id)
+// GetSessionWithTraceCount retrieves a session with its trace count within the supplied scope.
+func (s *Store) GetSessionWithTraceCount(ctx context.Context, scope Scope, id uuid.UUID) (SessionWithCount, error) {
+	row, err := s.q.GetSessionWithTraceCount(ctx, platform.GetSessionWithTraceCountParams{
+		ID:              id,
+		ProjectFilterID: scope.nullableProjectFilter(),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SessionWithCount{}, ErrNotFound
 	}

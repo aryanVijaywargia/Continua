@@ -167,6 +167,71 @@ func newEngineControlService(platformStore *store.Store) *engineControlService {
 	}
 }
 
+func engineNotFoundError(message string) *engineAPIError {
+	return &engineAPIError{
+		Code:       "not_found",
+		Message:    message,
+		HTTPStatus: 404,
+	}
+}
+
+func (s *engineControlService) getRunForScope(
+	ctx context.Context,
+	scope store.Scope,
+	runID uuid.UUID,
+) (enginedb.EngineRun, error) {
+	if projectID, bound := scope.ProjectID(); bound {
+		run, err := s.engine.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+			ProjectID: projectID,
+			ID:        runID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return enginedb.EngineRun{}, engineNotFoundError("engine run not found")
+		}
+		return run, err
+	}
+
+	run, err := s.engine.GetRun(ctx, runID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return enginedb.EngineRun{}, engineNotFoundError("engine run not found")
+	}
+	return run, err
+}
+
+func (s *engineControlService) getInstanceForScopeAndKey(
+	ctx context.Context,
+	scope store.Scope,
+	instanceKey string,
+) (enginedb.EngineInstance, error) {
+	if projectID, bound := scope.ProjectID(); bound {
+		instance, err := s.engine.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
+			ProjectID:   projectID,
+			InstanceKey: instanceKey,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return enginedb.EngineInstance{}, engineNotFoundError("engine instance not found")
+		}
+		return instance, err
+	}
+
+	instances, err := s.engine.ListInstancesByKey(ctx, instanceKey)
+	if err != nil {
+		return enginedb.EngineInstance{}, err
+	}
+	switch len(instances) {
+	case 0:
+		return enginedb.EngineInstance{}, engineNotFoundError("engine instance not found")
+	case 1:
+		return instances[0], nil
+	default:
+		return enginedb.EngineInstance{}, &engineAPIError{
+			Code:       "ambiguous_instance_key",
+			Message:    "project_id is required when instance_key matches multiple projects",
+			HTTPStatus: 400,
+		}
+	}
+}
+
 func (s *engineControlService) StartRun(
 	ctx context.Context,
 	projectID uuid.UUID,
@@ -397,32 +462,18 @@ func (s *engineControlService) StartRun(
 
 func (s *engineControlService) GetInstance(
 	ctx context.Context,
-	projectID uuid.UUID,
+	scope store.Scope,
 	instanceKey string,
 ) (engineInstanceResult, error) {
-	instance, err := s.engine.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
-		ProjectID:   projectID,
-		InstanceKey: instanceKey,
-	})
+	instance, err := s.getInstanceForScopeAndKey(ctx, scope, instanceKey)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return engineInstanceResult{}, &engineAPIError{
-				Code:       "not_found",
-				Message:    "engine instance not found",
-				HTTPStatus: 404,
-			}
-		}
 		return engineInstanceResult{}, err
 	}
 
 	run, err := s.engine.GetLatestRunByInstance(ctx, instance.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return engineInstanceResult{}, &engineAPIError{
-				Code:       "not_found",
-				Message:    "engine run not found",
-				HTTPStatus: 404,
-			}
+			return engineInstanceResult{}, engineNotFoundError("engine run not found")
 		}
 		return engineInstanceResult{}, err
 	}
@@ -440,21 +491,11 @@ func (s *engineControlService) GetInstance(
 
 func (s *engineControlService) GetRun(
 	ctx context.Context,
-	projectID uuid.UUID,
+	scope store.Scope,
 	runID uuid.UUID,
 ) (engineRunSummary, error) {
-	run, err := s.engine.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
-		ProjectID: projectID,
-		ID:        runID,
-	})
+	run, err := s.getRunForScope(ctx, scope, runID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return engineRunSummary{}, &engineAPIError{
-				Code:       "not_found",
-				Message:    "engine run not found",
-				HTTPStatus: 404,
-			}
-		}
 		return engineRunSummary{}, err
 	}
 
@@ -468,10 +509,10 @@ func (s *engineControlService) GetRun(
 
 func (s *engineControlService) GetRunResult(
 	ctx context.Context,
-	projectID uuid.UUID,
+	scope store.Scope,
 	runID uuid.UUID,
 ) (engineRunSummary, error) {
-	summary, err := s.GetRun(ctx, projectID, runID)
+	summary, err := s.GetRun(ctx, scope, runID)
 	if err != nil {
 		return engineRunSummary{}, err
 	}
@@ -495,21 +536,11 @@ func (s *engineControlService) GetRunResult(
 
 func (s *engineControlService) GetRunPendingWork(
 	ctx context.Context,
-	projectID uuid.UUID,
+	scope store.Scope,
 	runID uuid.UUID,
 ) (enginePendingWorkResult, error) {
-	run, err := s.engine.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
-		ProjectID: projectID,
-		ID:        runID,
-	})
+	run, err := s.getRunForScope(ctx, scope, runID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return enginePendingWorkResult{}, &engineAPIError{
-				Code:       "not_found",
-				Message:    "engine run not found",
-				HTTPStatus: 404,
-			}
-		}
 		return enginePendingWorkResult{}, err
 	}
 
@@ -585,7 +616,7 @@ func (s *engineControlService) GetRunPendingWork(
 
 func (s *engineControlService) GetRunHistory(
 	ctx context.Context,
-	projectID uuid.UUID,
+	scope store.Scope,
 	runID uuid.UUID,
 	after int,
 	limit int,
@@ -600,17 +631,8 @@ func (s *engineControlService) GetRunHistory(
 		after = 0
 	}
 
-	if _, err := s.engine.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
-		ProjectID: projectID,
-		ID:        runID,
-	}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return engineHistoryPage{}, &engineAPIError{
-				Code:       "not_found",
-				Message:    "engine run not found",
-				HTTPStatus: 404,
-			}
-		}
+	run, err := s.getRunForScope(ctx, scope, runID)
+	if err != nil {
 		return engineHistoryPage{}, err
 	}
 
@@ -626,7 +648,7 @@ func (s *engineControlService) GetRunHistory(
 	page := engineHistoryPage{
 		Events: rows,
 	}
-	projectionState, err := s.projectionStateForRun(ctx, projectID, runID)
+	projectionState, err := s.projectionStateForRun(ctx, run.ProjectID, runID)
 	if err != nil {
 		return engineHistoryPage{}, err
 	}
@@ -1138,10 +1160,10 @@ func (s *engineControlService) CancelRun(
 
 func (s *engineControlService) ReadRunSummary(
 	ctx context.Context,
-	projectID uuid.UUID,
+	scope store.Scope,
 	runID uuid.UUID,
 ) (engineRunSummary, error) {
-	return s.GetRun(ctx, projectID, runID)
+	return s.GetRun(ctx, scope, runID)
 }
 
 func (s *engineControlService) buildRunSummary(

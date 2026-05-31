@@ -87,7 +87,7 @@ func TestRollupJob_Execution(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify trace was updated with aggregates
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	require.NotNil(t, updatedTrace.Trace.TotalSpans)
@@ -144,7 +144,7 @@ func TestRollupJob_RetryDoesNotDoubleCount(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify totals are same (not doubled)
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	require.NotNil(t, updatedTrace.Trace.TotalSpans)
@@ -178,7 +178,7 @@ func TestRollupJob_EmptyTrace(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify trace was updated with zero values
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	require.NotNil(t, updatedTrace.Trace.TotalSpans)
@@ -225,7 +225,7 @@ func TestRollupJob_MultipleLLMCalls(t *testing.T) {
 	err = worker.ProcessRollup(ctx, trace.ID)
 	require.NoError(t, err)
 
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(550), updatedTrace.Trace.TotalTokensIn, "total_tokens_in should be sum of prompt_tokens")

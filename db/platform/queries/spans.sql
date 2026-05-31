@@ -6,7 +6,8 @@ SELECT * FROM spans WHERE trace_id = $1 AND span_id = $2;
 
 -- name: ListSpansByTrace :many
 SELECT * FROM spans
-WHERE trace_id = $1
+WHERE trace_id = sqlc.arg(trace_id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST;
 
 -- name: ListSpansSummaryByTrace :many

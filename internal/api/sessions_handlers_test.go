@@ -60,7 +60,7 @@ func TestSessionDetail_ReturnsSession(t *testing.T) {
 	require.NotNil(t, session.UserID)
 	assert.Equal(t, "user-123", *session.UserID)
 
-	loaded, err := s.GetSessionWithTraceCount(ctx, session.ID)
+	loaded, err := s.GetSessionWithTraceCount(ctx, store.BoundScope(projectID), session.ID)
 	require.NoError(t, err)
 	assert.Equal(t, session.ExternalID, loaded.ExternalID)
 }
@@ -75,7 +75,7 @@ func TestSessionDetail_Returns404ForUnknownSession(t *testing.T) {
 	s := store.New(pool)
 
 	unknownID := uuid.New()
-	_, err := s.GetSessionWithTraceCount(ctx, unknownID)
+	_, err := s.GetSessionWithTraceCount(ctx, store.UnboundedScope(), unknownID)
 
 	// Should return not found
 	assert.Error(t, err)

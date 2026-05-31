@@ -276,11 +276,17 @@ func (q *Queries) GetSpanByExternalID(ctx context.Context, arg GetSpanByExternal
 const listSpansByTrace = `-- name: ListSpansByTrace :many
 SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at, search_vector FROM spans
 WHERE trace_id = $1
+  AND ($2::uuid IS NULL OR project_id = $2::uuid)
 ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST
 `
 
-func (q *Queries) ListSpansByTrace(ctx context.Context, traceID uuid.UUID) ([]Span, error) {
-	rows, err := q.db.Query(ctx, listSpansByTrace, traceID)
+type ListSpansByTraceParams struct {
+	TraceID         uuid.UUID   `json:"trace_id"`
+	ProjectFilterID pgtype.UUID `json:"project_filter_id"`
+}
+
+func (q *Queries) ListSpansByTrace(ctx context.Context, arg ListSpansByTraceParams) ([]Span, error) {
+	rows, err := q.db.Query(ctx, listSpansByTrace, arg.TraceID, arg.ProjectFilterID)
 	if err != nil {
 		return nil, err
 	}

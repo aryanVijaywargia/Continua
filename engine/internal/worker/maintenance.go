@@ -14,8 +14,8 @@ type MaintenanceWorker struct {
 	store *store.Store
 }
 
-func NewMaintenanceWorker(st *store.Store) *MaintenanceWorker {
-	return &MaintenanceWorker{store: st}
+func NewMaintenanceWorker(engineStore *store.Store) *MaintenanceWorker {
+	return &MaintenanceWorker{store: engineStore}
 }
 
 func (w *MaintenanceWorker) PollOnce(ctx context.Context, _ string) error {

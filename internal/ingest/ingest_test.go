@@ -197,7 +197,10 @@ func TestIngest_AcceptsSemanticEventTypes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	events, err := q.ListSpanEventsByTrace(ctx, trace.ID)
+	events, err := q.ListSpanEventsByTrace(ctx, platform.ListSpanEventsByTraceParams{
+		TraceID:         trace.ID,
+		ProjectFilterID: testutil.PgtypeUUID(projectID),
+	})
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 	assert.ElementsMatch(
@@ -277,7 +280,10 @@ func TestIngest_WarnsForMissingSemanticEventFieldsButStillAccepts(t *testing.T) 
 	})
 	require.NoError(t, err)
 
-	events, err := q.ListSpanEventsByTrace(ctx, trace.ID)
+	events, err := q.ListSpanEventsByTrace(ctx, platform.ListSpanEventsByTraceParams{
+		TraceID:         trace.ID,
+		ProjectFilterID: testutil.PgtypeUUID(projectID),
+	})
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 

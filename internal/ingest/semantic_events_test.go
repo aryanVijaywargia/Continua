@@ -109,7 +109,10 @@ func (h *semanticHarness) listEvents(t *testing.T) []platform.SpanEvent {
 	})
 	require.NoError(t, err)
 
-	events, err := h.q.ListSpanEventsByTrace(h.ctx, trace.ID)
+	events, err := h.q.ListSpanEventsByTrace(h.ctx, platform.ListSpanEventsByTraceParams{
+		TraceID:         trace.ID,
+		ProjectFilterID: testutil.PgtypeUUID(h.projectID),
+	})
 	require.NoError(t, err)
 
 	return events

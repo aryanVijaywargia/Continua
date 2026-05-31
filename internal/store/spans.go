@@ -27,9 +27,12 @@ func (t *Tx) GetSpanByExternalID(ctx context.Context, traceUUID uuid.UUID, spanI
 	return span, err
 }
 
-// ListSpansByTrace returns all spans for a trace.
-func (s *Store) ListSpansByTrace(ctx context.Context, traceUUID uuid.UUID) ([]platform.Span, error) {
-	return s.q.ListSpansByTrace(ctx, traceUUID)
+// ListSpansByTrace returns all spans for a trace within the supplied scope.
+func (s *Store) ListSpansByTrace(ctx context.Context, scope Scope, traceUUID uuid.UUID) ([]platform.Span, error) {
+	return s.q.ListSpansByTrace(ctx, platform.ListSpansByTraceParams{
+		TraceID:         traceUUID,
+		ProjectFilterID: scope.nullableProjectFilter(),
+	})
 }
 
 // UpdateSpanStatusTx updates span status within a transaction.
