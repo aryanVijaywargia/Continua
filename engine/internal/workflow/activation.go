@@ -44,9 +44,9 @@ type childWorkflowBindingState struct {
 	childInstance *enginedb.EngineInstance
 }
 
-func NewActivator(st *store.Store, definitions *Registry) *Activator {
+func NewActivator(engineStore *store.Store, definitions *Registry) *Activator {
 	return &Activator{
-		store:       st,
+		store:       engineStore,
 		definitions: definitions,
 	}
 }

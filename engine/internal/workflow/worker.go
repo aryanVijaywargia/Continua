@@ -15,10 +15,10 @@ type Worker struct {
 	runLeaseTTL time.Duration
 }
 
-func NewWorker(st *store.Store, definitions *Registry, runLeaseTTL time.Duration) *Worker {
+func NewWorker(engineStore *store.Store, definitions *Registry, runLeaseTTL time.Duration) *Worker {
 	return &Worker{
-		store:       st,
-		activator:   NewActivator(st, definitions),
+		store:       engineStore,
+		activator:   NewActivator(engineStore, definitions),
 		runLeaseTTL: runLeaseTTL,
 	}
 }
