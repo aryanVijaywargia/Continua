@@ -5,8 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type Dispatch,
-  type SetStateAction,
 } from 'react';
 import type { Span } from '../api/client';
 import {
@@ -23,7 +21,11 @@ interface UseTreeRailStateOptions {
   expandableSpanIds: ReadonlySet<string>;
   expandedSpanIds: ReadonlySet<string>;
   inlineErrorPreviews: ReadonlyMap<string, string>;
-  setExpandedSpanIds: Dispatch<SetStateAction<Set<string>>>;
+  // Expansion mutations go through the span-expansion module's actions rather
+  // than a raw state setter, so the open set has a single owner. See CONTEXT.md.
+  expandAll: () => void;
+  collapseAll: () => void;
+  setExact: (expanded: ReadonlySet<string>) => void;
   spanIndex: ReadonlyMap<string, Span>;
   spanTree: SpanTreeNode[];
   spans: Span[];
@@ -33,7 +35,9 @@ export function useTreeRailState({
   expandableSpanIds,
   expandedSpanIds,
   inlineErrorPreviews,
-  setExpandedSpanIds,
+  expandAll,
+  collapseAll,
+  setExact,
   spanIndex,
   spanTree,
   spans,
@@ -121,9 +125,9 @@ export function useTreeRailState({
       return;
     }
 
-    setExpandedSpanIds(new Set(savedExpandedSpanIdsBeforeSearchRef.current));
+    setExact(new Set(savedExpandedSpanIdsBeforeSearchRef.current));
     savedExpandedSpanIdsBeforeSearchRef.current = null;
-  }, [expandedSpanIds, normalizedSearchQuery, setExpandedSpanIds]);
+  }, [expandedSpanIds, normalizedSearchQuery, setExact]);
 
   const handleExpandAll = useCallback(() => {
     const revealCount = estimateExpandAllRevealCount(spanTree, effectiveExpandedSpanIds);
@@ -138,18 +142,17 @@ export function useTreeRailState({
       return;
     }
 
-    setExpandedSpanIds(new Set(expandableSpanIds));
+    expandAll();
   }, [
     effectiveExpandedSpanIds,
-    expandableSpanIds,
-    setExpandedSpanIds,
+    expandAll,
     spanTree,
     visibleRows.length,
   ]);
 
   const handleCollapseAll = useCallback(() => {
-    setExpandedSpanIds(new Set());
-  }, [setExpandedSpanIds]);
+    collapseAll();
+  }, [collapseAll]);
 
   return {
     effectiveExpandedSpanIds,

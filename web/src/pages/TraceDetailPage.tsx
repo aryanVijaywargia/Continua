@@ -4,9 +4,7 @@ import {
   useRef,
   useState,
   useMemo,
-  type Dispatch,
   type ReactNode,
-  type SetStateAction,
 } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -42,7 +40,8 @@ import {
 } from '../components/WorkspaceShell';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useTraceDetailSearchParams } from '../hooks/useTraceDetailSearchParams';
-import { useWorkspaceState } from '../hooks/useWorkspaceState';
+import { useSpanExpansion } from '../hooks/useSpanExpansion';
+import { useFailedSpanAutoSelect } from '../hooks/useFailedSpanAutoSelect';
 import type { RetrySafetyAssessment } from '../utils/retrySafety';
 import { EngineControlBar } from './EngineControlBar';
 import { EnginePendingWorkPanel } from './EnginePendingWorkPanel';
@@ -87,6 +86,7 @@ import {
   buildSpanTree,
   collectExpandableSpanIds,
   deriveVisibleRows,
+  getAncestorIds,
   type SpanTreeNode,
 } from '../utils/spanTree';
 import { downloadJsonFile } from '../utils/downloadJson';
@@ -227,25 +227,79 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   );
   const {
     expandedSpanIds,
-    revealPath,
-    revealVersion,
-    selectSpan,
-    selectedSpanExternalId,
-    setExpandedSpanIds,
     toggleExpandedSpan,
-    waterfallRevealTarget,
-  } = useWorkspaceState({
-    isSpanDataReady: spansQuery.isSuccess,
-    spanIndex,
-    spanParam,
-    setSpanParam,
-    timelineStatus,
-    primaryFailedSpanId: failureAnalysis.summary.primaryFailedSpan?.span_id ?? null,
-    expandableSpanIds,
-  });
-  const selectedSpan = selectedSpanExternalId
-    ? spanIndex.get(selectedSpanExternalId) ?? null
+    revealAncestors,
+    expandAll,
+    collapseAll,
+    setExact,
+  } = useSpanExpansion(expandableSpanIds);
+
+  // Selection derives from the URL — the single source of truth (see CONTEXT.md)
+  // — but only when the param resolves to a real span. An unresolved param is
+  // not a selection: it must not drive copy/export/replay or block auto-select.
+  const selectedSpanId =
+    spanParam !== null && spanIndex.has(spanParam) ? spanParam : null;
+  const selectedSpan = selectedSpanId
+    ? spanIndex.get(selectedSpanId) ?? null
     : null;
+
+  // Clear a stale/invalid ?span= once span data has loaded, so the URL never
+  // advertises a span that does not exist in this trace.
+  useEffect(() => {
+    if (!spansQuery.isSuccess) {
+      return;
+    }
+    if (spanParam !== null && !spanIndex.has(spanParam)) {
+      setSpanParam(null);
+    }
+  }, [spansQuery.isSuccess, spanParam, spanIndex, setSpanParam]);
+
+  // Reveal is pure derivation from the selected span; no re-center counter.
+  const revealPath = useMemo(() => {
+    if (!selectedSpanId) {
+      return new Set<string>();
+    }
+    return new Set([
+      ...getAncestorIds(selectedSpanId, spanIndex),
+      selectedSpanId,
+    ]);
+  }, [selectedSpanId, spanIndex]);
+
+  // Expanding the selected span's ancestors is a side effect of *selection
+  // change* — not of every span-data refresh. Polling rebuilds spanIndex by
+  // identity each tick; without this guard the effect would re-fire and reopen
+  // ancestors the operator manually collapsed. Track the last span we revealed
+  // for and only act when it actually changes.
+  const lastRevealedSpanId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedSpanId) {
+      lastRevealedSpanId.current = null;
+      return;
+    }
+    if (lastRevealedSpanId.current === selectedSpanId) {
+      return;
+    }
+    lastRevealedSpanId.current = selectedSpanId;
+    revealAncestors(getAncestorIds(selectedSpanId, spanIndex));
+  }, [revealAncestors, selectedSpanId, spanIndex]);
+
+  const selectSpan = useCallback(
+    (spanId: string) => {
+      setSpanParam(spanId);
+    },
+    [setSpanParam]
+  );
+
+  useFailedSpanAutoSelect({
+    traceId,
+    isReady: spansQuery.isSuccess,
+    traceStatus: timelineStatus,
+    spanParam,
+    selectedSpanId,
+    primaryFailedSpanId:
+      failureAnalysis.summary.primaryFailedSpan?.span_id ?? null,
+    setSpanParam,
+  });
   const selectedBreadcrumbPath = useMemo(
     () => buildBreadcrumbPath(selectedSpan, spanIndex),
     [selectedSpan, spanIndex]
@@ -289,7 +343,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const buildCopyTraceUrl = useCallback(() => {
     const searchParams = serializeSpanParam(
       new URLSearchParams(location.search),
-      selectedSpanExternalId
+      selectedSpanId
     );
     const nextSearch = searchParams.toString();
 
@@ -297,16 +351,16 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       `${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`,
       window.location.origin
     ).toString();
-  }, [location.pathname, location.search, selectedSpanExternalId]);
+  }, [location.pathname, location.search, selectedSpanId]);
   const handleExportTrace = useCallback(() => {
     downloadJsonFile(`continua-trace-${traceId}.json`, {
       exported_at: new Date().toISOString(),
       trace,
       spans,
       timeline: timeline.events,
-      selected_span_id: selectedSpanExternalId,
+      selected_span_id: selectedSpanId,
     });
-  }, [selectedSpanExternalId, spans, timeline.events, trace, traceId]);
+  }, [selectedSpanId, spans, timeline.events, trace, traceId]);
 
   if (traceQuery.isLoading || spansQuery.isLoading) {
     return <TraceDetailEmptyState>Loading trace...</TraceDetailEmptyState>;
@@ -405,11 +459,12 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
       onSelectSpanAndShowDetails={handleSelectSpanAndShowDetails}
       onToggleExpand={toggleExpandedSpan}
       primaryAncestorPath={failureAnalysis.primaryAncestorPath}
-      revealKey={revealVersion}
       revealPath={revealPath}
-      revealTarget={waterfallRevealTarget}
-      selectedSpanId={selectedSpanExternalId}
-      setExpandedSpanIds={setExpandedSpanIds}
+      revealTarget={selectedSpanId}
+      selectedSpanId={selectedSpanId}
+      expandAll={expandAll}
+      collapseAll={collapseAll}
+      setExact={setExact}
       spanAssessments={visibleRetrySafetyAssessments}
       spanIndex={spanIndex}
       spanTree={spanTree}
@@ -491,7 +546,7 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
         <TraceReplayPanel
           events={timeline.events}
           onExportTrace={handleExportTrace}
-          selectedSpanId={selectedSpanExternalId}
+          selectedSpanId={selectedSpanId}
           spans={spans}
           trace={trace}
         />
@@ -1125,11 +1180,12 @@ interface TraceWorkspaceProps {
   onSelectSpanAndShowDetails: (spanId: string) => void;
   onToggleExpand: (spanId: string) => void;
   primaryAncestorPath: ReadonlySet<string>;
-  revealKey: number;
   revealPath: ReadonlySet<string>;
   revealTarget: string | null;
   selectedSpanId: string | null;
-  setExpandedSpanIds: Dispatch<SetStateAction<Set<string>>>;
+  expandAll: () => void;
+  collapseAll: () => void;
+  setExact: (expanded: ReadonlySet<string>) => void;
   spanAssessments: ReadonlyMap<string, RetrySafetyAssessment>;
   spanIndex: ReadonlyMap<string, Span>;
   spanTree: SpanTreeNode[];
@@ -1153,11 +1209,12 @@ function TraceWorkspace({
   onSelectSpanAndShowDetails,
   onToggleExpand,
   primaryAncestorPath,
-  revealKey,
   revealPath,
   revealTarget,
   selectedSpanId,
-  setExpandedSpanIds,
+  expandAll,
+  collapseAll,
+  setExact,
   spanAssessments,
   spanIndex,
   spanTree,
@@ -1188,10 +1245,11 @@ function TraceWorkspace({
           onToggleExpand={onToggleExpand}
           onVisibleRowsChange={setVisibleRows}
           primaryAncestorPath={primaryAncestorPath}
-          revealKey={revealKey}
           revealPath={revealPath}
           selectedSpanId={selectedSpanId}
-          setExpandedSpanIds={setExpandedSpanIds}
+          expandAll={expandAll}
+          collapseAll={collapseAll}
+          setExact={setExact}
           spanIndex={spanIndex}
           spanTree={spanTree}
           spans={spans}
@@ -1205,7 +1263,6 @@ function TraceWorkspace({
           selectedSpanId={selectedSpanId}
           onSelectSpanAndShowDetails={onSelectSpanAndShowDetails}
           revealTarget={revealTarget}
-          revealVersion={revealKey}
           spans={spans}
           costSeries={traceCostSeries}
           spanAssessments={spanAssessments}

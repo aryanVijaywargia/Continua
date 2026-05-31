@@ -44,7 +44,6 @@ describe('SpanTree retry safety', () => {
         failedSpanIds={new Set([failedSpan.span_id])}
         primaryAncestorPath={new Set([rootSpan.span_id, failedSpan.span_id])}
         revealPath={new Set()}
-        revealKey={0}
         inlineErrorPreviews={new Map()}
         spanAssessments={
           new Map<string, RetrySafetyAssessment>([
