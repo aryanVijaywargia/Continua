@@ -8,9 +8,12 @@ erDiagram
   projects ||--o{ ingest_batches : "owns"
   projects ||--o{ sessions : "owns"
   projects ||--o{ traces : "owns"
+  projects ||--o{ spans : "owns"
+  projects ||--o{ span_events : "owns"
   sessions ||--o{ traces : "groups"
   traces ||--o{ spans : "contains"
-  spans ||--o{ span_events : "emits"
+  traces ||--o{ span_events : "contains"
+  spans ||--o{ span_events : "emits via span_id"
 
   projects {
     uuid id PK
@@ -43,20 +46,27 @@ erDiagram
   }
   spans {
     uuid id PK
+    uuid project_id FK
     uuid trace_id FK
     string span_id
     string parent_span_id
     string name
-    string kind
+    string type
+    string status
     jsonb input
     jsonb output
   }
   span_events {
     uuid id PK
-    uuid span_id FK
-    string type
+    uuid project_id FK
+    uuid trace_id FK
+    string span_id
+    string event_type
+    string level
+    timestamptz event_ts
+    timestamptz server_ingested_at
     jsonb payload
-    timestamptz occurred_at
+    string idempotency_key
   }
 ```
 
@@ -103,15 +113,32 @@ has:
 `spans` represent operations within a trace. Each row has:
 
 - An internal UUID primary key
-- An external `span_id`
-- An external `parent_span_id` for tree reconstruction
-- `kind`, `status`, timing, cost/token fields, model/provider fields, metadata, and
+- A `project_id` foreign key (`REFERENCES projects(id) ON DELETE CASCADE`) — every span is
+  scoped directly to its project, not only through its parent trace
+- A `trace_id` foreign key to the owning trace
+- An external `span_id` (TEXT)
+- An external `parent_span_id` (TEXT, no foreign key) for tree reconstruction
+- A `type` column for the span kind (`llm`, `tool`, `retrieval`, `agent`, `custom`); the
+  read API exposes this column as `kind`
+- `status`, `level`, timing, cost/token fields, model/provider fields, metadata, and
   span-level payloads
 
 ### Span event
 
 `span_events` store explicit append-only events such as logs, errors, exceptions, metrics,
-and semantic debugger events.
+and semantic debugger events. Each row has:
+
+- A `project_id` foreign key (`REFERENCES projects(id) ON DELETE CASCADE`) — every event is
+  scoped directly to its project, not only through a parent span
+- A `trace_id` foreign key to the owning trace
+- An external `span_id` (TEXT, no foreign key) linking the event to its span; the link is
+  intentionally soft so events that arrive before their span are still ingested
+- `event_type`, `level`, a client-supplied `event_ts`, a `server_ingested_at` stamp,
+  `sequence`, `message`, and a JSONB `payload`
+- An optional `idempotency_key`, deduplicated by a partial unique index on
+  `(project_id, idempotency_key)`
+
+Other notes:
 
 - Explicit events are stored separately from spans
 - Trace timelines merge explicit events with synthetic lifecycle events derived from spans
@@ -122,6 +149,7 @@ and semantic debugger events.
 - `sessions.external_id` is the user-facing session identifier
 - `traces.trace_id` is the external trace identifier
 - `spans.span_id` and `spans.parent_span_id` are external span identifiers
+- `span_events.span_id` is the same external span identifier (TEXT, no foreign key to `spans`)
 - Internal UUIDs are the persistence identity used inside the database and server code
 
 ## Payload notes
