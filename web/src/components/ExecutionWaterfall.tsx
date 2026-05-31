@@ -22,7 +22,6 @@ interface ExecutionWaterfallProps {
   selectedSpanId: string | null;
   onSelectSpanAndShowDetails: (spanId: string) => void;
   revealTarget: string | null;
-  revealVersion: number;
   spans: Span[];
   costSeries?: TraceCostSeries | null;
   traceEndedAt?: string;
@@ -41,7 +40,6 @@ export function ExecutionWaterfall({
   selectedSpanId,
   onSelectSpanAndShowDetails,
   revealTarget,
-  revealVersion,
   spans,
   costSeries = null,
   traceEndedAt,
@@ -98,7 +96,7 @@ export function ExecutionWaterfall({
     }
 
     rowRefs.current.get(revealTarget)?.scrollIntoView?.({ block: 'nearest' });
-  }, [revealTarget, revealVersion, rows, scrollToIndex]);
+  }, [revealTarget, rows, scrollToIndex]);
 
   if (rows.length === 0 || !window) {
     return (

@@ -30,12 +30,18 @@ describe('useTreeRailState', () => {
 
     const { result } = renderHook(() => {
       const [expandedSpanIds, setExpandedSpanIds] = useState(new Set<string>());
+      const setExact = (expanded: ReadonlySet<string>) =>
+        setExpandedSpanIds(new Set(expanded));
+      const expandAll = () => setExpandedSpanIds(new Set(expandableSpanIds));
+      const collapseAll = () => setExpandedSpanIds(new Set());
 
       return useTreeRailState({
         expandableSpanIds,
         expandedSpanIds,
         inlineErrorPreviews: new Map(),
-        setExpandedSpanIds,
+        expandAll,
+        collapseAll,
+        setExact,
         spanIndex,
         spanTree,
         spans,
@@ -83,12 +89,18 @@ describe('useTreeRailState', () => {
 
     const { result } = renderHook(() => {
       const [expandedSpanIds, setExpandedSpanIds] = useState(new Set<string>());
+      const setExact = (expanded: ReadonlySet<string>) =>
+        setExpandedSpanIds(new Set(expanded));
+      const expandAll = () => setExpandedSpanIds(new Set(expandableSpanIds));
+      const collapseAll = () => setExpandedSpanIds(new Set());
 
       return useTreeRailState({
         expandableSpanIds,
         expandedSpanIds,
         inlineErrorPreviews: new Map(),
-        setExpandedSpanIds,
+        expandAll,
+        collapseAll,
+        setExact,
         spanIndex,
         spanTree,
         spans,

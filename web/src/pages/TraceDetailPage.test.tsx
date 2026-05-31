@@ -281,6 +281,35 @@ describe('TraceDetailPage', () => {
     expect(screen.getByRole('heading', { name: 'Root span' })).toBeInTheDocument();
   });
 
+  it('clears an invalid ?span= once spans load and does not treat it as selected', async () => {
+    const span = createSpan({ span_id: 'real', name: 'Real span' });
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        spans: () => jsonResponse({ spans: [span] }),
+      })
+    );
+
+    const { router } = renderTraceRoutes([
+      `/traces/${TRACE_ONE.id}?span=ghost&debug=1`,
+    ]);
+
+    // span data renders...
+    expect(
+      await screen.findByRole('button', { name: 'Real span COMPLETED 1.0s' })
+    ).toBeInTheDocument();
+
+    // ...and the invalid param is stripped while unrelated params survive.
+    await waitFor(() => {
+      expect(router.state.location.search).not.toContain('span=ghost');
+    });
+    expect(router.state.location.search).toContain('debug=1');
+
+    // the phantom span is not selected: inspector shows the empty prompt
+    expect(
+      screen.getByText('Select a span to inspect payloads.')
+    ).toBeInTheDocument();
+  });
+
   it('copies the effective trace URL and exports trace JSON', async () => {
     const user = userEvent.setup();
     const writeText = mockClipboard();

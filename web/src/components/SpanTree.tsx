@@ -17,7 +17,6 @@ interface SpanTreeProps {
   failedSpanIds: ReadonlySet<string>;
   primaryAncestorPath: ReadonlySet<string>;
   revealPath: ReadonlySet<string>;
-  revealKey: number;
   inlineErrorPreviews: ReadonlyMap<string, string>;
   showMetrics?: boolean;
   matchedSpanIds?: ReadonlySet<string> | null;
@@ -42,7 +41,6 @@ export function SpanTree({
   failedSpanIds,
   primaryAncestorPath,
   revealPath,
-  revealKey,
   inlineErrorPreviews,
   showMetrics = false,
   matchedSpanIds = null,
@@ -58,7 +56,7 @@ export function SpanTree({
     }
 
     rowRefs.current.get(targetSpanId)?.scrollIntoView?.({ block: 'nearest' });
-  }, [revealKey, revealPath, selectedSpanId]);
+  }, [revealPath, selectedSpanId]);
 
   if (rows.length === 0) {
     return (

@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Span } from '../api/client';
 import { useTreeRailState } from '../hooks/useTreeRailState';
 import type { RetrySafetyAssessment } from '../utils/retrySafety';
@@ -20,10 +14,11 @@ interface TreeRailProps {
   onSelectSpan: (spanId: string) => void;
   onToggleExpand: (spanId: string) => void;
   primaryAncestorPath: ReadonlySet<string>;
-  revealKey: number;
   revealPath: ReadonlySet<string>;
   selectedSpanId: string | null;
-  setExpandedSpanIds: Dispatch<SetStateAction<Set<string>>>;
+  expandAll: () => void;
+  collapseAll: () => void;
+  setExact: (expanded: ReadonlySet<string>) => void;
   spanIndex: ReadonlyMap<string, Span>;
   spanTree: SpanTreeNode[];
   spans: Span[];
@@ -43,10 +38,11 @@ export function TreeRail({
   onSelectSpan,
   onToggleExpand,
   primaryAncestorPath,
-  revealKey,
   revealPath,
   selectedSpanId,
-  setExpandedSpanIds,
+  expandAll,
+  collapseAll,
+  setExact,
   spanIndex,
   spanTree,
   spans,
@@ -69,7 +65,9 @@ export function TreeRail({
     expandableSpanIds,
     expandedSpanIds,
     inlineErrorPreviews,
-    setExpandedSpanIds,
+    expandAll,
+    collapseAll,
+    setExact,
     spanIndex,
     spanTree,
     spans,
@@ -128,7 +126,6 @@ export function TreeRail({
 
     scrollToIndex(selectedIndex);
   }, [
-    revealKey,
     revealPath,
     scrollToIndex,
     selectedSpanId,
@@ -260,7 +257,6 @@ export function TreeRail({
             failedSpanIds={failedSpanIds}
             primaryAncestorPath={primaryAncestorPath}
             revealPath={revealPath}
-            revealKey={revealKey}
             inlineErrorPreviews={inlineErrorPreviews}
             showMetrics={showMetrics}
             matchedSpanIds={matchedSpanIds}
