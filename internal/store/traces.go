@@ -80,9 +80,12 @@ func (t *Tx) UpdateEngineTraceSummary(ctx context.Context, params *platform.Upda
 	return t.q.UpdateEngineTraceSummary(ctx, *params)
 }
 
-// GetTrace retrieves a trace by its internal UUID.
-func (s *Store) GetTrace(ctx context.Context, id uuid.UUID) (TraceRead, error) {
-	trace, err := s.q.GetTrace(ctx, id)
+// GetTrace retrieves a trace by its internal UUID within the supplied scope.
+func (s *Store) GetTrace(ctx context.Context, scope Scope, id uuid.UUID) (TraceRead, error) {
+	trace, err := s.q.GetTrace(ctx, platform.GetTraceParams{
+		ID:              id,
+		ProjectFilterID: scope.nullableProjectFilter(),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return TraceRead{}, ErrNotFound
 	}

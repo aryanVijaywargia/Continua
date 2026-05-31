@@ -2,7 +2,8 @@
 SELECT sqlc.embed(t), s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
-WHERE t.id = $1;
+WHERE t.id = sqlc.arg(id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_filter_id)::uuid);
 
 -- name: GetTraceVersion :one
 -- Get trace version for optimistic concurrency checks (e.g., rollup re-enqueue).

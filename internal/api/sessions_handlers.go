@@ -15,7 +15,7 @@ const sessionNarrativeTraceLimit int32 = 100
 
 // ListSessions returns a paginated list of sessions.
 func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	projectID, ok := boundProjectIDFromRequest(w, r)
 	if !ok {
 		return
 	}
@@ -64,12 +64,12 @@ func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params Lis
 
 // GetSession returns a session by ID.
 func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetSessionParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 
-	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), id)
+	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), scope, id)
 	if store.IsNotFound(err) {
 		writeError(w, http.StatusNotFound, "not_found", "Session not found")
 		return
@@ -79,33 +79,24 @@ func (s *Server) GetSession(w http.ResponseWriter, r *http.Request, id openapi_t
 		return
 	}
 
-	if !projectMatchesSelection(selectedProjectID, sessionWithCount.ProjectID) {
-		writeError(w, http.StatusNotFound, "not_found", "Session not found")
-		return
-	}
-
 	resp := sessionWithCountToAPI(&sessionWithCount.Session, sessionWithCount.TraceCount)
 	writeJSON(w, http.StatusOK, resp)
 }
 
 // GetSessionNarrative returns a session narrative by ID.
 func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetSessionNarrativeParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 
-	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), id)
+	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), scope, id)
 	if store.IsNotFound(err) {
 		writeError(w, http.StatusNotFound, "not_found", "Session not found")
 		return
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session narrative")
-		return
-	}
-	if !projectMatchesSelection(selectedProjectID, sessionWithCount.ProjectID) {
-		writeError(w, http.StatusNotFound, "not_found", "Session not found")
 		return
 	}
 
@@ -129,22 +120,18 @@ func (s *Server) GetSessionNarrative(w http.ResponseWriter, r *http.Request, id 
 
 // GetSessionCompare returns a deterministic comparison for two traces in a session.
 func (s *Server) GetSessionCompare(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetSessionCompareParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 
-	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), id)
+	sessionWithCount, err := s.store.GetSessionWithTraceCount(r.Context(), scope, id)
 	if store.IsNotFound(err) {
 		writeError(w, http.StatusNotFound, "not_found", "Session or trace not found")
 		return
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get session comparison")
-		return
-	}
-	if !projectMatchesSelection(selectedProjectID, sessionWithCount.ProjectID) {
-		writeError(w, http.StatusNotFound, "not_found", "Session or trace not found")
 		return
 	}
 

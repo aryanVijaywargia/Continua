@@ -30,7 +30,8 @@ ORDER BY COALESCE(event_ts, server_ingested_at) ASC, sequence NULLS LAST;
 
 -- name: ListSpanEventsByTrace :many
 SELECT * FROM span_events
-WHERE trace_id = $1
+WHERE trace_id = sqlc.arg(trace_id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(event_ts, server_ingested_at) ASC, sequence NULLS LAST;
 
 -- name: CountOrphanEvents :one

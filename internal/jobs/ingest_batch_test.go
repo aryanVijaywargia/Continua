@@ -341,7 +341,10 @@ func TestLegacyDefaultQueueRollupJobExecutesDuringTransition(t *testing.T) {
 	assert.Equal(t, river.QueueDefault, insertRes.Job.Queue)
 
 	require.Eventually(t, func() bool {
-		updatedTrace, getErr := q.GetTrace(ctx, trace.ID)
+		updatedTrace, getErr := q.GetTrace(ctx, platform.GetTraceParams{
+			ID:              trace.ID,
+			ProjectFilterID: testutil.PgtypeUUID(projectID),
+		})
 		if getErr != nil || updatedTrace.Trace.TotalSpans == nil {
 			return false
 		}

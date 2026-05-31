@@ -19,6 +19,13 @@ FROM engine.instances
 WHERE project_id = $1
   AND instance_key = $2;
 
+-- name: ListInstancesByKey :many
+SELECT *
+FROM engine.instances
+WHERE instance_key = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 2;
+
 -- name: ListInstancesByProject :many
 SELECT *
 FROM engine.instances

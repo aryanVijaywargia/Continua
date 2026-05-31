@@ -252,7 +252,7 @@ func TestStartEngineRun_CreatesProjectedShellAndReplaysDedupe(t *testing.T) {
 	assert.Equal(t, "after", metadata["replace"])
 	assert.Equal(t, "value", metadata["new"])
 
-	spans, err := platformStore.ListSpansByTrace(ctx, trace.ID)
+	spans, err := platformStore.ListSpansByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, spans, 1)
 	assert.Equal(t, "engine:root:"+first.RunId.String(), spans[0].SpanID)
@@ -427,6 +427,37 @@ func TestStartEngineRun_ProjectScopedDedupeDoesNotLeakAcrossProjects(t *testing.
 	})
 	require.NoError(t, err)
 	assert.NotEqual(t, instanceA.ID, instanceB.ID)
+}
+
+func TestGetEngineInstance_OperatorProjectIDSelectsAmbiguousKey(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectAID := setupEngineHandlerTest(t)
+	projectBID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	req := EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "shared-operator-instance",
+		RequestKey:        "shared-operator-request",
+	}
+
+	_ = decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectAID, req))
+	startB := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectBID, req))
+
+	ambiguousRec := invokeGetEngineInstanceAsOperator(t, server, req.InstanceKey, nil)
+	require.Equal(t, http.StatusBadRequest, ambiguousRec.Code)
+	assert.Equal(t, "ambiguous_instance_key", decodeJSONBody[Error](t, ambiguousRec).Code)
+
+	selectedRec := invokeGetEngineInstanceAsOperator(t, server, req.InstanceKey, &projectBID)
+	require.Equal(t, http.StatusOK, selectedRec.Code)
+	selectedResp := decodeJSONBody[EngineInstanceResponse](t, selectedRec)
+	assert.Equal(t, startB.RunId, selectedResp.CurrentRun.RunId)
+
+	_, err := engineQueries.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
+		ProjectID:   projectBID,
+		InstanceKey: req.InstanceKey,
+	})
+	require.NoError(t, err)
 }
 
 func TestEngineHandlers_ReadSignalCancelAndTraceSurfaces(t *testing.T) {
@@ -1790,12 +1821,12 @@ func TestPurgeEngineRun_ProjectionOnlyThenFullPreservesShell(t *testing.T) {
 	assert.False(t, idempotentProjectionOnly.Deleted)
 	assert.Equal(t, SummaryOnly, idempotentProjectionOnly.ProjectionState)
 
-	remainingSpans, err := platformStore.ListSpansByTrace(ctx, trace.ID)
+	remainingSpans, err := platformStore.ListSpansByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, remainingSpans, 1)
 	assert.Equal(t, "engine:root:"+start.RunId.String(), remainingSpans[0].SpanID)
 
-	events, err := platformStore.ListSpanEventsByTrace(ctx, trace.ID)
+	events, err := platformStore.ListSpanEventsByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	assert.Empty(t, events)
 
@@ -2561,11 +2592,11 @@ func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
 	markEngineRunCompleted(t, ctx, platformStore, start.RunId, trace.ID)
 	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", activityHistory.ID, historyBefore[0].ID)
 
-	spansBefore, err := platformStore.ListSpansByTrace(ctx, trace.ID)
+	spansBefore, err := platformStore.ListSpansByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, spansBefore, 1)
 
-	eventsBefore, err := platformStore.ListSpanEventsByTrace(ctx, trace.ID)
+	eventsBefore, err := platformStore.ListSpanEventsByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	assert.Empty(t, eventsBefore)
 
@@ -2579,7 +2610,7 @@ func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
 
 	waitForProjectedTraceCaughtUp(t, ctx, platformStore.Pool(), trace.ID, activityHistory.ID)
 
-	spansAfter, err := platformStore.ListSpansByTrace(ctx, trace.ID)
+	spansAfter, err := platformStore.ListSpansByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, spansAfter, 2)
 
@@ -2591,7 +2622,7 @@ func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
 	}
 	assert.Equal(t, 1, activitySpanCount)
 
-	eventsAfter, err := platformStore.ListSpanEventsByTrace(ctx, trace.ID)
+	eventsAfter, err := platformStore.ListSpanEventsByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, eventsAfter, 2)
 	assert.Equal(t, "effect", eventsAfter[0].EventType)
@@ -3164,6 +3195,28 @@ func invokeGetEngineInstance(t *testing.T, server *Server, projectID uuid.UUID, 
 	rec := httptest.NewRecorder()
 
 	server.GetEngineInstance(rec, req, instanceKey)
+	return rec
+}
+
+func invokeGetEngineInstanceAsOperator(
+	t *testing.T,
+	server *Server,
+	instanceKey string,
+	projectID *uuid.UUID,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	target := "/v1/engine/instances/" + instanceKey
+	if projectID != nil {
+		target += "?project_id=" + projectID.String()
+	}
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	rec := httptest.NewRecorder()
+
+	server.GetEngineInstance(rec, req.WithContext(reqCtx), instanceKey)
 	return rec
 }
 
