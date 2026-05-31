@@ -18,7 +18,7 @@ erDiagram
   projects {
     uuid id PK
     string name
-    string api_key
+    string api_key_hash
     timestamptz created_at
   }
   ingest_batches {
@@ -41,8 +41,8 @@ erDiagram
     uuid session_id FK
     string trace_id
     string status
-    timestamptz started_at
-    timestamptz ended_at
+    timestamptz start_time
+    timestamptz end_time
   }
   spans {
     uuid id PK
@@ -154,8 +154,8 @@ Other notes:
 
 ## Payload notes
 
-- There is no standalone runtime `payloads` table for trace/span request and response
-  bodies
+- The legacy `payloads` table still exists in the schema but is dormant — the current
+  runtime does not store trace/span request and response bodies in it
 - Trace payloads live on `traces`
 - Span payloads live on `spans`
 - Accepted async payload blobs live temporarily in `ingest_batch_payloads`
