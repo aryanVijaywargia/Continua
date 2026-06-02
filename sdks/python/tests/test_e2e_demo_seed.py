@@ -103,6 +103,30 @@ def test_resolve_api_key_rejects_wrong_demo_project(monkeypatch):
         demo.resolve_api_key()
 
 
+def test_openai_agent_mode_requires_openai_key():
+    demo = load_e2e_demo_module()
+
+    demo.AGENT_MODE = "openai"
+    demo.OPENAI_API_KEY = ""
+
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        demo.require_real_agent_backend()
+
+
+def test_offline_agent_mode_is_explicit_fallback():
+    demo = load_e2e_demo_module()
+
+    demo.AGENT_MODE = "offline"
+    result = demo.call_agent_model(
+        purpose="unit_test",
+        messages=[{"role": "user", "content": "hello"}],
+    )
+
+    assert result.provider == "offline"
+    assert result.model == "offline-demo-model"
+    assert "unit_test" in result.content
+
+
 def test_main_exits_nonzero_when_verification_fails(monkeypatch):
     demo = load_e2e_demo_module()
 
