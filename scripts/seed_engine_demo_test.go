@@ -15,23 +15,24 @@ import (
 	"github.com/continua-ai/continua/internal/testutil"
 )
 
-func TestSeedDemoIncludesEngineFixtures(t *testing.T) {
+func TestSeedDemoRequiresRealAgentRuns(t *testing.T) {
 	repoRoot := repoRoot(t)
 
 	seedScript := readFile(t, filepath.Join(repoRoot, "scripts", "seed-demo.sh"))
 	assertContains(t, seedScript, "scripts/seed-engine-demo.sql")
+	assertContains(t, seedScript, "OPENAI_API_KEY must be set")
+	assertContains(t, seedScript, "CONTINUA_DEMO_AGENT_MODE=openai")
+	assertNotContains(t, seedScript, "CONTINUA_DEMO_SEED_ENGINE_RUNS=1")
 
 	fixtureSQL := readFile(t, filepath.Join(repoRoot, "scripts", "seed-engine-demo.sql"))
 	for _, expected := range []string{
-		"engine:20000000-0000-4000-8000-000000000001",
-		"engine:20000000-0000-4000-8000-000000000002",
-		"engine:20000000-0000-4000-8000-000000000003",
-		"'summary_only'",
-		"demo-checkout-approval:approval-timeout",
-		"approval_received",
+		"catalog-only definitions",
+		"DELETE FROM engine.runs",
+		"DELETE FROM engine.instances",
 	} {
 		assertContains(t, fixtureSQL, expected)
 	}
+	assertNotContains(t, fixtureSQL, "INSERT INTO engine.definition_catalog")
 }
 
 func TestSeedDemoScriptSyntax(t *testing.T) {
@@ -43,7 +44,7 @@ func TestSeedDemoScriptSyntax(t *testing.T) {
 	}
 }
 
-func TestSeedEngineDemoSQLCreatesUsableEngineFixtures(t *testing.T) {
+func TestSeedEngineDemoSQLCleansStaleEngineRowsWithoutRegisteringDefinitions(t *testing.T) {
 	if _, err := exec.LookPath("psql"); err != nil {
 		t.Skipf("psql is required for seed fixture smoke test: %v", err)
 	}
@@ -69,6 +70,38 @@ func TestSeedEngineDemoSQLCreatesUsableEngineFixtures(t *testing.T) {
 		VALUES ($1, 'sdk-demo-trace', 'sdk demo trace', 'ok')
 	`, projectID)
 	require.NoError(t, err)
+	instanceID := uuid.New()
+	runID := uuid.New()
+	_, err = pool.Exec(ctx, `
+		INSERT INTO engine.instances (id, project_id, instance_key, definition_name, status)
+		VALUES ($1, $2, 'stale-demo-instance', 'agent.research', 'active')
+	`, instanceID, projectID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `
+		INSERT INTO engine.runs (
+			id,
+			project_id,
+			instance_id,
+			run_number,
+			definition_version,
+			status,
+			ready_at,
+			root_run_id,
+			child_depth
+		)
+		VALUES ($1, $2, $3, 1, 'v1', 'queued', NOW(), $1, 0)
+	`, runID, projectID, instanceID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `
+		INSERT INTO engine.history (project_id, instance_id, run_id, sequence_no, event_type)
+		VALUES ($1, $2, $3, 1, 'workflow.started')
+	`, projectID, instanceID, runID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `
+		INSERT INTO traces (project_id, trace_id, name, status, engine_run_id)
+		VALUES ($1, 'engine:' || $2::text, 'stale engine trace', 'running', $2::uuid)
+	`, projectID, runID)
+	require.NoError(t, err)
 
 	cmd := exec.Command(
 		"psql",
@@ -83,42 +116,15 @@ func TestSeedEngineDemoSQLCreatesUsableEngineFixtures(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, string(output))
 
-	var engineTraceCount int
+	var engineRowCount int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM traces
-		WHERE project_id = $1
-		  AND engine_run_id IS NOT NULL
-	`, projectID).Scan(&engineTraceCount))
-	assert.Equal(t, 3, engineTraceCount)
-
-	var canonicalTraceIDCount int
-	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM traces
-		WHERE project_id = $1
-		  AND engine_run_id IS NOT NULL
-		  AND trace_id = 'engine:' || engine_run_id::text
-	`, projectID).Scan(&canonicalTraceIDCount))
-	assert.Equal(t, 3, canonicalTraceIDCount)
-
-	var repairCandidateCount int
-	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM traces AS t
-		INNER JOIN engine.runs AS r
-		    ON r.project_id = t.project_id
-		   AND r.id = t.engine_run_id
-		INNER JOIN LATERAL (
-		    SELECT COALESCE(MAX(h.id), 0)::bigint AS latest_retained_history_id
-		    FROM engine.history AS h
-		    WHERE h.run_id = r.id
-		) AS hist ON true
-		WHERE t.project_id = $1
-		  AND t.engine_projection_state = 'summary_only'
-		  AND hist.latest_retained_history_id > COALESCE(t.engine_last_projected_history_id, 0)
-	`, projectID).Scan(&repairCandidateCount))
-	assert.Equal(t, 1, repairCandidateCount)
+		SELECT
+			(SELECT COUNT(*) FROM traces WHERE project_id = $1 AND engine_run_id IS NOT NULL)
+			+ (SELECT COUNT(*) FROM engine.history WHERE project_id = $1)
+			+ (SELECT COUNT(*) FROM engine.runs WHERE project_id = $1)
+			+ (SELECT COUNT(*) FROM engine.instances WHERE project_id = $1)
+	`, projectID).Scan(&engineRowCount))
+	assert.Equal(t, 0, engineRowCount)
 
 	var nonEngineTraceCount int
 	require.NoError(t, pool.QueryRow(ctx, `
@@ -129,6 +135,15 @@ func TestSeedEngineDemoSQLCreatesUsableEngineFixtures(t *testing.T) {
 		  AND engine_run_id IS NULL
 	`, projectID).Scan(&nonEngineTraceCount))
 	assert.Equal(t, 1, nonEngineTraceCount)
+
+	var definitionCount int
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM engine.definition_catalog
+		WHERE definition_version = 'v1'
+		  AND definition_name = ANY($1::text[])
+	`, []string{"agent.research", "agent.code_review", "agent.incident_response"}).Scan(&definitionCount))
+	assert.Equal(t, 0, definitionCount)
 }
 
 func repoRoot(t *testing.T) string {
@@ -156,5 +171,13 @@ func assertContains(t *testing.T, haystack, needle string) {
 
 	if !strings.Contains(haystack, needle) {
 		t.Fatalf("expected file contents to include %q", needle)
+	}
+}
+
+func assertNotContains(t *testing.T, haystack, needle string) {
+	t.Helper()
+
+	if strings.Contains(haystack, needle) {
+		t.Fatalf("expected file contents not to include %q", needle)
 	}
 }

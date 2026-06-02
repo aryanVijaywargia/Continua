@@ -12,6 +12,12 @@ if [[ -z "${DATABASE_URL:-}" ]]; then
   exit 1
 fi
 
+if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+  echo "OPENAI_API_KEY must be set before running the public demo seed." >&2
+  echo "The demo seed records real provider-backed agent runs and refuses synthetic data." >&2
+  exit 1
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_URL="${CONTINUA_API_URL:-${CONTINUA_ENDPOINT:-http://localhost:8080}}"
 DEMO_PROJECT_ID="${CONTINUA_DEMO_PROJECT_ID:-${PUBLIC_DEMO_PROJECT_ID:-11111111-1111-4111-8111-111111111111}}"
@@ -48,13 +54,13 @@ VALUES (
 );
 SQL
 
-echo "==> Seeding deterministic engine demo fixtures"
+echo "==> Cleaning stale engine demo rows"
 psql "${DATABASE_URL}" \
   -v ON_ERROR_STOP=1 \
   -v demo_project_id="${DEMO_PROJECT_ID}" \
   -f "${ROOT_DIR}/scripts/seed-engine-demo.sql"
 
-echo "==> Seeding demo traces through the ingest API at ${API_URL}"
+echo "==> Running real OpenAI-backed demo agents through the ingest API at ${API_URL}"
 (
   cd "${ROOT_DIR}/sdks/python"
   CONTINUA_DEMO_PROJECT_ID="${DEMO_PROJECT_ID}" \
@@ -62,6 +68,7 @@ echo "==> Seeding demo traces through the ingest API at ${API_URL}"
   CONTINUA_API_KEY="${DEMO_API_KEY}" \
   CONTINUA_PRINT_API_KEY=0 \
   CONTINUA_DEMO_RUN_ID="${DEMO_RUN_ID}" \
+  CONTINUA_DEMO_AGENT_MODE=openai \
   uv run python examples/e2e_demo.py
 )
 
