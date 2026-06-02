@@ -87,7 +87,7 @@ describe('LandingPage', () => {
     for (const link of screen.getAllByRole('link', { name: 'Open Console' })) {
       expect(link).toHaveAttribute('href', '/dashboard');
     }
-    expect(screen.getByRole('link', { name: /View on GitHub/i })).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /Star on GitHub/i })[0]).toHaveAttribute(
       'href',
       GITHUB_REPO_URL
     );
