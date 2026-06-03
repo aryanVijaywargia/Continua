@@ -158,8 +158,7 @@ export function LandingPage() {
         <AnatomySection />
         <StackDiagram />
         <SdkSection isConsoleAvailable={isConsoleAvailable} />
-        <OpenSourceSection />
-        <CtaSection
+        <OpenSourceSection
           consoleLabel={consoleLabel}
           isConsoleAvailable={isConsoleAvailable}
           isPublicDemo={isPublicDemo}
@@ -684,7 +683,7 @@ function StatsStrip() {
     { value: 'REST', label: 'Ingest API', hint: 'Authenticated trace, session, span, and event writes', pct: 88 },
     { value: 'SQLC', label: 'Postgres store', hint: 'Typed queries backed by platform migrations', pct: 99 },
     { value: 'River', label: 'Async jobs', hint: 'Background ingest, rollups, and payload cleanup', pct: 72 },
-    { value: 'Preview', label: 'Engine surface', hint: 'Control APIs and contracts for durable execution work', pct: 56, zero: true },
+    { value: 'Preview', label: 'Durable engine', hint: 'Runs Go workflows end-to-end: activities, timers, signals, replay', pct: 56, zero: true },
   ];
 
   return (
@@ -935,7 +934,7 @@ function StackDiagram() {
               <Connector label="POST /v1/ingest · HTTPS" />
               <Layer label="Continua service · Go" sub="auth · ingest · mappers" tone="primary" split={[['Postgres', 'sqlc + migrations'], ['River', 'async workers']]} />
               <Connector label="engine preview surface" />
-              <Layer label="Durable engine · planned runtime" sub="control APIs · pending work · history" tone="muted" />
+              <Layer label="Durable engine · preview runtime" sub="workflows · activities · timers · signals" tone="muted" />
               <Connector label="GET /api/*" />
               <Layer label="Operator console · React" sub="traces · sessions · settings" tone="accent" />
             </div>
@@ -1030,50 +1029,7 @@ function SdkSection({ isConsoleAvailable }: { isConsoleAvailable: boolean }) {
   );
 }
 
-function OpenSourceSection() {
-  return (
-    <section id="open-source" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-7xl px-6 py-24">
-        <div className="grid gap-12 md:grid-cols-[1fr_360px]">
-          <div>
-            <SpanEyebrow idx={6} kind="SECTION" name="open_source" status="ok" />
-            <h2 className="landing-display mt-4 text-[32px] font-semibold tracking-[-0.025em] text-[var(--c-text-primary)] sm:text-[44px]">
-              Built in public.
-              <br />
-              <span className="text-[var(--c-text-muted)]">Run it on your laptop.</span>
-            </h2>
-            <p className="mt-4 max-w-lg text-[14px] leading-6 text-[var(--c-text-secondary)]">
-              Continua is MIT licensed. The Go service, React console, Python SDK, migrations,
-              and engine preview contracts are open. Self-host with one command, and keep traces
-              inside your network.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <ExternalLink
-                href={GITHUB_REPO_URL}
-                className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md px-3.5 text-[13px] font-semibold"
-                style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
-              >
-                <Github size={14} />
-                View on GitHub
-              </ExternalLink>
-              <ExternalLink
-                href={RUN_LOCALLY_DOCS_URL}
-                className="inline-flex h-9 items-center gap-2 rounded-md border bg-[var(--c-surface)] px-3.5 text-[13px] font-medium text-[var(--c-text-primary)]"
-                style={{ borderColor: 'var(--c-border)' }}
-              >
-                <Terminal size={13} />
-                Run locally
-              </ExternalLink>
-            </div>
-          </div>
-          <RepoCard />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CtaSection({
+function OpenSourceSection({
   consoleLabel,
   isConsoleAvailable,
   isPublicDemo,
@@ -1083,36 +1039,70 @@ function CtaSection({
   isPublicDemo: boolean;
 }) {
   return (
-    <section className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-7xl px-6 py-24">
-        <div className="relative overflow-hidden rounded-xl px-6 py-14 text-center sm:px-10 sm:py-20" style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}>
-          <div className="landing-cta-grid absolute inset-0 opacity-30" />
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 rounded-[4px] border border-white/20 bg-white/5 px-2 py-1 font-mono text-[10px] text-white/70">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#10b981]" />
+    <section
+      id="open-source"
+      className="relative overflow-hidden border-t px-4 py-14 sm:px-6 sm:py-20"
+      style={{ borderColor: 'var(--c-border)' }}
+    >
+      <div
+        className="landing-hero-grid absolute inset-0 -z-10 opacity-70"
+        style={{ maskImage: 'linear-gradient(to bottom, transparent 0%, black 20%, black 85%, transparent 100%)' }}
+      />
+      <div className="mx-auto max-w-[1360px]">
+        <div
+          className="grid min-h-[820px] items-center gap-12 overflow-hidden rounded-[2px] border px-6 py-12 shadow-[0_18px_44px_-32px_rgba(15,23,42,0.48)] sm:px-10 lg:grid-cols-[minmax(0,1fr)_404px] lg:px-16 xl:px-20"
+          style={{
+            background: 'var(--c-app-bg)',
+            borderColor: 'var(--c-border)',
+            color: 'var(--c-text-primary)',
+          }}
+        >
+          <div className="max-w-[660px] lg:pl-0">
+            <div
+              className="inline-flex items-center gap-2 rounded-md border bg-[var(--c-surface)] px-2.5 py-1 font-mono text-[11px] text-[var(--c-text-muted)]"
+              style={{ borderColor: 'var(--c-border)' }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)] shadow-[0_0_0_3px_var(--c-green-faint)]" />
               {isPublicDemo ? 'demo_ready' : 'ready_to_trace'}
             </div>
-            <h2 className="landing-display mx-auto mt-5 max-w-3xl text-[40px] font-semibold tracking-[-0.025em] sm:text-[56px]">
+            <h2 className="landing-display mt-7 text-[44px] font-bold tracking-[-0.03em] text-[var(--c-text-primary)] sm:text-[54px]">
               Trace your first agent
               <br />
-              in <span className="text-[#79b4f5]">under sixty seconds</span>.
+              in <span className="text-[var(--c-accent)]">under sixty seconds</span>.
             </h2>
-            <div className="mt-7 flex flex-wrap justify-center gap-2">
+            <p className="mt-6 max-w-[480px] text-[15px] leading-7 text-[var(--c-text-secondary)]">
+              Self-host the whole stack with one command. Postgres ships with the binary — no
+              accounts, no cloud, no telemetry phoning home.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-2.5">
               {isConsoleAvailable ? (
-                <Link to="/dashboard" className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-[14px] font-semibold" style={{ background: 'var(--c-app-bg)', color: 'var(--c-text-primary)' }}>
+                <Link
+                  to="/dashboard"
+                  className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-[14px] font-semibold transition hover:opacity-90"
+                  style={{ background: 'var(--c-accent)', color: 'var(--c-text-inverse)' }}
+                >
                   {consoleLabel} <ArrowRight size={14} />
                 </Link>
               ) : (
-                <ExternalLink href={RUN_LOCALLY_DOCS_URL} className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-[14px] font-semibold" style={{ background: 'var(--c-app-bg)', color: 'var(--c-text-primary)' }}>
+                <ExternalLink
+                  href={RUN_LOCALLY_DOCS_URL}
+                  className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-[14px] font-semibold transition hover:opacity-90"
+                  style={{ background: 'var(--c-accent)', color: 'var(--c-text-inverse)' }}
+                >
                   {consoleLabel} <ArrowRight size={14} />
                 </ExternalLink>
               )}
-              <ExternalLink href={GITHUB_REPO_URL} className="inline-flex h-10 items-center gap-2 rounded-md border border-white/20 bg-white/5 px-4 text-[14px] font-medium text-white/90">
+              <ExternalLink
+                href={GITHUB_REPO_URL}
+                className="inline-flex h-10 items-center gap-2 rounded-md border bg-[var(--c-surface)] px-4 text-[14px] font-medium text-[var(--c-text-primary)] transition hover:bg-[var(--c-surface-muted)]"
+                style={{ borderColor: 'var(--c-border)' }}
+              >
                 <Github size={14} />
                 Star on GitHub
               </ExternalLink>
             </div>
           </div>
+          <RepoCard />
         </div>
       </div>
     </section>
@@ -1588,7 +1578,7 @@ function RepoCard() {
 
   return (
     <Reveal>
-      <div className="rounded-xl border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="flex min-h-[704px] flex-col rounded-xl border bg-[var(--c-surface)] shadow-[0_24px_56px_-36px_rgba(15,23,42,0.5)]" style={{ borderColor: 'var(--c-border)' }}>
         <div
           className="flex items-center justify-between gap-2 border-b px-4 py-3"
           style={{ borderColor: 'var(--c-border)' }}
@@ -1624,7 +1614,7 @@ function RepoCard() {
             {[
               ['Observability', 'REST ingest, Postgres persistence, async River jobs, trace/session read APIs'],
               ['Debugger console', 'Embedded React operator workspace for traces, sessions, payloads, and comparisons'],
-              ['Durable engine', 'Preview control surface and contracts; workflow runtime is still on the roadmap'],
+              ['Durable engine', 'Preview runtime that executes Go workflows end-to-end: activities, timers, signals, replay'],
             ].map(([label, value]) => (
               <div key={label} className="rounded-md border bg-[var(--c-app-bg)] px-3 py-2" style={{ borderColor: 'var(--c-border)' }}>
                 <div className="font-mono text-[10.5px] font-semibold text-[var(--c-text-primary)]">{label}</div>
@@ -1633,7 +1623,7 @@ function RepoCard() {
             ))}
           </div>
         </div>
-        <div className="px-4 py-3">
+        <div className="flex-1 px-4 py-3">
           <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Repository facts</div>
           <div className="mt-2.5 space-y-1.5">
             {[
