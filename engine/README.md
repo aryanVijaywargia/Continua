@@ -2,24 +2,27 @@
 
 The durable execution engine for AI agent workflows.
 
-**Status:** Schema/store foundation implemented. Runtime workflow execution is still future work.
+**Status:** Durable runtime implemented (preview). Executes Go-defined workflows end-to-end — activities, timers, signals, child workflows, cancellation, continue-as-new — with event-sourced history and crash-recovery replay across restarts. The public REST control plane is preview-gated and workflow authoring is Go-only.
 
-## Foundation Scope
+## Scope
 
-The engine module now ships the Phase 10.1 foundation:
+The engine module ships a working durable runtime:
 
 - a dedicated Postgres `engine` schema with reversible migrations
 - sqlc-backed query generation under `engine/db/gen/go/`
 - an engine-local store with its own pgx connection pool and transaction support
-- a `continua-engine` CLI with `version`, `migrate up`, and `migrate down <steps>`
+- a workflow worker that claims runs, replays event-sourced history, and drives them to a terminal result
+- an activity worker that claims tasks, runs handlers, and records completions/failures with retry backoff
+- durable primitives: activities, timers, signals, child workflows, cancellation, and continue-as-new
+- crash-recovery: runs and activities resume across process restarts via leases + history replay (see the restart suite in `cmd/continua-engine/runtime_e2e_test.go`)
+- projection of run state into `public.traces` for the debugger's engine-runs console
+- a `continua-engine` CLI with `version`, `migrate`, `serve`, `start`, `signal`, `cancel`, and `inspect`
 
-What this does **not** include yet:
+What is still **preview / not yet there**:
 
-- workflow execution
-- history replay
-- activity workers
-- public execution APIs
-- debugger UI for engine state
+- workflow authoring is Go-only — no TypeScript/Python authoring SDK
+- no production path to register arbitrary user workflow definitions (the dark-launch runtime runs a fixed demo project)
+- the public `/v1/engine/*` REST control plane is gated behind `X-Continua-Engine-Preview` + `ENGINE_PUBLIC_API_ENABLED`
 
 ## Storage Model
 
@@ -56,6 +59,13 @@ The engine CLI is built as `bin/continua-engine`.
 bin/continua-engine version
 bin/continua-engine migrate up
 bin/continua-engine migrate down 1
+
+# durable runtime (dark-launch demo project)
+bin/continua-engine serve                                   # run workflow + activity + maintenance + projector workers
+bin/continua-engine start  --instance-key <k> --definition <name> --version <v> --request-key <r> [--input <json>]
+bin/continua-engine signal --instance-key <k> --signal-name <s> [--payload <json>]
+bin/continua-engine cancel --instance-key <k>
+bin/continua-engine inspect --instance-key <k>              # dump instance state + history as JSON
 ```
 
 Database config is env-only:

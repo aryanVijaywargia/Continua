@@ -1,13 +1,15 @@
 ---
 title: "Engine foundation"
-description: "The durable engine schema, store, and control surface: what's real today and where it stops."
+description: "The durable engine: schema, store, control surface, and the workflow runtime that executes Go-defined workflows end-to-end (preview)."
 ---
 
-Continua ships a durable engine **foundation** today. The schema, store, control
-endpoints, and runs console UI are real. The execution runtime that takes a workflow
-definition and runs it to completion is not.
+Continua ships a working durable engine in **preview**. The `continua-engine` worker
+runtime executes Go-defined workflows end-to-end: it claims runs, schedules activities,
+fires timers, delivers signals, spawns child workflows, and replays event-sourced history
+to drive each run to a terminal result, recovering across process restarts. The schema,
+store, control endpoints, and runs console UI around it are real too.
 
-This page draws the line.
+This page draws the line between what runs today and what's still preview-limited.
 
 <Warning>
   The engine is preview. Endpoints require `X-Continua-Engine-Preview` and
@@ -56,34 +58,52 @@ live in a separate Postgres via `ENGINE_DATABASE_URL`.
 | `POST /v1/engine/activities/claim` / `{id}/heartbeat` / `complete` / `fail` | Worker protocol |
 | `POST /v1/engine/projections/backfill` | Rebuild projection checkpoints |
 
+### Runtime (real)
+
+`continua-engine serve` runs four workers in-process: a **workflow worker** (claims runs,
+replays history, drives them forward), an **activity worker** (claims tasks, runs
+handlers, records completions/failures with retry backoff), a **maintenance worker**
+(timers, lease expiry, dedupe TTLs), and a **projector** (mirrors run state into
+`public.traces`). Durable primitives: activities, timers, signals, child workflows,
+cancellation, and continue-as-new, all crash-recoverable across restarts via leases and
+history replay. The end-to-end behaviour is covered by the runtime suite in
+[`engine/cmd/continua-engine/`](https://github.com/aryanVijaywargia/Continua/tree/main/engine/cmd/continua-engine),
+including timer/signal persistence and mid-activity restart recovery.
+
 ### CLI (real)
 
-A separate binary `continua-engine` with `version` and `migrate up` / `migrate down`
-commands. Migrations are independent from platform migrations.
+A separate binary `continua-engine` with `version`, `migrate up` / `migrate down`, and the
+runtime commands `serve`, `start`, `signal`, `cancel`, and `inspect`. Migrations are
+independent from platform migrations.
 
 ### Runs console UI (real)
 
 See [Engine runs](/debugger/engine-runs). Lists runs, shows pending work, and exposes
 the control bar. Polling-based.
 
-## What is **not** implemented
+## What's still limited in preview
 
-- **Workflow definition execution.** There is no runtime that takes a workflow function,
-  hands activity tasks to workers, processes their results, drives the workflow forward,
-  and produces a terminal result. The state machine accepts the right inputs but the
-  end-to-end loop is incomplete.
-- **Workflow SDK.** The Python SDK exports `ActivityWorker`, `@activity`, and
-  `EngineControlClient`. They call the right endpoints, but without a working execution
-  layer they don't form a usable workflow runtime today.
-- **Run history replay.** History is written; replay-from-history is not wired.
+- **Go-only authoring.** Workflows and activities are written as Go functions registered
+  with the runtime. There is no TypeScript/Python SDK for *authoring* workflows yet (the
+  Python SDK's `ActivityWorker` / `@activity` / `EngineControlClient` target this surface
+  but aren't a full authoring runtime).
+- **No production definition loading.** The runtime today registers definitions through a
+  built-in "dark-launch" harness against a fixed demo project. There's no supported path
+  yet to register and version arbitrary user workflow definitions in a multi-tenant
+  deployment.
+- **Preview-gated REST control plane.** The `/v1/engine/*` endpoints require
+  `X-Continua-Engine-Preview` + `ENGINE_PUBLIC_API_ENABLED`, and shapes may change
+  before GA.
 
-## When to use the engine surface today
+## When to use the engine today
 
-- **Operator tooling.** The control endpoints + console are useful for instrumenting an
-  external engine that posts run state into Continua.
-- **Schema-level prototyping.** If you want to model a durable workflow without
-  committing to an execution runtime, you can use the schema as a write target.
+- **Durable Go workflows (preview).** If you can define your workflow and activities in
+  Go, the runtime will execute them end-to-end with retries, timers, signals, child
+  workflows, and crash-recovery. Run it with `continua-engine serve`. Don't put it on a
+  production-critical path yet, it's preview.
+- **Operator tooling & inspection.** The control endpoints + runs console are useful for
+  driving and observing run state, pending work, and history.
 
-For actual durable workflow execution, wait for the execution layer to land. Track
+For multi-tenant definition loading, non-Go authoring, and a GA REST control plane, track
 progress on [GitHub](https://github.com/aryanVijaywargia/Continua) or watch the
-[Roadmap](/roadmap) for status changes.
+[Roadmap](/roadmap).

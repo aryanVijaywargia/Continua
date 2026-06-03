@@ -42,8 +42,9 @@ The full public surface from `continua/__init__.py`:
 
 <Note>
   The SDK also exports `EngineControlClient`, `ActivityWorker`, and `ActivityTaskContext`
-  for the durable engine surface. That surface is scaffolded today: see
-  [Roadmap & status](/roadmap) before depending on it.
+  for the durable engine surface. The engine runtime executes Go-defined workflows
+  end-to-end, but this surface is **preview** (Go-only authoring, preview-gated REST): see
+  [Roadmap & status](/roadmap) before depending on it in production.
 </Note>
 
 ### Context getters
@@ -62,8 +63,8 @@ The full public surface from `continua/__init__.py`:
 | `continua.trace` | `@trace` decorator + `TraceContext` |
 | `continua.span` | `@span` context manager + `SpanContext` (see [Span events](/sdk/python/span-events) for every method) |
 | `continua.session` | `@session` context manager + `SessionContext` |
-| `continua.worker` | `ActivityWorker`, `@activity` decorator (engine surface: scaffolded, see [Roadmap](/roadmap)) |
-| `continua.engine_control` | `EngineControlClient` (engine surface: scaffolded, see [Roadmap](/roadmap)) |
+| `continua.worker` | `ActivityWorker`, `@activity` decorator (engine surface: preview, see [Roadmap](/roadmap)) |
+| `continua.engine_control` | `EngineControlClient` (engine surface: preview, see [Roadmap](/roadmap)) |
 | `continua.exceptions` | Exception hierarchy: see [Exceptions](/sdk/python/exceptions) |
 | `continua.types` | Generated Pydantic models from the OpenAPI contract |
 
