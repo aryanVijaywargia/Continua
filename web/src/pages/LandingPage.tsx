@@ -386,9 +386,9 @@ function Hero({
               </span>
             </h1>
             <p className="mt-6 max-w-xl text-[15.5px] leading-relaxed text-[var(--c-text-secondary)]">
-              Open-source observability for AI agents. Capture every retry, payload, and state
-              transition as it happens — and inspect them from a self-hosted console that runs in
-              one binary.
+              Open-source durable execution engine for AI agents, with built-in observability. Run
+              workflows that survive restarts and crashes — then inspect every retry, payload, and
+              state transition from a self-hosted console that runs in one binary.
             </p>
             {isPublicDemo ? (
               <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">
@@ -684,7 +684,7 @@ function StatsStrip() {
     { value: 'REST', label: 'Ingest API', hint: 'Authenticated trace, session, span, and event writes', pct: 88 },
     { value: 'SQLC', label: 'Postgres store', hint: 'Typed queries backed by platform migrations', pct: 99 },
     { value: 'River', label: 'Async jobs', hint: 'Background ingest, rollups, and payload cleanup', pct: 72 },
-    { value: 'Preview', label: 'Engine surface', hint: 'Control APIs and contracts for durable execution work', pct: 56, zero: true },
+    { value: 'Preview', label: 'Durable engine', hint: 'Runs Go workflows end-to-end: activities, timers, signals, replay', pct: 56, zero: true },
   ];
 
   return (
@@ -935,7 +935,7 @@ function StackDiagram() {
               <Connector label="POST /v1/ingest · HTTPS" />
               <Layer label="Continua service · Go" sub="auth · ingest · mappers" tone="primary" split={[['Postgres', 'sqlc + migrations'], ['River', 'async workers']]} />
               <Connector label="engine preview surface" />
-              <Layer label="Durable engine · planned runtime" sub="control APIs · pending work · history" tone="muted" />
+              <Layer label="Durable engine · preview runtime" sub="workflows · activities · timers · signals" tone="muted" />
               <Connector label="GET /api/*" />
               <Layer label="Operator console · React" sub="traces · sessions · settings" tone="accent" />
             </div>
@@ -1139,7 +1139,7 @@ function Footer({
               <Logo />
               <span className="text-[14px] font-semibold tracking-tight">Continua</span>
             </div>
-            <p className="mt-4 max-w-xs text-[12px] leading-5 text-[var(--c-text-muted)]">AI agent observability today, durable execution tomorrow. MIT licensed.</p>
+            <p className="mt-4 max-w-xs text-[12px] leading-5 text-[var(--c-text-muted)]">Durable execution engine for AI agents, with built-in observability. MIT licensed.</p>
             <div className="mt-5 font-mono text-[10px] text-[var(--c-text-muted)]">© 2026 · alpha</div>
           </div>
           {columns.map((col) => (
@@ -1624,7 +1624,7 @@ function RepoCard() {
             {[
               ['Observability', 'REST ingest, Postgres persistence, async River jobs, trace/session read APIs'],
               ['Debugger console', 'Embedded React operator workspace for traces, sessions, payloads, and comparisons'],
-              ['Durable engine', 'Preview control surface and contracts; workflow runtime is still on the roadmap'],
+              ['Durable engine', 'Preview runtime that executes Go workflows end-to-end: activities, timers, signals, replay'],
             ].map(([label, value]) => (
               <div key={label} className="rounded-md border bg-[var(--c-app-bg)] px-3 py-2" style={{ borderColor: 'var(--c-border)' }}>
                 <div className="font-mono text-[10.5px] font-semibold text-[var(--c-text-primary)]">{label}</div>

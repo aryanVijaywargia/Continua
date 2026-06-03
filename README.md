@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="./assets/banner.svg" alt="Continua: self-hosted debugging for AI agent runs" />
+  <img src="./assets/banner.svg" alt="Continua: self-hosted durable execution engine with built-in observability for AI agent runs" />
 </p>
 
 <div align="center">
 
   # Continua
 
-  **Self-hosted debugging for AI agent runs.**
+  **Self-hosted durable execution engine with built-in observability for AI agent runs.**
 
   <p>
     <a href="#quickstart"><b>Quickstart</b></a> ·
@@ -29,9 +29,9 @@
 
 ---
 
-Continua is a **local operator console for debugging AI agent executions**. It accepts traces over an authenticated REST ingest API, persists them in Postgres, processes async work with River, and serves a React debugger from the Go backend as a single binary, on your own infrastructure.
+Continua is a self-hosted **durable execution engine for AI agents, with built-in observability**. It runs agent workflows durably: they survive restarts and crashes through event-sourced history and replay, with activities, retries, timers, signals, and child workflows; and it captures every run as traces, spans, sessions, and events you inspect in an embedded React debugger. One Go binary plus Postgres, on your own infrastructure.
 
-The current product is intentionally concrete: trace runs, inspect spans and payloads, compare session attempts, and keep enough durable state to understand why an agent failed, stalled, retried, or behaved differently than expected.
+Two pillars, one binary. The **observability** path (REST ingest, Postgres storage, read APIs, the failure-first debugger, and the Python SDK) is production-shaped: trace runs, inspect spans and payloads, compare session attempts, and keep enough durable state to understand why an agent failed, stalled, retried, or diverged. The **durable engine** runs Go-defined workflows end-to-end today (preview); see the [roadmap & status](./docs-site/roadmap.mdx) for exactly what's shippable versus preview.
 
 > [!NOTE]
 > Public demo mode uses seeded sample traces only. Use the private local console path when you want to ingest and inspect your own traces.
@@ -82,6 +82,7 @@ It's most useful when you need to answer: what failed first, what changed during
 
 ![Continua features at a glance](./assets/diagrams/feature-strip.svg)
 
+- **Durable execution engine (preview)**: run Go-defined agent workflows that survive restarts and crashes: event-sourced history + replay, activities with retries/backoff, timers, signals, child workflows, cancellation, and continue-as-new. Driven by the `continua-engine` worker runtime and projected into the debugger. See [Roadmap](./docs-site/roadmap.mdx) for preview scope.
 - **Trace debugger**: span tree, execution waterfall, selected spans, payload inspection, breadcrumbs, truncation banners, and merged timeline events.
 - **Session workflows**: browse sessions, open session detail, read the experimental narrative summary, and compare baseline vs. candidate traces from the same workflow.
 - **Durable ingest path**: project-scoped API key auth, idempotent batches via `batch_key`, sync ingest, opt-in async ingest (`X-Continua-Async-Version: 2`), and batch polling.
@@ -89,7 +90,7 @@ It's most useful when you need to answer: what failed first, what changed during
 - **Embedded operator console**: the Vite React app is built into `internal/web/static/` and served by the Go binary. Includes a `⌘K` command palette, dark/light/system theming, and URL-driven filter state.
 - **Project & operator auth**: first-class `POST /api/projects` with rotate/delete/list endpoints, plus optional Auth0 operator login gated by an email allow-list (see [Auth0 setup](./docs-site/guides/auth0-setup.mdx)).
 - **Engine runs console**: `/engine/runs` lists durable engine runs, surfaces pending activity and inbox work, and exposes signal / suspend / resume / cancel / terminate against the engine control endpoints (preview).
-- **Python SDK**: `trace`, `span`, `session`, `event`, batching, retries, and async polling live under `sdks/python`. SDK also exports engine-control helpers for the scaffolded engine surface; see [Roadmap](./docs-site/roadmap.mdx) before relying on them.
+- **Python SDK**: `trace`, `span`, `session`, `event`, batching, retries, and async polling live under `sdks/python`. SDK also exports engine-control helpers for the preview engine surface; see [Roadmap](./docs-site/roadmap.mdx) before relying on them in production.
 - **Typed events**: Continua emits 11 event kinds (`log`, `error`, `exception`, `message`, `metric`, `custom`, `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`); see the [events concept guide](./docs-site/concepts/events.mdx).
 
 ![Implemented event types](./assets/diagrams/event-types.svg)
@@ -113,6 +114,8 @@ flowchart LR
 ```
 
 A request hits the authenticated ingest API, gets validated and batched (sync or async), and lands in Postgres. River workers process async batches, compute rollups, and run cleanup. The debugger reads everything back through REST and polls `GET /api/traces/{id}/events` for live trace detail. There is no live WebSocket runtime in the current checkout.
+
+Alongside the platform server, the **`continua-engine` worker runtime** executes durable workflows: it claims runs, drives activities / timers / signals, and replays event-sourced history to recover across restarts, then projects run state back into the same Postgres so the debugger's engine-runs console can read it. Workflow execution is preview: Go-defined workflows, with the public `/v1/engine/*` control plane gated behind a preview flag. See the [engine concept guide](./docs-site/concepts/engine-foundation.mdx).
 
 ![Continua ingest flow](./assets/diagrams/ingest-flow.svg)
 
@@ -171,11 +174,13 @@ After changing OpenAPI, sqlc queries, WebSocket schemas, or migrations that affe
 
 ## Roadmap
 
-Continua is in alpha. The authoritative status breakdown of what's shippable, what's scaffolded, and what's coming next lives at [`docs-site/roadmap.mdx`](./docs-site/roadmap.mdx).
+Continua is in alpha. The authoritative status breakdown of what's shippable, what's preview, and what's coming next lives at [`docs-site/roadmap.mdx`](./docs-site/roadmap.mdx).
 
-Shippable today: authenticated REST ingest, Postgres persistence, River background jobs, trace/session/timeline/compare read APIs, the embedded React debugger (incl. engine runs console), project & API-key management, Auth0 operator login, the Python SDK, and the engine schema/store/control endpoints.
+Shippable today: authenticated REST ingest, Postgres persistence, River background jobs, trace/session/timeline/compare read APIs, the embedded React debugger (incl. engine runs console), project & API-key management, Auth0 operator login, and the Python SDK.
 
-Scaffolded (don't rely on yet): live WebSocket runtime, proxy capture, replay execution, full TypeScript SDK, end-to-end engine workflow execution.
+Preview: durable engine workflow execution: the `continua-engine` worker runtime runs Go-defined workflows end-to-end with crash-recovery (event-sourced history + replay, activities, timers, signals, child workflows), but the public `/v1/engine/*` REST control plane is preview-gated, authoring is Go-only, and there's no production path for registering arbitrary workflow definitions yet.
+
+Scaffolded (don't rely on yet): live WebSocket runtime, proxy capture, replay execution, full TypeScript SDK.
 
 ## Documentation
 
@@ -186,7 +191,7 @@ The full documentation site lives under [`docs-site/`](./docs-site/) (Mintlify) 
 - **Debugger**: [tour of the UI](./docs-site/debugger/overview.mdx) plus per-page references for traces, trace detail, sessions, session compare, engine runs, command palette, and settings.
 - **Python SDK**: [overview](./docs-site/sdk/python/overview.mdx), tracing, sessions, span events, batching & ingest modes, exceptions.
 - **API Reference**: [auth & headers](./docs-site/api-reference/auth-and-headers.mdx) intro plus the auto-rendered OpenAPI playground.
-- **Roadmap**: [shippable vs scaffolded status](./docs-site/roadmap.mdx).
+- **Roadmap**: [shippable, preview, and scaffolded status](./docs-site/roadmap.mdx).
 
 Related: [`engine/README.md`](./engine/README.md) for the engine binary's CLI commands, and [`sdks/python/README.md`](./sdks/python/README.md) for SDK-local development.
 

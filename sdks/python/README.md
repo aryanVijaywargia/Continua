@@ -1,7 +1,8 @@
 # Continua SDK for Python
 
-Python SDK for sending AI agent traces, spans, sessions, events, and engine control
-requests to Continua.
+Python SDK for Continua — the self-hosted durable execution engine with built-in
+observability for AI agents. Sends traces, spans, sessions, events, and engine-control
+requests to a Continua server.
 
 ## Installation
 

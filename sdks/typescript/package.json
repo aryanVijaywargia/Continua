@@ -1,7 +1,7 @@
 {
   "name": "@continua/sdk",
   "version": "0.0.0",
-  "description": "Continua SDK for TypeScript/JavaScript",
+  "description": "Continua SDK for TypeScript/JavaScript (early stub)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
