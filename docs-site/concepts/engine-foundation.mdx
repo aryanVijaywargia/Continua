@@ -38,9 +38,15 @@ Core tables:
 ### Store (real)
 
 [`engine/db/gen/go/`](https://github.com/aryanVijaywargia/Continua/tree/main/engine/db/gen/go)
-is the sqlc-generated store. The engine uses its own pgx pool and transaction boundary.
-It does not share a connection pool with the platform server. The engine can optionally
-live in a separate Postgres via `ENGINE_DATABASE_URL`.
+is the sqlc-generated store. The engine uses its own pgx pool and transaction boundary;
+it does not share a connection pool with the platform server.
+
+The standalone `continua-engine` runtime can point at a separate database via
+`ENGINE_DATABASE_URL`. The integrated control plane and debugger, however, read engine
+state from the platform server's own `DATABASE_URL` pool (the platform does not read
+`ENGINE_DATABASE_URL`) — so to see runs through `/v1/engine/*` and the `/engine/runs`
+console, the engine schema and its projections into `public.traces` must live in the
+**same** physical Postgres as the platform.
 
 ### Control endpoints (real)
 
@@ -97,9 +103,11 @@ the control bar. Polling-based.
 
 ## When to use the engine today
 
-- **Durable Go workflows (preview).** If you can define your workflow and activities in
-  Go, the runtime will execute them end-to-end with retries, timers, signals, child
-  workflows, and crash-recovery. Run it with `continua-engine serve`. Don't put it on a
+- **Durable Go workflows (preview).** Go-defined workflows and activities registered with
+  the runtime execute end-to-end with retries, timers, signals, child workflows, and
+  crash-recovery. Today they register through the built-in dark-launch harness
+  (`continua-engine serve`); running your *own* workflow means adding it to that registry
+  and rebuilding, as there's no dynamic definition loading yet. Don't put it on a
   production-critical path yet, it's preview.
 - **Operator tooling & inspection.** The control endpoints + runs console are useful for
   driving and observing run state, pending work, and history.
