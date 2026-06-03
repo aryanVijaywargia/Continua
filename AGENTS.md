@@ -18,7 +18,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## Current Repo Baseline
 - Treat the checked-in code as the primary truth. Historical phase docs and some older architecture docs drift from the current implementation.
-- The live product path today is: authenticated REST ingest -> Postgres persistence -> River background jobs -> REST read APIs -> embedded React debugger operator console.
+- Continua has two runtimes. (1) Observability platform (production-shaped): authenticated REST ingest -> Postgres persistence -> River background jobs -> REST read APIs -> embedded React debugger operator console. (2) Durable execution engine (preview): the `continua-engine` worker runtime executes Go-defined workflows end-to-end (activities, timers, signals, child workflows, cancellation, continue-as-new) with event-sourced history and crash-recovery replay, projecting run state into the platform tables.
 - For current-state architecture, start with [`docs-site/concepts/`](./docs-site/concepts/) (overview, data-model, traces-spans-sessions, events, ingest-lifecycle).
 - Use the checked-in code, contracts, and migrations as the authoritative current-state baseline.
 - `docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context. Use them only if present locally.
@@ -33,8 +33,9 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - Active backend packages: `internal/api`, `internal/ingest`, `internal/jobs`, `internal/store`, `internal/config`, `internal/web`.
 - Active frontend areas: `web/src/pages`, `web/src/components`, `web/src/utils`, `web/src/hooks`.
 - Active SDK: `sdks/python`.
-- Mostly scaffolded or placeholder today: `engine/`, `internal/proxy`, `internal/ws`, `internal/replay`, `internal/alerts`, `internal/export`, `internal/state`, `internal/telemetry`, `sdks/typescript`.
-- Do not describe WebSockets, proxy capture, replay, framework adapters, or the durable engine as implemented unless you have added that code in the current task.
+- Durable engine (`engine/`): a working preview runtime — workflow/activity workers, event-sourced history, replay, projector, and the `continua-engine` CLI. Caveats: Go-only workflow authoring, no production definition-loading path (dark-launch uses a fixed demo project), preview-gated `/v1/engine/*` REST.
+- Mostly scaffolded or placeholder today: `internal/proxy`, `internal/ws`, `internal/replay`, `internal/alerts`, `internal/export`, `internal/state`, `internal/telemetry`, `sdks/typescript`.
+- Do not describe WebSockets, proxy capture, replay, or framework adapters as implemented unless you have added that code in the current task. Describe the durable engine as a working preview — not as production-ready, and not as unimplemented.
 
 ## Source Of Truth
 - REST contract: `contracts/openapi/openapi.yaml`.
@@ -54,7 +55,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - `web`: Vite React debugger UI.
 - `sdks/python`: functional SDK with batching, trace/span/session helpers, and async ingest polling.
 - `sdks/typescript`: early stub package, not a feature-complete SDK.
-- `engine`: separate Go module reserved for future durable execution work.
+- `engine`: separate Go module implementing the durable execution runtime (preview) — workflow/activity workers, event-sourced history + replay, projector, and the `continua-engine` CLI.
 
 ## Architecture Conventions
 - Keep handlers feature-split in `internal/api/`:
