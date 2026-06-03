@@ -388,7 +388,7 @@ function Hero({
             <p className="mt-6 max-w-xl text-[15.5px] leading-relaxed text-[var(--c-text-secondary)]">
               Open-source durable execution engine for AI agents, with built-in observability. Run
               workflows that survive restarts and crashes — then inspect every retry, payload, and
-              state transition from a self-hosted console that runs in one binary.
+              state transition from a console you self-host on your own infrastructure.
             </p>
             {isPublicDemo ? (
               <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">

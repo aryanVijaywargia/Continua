@@ -29,9 +29,9 @@
 
 ---
 
-Continua is a self-hosted **durable execution engine for AI agents, with built-in observability**. It runs agent workflows durably: they survive restarts and crashes through event-sourced history and replay, with activities, retries, timers, signals, and child workflows; and it captures every run as traces, spans, sessions, and events you inspect in an embedded React debugger. One Go binary plus Postgres, on your own infrastructure.
+Continua is a self-hosted **durable execution engine for AI agents, with built-in observability**. It runs agent workflows durably: they survive restarts and crashes through event-sourced history and replay, with activities, retries, timers, signals, and child workflows; and it captures every run as traces, spans, sessions, and events you inspect in an embedded React debugger. Self-hosted on your own infrastructure: a Go platform server plus the `continua-engine` worker runtime, sharing one Postgres.
 
-Two pillars, one binary. The **observability** path (REST ingest, Postgres storage, read APIs, the failure-first debugger, and the Python SDK) is production-shaped: trace runs, inspect spans and payloads, compare session attempts, and keep enough durable state to understand why an agent failed, stalled, retried, or diverged. The **durable engine** runs Go-defined workflows end-to-end today (preview); see the [roadmap & status](./docs-site/roadmap.mdx) for exactly what's shippable versus preview.
+Two pillars, one Postgres. The **observability** path (REST ingest, Postgres storage, read APIs, the failure-first debugger, and the Python SDK) is production-shaped: trace runs, inspect spans and payloads, compare session attempts, and keep enough durable state to understand why an agent failed, stalled, retried, or diverged. The **durable engine** runs Go-defined workflows end-to-end today (preview); see the [roadmap & status](./docs-site/roadmap.mdx) for exactly what's shippable versus preview.
 
 > [!NOTE]
 > Public demo mode uses seeded sample traces only. Use the private local console path when you want to ingest and inspect your own traces.
