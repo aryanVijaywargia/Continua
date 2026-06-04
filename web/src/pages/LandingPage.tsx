@@ -385,9 +385,9 @@ function Hero({
               </span>
             </h1>
             <p className="mt-6 max-w-xl text-[15.5px] leading-relaxed text-[var(--c-text-secondary)]">
-              Open-source observability for AI agents. Capture every retry, payload, and state
-              transition as it happens — and inspect them from a self-hosted console that runs in
-              one binary.
+              Open-source durable execution engine for AI agents, with built-in observability. Run
+              workflows that survive restarts and crashes — then inspect every retry, payload, and
+              state transition from a console you self-host on your own infrastructure.
             </p>
             {isPublicDemo ? (
               <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">
@@ -1129,7 +1129,7 @@ function Footer({
               <Logo />
               <span className="text-[14px] font-semibold tracking-tight">Continua</span>
             </div>
-            <p className="mt-4 max-w-xs text-[12px] leading-5 text-[var(--c-text-muted)]">AI agent observability today, durable execution tomorrow. MIT licensed.</p>
+            <p className="mt-4 max-w-xs text-[12px] leading-5 text-[var(--c-text-muted)]">Durable execution engine for AI agents, with built-in observability. MIT licensed.</p>
             <div className="mt-5 font-mono text-[10px] text-[var(--c-text-muted)]">© 2026 · alpha</div>
           </div>
           {columns.map((col) => (

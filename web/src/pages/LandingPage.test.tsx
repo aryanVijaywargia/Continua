@@ -99,7 +99,7 @@ describe('LandingPage', () => {
     expect(screen.queryByText(/TypeScript SDK/i)).not.toBeInTheDocument();
     expect(document.body).toHaveTextContent(/from continua import Continua, span, trace/i);
     expect(screen.getByRole('heading', { name: /Your agent's black box\. Opened\./i })).toBeInTheDocument();
-    expect(document.body).toHaveTextContent(/AI agent observability today, durable execution tomorrow/i);
+    expect(document.body).toHaveTextContent(/Durable execution engine for AI agents, with built-in observability/i);
     expect(screen.getByRole('tablist', { name: 'Python SDK examples' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'agent.py' })).toHaveAttribute('aria-selected', 'true');
     expect(document.body).toHaveTextContent(/MIT licensed/i);
