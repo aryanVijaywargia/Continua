@@ -5,7 +5,8 @@ SELECT * FROM sessions WHERE id = $1;
 SELECT s.*,
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
-WHERE s.id = $1;
+WHERE s.id = sqlc.arg(id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR s.project_id = sqlc.narg(project_filter_id)::uuid);
 
 -- name: ListSessions :many
 SELECT * FROM sessions
@@ -17,12 +18,13 @@ LIMIT $2 OFFSET $3;
 SELECT s.*,
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
-WHERE s.project_id = $1
+WHERE (sqlc.narg(project_filter_id)::uuid IS NULL OR s.project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY s.created_at DESC, s.id DESC
-LIMIT $2 OFFSET $3;
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: CountSessions :one
-SELECT COUNT(*) FROM sessions WHERE project_id = $1;
+SELECT COUNT(*) FROM sessions
+WHERE (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid);
 
 -- name: CreateSession :one
 INSERT INTO sessions (project_id, external_id, name, user_id, metadata)

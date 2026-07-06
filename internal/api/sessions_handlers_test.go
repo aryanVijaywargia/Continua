@@ -60,7 +60,7 @@ func TestSessionDetail_ReturnsSession(t *testing.T) {
 	require.NotNil(t, session.UserID)
 	assert.Equal(t, "user-123", *session.UserID)
 
-	loaded, err := s.GetSessionWithTraceCount(ctx, session.ID)
+	loaded, err := s.GetSessionWithTraceCount(ctx, store.BoundScope(projectID), session.ID)
 	require.NoError(t, err)
 	assert.Equal(t, session.ExternalID, loaded.ExternalID)
 }
@@ -75,7 +75,7 @@ func TestSessionDetail_Returns404ForUnknownSession(t *testing.T) {
 	s := store.New(pool)
 
 	unknownID := uuid.New()
-	_, err := s.GetSessionWithTraceCount(ctx, unknownID)
+	_, err := s.GetSessionWithTraceCount(ctx, store.UnboundedScope(), unknownID)
 
 	// Should return not found
 	assert.Error(t, err)
@@ -115,7 +115,7 @@ func TestSessionList_IncludesTraceCounts(t *testing.T) {
 	}
 
 	// Get sessions with trace count
-	sessions, err := s.ListSessionsWithTraceCount(ctx, projectID, 10, 0)
+	sessions, err := s.ListSessionsWithTraceCount(ctx, store.BoundScope(projectID), 10, 0)
 	require.NoError(t, err)
 
 	require.Len(t, sessions, 1)
@@ -174,7 +174,7 @@ func TestSessionTraceCount_ComputedCorrectly(t *testing.T) {
 	}
 
 	// Get sessions with trace counts
-	sessions, err := s.ListSessionsWithTraceCount(ctx, projectID, 10, 0)
+	sessions, err := s.ListSessionsWithTraceCount(ctx, store.BoundScope(projectID), 10, 0)
 	require.NoError(t, err)
 
 	require.Len(t, sessions, 2)
@@ -209,7 +209,7 @@ func TestSessionWithZeroTraces_AppearsInList(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	sessions, err := s.ListSessionsWithTraceCount(ctx, projectID, 10, 0)
+	sessions, err := s.ListSessionsWithTraceCount(ctx, store.BoundScope(projectID), 10, 0)
 	require.NoError(t, err)
 
 	require.Len(t, sessions, 1)
@@ -240,12 +240,12 @@ func TestSessionList_Pagination(t *testing.T) {
 	}
 
 	// First page
-	sessions1, err := s.ListSessionsWithTraceCount(ctx, projectID, 10, 0)
+	sessions1, err := s.ListSessionsWithTraceCount(ctx, store.BoundScope(projectID), 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, sessions1, 10, "first page should have 10 sessions")
 
 	// Second page
-	sessions2, err := s.ListSessionsWithTraceCount(ctx, projectID, 10, 10)
+	sessions2, err := s.ListSessionsWithTraceCount(ctx, store.BoundScope(projectID), 10, 10)
 	require.NoError(t, err)
 	assert.Len(t, sessions2, 10, "second page should have 10 sessions")
 

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 // SessionSortBy controls session list sorting.
@@ -18,13 +16,13 @@ const (
 
 // SessionFilter defines filter and sorting options for session listing.
 type SessionFilter struct {
-	ProjectID uuid.UUID
-	Query     string
-	UserID    string
-	SortBy    SessionSortBy
-	SortDir   SortDirection
-	Limit     int32
-	Offset    int32
+	Scope   Scope // Resolved read scope: Bound(projectID) or Unbounded
+	Query   string
+	UserID  string
+	SortBy  SessionSortBy
+	SortDir SortDirection
+	Limit   int32
+	Offset  int32
 }
 
 // SessionSearchResult contains session rows and the filtered total.
@@ -50,8 +48,10 @@ func normalizeSessionSortBy(sortBy SessionSortBy) SessionSortBy {
 }
 
 func buildSessionQueryPlan(filter *SessionFilter) sessionQueryPlan {
-	projectIDArg := []any{filter.ProjectID}
-	whereClauses := []string{"s.project_id = $1"}
+	// $1 enforces the resolved read scope in SQL: bound scopes see exactly one
+	// project, unbounded (operator/admin) scopes see all projects.
+	projectIDArg := []any{filter.Scope.nullableProjectFilter()}
+	whereClauses := []string{"($1::uuid IS NULL OR s.project_id = $1::uuid)"}
 	nextArgNum := 2
 
 	trimmedQuery := strings.TrimSpace(filter.Query)
@@ -139,7 +139,7 @@ func (s *Store) ListSessionsFiltered(ctx context.Context, filter SessionFilter) 
 		LEFT JOIN (
 			SELECT session_id, COUNT(*) AS cnt
 			FROM traces
-			WHERE project_id = $1
+			WHERE ($1::uuid IS NULL OR project_id = $1::uuid)
 			GROUP BY session_id
 		) tc ON tc.session_id = s.id
 		WHERE %s

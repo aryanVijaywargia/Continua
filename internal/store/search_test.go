@@ -65,10 +65,10 @@ func TestSearch_ByTraceName(t *testing.T) {
 
 	// Search for "checkout flow" - should use AND semantics
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "checkout flow",
-		Limit:     10,
-		Offset:    0,
+		Scope:  store.BoundScope(projectID),
+		Query:  "checkout flow",
+		Limit:  10,
+		Offset: 0,
 	})
 	require.NoError(t, err)
 
@@ -118,9 +118,9 @@ func TestSearch_ByUserID(t *testing.T) {
 
 	// Search for "user123"
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "user123",
-		Limit:     10,
+		Scope: store.BoundScope(projectID),
+		Query: "user123",
+		Limit: 10,
 	})
 	require.NoError(t, err)
 
@@ -159,9 +159,9 @@ func TestSearch_BySessionExternalID(t *testing.T) {
 	require.NoError(t, err)
 
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "demo-checkout-session",
-		Limit:     10,
+		Scope: store.BoundScope(projectID),
+		Query: "demo-checkout-session",
+		Limit: 10,
 	})
 	require.NoError(t, err)
 
@@ -195,18 +195,18 @@ func TestSearch_EmptyQuery(t *testing.T) {
 
 	// Search with empty query - should return all traces
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "", // Empty
-		Limit:     10,
+		Scope: store.BoundScope(projectID),
+		Query: "", // Empty
+		Limit: 10,
 	})
 	require.NoError(t, err)
 	assert.Len(t, results.Traces, 3, "empty query should return all traces")
 
 	// Search with whitespace query - should also return all traces
 	results2, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "   ", // Whitespace only
-		Limit:     10,
+		Scope: store.BoundScope(projectID),
+		Query: "   ", // Whitespace only
+		Limit: 10,
 	})
 	require.NoError(t, err)
 	assert.Len(t, results2.Traces, 3, "whitespace-only query should return all traces")
@@ -252,9 +252,9 @@ func TestSearch_FilterByStatus(t *testing.T) {
 
 	// Filter by COMPLETED status
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Status:    "COMPLETED",
-		Limit:     10,
+		Scope:  store.BoundScope(projectID),
+		Status: "COMPLETED",
+		Limit:  10,
 	})
 	require.NoError(t, err)
 
@@ -302,9 +302,9 @@ func TestSearch_FilterByStatusFailed(t *testing.T) {
 
 	// Filter by FAILED status - should match both "failed" and "error"
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Status:    "FAILED",
-		Limit:     10,
+		Scope:  store.BoundScope(projectID),
+		Status: "FAILED",
+		Limit:  10,
 	})
 	require.NoError(t, err)
 
@@ -351,7 +351,7 @@ func TestSearch_FilterByTimeRange(t *testing.T) {
 
 	// Filter for traces from 2 days ago to now
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:     projectID,
+		Scope:         store.BoundScope(projectID),
 		StartTimeFrom: &twoDaysAgo,
 		StartTimeTo:   &now,
 		Limit:         10,
@@ -401,7 +401,7 @@ func TestSearch_FilterByTimeRangeWithNullStartTime(t *testing.T) {
 	// Filter for recent traces - should include trace without start_time
 	// because server_received_at is recent
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:     projectID,
+		Scope:         store.BoundScope(projectID),
 		StartTimeFrom: &yesterday,
 		StartTimeTo:   &timeRangeEnd,
 		Limit:         10,
@@ -452,7 +452,7 @@ func TestSearch_FilterByHasErrors(t *testing.T) {
 
 	// Filter by has_errors=true
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
+		Scope:     store.BoundScope(projectID),
 		HasErrors: testutil.BoolPtr(true),
 		Limit:     10,
 	})
@@ -503,7 +503,7 @@ func TestSearch_FilterByMinDuration(t *testing.T) {
 
 	// Filter by min_duration_ms=5000 (5 seconds)
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:     projectID,
+		Scope:         store.BoundScope(projectID),
 		MinDurationMs: testutil.Int64Ptr(5000),
 		Limit:         10,
 	})
@@ -561,9 +561,9 @@ func TestSearch_FindTraceBySpanName(t *testing.T) {
 
 	// Search for "openai_chat" - should find trace via span name
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "openai_chat",
-		Limit:     10,
+		Scope: store.BoundScope(projectID),
+		Query: "openai_chat",
+		Limit: 10,
 	})
 	require.NoError(t, err)
 
@@ -608,9 +608,9 @@ func TestSearch_TraceMatchOutranksSpanOnlyMatch(t *testing.T) {
 	require.NoError(t, err)
 
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "checkout",
-		Limit:     10,
+		Scope: store.BoundScope(projectID),
+		Query: "checkout",
+		Limit: 10,
 	})
 	require.NoError(t, err)
 
@@ -654,9 +654,9 @@ func TestSearch_MultipleSpansMatchSameTrace(t *testing.T) {
 
 	// Search should return trace once
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "llm_call",
-		Limit:     10,
+		Scope: store.BoundScope(projectID),
+		Query: "llm_call",
+		Limit: 10,
 	})
 	require.NoError(t, err)
 
@@ -705,10 +705,10 @@ func TestSearch_CombinedSearchAndFilter(t *testing.T) {
 
 	// Search with both query and status filter
 	results, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "checkout",
-		Status:    "FAILED",
-		Limit:     10,
+		Scope:  store.BoundScope(projectID),
+		Query:  "checkout",
+		Status: "FAILED",
+		Limit:  10,
 	})
 	require.NoError(t, err)
 
@@ -751,10 +751,10 @@ func TestSearch_Pagination(t *testing.T) {
 
 	// First page
 	page1, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "api_call",
-		Limit:     2,
-		Offset:    0,
+		Scope:  store.BoundScope(projectID),
+		Query:  "api_call",
+		Limit:  2,
+		Offset: 0,
 	})
 	require.NoError(t, err)
 	assert.Len(t, page1.Traces, 2, "first page should have 2 traces")
@@ -762,20 +762,20 @@ func TestSearch_Pagination(t *testing.T) {
 
 	// Second page
 	page2, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "api_call",
-		Limit:     2,
-		Offset:    2,
+		Scope:  store.BoundScope(projectID),
+		Query:  "api_call",
+		Limit:  2,
+		Offset: 2,
 	})
 	require.NoError(t, err)
 	assert.Len(t, page2.Traces, 2, "second page should have 2 traces")
 
 	// Third page (partial)
 	page3, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "api_call",
-		Limit:     2,
-		Offset:    4,
+		Scope:  store.BoundScope(projectID),
+		Query:  "api_call",
+		Limit:  2,
+		Offset: 4,
 	})
 	require.NoError(t, err)
 	assert.Len(t, page3.Traces, 1, "third page should have 1 trace")
@@ -879,7 +879,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	byInstance, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:         projectID,
+		Scope:             store.BoundScope(projectID),
 		EngineInstanceKey: "instance-checkout",
 		Limit:             10,
 	})
@@ -888,7 +888,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byInstance.Traces[0].ID)
 
 	byDefinition, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:            projectID,
+		Scope:                store.BoundScope(projectID),
 		EngineDefinitionName: "checkout",
 		Limit:                10,
 	})
@@ -897,7 +897,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byDefinition.Traces[0].ID)
 
 	byRunID, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:   projectID,
+		Scope:       store.BoundScope(projectID),
 		EngineRunID: &engineRunID,
 		Limit:       10,
 	})
@@ -914,7 +914,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.EqualValues(t, 2, *byRunID.Traces[0].EngineChildDepth)
 
 	byDefinitionVersion, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:               projectID,
+		Scope:                   store.BoundScope(projectID),
 		EngineDefinitionVersion: "v1",
 		Limit:                   10,
 	})
@@ -923,7 +923,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byDefinitionVersion.Traces[0].ID)
 
 	byRunStatus, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:       projectID,
+		Scope:           store.BoundScope(projectID),
 		EngineRunStatus: "waiting",
 		Limit:           10,
 	})
@@ -932,7 +932,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byRunStatus.Traces[0].ID)
 
 	bySuspendedRunStatus, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:       projectID,
+		Scope:           store.BoundScope(projectID),
 		EngineRunStatus: "suspended",
 		Limit:           10,
 	})
@@ -941,7 +941,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, otherEngineTrace.ID, bySuspendedRunStatus.Traces[0].ID)
 
 	byParentRunID, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:         projectID,
+		Scope:             store.BoundScope(projectID),
 		EngineParentRunID: &engineParentRunID,
 		Limit:             10,
 	})
@@ -950,7 +950,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byParentRunID.Traces[0].ID)
 
 	byRootRunID, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:       projectID,
+		Scope:           store.BoundScope(projectID),
 		EngineRootRunID: &engineRootRunID,
 		Limit:           10,
 	})
@@ -959,7 +959,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byRootRunID.Traces[0].ID)
 
 	byChildKey, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:      projectID,
+		Scope:          store.BoundScope(projectID),
 		EngineChildKey: "charge-card",
 		Limit:          10,
 	})
@@ -969,7 +969,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 
 	childDepth := int32(2)
 	byChildDepth, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:        projectID,
+		Scope:            store.BoundScope(projectID),
 		EngineChildDepth: &childDepth,
 		Limit:            10,
 	})
@@ -978,7 +978,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byChildDepth.Traces[0].ID)
 
 	byProjectionState, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:             projectID,
+		Scope:                 store.BoundScope(projectID),
 		EngineProjectionState: "catching_up",
 		Limit:                 10,
 	})
@@ -987,7 +987,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, byProjectionState.Traces[0].ID)
 
 	combined, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:               projectID,
+		Scope:                   store.BoundScope(projectID),
 		EngineDefinitionName:    "checkout",
 		EngineDefinitionVersion: "v1",
 		EngineRunStatus:         "waiting",
@@ -1001,7 +1001,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, combined.Traces[0].ID)
 
 	engineOnly, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:  projectID,
+		Scope:      store.BoundScope(projectID),
 		EngineOnly: true,
 		Limit:      2,
 	})
@@ -1014,7 +1014,7 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	}
 
 	engineOnlyWaiting, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:       projectID,
+		Scope:           store.BoundScope(projectID),
 		EngineOnly:      true,
 		EngineRunStatus: "waiting",
 		Limit:           10,
@@ -1025,15 +1025,15 @@ func TestSearch_FilterByEngineMetadata(t *testing.T) {
 	assert.Equal(t, engineTrace.ID, engineOnlyWaiting.Traces[0].ID)
 
 	allTraces, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Limit:     10,
+		Scope: store.BoundScope(projectID),
+		Limit: 10,
 	})
 	require.NoError(t, err)
 	assert.Len(t, allTraces.Traces, 4)
 	assert.Equal(t, int64(4), allTraces.Total)
 
 	engineOnlyFalse, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:  projectID,
+		Scope:      store.BoundScope(projectID),
 		EngineOnly: false,
 		Limit:      10,
 	})
@@ -1052,7 +1052,7 @@ func TestSearch_RejectsInvalidEngineFilters(t *testing.T) {
 	projectID := testutil.CreateTestProject(t, ctx, s.Queries())
 
 	_, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:       projectID,
+		Scope:           store.BoundScope(projectID),
 		EngineRunStatus: "not-a-status",
 		Limit:           10,
 	})
@@ -1060,7 +1060,7 @@ func TestSearch_RejectsInvalidEngineFilters(t *testing.T) {
 	assert.ErrorAs(t, err, new(*store.TraceFilterValidationError))
 
 	_, err = s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID:             projectID,
+		Scope:                 store.BoundScope(projectID),
 		EngineProjectionState: "not-a-state",
 		Limit:                 10,
 	})

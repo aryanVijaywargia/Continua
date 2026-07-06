@@ -1,9 +1,15 @@
 package api
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/continua-ai/continua/internal/api/middleware"
+	"github.com/continua-ai/continua/internal/store"
 )
 
 func TestNormalizePagination_Defaults(t *testing.T) {
@@ -49,7 +55,7 @@ func TestNormalizePagination_ClampsNonPositiveLimit(t *testing.T) {
 func TestTraceFilterFromParams_EngineOnlyUsesDynamicQuery(t *testing.T) {
 	engineOnly := true
 
-	filter := traceFilterFromParams(uuid.New(), &ListTracesParams{
+	filter := traceFilterFromParams(store.BoundScope(uuid.New()), &ListTracesParams{
 		EngineOnly: &engineOnly,
 	}, 50, 0)
 
@@ -64,7 +70,7 @@ func TestTraceFilterFromParams_EngineOnlyUsesDynamicQuery(t *testing.T) {
 func TestTraceFilterFromParams_EngineOnlyFalseIsDefaultPath(t *testing.T) {
 	engineOnly := false
 
-	filter := traceFilterFromParams(uuid.New(), &ListTracesParams{
+	filter := traceFilterFromParams(store.BoundScope(uuid.New()), &ListTracesParams{
 		EngineOnly: &engineOnly,
 	}, 50, 0)
 
@@ -73,5 +79,129 @@ func TestTraceFilterFromParams_EngineOnlyFalseIsDefaultPath(t *testing.T) {
 	}
 	if traceNeedsDynamicQuery(&filter) {
 		t.Fatal("expected engine_only=false alone to preserve the default trace query path")
+	}
+}
+
+func TestScopeFromRequest_APIKeyResolvesBoundScope(t *testing.T) {
+	projectID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
+	rec := httptest.NewRecorder()
+
+	scope, ok := scopeFromRequest(rec, req, scopePolicyAllowUnbounded)
+	if !ok {
+		t.Fatal("expected scope resolution to succeed")
+	}
+
+	gotProjectID, bound := scope.ProjectID()
+	if !bound {
+		t.Fatal("expected API key request to resolve to a bound scope")
+	}
+	if gotProjectID != projectID {
+		t.Fatalf("expected project %s, got %s", projectID, gotProjectID)
+	}
+}
+
+func TestScopeFromRequest_PublicDemoResolvesBoundScope(t *testing.T) {
+	projectID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/traces?project_id="+uuid.New().String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.ProjectIDKey, projectID)
+	reqCtx = context.WithValue(reqCtx, middleware.AuthModeKey, middleware.AuthModePublicDemo)
+	rec := httptest.NewRecorder()
+
+	scope, ok := scopeFromRequest(rec, req.WithContext(reqCtx), scopePolicyRequireProject)
+	if !ok {
+		t.Fatal("expected scope resolution to succeed")
+	}
+
+	gotProjectID, bound := scope.ProjectID()
+	if !bound {
+		t.Fatal("expected public demo request to resolve to a bound scope")
+	}
+	if gotProjectID != projectID {
+		t.Fatalf("expected project %s, got %s", projectID, gotProjectID)
+	}
+}
+
+func TestScopeFromRequest_OperatorListRequiresProjectID(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	rec := httptest.NewRecorder()
+
+	_, ok := scopeFromRequest(rec, req.WithContext(reqCtx), scopePolicyRequireProject)
+	if ok {
+		t.Fatal("expected scope resolution to fail without project_id")
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestScopeFromRequest_OperatorListResolvesSelectedProject(t *testing.T) {
+	projectID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/traces?project_id="+projectID.String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	rec := httptest.NewRecorder()
+
+	scope, ok := scopeFromRequest(rec, req.WithContext(reqCtx), scopePolicyRequireProject)
+	if !ok {
+		t.Fatal("expected scope resolution to succeed")
+	}
+
+	gotProjectID, bound := scope.ProjectID()
+	if !bound {
+		t.Fatal("expected operator list request to resolve to a bound scope")
+	}
+	if gotProjectID != projectID {
+		t.Fatalf("expected project %s, got %s", projectID, gotProjectID)
+	}
+}
+
+func TestScopeFromRequest_OperatorDetailResolvesUnbounded(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/traces/"+uuid.New().String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	rec := httptest.NewRecorder()
+
+	scope, ok := scopeFromRequest(rec, req.WithContext(reqCtx), scopePolicyAllowUnbounded)
+	if !ok {
+		t.Fatal("expected scope resolution to succeed")
+	}
+
+	if _, bound := scope.ProjectID(); bound {
+		t.Fatal("expected operator detail request to resolve to unbounded scope")
+	}
+}
+
+func TestScopeFromRequest_OperatorDetailResolvesSelectedProject(t *testing.T) {
+	projectID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/traces/"+uuid.New().String()+"?project_id="+projectID.String(), nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	rec := httptest.NewRecorder()
+
+	scope, ok := scopeFromRequest(rec, req.WithContext(reqCtx), scopePolicyAllowUnbounded)
+	if !ok {
+		t.Fatal("expected scope resolution to succeed")
+	}
+
+	gotProjectID, bound := scope.ProjectID()
+	if !bound {
+		t.Fatal("expected operator detail project_id to resolve to a bound scope")
+	}
+	if gotProjectID != projectID {
+		t.Fatalf("expected project %s, got %s", projectID, gotProjectID)
+	}
+}
+
+func TestScopeFromRequest_OperatorDetailRejectsInvalidProjectID(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/traces/"+uuid.New().String()+"?project_id=not-a-uuid", nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	rec := httptest.NewRecorder()
+
+	_, ok := scopeFromRequest(rec, req.WithContext(reqCtx), scopePolicyAllowUnbounded)
+	if ok {
+		t.Fatal("expected scope resolution to fail for invalid project_id")
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
 	}
 }

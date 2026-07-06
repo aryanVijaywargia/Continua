@@ -29,20 +29,20 @@ func TestListSessionsFiltered_CreatedAtSortAndTotal(t *testing.T) {
 	newer := createSessionAt(t, ctx, s, projectID, "sess-newer", "Newer", "user-1", base.Add(2*time.Hour))
 
 	defaultResult, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectID,
-		Limit:     10,
-		Offset:    0,
+		Scope:  store.BoundScope(projectID),
+		Limit:  10,
+		Offset: 0,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), defaultResult.Total)
 	assert.Equal(t, []uuid.UUID{newer.ID, middle.ID, older.ID}, sessionIDs(defaultResult.Sessions))
 
 	ascendingResult, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectID,
-		SortBy:    store.SessionSortByCreatedAt,
-		SortDir:   store.SortDirectionAsc,
-		Limit:     10,
-		Offset:    0,
+		Scope:   store.BoundScope(projectID),
+		SortBy:  store.SessionSortByCreatedAt,
+		SortDir: store.SortDirectionAsc,
+		Limit:   10,
+		Offset:  0,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []uuid.UUID{older.ID, middle.ID, newer.ID}, sessionIDs(ascendingResult.Sessions))
@@ -65,21 +65,21 @@ func TestListSessionsFiltered_TraceCountSort(t *testing.T) {
 	createSessionTraces(t, ctx, q, projectID, two.ID, 2)
 
 	descending, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectID,
-		SortBy:    store.SessionSortByTraceCount,
-		SortDir:   store.SortDirectionDesc,
-		Limit:     10,
-		Offset:    0,
+		Scope:   store.BoundScope(projectID),
+		SortBy:  store.SessionSortByTraceCount,
+		SortDir: store.SortDirectionDesc,
+		Limit:   10,
+		Offset:  0,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []uuid.UUID{two.ID, one.ID, zero.ID}, sessionIDs(descending.Sessions))
 
 	ascending, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectID,
-		SortBy:    store.SessionSortByTraceCount,
-		SortDir:   store.SortDirectionAsc,
-		Limit:     10,
-		Offset:    0,
+		Scope:   store.BoundScope(projectID),
+		SortBy:  store.SessionSortByTraceCount,
+		SortDir: store.SortDirectionAsc,
+		Limit:   10,
+		Offset:  0,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []uuid.UUID{zero.ID, one.ID, two.ID}, sessionIDs(ascending.Sessions))
@@ -100,13 +100,13 @@ func TestListSessionsFiltered_SearchRankingAndUserFilter(t *testing.T) {
 	_ = createSessionAt(t, ctx, s, projectID, "conv-1239", "Filtered Out", "user-99", base.Add(3*time.Hour))
 
 	result, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectID,
-		Query:     "conv-123",
-		UserID:    "user-42",
-		SortBy:    store.SessionSortByCreatedAt,
-		SortDir:   store.SortDirectionAsc,
-		Limit:     10,
-		Offset:    0,
+		Scope:   store.BoundScope(projectID),
+		Query:   "conv-123",
+		UserID:  "user-42",
+		SortBy:  store.SessionSortByCreatedAt,
+		SortDir: store.SortDirectionAsc,
+		Limit:   10,
+		Offset:  0,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), result.Total)
@@ -126,10 +126,10 @@ func TestListSessionsFiltered_SearchMatchesUserID(t *testing.T) {
 	_ = createSessionAt(t, ctx, s, projectID, "sess-beta", "Beta", "demo-user-99", base.Add(time.Hour))
 
 	result, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectID,
-		Query:     "demo-user-42",
-		Limit:     10,
-		Offset:    0,
+		Scope:  store.BoundScope(projectID),
+		Query:  "demo-user-42",
+		Limit:  10,
+		Offset: 0,
 	})
 	require.NoError(t, err)
 
@@ -151,10 +151,10 @@ func TestListSessionsFiltered_SearchMatchesSessionID(t *testing.T) {
 	_ = createSessionAt(t, ctx, s, projectID, "sess-beta", "Beta", "demo-user-99", base.Add(time.Hour))
 
 	result, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectID,
-		Query:     matching.ID.String(),
-		Limit:     10,
-		Offset:    0,
+		Scope:  store.BoundScope(projectID),
+		Query:  matching.ID.String(),
+		Limit:  10,
+		Offset: 0,
 	})
 	require.NoError(t, err)
 
@@ -193,22 +193,22 @@ func TestListSessionsFiltered_ProjectScopingAndStablePagination(t *testing.T) {
 	createSessionTraces(t, ctx, q, projectBID, otherProjectSession.ID, 3)
 
 	pageOne, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectAID,
-		SortBy:    store.SessionSortByTraceCount,
-		SortDir:   store.SortDirectionDesc,
-		Limit:     2,
-		Offset:    0,
+		Scope:   store.BoundScope(projectAID),
+		SortBy:  store.SessionSortByTraceCount,
+		SortDir: store.SortDirectionDesc,
+		Limit:   2,
+		Offset:  0,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), pageOne.Total)
 	require.Len(t, pageOne.Sessions, 2)
 
 	pageTwo, err := s.ListSessionsFiltered(ctx, store.SessionFilter{
-		ProjectID: projectAID,
-		SortBy:    store.SessionSortByTraceCount,
-		SortDir:   store.SortDirectionDesc,
-		Limit:     2,
-		Offset:    2,
+		Scope:   store.BoundScope(projectAID),
+		SortBy:  store.SessionSortByTraceCount,
+		SortDir: store.SortDirectionDesc,
+		Limit:   2,
+		Offset:  2,
 	})
 	require.NoError(t, err)
 	require.Len(t, pageTwo.Sessions, 2)

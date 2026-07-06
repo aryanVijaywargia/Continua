@@ -49,7 +49,7 @@ func TestListTraces_SortDirectionAndSessionIdentity(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ascending, err := s.ListTraces(ctx, projectID, 10, 0, store.SortDirectionAsc)
+	ascending, err := s.ListTraces(ctx, store.BoundScope(projectID), 10, 0, store.SortDirectionAsc)
 	require.NoError(t, err)
 	require.Len(t, ascending, 2)
 	assert.Equal(t, traceWithSession.ID, ascending[0].ID)
@@ -57,20 +57,20 @@ func TestListTraces_SortDirectionAndSessionIdentity(t *testing.T) {
 	assert.Equal(t, session.ExternalID, *ascending[0].SessionExternalID)
 	assert.Nil(t, ascending[1].SessionExternalID)
 
-	descending, err := s.ListTraces(ctx, projectID, 10, 0, store.SortDirectionDesc)
+	descending, err := s.ListTraces(ctx, store.BoundScope(projectID), 10, 0, store.SortDirectionDesc)
 	require.NoError(t, err)
 	require.Len(t, descending, 2)
 	assert.Equal(t, traceWithoutSession.ID, descending[0].ID)
 	assert.Equal(t, traceWithSession.ID, descending[1].ID)
 
-	sessionScoped, err := s.ListTracesBySession(ctx, projectID, session.ID, 10, 0, store.SortDirectionDesc)
+	sessionScoped, err := s.ListTracesBySession(ctx, store.BoundScope(projectID), session.ID, 10, 0, store.SortDirectionDesc)
 	require.NoError(t, err)
 	require.Len(t, sessionScoped, 1)
 	assert.Equal(t, traceWithSession.ID, sessionScoped[0].ID)
 	require.NotNil(t, sessionScoped[0].SessionExternalID)
 	assert.Equal(t, session.ExternalID, *sessionScoped[0].SessionExternalID)
 
-	total, err := s.CountTracesBySession(ctx, projectID, session.ID)
+	total, err := s.CountTracesBySession(ctx, store.BoundScope(projectID), session.ID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 }
@@ -130,11 +130,11 @@ func TestListTracesFiltered_SearchIncludesSessionIdentityAndUsesRanking(t *testi
 	require.NoError(t, err)
 
 	result, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "checkout",
-		SortDir:   store.SortDirectionAsc,
-		Limit:     10,
-		Offset:    0,
+		Scope:   store.BoundScope(projectID),
+		Query:   "checkout",
+		SortDir: store.SortDirectionAsc,
+		Limit:   10,
+		Offset:  0,
 	})
 	require.NoError(t, err)
 	require.Len(t, result.Traces, 2)
@@ -174,35 +174,35 @@ func TestListTraces_PaginationRemainsStableWhenTimestampsTie(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	fullDescending, err := s.ListTraces(ctx, projectID, 10, 0, store.SortDirectionDesc)
+	fullDescending, err := s.ListTraces(ctx, store.BoundScope(projectID), 10, 0, store.SortDirectionDesc)
 	require.NoError(t, err)
-	firstDescendingPage, err := s.ListTraces(ctx, projectID, 2, 0, store.SortDirectionDesc)
+	firstDescendingPage, err := s.ListTraces(ctx, store.BoundScope(projectID), 2, 0, store.SortDirectionDesc)
 	require.NoError(t, err)
-	secondDescendingPage, err := s.ListTraces(ctx, projectID, 2, 2, store.SortDirectionDesc)
+	secondDescendingPage, err := s.ListTraces(ctx, store.BoundScope(projectID), 2, 2, store.SortDirectionDesc)
 	require.NoError(t, err)
 	assertStableTracePagination(t, fullDescending, firstDescendingPage, secondDescendingPage)
 
-	fullAscending, err := s.ListTraces(ctx, projectID, 10, 0, store.SortDirectionAsc)
+	fullAscending, err := s.ListTraces(ctx, store.BoundScope(projectID), 10, 0, store.SortDirectionAsc)
 	require.NoError(t, err)
-	firstAscendingPage, err := s.ListTraces(ctx, projectID, 2, 0, store.SortDirectionAsc)
+	firstAscendingPage, err := s.ListTraces(ctx, store.BoundScope(projectID), 2, 0, store.SortDirectionAsc)
 	require.NoError(t, err)
-	secondAscendingPage, err := s.ListTraces(ctx, projectID, 2, 2, store.SortDirectionAsc)
+	secondAscendingPage, err := s.ListTraces(ctx, store.BoundScope(projectID), 2, 2, store.SortDirectionAsc)
 	require.NoError(t, err)
 	assertStableTracePagination(t, fullAscending, firstAscendingPage, secondAscendingPage)
 
-	fullSessionDescending, err := s.ListTracesBySession(ctx, projectID, session.ID, 10, 0, store.SortDirectionDesc)
+	fullSessionDescending, err := s.ListTracesBySession(ctx, store.BoundScope(projectID), session.ID, 10, 0, store.SortDirectionDesc)
 	require.NoError(t, err)
-	firstSessionDescendingPage, err := s.ListTracesBySession(ctx, projectID, session.ID, 2, 0, store.SortDirectionDesc)
+	firstSessionDescendingPage, err := s.ListTracesBySession(ctx, store.BoundScope(projectID), session.ID, 2, 0, store.SortDirectionDesc)
 	require.NoError(t, err)
-	secondSessionDescendingPage, err := s.ListTracesBySession(ctx, projectID, session.ID, 2, 2, store.SortDirectionDesc)
+	secondSessionDescendingPage, err := s.ListTracesBySession(ctx, store.BoundScope(projectID), session.ID, 2, 2, store.SortDirectionDesc)
 	require.NoError(t, err)
 	assertStableTracePagination(t, fullSessionDescending, firstSessionDescendingPage, secondSessionDescendingPage)
 
-	fullSessionAscending, err := s.ListTracesBySession(ctx, projectID, session.ID, 10, 0, store.SortDirectionAsc)
+	fullSessionAscending, err := s.ListTracesBySession(ctx, store.BoundScope(projectID), session.ID, 10, 0, store.SortDirectionAsc)
 	require.NoError(t, err)
-	firstSessionAscendingPage, err := s.ListTracesBySession(ctx, projectID, session.ID, 2, 0, store.SortDirectionAsc)
+	firstSessionAscendingPage, err := s.ListTracesBySession(ctx, store.BoundScope(projectID), session.ID, 2, 0, store.SortDirectionAsc)
 	require.NoError(t, err)
-	secondSessionAscendingPage, err := s.ListTracesBySession(ctx, projectID, session.ID, 2, 2, store.SortDirectionAsc)
+	secondSessionAscendingPage, err := s.ListTracesBySession(ctx, store.BoundScope(projectID), session.ID, 2, 2, store.SortDirectionAsc)
 	require.NoError(t, err)
 	assertStableTracePagination(t, fullSessionAscending, firstSessionAscendingPage, secondSessionAscendingPage)
 }
@@ -228,24 +228,24 @@ func TestListTracesFiltered_SearchPaginationRemainsStableWhenSortKeysTie(t *test
 	}
 
 	fullResult, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "checkout",
-		Limit:     10,
-		Offset:    0,
+		Scope:  store.BoundScope(projectID),
+		Query:  "checkout",
+		Limit:  10,
+		Offset: 0,
 	})
 	require.NoError(t, err)
 	firstPageResult, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "checkout",
-		Limit:     2,
-		Offset:    0,
+		Scope:  store.BoundScope(projectID),
+		Query:  "checkout",
+		Limit:  2,
+		Offset: 0,
 	})
 	require.NoError(t, err)
 	secondPageResult, err := s.ListTracesFiltered(ctx, store.TraceFilter{
-		ProjectID: projectID,
-		Query:     "checkout",
-		Limit:     2,
-		Offset:    2,
+		Scope:  store.BoundScope(projectID),
+		Query:  "checkout",
+		Limit:  2,
+		Offset: 2,
 	})
 	require.NoError(t, err)
 

@@ -11,7 +11,7 @@ import (
 
 // TraceFilter defines filter options for trace search.
 type TraceFilter struct {
-	ProjectID               uuid.UUID
+	Scope                   Scope      // Resolved read scope: Bound(projectID) or Unbounded
 	Query                   string     // Full-text search query
 	Status                  string     // running, completed, failed
 	StartTimeFrom           *time.Time // Filter traces starting at or after this time
@@ -68,9 +68,10 @@ func (s *Store) ListTracesFiltered(ctx context.Context, filter TraceFilter) (Tra
 	argNum := 1
 	fromClause := "FROM traces t LEFT JOIN sessions sess ON sess.id = t.session_id AND sess.project_id = t.project_id"
 
-	// Always filter by project
-	whereClauses = append(whereClauses, fmt.Sprintf("t.project_id = $%d", argNum))
-	args = append(args, filter.ProjectID)
+	// Enforce the resolved read scope in SQL: bound scopes see exactly one
+	// project, unbounded (operator/admin) scopes see all projects.
+	whereClauses = append(whereClauses, fmt.Sprintf("($%d::uuid IS NULL OR t.project_id = $%d::uuid)", argNum, argNum))
+	args = append(args, filter.Scope.nullableProjectFilter())
 	argNum++
 
 	// Trim whitespace from query - per spec, whitespace-only queries should be ignored

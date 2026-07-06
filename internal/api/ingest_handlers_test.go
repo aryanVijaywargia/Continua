@@ -231,7 +231,10 @@ func TestIngest_SyncTrueAcceptsUnknownExplicitEventType(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	events, err := q.ListSpanEventsByTrace(context.Background(), trace.ID)
+	events, err := q.ListSpanEventsByTrace(context.Background(), platform.ListSpanEventsByTraceParams{
+		TraceID:         trace.ID,
+		ProjectFilterID: testutil.PgtypeUUID(projectID),
+	})
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	assert.Equal(t, "workflow_step", events[0].EventType)

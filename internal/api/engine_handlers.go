@@ -5,9 +5,12 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/enginecontrol"
+	"github.com/continua-ai/continua/internal/store"
 )
 
 const (
@@ -15,8 +18,30 @@ const (
 	maxEngineProjectionBackfillLimit     = 100
 )
 
+func (s *Server) engineRunProjectIDForControl(
+	w http.ResponseWriter,
+	r *http.Request,
+	scope store.Scope,
+	runID openapi_types.UUID,
+) (openapi_types.UUID, bool) {
+	if projectID, bound := scope.ProjectID(); bound {
+		return projectID, true
+	}
+	if s.engineControl == nil {
+		http.NotFound(w, r)
+		return uuid.Nil, false
+	}
+
+	run, err := s.engineControl.getRunForScope(r.Context(), scope, runID)
+	if err != nil {
+		writeEngineError(w, err, "Failed to resolve engine run")
+		return uuid.Nil, false
+	}
+	return run.ProjectID, true
+}
+
 func (s *Server) GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
@@ -25,7 +50,7 @@ func (s *Server) GetEngineInstance(w http.ResponseWriter, r *http.Request, insta
 		return
 	}
 
-	result, err := s.engineControl.GetInstance(r.Context(), projectID, instanceKey)
+	result, err := s.engineControl.GetInstance(r.Context(), scope, instanceKey)
 	if err != nil {
 		writeEngineError(w, err, "Failed to get engine instance")
 		return
@@ -69,7 +94,7 @@ func (s *Server) StartEngineRun(w http.ResponseWriter, r *http.Request, _ StartE
 }
 
 func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
@@ -78,7 +103,7 @@ func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runID open
 		return
 	}
 
-	result, err := s.engineControl.GetRun(r.Context(), projectID, runID)
+	result, err := s.engineControl.GetRun(r.Context(), scope, runID)
 	if err != nil {
 		writeEngineError(w, err, "Failed to get engine run")
 		return
@@ -88,12 +113,16 @@ func (s *Server) GetEngineRun(w http.ResponseWriter, r *http.Request, runID open
 }
 
 func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ CancelEngineRunParams) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 	if s.engineControl == nil {
 		http.NotFound(w, r)
+		return
+	}
+	projectID, ok := s.engineRunProjectIDForControl(w, r, scope, runID)
+	if !ok {
 		return
 	}
 
@@ -107,12 +136,16 @@ func (s *Server) CancelEngineRun(w http.ResponseWriter, r *http.Request, runID o
 }
 
 func (s *Server) TerminateEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ TerminateEngineRunParams) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 	if s.engineControl == nil {
 		http.NotFound(w, r)
+		return
+	}
+	projectID, ok := s.engineRunProjectIDForControl(w, r, scope, runID)
+	if !ok {
 		return
 	}
 
@@ -126,12 +159,16 @@ func (s *Server) TerminateEngineRun(w http.ResponseWriter, r *http.Request, runI
 }
 
 func (s *Server) SuspendEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ SuspendEngineRunParams) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 	if s.engineControl == nil {
 		http.NotFound(w, r)
+		return
+	}
+	projectID, ok := s.engineRunProjectIDForControl(w, r, scope, runID)
+	if !ok {
 		return
 	}
 
@@ -145,12 +182,16 @@ func (s *Server) SuspendEngineRun(w http.ResponseWriter, r *http.Request, runID 
 }
 
 func (s *Server) ResumeEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ ResumeEngineRunParams) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 	if s.engineControl == nil {
 		http.NotFound(w, r)
+		return
+	}
+	projectID, ok := s.engineRunProjectIDForControl(w, r, scope, runID)
+	if !ok {
 		return
 	}
 
@@ -164,7 +205,7 @@ func (s *Server) ResumeEngineRun(w http.ResponseWriter, r *http.Request, runID o
 }
 
 func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, params GetEngineRunHistoryParams) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
@@ -182,7 +223,7 @@ func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, run
 		limit = *params.Limit
 	}
 
-	page, err := s.engineControl.GetRunHistory(r.Context(), projectID, runID, after, limit)
+	page, err := s.engineControl.GetRunHistory(r.Context(), scope, runID, after, limit)
 	if err != nil {
 		writeEngineError(w, err, "Failed to get engine run history")
 		return
@@ -192,7 +233,7 @@ func (s *Server) GetEngineRunHistory(w http.ResponseWriter, r *http.Request, run
 }
 
 func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
@@ -201,7 +242,7 @@ func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runI
 		return
 	}
 
-	result, err := s.engineControl.GetRunResult(r.Context(), projectID, runID)
+	result, err := s.engineControl.GetRunResult(r.Context(), scope, runID)
 	if err != nil {
 		writeEngineError(w, err, "Failed to get engine run result")
 		return
@@ -211,12 +252,16 @@ func (s *Server) GetEngineRunResult(w http.ResponseWriter, r *http.Request, runI
 }
 
 func (s *Server) PurgeEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ PurgeEngineRunParams) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 	if s.engineSharedControl == nil {
 		http.NotFound(w, r)
+		return
+	}
+	projectID, ok := s.engineRunProjectIDForControl(w, r, scope, runID)
+	if !ok {
 		return
 	}
 
@@ -235,12 +280,16 @@ func (s *Server) PurgeEngineRun(w http.ResponseWriter, r *http.Request, runID op
 }
 
 func (s *Server) RepairEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ RepairEngineRunParams) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 	if s.engineSharedControl == nil {
 		http.NotFound(w, r)
+		return
+	}
+	projectID, ok := s.engineRunProjectIDForControl(w, r, scope, runID)
+	if !ok {
 		return
 	}
 
@@ -273,6 +322,10 @@ func (s *Server) BackfillEngineProjections(w http.ResponseWriter, r *http.Reques
 		writeEngineError(w, err, "Invalid engine projection backfill request")
 		return
 	}
+	if mode, ok := middleware.GetAuthMode(r.Context()); ok && mode == middleware.AuthModePublicDemo && !backfillReq.DryRun {
+		writeError(w, http.StatusForbidden, "public_demo_read_only", "Public demo projection repair only allows dry runs")
+		return
+	}
 
 	result, err := s.engineSharedControl.BackfillProjections(r.Context(), projectID, &backfillReq)
 	if err != nil {
@@ -284,7 +337,7 @@ func (s *Server) BackfillEngineProjections(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
@@ -293,7 +346,7 @@ func (s *Server) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	result, err := s.engineControl.GetRunPendingWork(r.Context(), projectID, runID)
+	result, err := s.engineControl.GetRunPendingWork(r.Context(), scope, runID)
 	if err != nil {
 		writeEngineError(w, err, "Failed to get engine pending work")
 		return
@@ -303,12 +356,16 @@ func (s *Server) GetEngineRunPendingWork(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) SignalEngineRun(w http.ResponseWriter, r *http.Request, runID openapi_types.UUID, _ SignalEngineRunParams) {
-	projectID, ok := s.engineRunProjectIDOrUnauthorized(w, r, runID)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 	if s.engineControl == nil {
 		http.NotFound(w, r)
+		return
+	}
+	projectID, ok := s.engineRunProjectIDForControl(w, r, scope, runID)
+	if !ok {
 		return
 	}
 

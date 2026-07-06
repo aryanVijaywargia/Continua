@@ -55,9 +55,12 @@ func mapSessionWithCountRow[T sessionWithCountRow](row T) SessionWithCount {
 	}
 }
 
-// GetSessionWithTraceCount retrieves a session with its trace count.
-func (s *Store) GetSessionWithTraceCount(ctx context.Context, id uuid.UUID) (SessionWithCount, error) {
-	row, err := s.q.GetSessionWithTraceCount(ctx, id)
+// GetSessionWithTraceCount retrieves a session with its trace count within the supplied scope.
+func (s *Store) GetSessionWithTraceCount(ctx context.Context, scope Scope, id uuid.UUID) (SessionWithCount, error) {
+	row, err := s.q.GetSessionWithTraceCount(ctx, platform.GetSessionWithTraceCountParams{
+		ID:              id,
+		ProjectFilterID: scope.nullableProjectFilter(),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SessionWithCount{}, ErrNotFound
 	}
@@ -67,12 +70,12 @@ func (s *Store) GetSessionWithTraceCount(ctx context.Context, id uuid.UUID) (Ses
 	return mapSessionWithCountRow(row), nil
 }
 
-// ListSessionsWithTraceCount returns paginated sessions with trace counts.
-func (s *Store) ListSessionsWithTraceCount(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]SessionWithCount, error) {
+// ListSessionsWithTraceCount returns paginated sessions with trace counts within the supplied scope.
+func (s *Store) ListSessionsWithTraceCount(ctx context.Context, scope Scope, limit, offset int32) ([]SessionWithCount, error) {
 	rows, err := s.q.ListSessionsWithTraceCount(ctx, platform.ListSessionsWithTraceCountParams{
-		ProjectID: projectID,
-		Limit:     limit,
-		Offset:    offset,
+		ProjectFilterID: scope.nullableProjectFilter(),
+		Limit:           limit,
+		Offset:          offset,
 	})
 	if err != nil {
 		return nil, err
@@ -85,9 +88,9 @@ func (s *Store) ListSessionsWithTraceCount(ctx context.Context, projectID uuid.U
 	return result, nil
 }
 
-// CountSessions returns the total number of sessions for a project.
-func (s *Store) CountSessions(ctx context.Context, projectID uuid.UUID) (int64, error) {
-	return s.q.CountSessions(ctx, projectID)
+// CountSessions returns the total number of sessions within the supplied scope.
+func (s *Store) CountSessions(ctx context.Context, scope Scope) (int64, error) {
+	return s.q.CountSessions(ctx, scope.nullableProjectFilter())
 }
 
 // GetOrCreateSessionByExternalIDTx upserts a session within a transaction.

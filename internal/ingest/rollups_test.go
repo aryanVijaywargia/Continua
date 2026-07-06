@@ -61,7 +61,7 @@ func TestRollups_TokenAggregation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify aggregation
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(225), updatedTrace.Trace.TotalTokensIn, "total_tokens_in should equal sum of prompt_tokens")
@@ -104,7 +104,7 @@ func TestRollups_CostAggregation(t *testing.T) {
 	err = s.ComputeAndUpdateTraceRollups(ctx, trace.ID)
 	require.NoError(t, err)
 
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	// Note: TotalCost is pgtype.Numeric, compare validity instead of exact value
@@ -145,7 +145,7 @@ func TestRollups_SpanCount(t *testing.T) {
 	err = s.ComputeAndUpdateTraceRollups(ctx, trace.ID)
 	require.NoError(t, err)
 
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	require.NotNil(t, updatedTrace.Trace.TotalSpans)
@@ -188,7 +188,7 @@ func TestRollups_ErrorCounting(t *testing.T) {
 	err = s.ComputeAndUpdateTraceRollups(ctx, trace.ID)
 	require.NoError(t, err)
 
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	// 3 failed/error spans
@@ -224,7 +224,7 @@ func TestRollups_DurationComputation(t *testing.T) {
 	err = s.ComputeAndUpdateTraceRollups(ctx, trace.ID)
 	require.NoError(t, err)
 
-	updatedTrace, err := q.GetTrace(ctx, trace.ID)
+	updatedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 
 	// Duration should be approximately 5000ms
@@ -259,7 +259,7 @@ func TestRollups_FailureNonBlocking(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trace should exist regardless of rollup computation
-	fetchedTrace, err := q.GetTrace(ctx, trace.ID)
+	fetchedTrace, err := q.GetTrace(ctx, platform.GetTraceParams{ID: trace.ID, ProjectFilterID: testutil.PgtypeUUID(projectID)})
 	require.NoError(t, err)
 	assert.Equal(t, traceID, fetchedTrace.Trace.TraceID)
 }

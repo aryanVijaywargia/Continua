@@ -97,7 +97,7 @@ func (a *Authenticator) Middleware() func(http.Handler) http.Handler {
 			case routeProtectionAPIKeyOnly:
 				a.serveAPIKeyOnly(next, w, r)
 			case routeProtectionComposite:
-				if a.publicDemo != nil && isPublicDemoReadRequest(r.Method, r.URL.Path) {
+				if a.publicDemo != nil && isPublicDemoAllowedRequest(r.Method, r.URL.Path) {
 					a.servePublicDemoRead(next, w, r)
 					return
 				}
@@ -332,6 +332,13 @@ func isPublicDemoReadRequest(method, path string) bool {
 	default:
 		return false
 	}
+}
+
+func isPublicDemoAllowedRequest(method, path string) bool {
+	if isPublicDemoReadRequest(method, path) {
+		return true
+	}
+	return method == http.MethodPost && path == "/v1/engine/projections/backfill"
 }
 
 func isProjectBootstrapRoute(method, path string) bool {

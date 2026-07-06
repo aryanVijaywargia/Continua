@@ -15,7 +15,7 @@ import (
 //
 //nolint:gocritic // Signature is generated from the OpenAPI contract.
 func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams) {
-	projectID, ok := projectIDOrUnauthorized(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
@@ -26,7 +26,7 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 	var total int64
 	var err error
 
-	filter := traceFilterFromParams(projectID, &params, limit, offset)
+	filter := traceFilterFromParams(scope, &params, limit, offset)
 	switch {
 	case traceNeedsDynamicQuery(&filter):
 		result, err := s.store.ListTracesFiltered(r.Context(), filter)
@@ -42,23 +42,23 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 		traces = result.Traces
 		total = result.Total
 	case filter.SessionID != nil:
-		traces, err = s.store.ListTracesBySession(r.Context(), projectID, *filter.SessionID, limit, offset, filter.SortDir)
+		traces, err = s.store.ListTracesBySession(r.Context(), scope, *filter.SessionID, limit, offset, filter.SortDir)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
 			return
 		}
-		total, err = s.store.CountTracesBySession(r.Context(), projectID, *filter.SessionID)
+		total, err = s.store.CountTracesBySession(r.Context(), scope, *filter.SessionID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count traces")
 			return
 		}
 	default:
-		traces, err = s.store.ListTraces(r.Context(), projectID, limit, offset, filter.SortDir)
+		traces, err = s.store.ListTraces(r.Context(), scope, limit, offset, filter.SortDir)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list traces")
 			return
 		}
-		total, err = s.store.CountTraces(r.Context(), projectID)
+		total, err = s.store.CountTraces(r.Context(), scope)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count traces")
 			return
@@ -84,12 +84,12 @@ func (s *Server) ListTraces(w http.ResponseWriter, r *http.Request, params ListT
 
 // GetTrace returns a trace by ID.
 func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ GetTraceParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 
-	trace, ok := s.getScopedTrace(r.Context(), w, selectedProjectID, id)
+	trace, ok := s.getScopedTrace(r.Context(), w, scope, id)
 	if !ok {
 		return
 	}
@@ -105,7 +105,7 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 		if readLiveEngineSummary {
 			summary, err := s.engineControl.ReadRunSummary(
 				r.Context(),
-				trace.ProjectID,
+				store.BoundScope(trace.ProjectID),
 				uuid.UUID(trace.EngineRunID.Bytes),
 			)
 			if err != nil {
@@ -124,16 +124,16 @@ func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, id openapi_typ
 
 // ListSpansByTrace returns spans for a trace.
 func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, _ ListSpansByTraceParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 
-	if _, ok := s.getScopedTrace(r.Context(), w, selectedProjectID, id); !ok {
+	if _, ok := s.getScopedTrace(r.Context(), w, scope, id); !ok {
 		return
 	}
 
-	spans, err := s.store.ListSpansByTrace(r.Context(), id)
+	spans, err := s.store.ListSpansByTrace(r.Context(), scope, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list spans")
 		return
@@ -152,12 +152,12 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 
 // GetTraceEvents returns merged explicit and synthetic timeline events for a trace.
 func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetTraceEventsParams) {
-	selectedProjectID, ok := selectedProjectIDFromRequest(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 
-	trace, ok := s.getScopedTrace(r.Context(), w, selectedProjectID, id)
+	trace, ok := s.getScopedTrace(r.Context(), w, scope, id)
 	if !ok {
 		return
 	}
@@ -167,13 +167,13 @@ func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id opena
 		return
 	}
 
-	explicitEvents, err := s.store.ListSpanEventsByTrace(r.Context(), id)
+	explicitEvents, err := s.store.ListSpanEventsByTrace(r.Context(), scope, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list timeline events")
 		return
 	}
 
-	spans, err := s.store.ListSpansByTrace(r.Context(), id)
+	spans, err := s.store.ListSpansByTrace(r.Context(), scope, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list spans")
 		return

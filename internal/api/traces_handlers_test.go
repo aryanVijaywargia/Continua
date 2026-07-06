@@ -954,6 +954,49 @@ func TestListTraces_OperatorSelectedProjectReturnsOnlyThatProject(t *testing.T) 
 	assert.Equal(t, traceA.ID, resp.Traces[0].Id)
 }
 
+func TestListTraces_OperatorUnboundedListsAcrossProjects(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectAID := testutil.CreateTestProject(t, ctx, q)
+	projectBID := testutil.CreateTestProject(t, ctx, q)
+
+	// Far-future start times keep these traces on the first unbounded page in
+	// a shared test database.
+	traceA := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectAID,
+		TraceID:   testutil.UniqueID("operator-unbounded-a"),
+		Name:      testutil.StrPtr("Operator Unbounded Trace A"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2999, 2, 1, 0, 1, 0, 0, time.UTC)),
+	})
+	traceB := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectBID,
+		TraceID:   testutil.UniqueID("operator-unbounded-b"),
+		Name:      testutil.StrPtr("Operator Unbounded Trace B"),
+		Status:    "completed",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2999, 2, 1, 0, 0, 0, 0, time.UTC)),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	rec := httptest.NewRecorder()
+
+	server.ListTraces(rec, req.WithContext(reqCtx), ListTracesParams{})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[TraceList](t, rec)
+	assert.GreaterOrEqual(t, resp.Total, 2)
+	ids := apiTraceIDs(resp.Traces)
+	assert.Contains(t, ids, traceA.ID)
+	assert.Contains(t, ids, traceB.ID)
+}
+
 func TestListTraces_PublicDemoIgnoresProjectIDQueryParam(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
@@ -1023,26 +1066,36 @@ func TestGetTrace_PublicDemoRejectsTraceOutsideDemoProject(t *testing.T) {
 	assert.Equal(t, "not_found", resp.Code)
 }
 
-func TestGetTrace_OperatorRequiresSelectedProjectID(t *testing.T) {
+func TestGetTrace_OperatorDoesNotRequireSelectedProjectID(t *testing.T) {
 	pool := testutil.TestDB(t)
+	ctx := context.Background()
 	s := store.New(pool)
 	server := NewServer(s, nil)
-	traceID := uuid.New()
+	q := s.Queries()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/traces/"+traceID.String(), nil)
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	trace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "operator-unbounded-trace",
+		Name:      testutil.StrPtr("Operator Unbounded Trace"),
+		Status:    "running",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 18, 30, 0, 0, time.UTC)),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/traces/"+trace.ID.String(), nil)
 	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
 	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
 	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
 	rec := httptest.NewRecorder()
 
-	server.GetTrace(rec, req.WithContext(reqCtx), traceID, GetTraceParams{})
-	require.Equal(t, http.StatusBadRequest, rec.Code)
+	server.GetTrace(rec, req.WithContext(reqCtx), trace.ID, GetTraceParams{})
+	require.Equal(t, http.StatusOK, rec.Code)
 
-	resp := decodeJSONBody[Error](t, rec)
-	assert.Equal(t, "missing_project_id", resp.Code)
+	resp := decodeJSONBody[TraceDetail](t, rec)
+	assert.Equal(t, trace.ID, resp.Id)
 }
 
-func TestGetTrace_OperatorSelectedProjectMismatchReturns404(t *testing.T) {
+func TestGetTrace_OperatorProjectIDQueryParamFiltersDetail(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	s := store.New(pool)
@@ -1060,21 +1113,34 @@ func TestGetTrace_OperatorSelectedProjectMismatchReturns404(t *testing.T) {
 		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 18, 30, 0, 0, time.UTC)),
 	})
 
-	req := httptest.NewRequest(
+	mismatchedReq := httptest.NewRequest(
 		http.MethodGet,
 		"/api/traces/"+trace.ID.String()+"?project_id="+projectAID.String(),
 		nil,
 	)
-	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
-	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
-	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
-	rec := httptest.NewRecorder()
+	mismatchedReqCtx := context.WithValue(mismatchedReq.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	mismatchedReqCtx = context.WithValue(mismatchedReqCtx, middleware.OperatorEmailKey, "operator@example.com")
+	mismatchedReqCtx = context.WithValue(mismatchedReqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	mismatchedRec := httptest.NewRecorder()
 
-	server.GetTrace(rec, req.WithContext(reqCtx), trace.ID, GetTraceParams{})
-	require.Equal(t, http.StatusNotFound, rec.Code)
+	server.GetTrace(mismatchedRec, mismatchedReq.WithContext(mismatchedReqCtx), trace.ID, GetTraceParams{})
+	require.Equal(t, http.StatusNotFound, mismatchedRec.Code)
 
-	resp := decodeJSONBody[Error](t, rec)
-	assert.Equal(t, "not_found", resp.Code)
+	selectedReq := httptest.NewRequest(
+		http.MethodGet,
+		"/api/traces/"+trace.ID.String()+"?project_id="+projectBID.String(),
+		nil,
+	)
+	selectedReqCtx := context.WithValue(selectedReq.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	selectedReqCtx = context.WithValue(selectedReqCtx, middleware.OperatorEmailKey, "operator@example.com")
+	selectedReqCtx = context.WithValue(selectedReqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	selectedRec := httptest.NewRecorder()
+
+	server.GetTrace(selectedRec, selectedReq.WithContext(selectedReqCtx), trace.ID, GetTraceParams{})
+	require.Equal(t, http.StatusOK, selectedRec.Code)
+
+	resp := decodeJSONBody[TraceDetail](t, selectedRec)
+	assert.Equal(t, trace.ID, resp.Id)
 }
 
 func TestListSpansByTrace_ProjectScopingReturns404(t *testing.T) {
