@@ -50,3 +50,53 @@ On a FAILED trace with no span selected, the workspace opens the primary failed 
 once per trace load (a one-shot latch, reset when the trace changes), writing it to
 the URL. It must not re-open after the operator closes the panel within the same
 trace load.
+
+**Workspace provider**
+The single provider seam of the trace-detail workspace (`TraceDetailWorkspaceProvider`
+plus `useTraceDetailWorkspace()` in `web/src/pages/traceDetail/`). It owns everything
+*derived* from loaded trace data — span index, span tree, analyses, URL-derived
+selection, the expansion open set, and workspace actions — while the page keeps
+fetching (react-query and the polling timeline) and mounts the provider only after
+data loads, so the provider never sees loading/error states.
+
+> Decision (2026-07-05): one provider, drawn at "loaded trace data + everything derived
+> from it." The provider does not fetch. Selection stays URL-derived (see **Selected
+> span**) and expansion stays owned by the expansion reducer — the provider re-exports
+> their surfaces, never forks their state. Reusable, individually tested leaves
+> (TreeRail, ExecutionWaterfall, SpanDetail, FailureSummary) keep props as their real
+> interface; the provider exists to delete pass-through props in the intermediate
+> layers, not to make every component a context consumer. Do not add a second context
+> or move fetching into this one.
+
+## Request scoping
+
+**Scope**
+The set of projects a single request is allowed to read. A first-class value *produced*
+by scope resolution (API layer) and *consumed* by scope enforcement (store). It has
+exactly two shapes:
+- **Bound(projectID)** — the request may touch exactly one project. API-key and
+  public-demo callers, and an operator who named a project on a list route.
+- **Unbounded** — the request may touch any project. Operator/admin requests only.
+
+> Decision (2026-05-30): scoping is **one resolved value threaded across two seams**,
+> replacing three ad-hoc handler idioms (`projectIDOrUnauthorized`,
+> `selectedProjectIDFromRequest` + post-fetch `projectMatchesSelection`, and
+> `engineRunProjectIDOrUnauthorized`). The API layer *resolves* a `Scope`; the store
+> *enforces* it in SQL (`WHERE … AND ($scope::uuid IS NULL OR project_id = $scope)`), so
+> a cross-project read returns not-found **by construction**. Child reads (spans,
+> span_events) enforce the same predicate on their own `NOT NULL project_id` column
+> (no join to `traces`). The
+> post-fetch recheck and its dead `*uuid.UUID` nil-branch are deleted. Do not
+> reintroduce ownership checks in handlers after a row is already in memory — that
+> convention is the cross-tenant-read bug class this removes.
+
+**Operator (instance-admin)**
+An Auth0-authenticated caller. Treated as an **instance administrator with Unbounded
+scope**, not a project-scoped user. On operator routes, `project_id` is a
+selection/filter (which tenant to view), never a per-project authorization boundary.
+
+> Decision (2026-05-30): operators are cross-tenant by design. There is no
+> operator→project grant model and we will not add one now; Auth0 operator auth is
+> expected to be **removed** later as a local-first simplification, so investing in
+> per-project operator authorization would be wasted effort. A future proposal to scope
+> operators to projects is a product reversal, not a refactor.
