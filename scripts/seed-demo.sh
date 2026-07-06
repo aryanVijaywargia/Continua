@@ -54,7 +54,7 @@ VALUES (
 );
 SQL
 
-echo "==> Preparing engine demo definitions"
+echo "==> Cleaning stale engine demo rows"
 psql "${DATABASE_URL}" \
   -v ON_ERROR_STOP=1 \
   -v demo_project_id="${DEMO_PROJECT_ID}" \
@@ -69,7 +69,6 @@ echo "==> Running real OpenAI-backed demo agents through the ingest API at ${API
   CONTINUA_PRINT_API_KEY=0 \
   CONTINUA_DEMO_RUN_ID="${DEMO_RUN_ID}" \
   CONTINUA_DEMO_AGENT_MODE=openai \
-  CONTINUA_DEMO_SEED_ENGINE_RUNS=1 \
   uv run python examples/e2e_demo.py
 )
 

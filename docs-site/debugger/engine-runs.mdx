@@ -1,6 +1,6 @@
 ---
 title: "Engine runs console"
-description: "Inspect durable engine workflow runs — list, detail, pending work, projection repair."
+description: "Inspect durable engine workflow runs: list, detail, pending work, projection repair."
 ---
 
 The Engine runs console at `/engine/runs` is the operator surface for the durable engine.
@@ -9,8 +9,9 @@ repair projection state.
 
 <Warning>
   The engine surface is in preview. Endpoints require `X-Continua-Engine-Preview` and
-  `ENGINE_PUBLIC_API_ENABLED=true` on the server. Engine workflow execution itself is not
-  yet a supported product path — see [Engine foundation](/concepts/engine-foundation) and
+  `ENGINE_PUBLIC_API_ENABLED=true` on the server. Workflow execution works (Go-defined
+  workflows), but it's preview, not production-hardened, so don't put it on a
+  production-critical path yet. See [Engine foundation](/concepts/engine-foundation) and
   [Roadmap](/roadmap).
 </Warning>
 
@@ -62,18 +63,22 @@ The page calls `POST /v1/engine/projections/backfill` and reports per-run progre
 
 ## What's real and what isn't
 
-**Real today:**
+**Real today (preview):**
 
+- End-to-end execution of Go-defined workflows via the `continua-engine` worker runtime —
+  activities, timers, signals, child workflows, cancellation, continue-as-new, and
+  crash-recovery replay — projected into this console
 - Engine schema + store with reversible migrations
 - Run lifecycle endpoints (start, get, suspend, resume, cancel, terminate, signal)
 - Activity-task endpoints (claim, heartbeat, complete, fail)
 - Projection backfill + repair tooling
 - Engine runs console UI (this page)
 
-**Not real today:**
+**Not yet:**
 
-- End-to-end workflow execution against a real definition. The state machine accepts
-  control inputs and records history, but workflows do not run to completion in
-  production.
+- Non-Go workflow authoring, and a production path to register arbitrary workflow
+  definitions (the runtime registers a fixed dark-launch set today)
+- A GA, non-preview `/v1/engine/*` control plane
 
-For the full status breakdown, see [Engine foundation](/concepts/engine-foundation).
+For the full status breakdown, see [Engine foundation](/concepts/engine-foundation) and
+[Roadmap](/roadmap).

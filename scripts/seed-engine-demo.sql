@@ -1,9 +1,8 @@
--- Prepare engine state for the public demo project.
+-- Clean stale engine state for the public demo project.
 --
--- Demo engine runs and projected traces are created through /v1/engine/runs by
--- sdks/python/examples/e2e_demo.py. This SQL only removes previous demo rows
--- that are not covered by project deletion and registers the demo definitions
--- required by the engine start API.
+-- The real-agent demo currently records provider-backed SDK traces only. Engine
+-- run shells are intentionally not seeded here because catalog-only definitions
+-- would stay queued until matching compiled workflow definitions exist.
 
 DELETE FROM traces
 WHERE project_id = :'demo_project_id'::uuid
@@ -72,10 +71,10 @@ WHERE project_id = :'demo_project_id'::uuid;
 DELETE FROM engine.instances
 WHERE project_id = :'demo_project_id'::uuid;
 
-INSERT INTO engine.definition_catalog (definition_name, definition_version, published_at, updated_at)
-VALUES
-  ('agent.research', 'v1', NOW(), NOW()),
-  ('agent.code_review', 'v1', NOW(), NOW()),
-  ('agent.incident_response', 'v1', NOW(), NOW())
-ON CONFLICT (definition_name, definition_version) DO UPDATE
-SET updated_at = EXCLUDED.updated_at;
+DELETE FROM engine.definition_catalog
+WHERE definition_version = 'v1'
+  AND definition_name IN (
+    'agent.research',
+    'agent.code_review',
+    'agent.incident_response'
+  );

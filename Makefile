@@ -7,6 +7,9 @@ GO_BIN_DIR := $(shell go env GOPATH)/bin
 PATH := $(GO_BIN_DIR):$(PATH)
 export PATH
 GOLANGCI_LINT := $(GO_BIN_DIR)/golangci-lint
+GO_BUILD_CACHE ?= /tmp/continua-go-build
+GOLANGCI_LINT_CACHE ?= /tmp/continua-golangci-cache
+LINT_ENV := GOCACHE=$(GO_BUILD_CACHE) GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE)
 
 .PHONY: all setup generate build build-engine test test-go test-js lint lint-go lint-js \
         dev dev-server dev-web clean help migrate migrate-down docker docker-build \
@@ -130,8 +133,8 @@ lint: lint-go lint-js ## Run all linters
 
 lint-go: ## Run Go linters
 	@echo "==> Linting Go code..."
-	$(GOLANGCI_LINT) run ./...
-	cd engine && $(GOLANGCI_LINT) run ./...
+	$(LINT_ENV) $(GOLANGCI_LINT) run ./...
+	cd engine && $(LINT_ENV) $(GOLANGCI_LINT) run ./...
 
 lint-js: ## Run JavaScript/TypeScript linters
 	@echo "==> Linting JS/TS code..."
@@ -139,8 +142,8 @@ lint-js: ## Run JavaScript/TypeScript linters
 
 lint-fix: ## Fix linting issues
 	@echo "==> Fixing Go lint issues..."
-	$(GOLANGCI_LINT) run --fix ./...
-	cd engine && $(GOLANGCI_LINT) run --fix ./...
+	$(LINT_ENV) $(GOLANGCI_LINT) run --fix ./...
+	cd engine && $(LINT_ENV) $(GOLANGCI_LINT) run --fix ./...
 	@echo "==> Fixing JS/TS lint issues..."
 	pnpm lint:fix
 

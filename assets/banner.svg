@@ -1,6 +1,6 @@
 <svg width="2400" height="600" viewBox="0 0 2400 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bannerTitle bannerDesc">
-  <title id="bannerTitle">Continua — self-hosted debugging for AI agent runs</title>
-  <desc id="bannerDesc">Continua banner showing the wordmark, tagline, and an abstract span-waterfall motif representing the trace debugger.</desc>
+  <title id="bannerTitle">Continua — self-hosted durable execution engine with built-in observability for AI agent runs</title>
+  <desc id="bannerDesc">Continua banner showing the wordmark, tagline, and an abstract span-waterfall motif representing durable runs and the trace debugger.</desc>
 
   <defs>
     <linearGradient id="bgGrad" x1="0" y1="0" x2="2400" y2="600" gradientUnits="userSpaceOnUse">
@@ -62,10 +62,10 @@
   <text x="270" y="200" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="128" font-weight="800" letter-spacing="-3">Continua</text>
 
   <!-- tagline -->
-  <text x="142" y="290" fill="#CBD5E1" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="40" font-weight="500">Self-hosted debugging for AI agent runs.</text>
+  <text x="142" y="290" fill="#CBD5E1" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="40" font-weight="500">Durable execution engine for AI agents.</text>
 
   <!-- subtag -->
-  <text x="142" y="346" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="26">Trace, inspect, and compare executions — from ingest to UI, on your own infrastructure.</text>
+  <text x="142" y="346" fill="#94A3B8" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="26">With built-in observability — trace, inspect, and compare every run.</text>
 
   <!-- pill chips -->
   <g font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="22" font-weight="600">

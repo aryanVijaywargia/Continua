@@ -1,11 +1,11 @@
 ---
 title: "Auth & headers"
-description: "What every Continua REST request looks like — auth schemes, project scoping, preview headers, and response codes."
+description: "What every Continua REST request looks like: auth schemes, project scoping, preview headers, and response codes."
 ---
 
 Every Continua REST endpoint is generated from
 [`contracts/openapi/openapi.yaml`](https://github.com/aryanVijaywargia/Continua/blob/main/contracts/openapi/openapi.yaml).
-This page covers the cross-cutting concerns — auth, scoping, preview gates — that don't
+This page covers the cross-cutting concerns: auth, scoping, and preview gates. They don't
 fit on individual endpoint pages.
 
 ## Authentication
@@ -27,12 +27,12 @@ Continua accepts two auth schemes, depending on the endpoint:
 - Operators select a project explicitly via `selected_project_id` (query or header).
 - See [Auth0 setup](/guides/auth0-setup) for the configuration walk-through.
 
-Some endpoints (project listing) are gated by auth scheme — for example, listing all
+Some endpoints (project listing) are gated by auth scheme: for example, listing all
 projects requires Auth0, not an API key.
 
 ## Health checks
 
-`GET /api/health` and `GET /api/auth/config` are public — no auth required. Everything
+`GET /api/health` and `GET /api/auth/config` are public: no auth required. Everything
 else is authenticated.
 
 ## Scoping requests
@@ -81,8 +81,8 @@ Continua follows standard REST semantics:
 idempotency token: re-sending the same `batch_key` will not double-write. Use this to
 make retries safe.
 
-Engine control endpoints accept an `Idempotency-Key` header for similar reasons —
-re-sending the same request key has no additional effect.
+Engine control endpoints accept an `Idempotency-Key` header for similar reasons.
+Re-sending the same request key has no additional effect.
 
 ## Pagination
 
@@ -101,7 +101,7 @@ a long-lived API key created specifically for docs / debugging.
 
 ## See also
 
-- [Projects & auth](/concepts/projects-and-auth) — auth model.
-- [Managing projects](/guides/managing-projects) — issue and rotate API keys.
-- [Ingest lifecycle](/concepts/ingest-lifecycle) — what `POST /v1/ingest` actually does.
-- [Engine foundation](/concepts/engine-foundation) — what the engine preview covers.
+- [Projects & auth](/concepts/projects-and-auth): auth model.
+- [Managing projects](/guides/managing-projects): issue and rotate API keys.
+- [Ingest lifecycle](/concepts/ingest-lifecycle): what `POST /v1/ingest` actually does.
+- [Engine foundation](/concepts/engine-foundation): what the engine preview covers.

@@ -1,7 +1,7 @@
 [project]
 name = "continua-sdk"
 version = "0.1.0"
-description = "Python SDK for Continua agent observability and debugging"
+description = "Python SDK for Continua — AI-agent observability and durable-engine control"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -12,9 +12,11 @@ keywords = [
     "agents",
     "ai",
     "debugging",
+    "durable-execution",
     "llm",
     "observability",
     "tracing",
+    "workflows",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

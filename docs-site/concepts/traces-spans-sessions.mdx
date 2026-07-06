@@ -9,7 +9,7 @@ and traces contain a tree of **spans**.
 ## Trace
 
 A **trace** is one end-to-end execution of an agent or workflow. It's typically the unit
-you care about when debugging — "the agent run that handled ticket #4842".
+you care about when debugging: "the agent run that handled ticket #4842".
 
 A trace has:
 
@@ -59,7 +59,7 @@ with span("call_openai", kind="llm") as s:
 
 ## Session
 
-A **session** groups related traces — typically a single user conversation, a multi-step
+A **session** groups related traces, typically a single user conversation, a multi-step
 job, or a continuous agent loop. Sessions are optional; many setups send standalone
 traces with no session.
 
@@ -85,7 +85,7 @@ with session("user-conversation-42") as sess:
 - **Session detail** shows the timeline of traces in that session, plus a session compare
   workspace.
 - **Traces list** (`/traces`) shows every trace with URL-driven filters.
-- **Trace detail** (`/traces/{id}`) opens **failure-first** — if the trace failed, it
+- **Trace detail** (`/traces/{id}`) opens **failure-first**. If the trace failed, it
   jumps you to the failing span. Otherwise it shows the span tree, payload inspector,
   state, and merged timeline.
 

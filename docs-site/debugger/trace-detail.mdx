@@ -4,7 +4,7 @@ description: "Waterfall, span tree, payload inspector, timeline, and failure sum
 ---
 
 The Trace detail page at `/traces/:id` is where you actually debug a run. It's organised
-failure-first: when a span has errored, the page jumps you to the failing span and shows
+failure-first. When a span has errored, the page jumps you to the failing span and shows
 the surrounding context.
 
 ## Layout
@@ -13,7 +13,7 @@ The page is composed of these surfaces, all wired to the same selected span:
 
 | Surface | Component | What it shows |
 | --- | --- | --- |
-| Header | — | Trace name, status badge, duration, cost, token totals, copy-link button |
+| Header | None | Trace name, status badge, duration, cost, token totals, copy-link button |
 | Failure summary | `FailureSummary` | When the trace failed, a breadcrumb to the failing span + the error message |
 | Execution waterfall | `ExecutionWaterfall` | Time-axis bars for every span; nesting shown by indentation; bar colour by status |
 | Span tree | `SpanTree` | Collapsible hierarchical view; useful when there are many short spans |
@@ -32,19 +32,19 @@ The timeline merges two sources:
    always see span lifecycle on the same axis.
 
 The timeline polls `GET /api/traces/{id}/events` on a short interval, so a running trace
-fills in live as new events arrive. There is no WebSocket today — see [Roadmap](/roadmap).
+fills in live as new events arrive. There is no WebSocket today; see [Roadmap](/roadmap).
 
 ## Payload inspector
 
 Click any span to populate the inspector. Tabs include:
 
-- **Input / Output** — the JSON payload set via `set_input` / `set_output` on the SDK.
-- **Metadata** — key/value pairs set via `set_metadata`.
-- **Events** — chronological list of explicit events on this span.
-- **State diff** — when consecutive `state_change` events exist, a visual diff between
+- **Input / Output**: the JSON payload set via `set_input` / `set_output` on the SDK.
+- **Metadata**: key/value pairs set via `set_metadata`.
+- **Events**: chronological list of explicit events on this span.
+- **State diff**: consecutive `state_change` events produce a visual diff between
   before and after states.
-- **Reasoning** — when the span recorded reasoning tokens (Claude-style `set_tokens` with
-  a reasoning bucket), surfaces them in a focused tab.
+- **Reasoning**: spans with reasoning tokens (Claude-style `set_tokens` with a reasoning
+  bucket) surface them in a focused tab.
 
 Payloads larger than the configured truncation threshold are stored with a marker; the
 inspector shows a [`TruncationBanner`](https://github.com/aryanVijaywargia/Continua/blob/main/web/src/components/TruncationBanner.tsx)

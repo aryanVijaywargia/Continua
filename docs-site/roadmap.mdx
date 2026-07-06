@@ -1,12 +1,12 @@
 ---
 title: "Roadmap & status"
-description: "What's shippable today, what's scaffolded, and what we'd reach for next."
+description: "What's shippable today, what's preview, and what we'd reach for next."
 ---
 
-This page is the honest line between the parts of Continua you can rely on today and the
-parts that are partially implemented or experimental. If a feature lives below the line,
-we may have endpoints, packages, or schema in the repo for it — but it isn't a supported
-product path yet.
+This page is the honest line between the parts of Continua you can rely on today, the
+parts that work but are still **preview**, and the parts that are **scaffolded**. If a
+feature lives in the scaffolded section, we may have endpoints, packages, or schema in the
+repo for it, but it isn't a supported product path yet.
 
 ## Shippable today
 
@@ -22,11 +22,39 @@ shape. Everything in the rest of this docs site assumes they exist.
 | **Public demo mode** | Read-only seeded project for evaluations |
 | **Python SDK** | Decorators, context managers, batching, sync / async / server-default ingest modes, polling helpers |
 | **Debugger UI** | Traces list, trace detail (waterfall, span tree, timeline, payload inspector), sessions list / detail / compare, settings, command palette, theming |
-| **Engine schema + control endpoints** | Postgres engine schema with reversible migrations, `/v1/engine/*` control endpoints behind a preview flag, runs console UI |
+| **Engine schema + control + console** | Postgres engine schema with reversible migrations, `/v1/engine/*` control endpoints (preview-gated), and the runs console UI. The execution runtime is **preview**, see below |
 | **Background jobs** | River workers for ingest, rollups, and payload cleanup |
 | **Self-hosting** | Single Go binary + Postgres, env-only config, embedded SPA, `continua migrate` + `continua-engine migrate` |
 
-## Scaffolded — not yet a supported product path
+## Preview: works, but not production-hardened
+
+These have real implementations and end-to-end tests, but carry caveats that keep them out
+of "shippable today." Use them, just not on a production-critical path.
+
+### Durable engine workflow execution
+
+The `continua-engine` worker runtime executes **Go-defined** workflows end-to-end:
+
+- It claims runs, schedules activities, fires timers, delivers signals, spawns child
+  workflows, and replays event-sourced history to drive each run to a terminal result.
+- Activities retry with exponential backoff; runs and activities recover across process
+  restarts via leases + history replay (covered by the restart suite in
+  [`engine/cmd/continua-engine/`](https://github.com/aryanVijaywargia/Continua/tree/main/engine/cmd/continua-engine)).
+- Run state is projected into `public.traces` for the [engine runs](/debugger/engine-runs)
+  console.
+
+Preview caveats:
+
+- **Go-only authoring**: no TypeScript/Python SDK for authoring workflows yet.
+- **No production definition loading**: definitions register through a built-in
+  dark-launch harness against a fixed demo project; there's no multi-tenant
+  register-and-version path yet.
+- **Preview-gated REST**: `/v1/engine/*` requires `X-Continua-Engine-Preview` +
+  `ENGINE_PUBLIC_API_ENABLED`, and shapes may change before GA.
+
+See [Engine foundation](/concepts/engine-foundation) for the full picture.
+
+## Scaffolded: not yet a supported product path
 
 These exist in the repo as types, schemas, or partial implementations. Don't depend on
 them. Calls into them won't get production behaviour, and the surface may change before
@@ -42,27 +70,10 @@ fetch client over the contracts.
 **Use the Python SDK** if you need real instrumentation today. TypeScript instrumentation
 is on the roadmap; tracking the work in the repo is the most reliable signal.
 
-### Engine workflow execution
-
-The engine schema, store, and control endpoints are real. **Workflow definition execution
-is not.** That means:
-
-- You can call `POST /v1/engine/runs` and it will durably record the run, but the
-  workflow body won't execute end-to-end.
-- `ActivityWorker` and the `@activity` decorator in the Python SDK exist and will poll
-  `/v1/engine/activities/claim`, but there is no production workload feeding the queue.
-- `EngineControlClient` exposes signal / suspend / resume / cancel / terminate, and the
-  state machine accepts them, but workflow continuation behaviour is incomplete.
-
-What **does** work today: the engine runs console UI for inspecting durable run state,
-history, pending activity tasks, and projection repair. See [Engine
-foundation](/concepts/engine-foundation) for the line between schema/control (real)
-and execution (not real).
-
 ### Live WebSocket runtime
 
 The contract under [`contracts/websocket/events.ts`](https://github.com/aryanVijaywargia/Continua/tree/main/contracts/websocket)
-defines a live-update event schema. The debugger UI does **not** consume it today — trace
+defines a live-update event schema. The debugger UI does **not** consume it today: trace
 detail is polling-based via `GET /api/traces/{id}/events`. Server-side WebSocket handlers
 are stubbed.
 
@@ -85,9 +96,9 @@ Rough ordering, subject to change as feedback comes in:
 
 1. Finish the TypeScript SDK to parity with Python for trace / span / session instrumentation.
 2. WebSocket runtime so the trace detail page can drop polling.
-3. End-to-end engine workflow execution on top of the existing schema and control surface.
+3. Graduate the durable engine from preview: multi-tenant workflow definition loading, non-Go (TypeScript/Python) workflow authoring, and a GA `/v1/engine/*` control plane.
 4. Proxy capture for zero-code instrumentation.
-5. Replay execution as a layer on top of finished engine workflows.
+5. Replay execution as a layer on top of durable engine workflows.
 
 If you have a strong opinion on the order, open an issue on
-[GitHub](https://github.com/aryanVijaywargia/Continua/issues) — we read every one.
+[GitHub](https://github.com/aryanVijaywargia/Continua/issues): we read every one.

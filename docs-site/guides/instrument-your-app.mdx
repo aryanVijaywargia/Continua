@@ -32,7 +32,7 @@ framework uses) before any traced code runs.
 
 ## 3. Wrap the entry point with `@trace`
 
-A trace should represent **one unit of work** — usually one user turn, one job, one
+A trace should represent **one unit of work**, usually one user turn, one job, one
 request. Anything narrower is a span, not a trace.
 
 ```python
@@ -55,7 +55,7 @@ def answer_question(question: str, user_id: str) -> str:
         return answer
 ```
 
-This shape — one outer `@trace`, several `span()` blocks inside — covers most agent
+This shape: one outer `@trace`, several `span()` blocks inside: covers most agent
 patterns. Reach for [`@session`](/sdk/python/sessions) when you want to group multiple
 turns under one user conversation.
 
@@ -129,7 +129,7 @@ Common refinements once a basic trace exists:
 - **Record costs and tokens** on every LLM call. Trace-level totals start rolling up
   automatically. See [Cost & tokens](/concepts/cost-and-tokens).
 - **Set `external_id` on sessions** so a re-run with the same id ends up in the same
-  session — that's what unlocks [Session compare](/debugger/session-compare).
+  session: that's what unlocks [Session compare](/debugger/session-compare).
 
 ## When to switch ingest modes
 
@@ -141,8 +141,8 @@ See [Batching & ingest modes](/sdk/python/batching-and-ingest-modes) for the tra
 
 ## See also
 
-- [Tracing](/sdk/python/tracing) — `@trace`, `@span` reference.
-- [Sessions](/sdk/python/sessions) — grouping traces.
-- [Span events](/sdk/python/span-events) — semantic events that make the timeline useful.
-- [Debugging a failed run](/guides/debugging-failures) — what to do when something
+- [Tracing](/sdk/python/tracing): `@trace`, `@span` reference.
+- [Sessions](/sdk/python/sessions): grouping traces.
+- [Span events](/sdk/python/span-events): semantic events that make the timeline useful.
+- [Debugging a failed run](/guides/debugging-failures): what to do when something
   breaks.

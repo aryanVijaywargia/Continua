@@ -3,8 +3,9 @@ title: "Architecture overview"
 description: "How the Go server, Postgres, River workers, and embedded debugger fit together."
 ---
 
-Continua is a single Go server plus an embedded React debugger operator console. The
-active request path is:
+Continua has two runtimes: a **platform server** (REST ingest, reads, background jobs, and
+the embedded React debugger) and a **durable engine worker runtime** (`continua-engine`)
+that executes workflows. They share one Postgres. The platform's active request path is:
 
 ```mermaid
 flowchart LR
@@ -57,6 +58,15 @@ River workers run inside the platform server process and currently handle:
 - Trace rollup computation (status, duration, cost, token counts)
 - Failed payload cleanup
 
+### Engine worker runtime (preview)
+
+A separate `continua-engine` process runs the durable execution runtime: a workflow worker
+(claims runs, replays event-sourced history, drives them to a terminal result), an activity
+worker (retries with backoff), a maintenance worker (timers, leases), and a projector that
+mirrors run state into `public.traces`. It executes Go-defined workflows end-to-end with
+crash-recovery across restarts. Preview: Go-only authoring, preview-gated REST. See
+[Engine foundation](/concepts/engine-foundation).
+
 ### SDKs
 
 | SDK | State |
@@ -81,14 +91,14 @@ GET /api/sessions
 GET /api/sessions/{id}
 GET /api/sessions/{id}/narrative
 GET /api/sessions/{id}/compare
-GET /api/projects             (list — Auth0 operators only)
+GET /api/projects             (list: Auth0 operators only)
 POST /api/projects            (create + receive plaintext key once)
 PATCH /api/projects/{id}      (update metadata)
 DELETE /api/projects/{id}     (soft delete)
 POST /api/projects/{id}/rotate (rotate API key)
 ```
 
-The full `/v1/engine/*` control surface is also implemented behind a preview flag — see
+The full `/v1/engine/*` control surface is also implemented behind a preview flag: see
 [Engine foundation](/concepts/engine-foundation).
 
 The trace detail UI does not use a live WebSocket runtime today. It polls the timeline API
@@ -107,13 +117,10 @@ Run `make generate` after changing any of the above.
 
 ## What is not implemented yet
 
-These surfaces are scaffolded — schema, types, or partial code exists, but they're not
+These surfaces are scaffolded: schema, types, or partial code exists, but they're not
 production-ready. See [Roadmap & status](/roadmap) for the full breakdown.
 
-- **Engine workflow execution.** The engine schema, store, control endpoints, and runs
-  console UI are real (see [Engine foundation](/concepts/engine-foundation)) — but the
-  runtime that takes a workflow definition and runs it to completion is not.
-- **Live WebSocket runtime** in `internal/ws` — trace detail is polling-based today.
+- **Live WebSocket runtime** in `internal/ws`: trace detail is polling-based today.
 - **Proxy capture runtime** in `internal/proxy`.
 - **Replay execution runtime** in `internal/replay`.
-- **Feature-complete TypeScript SDK** — the package is currently a typed-fetch stub.
+- **Feature-complete TypeScript SDK**: the package is currently a typed-fetch stub.

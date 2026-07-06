@@ -8,7 +8,7 @@ If `openspec/` is present in the working tree, open `@/openspec/AGENTS.md` when 
 - Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
 - Sounds ambiguous and you need the authoritative spec before coding
 
-`openspec/` is gitignored — it's the internal product-development record, present only on the maintainer's local checkout. External contributors will not have it; in that case, fall back to checked-in code and [docs-site/](./docs-site/) as the authoritative sources.
+`openspec/` is gitignored: it's the internal product-development record, present only on the maintainer's local checkout. External contributors will not have it; in that case, fall back to checked-in code and [docs-site/](./docs-site/) as the authoritative sources.
 
 Keep this managed block so 'openspec update' can refresh the instructions.
 
@@ -20,14 +20,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current Baseline
 
-Continua is currently a Go/React monorepo whose real product path is:
+Continua is a Go/React monorepo with two runtimes:
 
-1. authenticated ingest over REST
-2. Postgres-backed storage
-3. River workers for async ingest, rollups, and cleanup
-4. React debugger UI for traces, sessions, span trees, payload inspection, and merged timelines
+1. **Observability platform** (production-shaped): authenticated REST ingest → Postgres storage → River workers (async ingest, rollups, cleanup) → REST read APIs → embedded React debugger UI for traces, sessions, span trees, payload inspection, and merged timelines.
+2. **Durable execution engine** (preview): the `continua-engine` worker runtime executes Go-defined workflows end-to-end — activities, timers, signals, child workflows, cancellation, continue-as-new — with event-sourced history and crash-recovery replay. It projects run state into the platform's tables for the engine-runs console.
 
-Do not assume replay, WebSocket runtime, proxy capture, durable engine workflows, or a real TypeScript SDK are already implemented. Most of those areas are scaffolded only.
+Engine caveats (keep these accurate): workflow authoring is Go-only, there's no production path for registering arbitrary user workflow definitions (the dark-launch runtime uses a fixed demo project), and the public `/v1/engine/*` REST control plane is preview-gated. Do not assume replay, WebSocket runtime, proxy capture, or a real TypeScript SDK are implemented — those are scaffolded only.
 
 Start discovery from:
 - `AGENTS.md`
@@ -36,7 +34,7 @@ Start discovery from:
 - `.claude/skills/references/decisions.md` (if present locally)
 - the live package you are editing
 
-Use the checked-in code, contracts, and migrations as the authoritative current-state baseline. `docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context — use them only if present locally; do not rely on them in external clones.
+Use the checked-in code, contracts, and migrations as the authoritative current-state baseline. `docs/DEBUGGER_PLATFORM_BASELINE.md` and `docs/PHASE5_CURRENT_STATE_REPORT.md` are gitignored historical context: use them only if present locally; do not rely on them in external clones.
 
 ## What Exists Today
 
@@ -48,9 +46,9 @@ Use the checked-in code, contracts, and migrations as the authoritative current-
 - `internal/store`: sqlc-backed store wrappers and trace search
 - `web/src`: traces list, sessions list/detail, trace detail, payload inspector, failure-first UI
 - `sdks/python`: real SDK with batching, trace/span/session helpers, async ingest polling
+- `engine/`: durable execution runtime (preview) — workflow/activity workers, event-sourced history, replay, projector; `continua-engine` CLI (`serve`, `start`, `signal`, `cancel`, `inspect`)
 
 ### Mostly scaffolded
-- `engine/`
 - `internal/proxy`
 - `internal/ws`
 - `internal/replay`

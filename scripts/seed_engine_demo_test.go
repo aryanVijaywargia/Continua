@@ -22,17 +22,17 @@ func TestSeedDemoRequiresRealAgentRuns(t *testing.T) {
 	assertContains(t, seedScript, "scripts/seed-engine-demo.sql")
 	assertContains(t, seedScript, "OPENAI_API_KEY must be set")
 	assertContains(t, seedScript, "CONTINUA_DEMO_AGENT_MODE=openai")
-	assertContains(t, seedScript, "CONTINUA_DEMO_SEED_ENGINE_RUNS=1")
+	assertNotContains(t, seedScript, "CONTINUA_DEMO_SEED_ENGINE_RUNS=1")
 
 	fixtureSQL := readFile(t, filepath.Join(repoRoot, "scripts", "seed-engine-demo.sql"))
 	for _, expected := range []string{
-		"Demo engine runs and projected traces are created through /v1/engine/runs",
-		"'agent.research'",
-		"'agent.code_review'",
-		"'agent.incident_response'",
+		"catalog-only definitions",
+		"DELETE FROM engine.runs",
+		"DELETE FROM engine.instances",
 	} {
 		assertContains(t, fixtureSQL, expected)
 	}
+	assertNotContains(t, fixtureSQL, "INSERT INTO engine.definition_catalog")
 }
 
 func TestSeedDemoScriptSyntax(t *testing.T) {
@@ -44,7 +44,7 @@ func TestSeedDemoScriptSyntax(t *testing.T) {
 	}
 }
 
-func TestSeedEngineDemoSQLCleansStaleEngineRowsAndRegistersDefinitions(t *testing.T) {
+func TestSeedEngineDemoSQLCleansStaleEngineRowsWithoutRegisteringDefinitions(t *testing.T) {
 	if _, err := exec.LookPath("psql"); err != nil {
 		t.Skipf("psql is required for seed fixture smoke test: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestSeedEngineDemoSQLCleansStaleEngineRowsAndRegistersDefinitions(t *testin
 		WHERE definition_version = 'v1'
 		  AND definition_name = ANY($1::text[])
 	`, []string{"agent.research", "agent.code_review", "agent.incident_response"}).Scan(&definitionCount))
-	assert.Equal(t, 3, definitionCount)
+	assert.Equal(t, 0, definitionCount)
 }
 
 func repoRoot(t *testing.T) string {
@@ -171,5 +171,13 @@ func assertContains(t *testing.T, haystack, needle string) {
 
 	if !strings.Contains(haystack, needle) {
 		t.Fatalf("expected file contents to include %q", needle)
+	}
+}
+
+func assertNotContains(t *testing.T, haystack, needle string) {
+	t.Helper()
+
+	if strings.Contains(haystack, needle) {
+		t.Fatalf("expected file contents not to include %q", needle)
 	}
 }

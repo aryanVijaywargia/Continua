@@ -2,19 +2,19 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Continua",
-  "description": "Self-hosted debugging for AI agent runs. Traces, spans, sessions, and events for production agents.",
+  "description": "Self-hosted durable execution engine with built-in observability for AI agent runs. Run agent workflows durably, then inspect every run as traces, spans, sessions, and events.",
   "colors": {
     "primary": "#0075d6",
     "light": "#7aaeff",
     "dark": "#005cab"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/brand/continua-mark.svg",
   "appearance": {
     "default": "system"
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg",
+    "light": "/brand/continua-wordmark-light.svg",
+    "dark": "/brand/continua-wordmark-dark.svg",
     "href": "https://www.continua.in"
   },
   "navigation": {
@@ -148,6 +148,18 @@
             "group": "Status",
             "pages": [
               "roadmap"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Updates",
+            "pages": [
+              "changelog/overview",
+              "changelog/2026-05-29"
             ]
           }
         ]
