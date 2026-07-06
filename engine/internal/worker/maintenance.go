@@ -6,16 +6,16 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	"github.com/continua-ai/continua/engine/internal/store"
+	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 )
 
 type MaintenanceWorker struct {
 	store *store.Store
 }
 
-func NewMaintenanceWorker(store *store.Store) *MaintenanceWorker {
-	return &MaintenanceWorker{store: store}
+func NewMaintenanceWorker(engineStore *store.Store) *MaintenanceWorker {
+	return &MaintenanceWorker{store: engineStore}
 }
 
 func (w *MaintenanceWorker) PollOnce(ctx context.Context, _ string) error {
@@ -36,7 +36,7 @@ func (w *MaintenanceWorker) PollOnce(ctx context.Context, _ string) error {
 			return wakeErr
 		}
 		if wakeErr == nil {
-			if err := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); err != nil {
+			if err := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &wake.Run); err != nil {
 				_ = tx.Rollback(ctx)
 				return err
 			}

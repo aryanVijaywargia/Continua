@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,25 +13,13 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
-	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	"github.com/continua-ai/continua/engine/internal/store"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 )
 
-const (
-	engineTracePrefix    = "engine:"
-	engineRootSpanPrefix = "engine:root:"
-)
-
-type continuationTraceSeed struct {
-	SessionID   pgtype.UUID
-	Name        *string
-	UserID      *string
-	Tags        []string
-	Environment *string
-	Release     *string
-	Metadata    []byte
-}
+// continuationTraceSeed aliases the projection writer's seed type; the writer
+// (engine/pkg/projection) owns the SQL that loads and consumes it.
+type continuationTraceSeed = publicprojection.TraceShellSeed
 
 type Activator struct {
 	store       *store.Store
@@ -44,9 +31,9 @@ type childWorkflowBindingState struct {
 	childInstance *enginedb.EngineInstance
 }
 
-func NewActivator(store *store.Store, definitions *Registry) *Activator {
+func NewActivator(engineStore *store.Store, definitions *Registry) *Activator {
 	return &Activator{
-		store:       store,
+		store:       engineStore,
 		definitions: definitions,
 	}
 }
@@ -214,7 +201,7 @@ func (a *Activator) commitDecision(
 	// projector catches up. decisionCancelled remains engine-only per the
 	// operational hardening change.
 	if latestHistoryID != nil && decision.Kind != decisionCancelled {
-		if err := engineprojector.UpdateLatestHistory(ctx, tx.Tx(), run.ProjectID, run.ID, *latestHistoryID); err != nil {
+		if err := publicprojection.NewWriter(tx.Tx()).UpdateLatestHistory(ctx, run.ProjectID, run.ID, *latestHistoryID); err != nil {
 			return err
 		}
 	}
@@ -857,43 +844,14 @@ func loadContinuationTraceSeed(
 		return nil, errors.New("transaction is required")
 	}
 
-	row := tx.Tx().QueryRow(ctx, `
-		SELECT session_id,
-		       name,
-		       user_id,
-		       tags,
-		       environment,
-		       release,
-		       metadata
-		FROM public.traces
-		WHERE project_id = $1
-		  AND engine_run_id = $2
-		FOR UPDATE
-	`, projectID, runID)
-
-	var (
-		seed        continuationTraceSeed
-		name        pgtype.Text
-		userID      pgtype.Text
-		tags        []string
-		environment pgtype.Text
-		release     pgtype.Text
-		metadata    []byte
-	)
-	if err := row.Scan(&seed.SessionID, &name, &userID, &tags, &environment, &release, &metadata); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+	seed, err := publicprojection.NewWriter(tx.Tx()).LoadContinuationSeed(ctx, projectID, runID)
+	if err != nil {
+		if errors.Is(err, publicprojection.ErrTraceShellMissing) {
 			return nil, fmt.Errorf("%w: projected trace shell missing for run %s", store.ErrInvariant, runID)
 		}
 		return nil, err
 	}
-
-	seed.Name = pgTextPtr(name)
-	seed.UserID = pgTextPtr(userID)
-	seed.Tags = append([]string(nil), tags...)
-	seed.Environment = pgTextPtr(environment)
-	seed.Release = pgTextPtr(release)
-	seed.Metadata = cloneBytes(metadata)
-	return &seed, nil
+	return seed, nil
 }
 
 func createContinuationTraceShell(
@@ -926,140 +884,15 @@ func createProjectedTraceShell(
 		return errors.New("projected trace shell requires tx, instance, run, seed, and started event")
 	}
 
-	runStatus := string(enginedb.EngineRunLifecycleStatusQueued)
-	projectionState := publicprojection.StateUpToDate.String()
-	traceRowID := uuid.UUID{}
-
-	if err := tx.Tx().QueryRow(ctx, `
-		INSERT INTO public.traces (
-		    project_id,
-		    session_id,
-		    trace_id,
-		    name,
-		    user_id,
-		    tags,
-		    environment,
-		    release,
-		    metadata,
-		    input,
-		    output,
-		    status,
-		    start_time,
-		    end_time,
-		    engine_run_id,
-		    engine_instance_key,
-		    engine_run_status,
-		    engine_custom_status,
-		    engine_wait_state,
-		    engine_pending_activity_tasks,
-		    engine_pending_inbox_items,
-		    engine_definition_name,
-		    engine_definition_version,
-		    engine_parent_run_id,
-		    engine_root_run_id,
-		    engine_child_key,
-		    engine_child_depth,
-		    engine_projection_state,
-		    engine_latest_history_id,
-		    engine_last_projected_history_id,
-		    engine_projection_updated_at
-		)
-		VALUES (
-		    $1, $2, $3, $4, $5, $6,
-		    $7, $8, $9, $10, $11,
-			    'running', $12, NULL,
-			    $13, $14, $15,
-			    NULL, NULL, 0, 0,
-			    $16, $17, $18, $19, $20, $21,
-			    $22, $23, $23, $24
-			)
-		RETURNING id
-	`,
-		run.ProjectID,
-		seed.SessionID,
-		engineTraceID(run.ID),
-		traceName,
-		seed.UserID,
-		seed.Tags,
-		seed.Environment,
-		seed.Release,
-		cloneBytes(seed.Metadata),
-		cloneRaw(input),
-		nil,
-		startedEvent.CreatedAt,
-		run.ID,
-		instance.InstanceKey,
-		runStatus,
-		instance.DefinitionName,
-		run.DefinitionVersion,
-		run.ParentRunID,
-		run.RootRunID,
-		run.ChildKey,
-		run.ChildDepth,
-		projectionState,
-		startedEvent.ID,
-		startedEvent.CreatedAt,
-	).Scan(&traceRowID); err != nil {
-		return err
-	}
-
-	rootSpanName := strings.TrimSpace(instance.DefinitionName)
-	if traceName != nil && strings.TrimSpace(*traceName) != "" {
-		rootSpanName = strings.TrimSpace(*traceName)
-	}
-	if rootSpanName == "" {
-		rootSpanName = "workflow"
-	}
-
-	if _, err := tx.Tx().Exec(ctx, `
-		INSERT INTO public.spans (
-		    project_id,
-		    trace_id,
-		    span_id,
-		    name,
-		    type,
-		    status,
-		    level,
-		    start_time,
-		    input,
-		    depth
-		)
-		VALUES ($1, $2, $3, $4, 'chain', 'running', 'default', $5, $6, 0)
-	`,
-		run.ProjectID,
-		traceRowID,
-		rootSpanExternalID(run.ID),
-		rootSpanName,
-		startedEvent.CreatedAt,
-		cloneRaw(input),
-	); err != nil {
-		return err
-	}
-
-	return nil
+	return publicprojection.NewWriter(tx.Tx()).CreateTraceShell(ctx, instance, run, seed, startedEvent, input, traceName)
 }
 
 func engineTraceID(runID uuid.UUID) string {
-	return engineTracePrefix + runID.String()
+	return publicprojection.TraceExternalID(runID)
 }
 
 func rootSpanExternalID(runID uuid.UUID) string {
-	return engineRootSpanPrefix + runID.String()
-}
-
-func pgTextPtr(value pgtype.Text) *string {
-	if !value.Valid {
-		return nil
-	}
-	text := value.String
-	return &text
-}
-
-func cloneBytes(raw []byte) []byte {
-	if len(raw) == 0 {
-		return nil
-	}
-	return append([]byte(nil), raw...)
+	return publicprojection.RootSpanExternalID(runID)
 }
 
 func cloneStringPtr(value *string) *string {

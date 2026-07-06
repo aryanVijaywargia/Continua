@@ -26,11 +26,14 @@ import (
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	engineworker "github.com/continua-ai/continua/engine/internal/worker"
 	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
+	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 
 	"github.com/continua-ai/continua/engine/cmd/continua-engine/internal/darklaunch"
 )
 
-var darkLaunchProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+// darkLaunchProjectID aliases the projection writer's single definition of
+// the fixed dark-launch demo project.
+var darkLaunchProjectID = publicprojection.DarkLaunchProjectID
 
 type commandExitError struct {
 	code int
@@ -252,7 +255,7 @@ func startCmd() *cobra.Command {
 				if err != nil {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
-				if err := ensureDarkLaunchProjectedShell(ctx, tx.Tx(), &instance, &run, definitionName, definitionVersion, inputPayload, startedEvent.ID); err != nil {
+				if err := publicprojection.NewWriter(tx.Tx()).EnsureDarkLaunchShell(ctx, &instance, &run, definitionName, definitionVersion, inputPayload, startedEvent.ID); err != nil {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
 
@@ -353,7 +356,7 @@ func signalCmd() *cobra.Command {
 					})
 					return createErr
 				}()
-				if createErr != nil && !(errors.Is(createErr, enginestore.ErrAlreadyExists) && dedupeKey != "") {
+				if createErr != nil && (!errors.Is(createErr, enginestore.ErrAlreadyExists) || dedupeKey == "") {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", createErr.Error())
 				}
 
@@ -362,7 +365,7 @@ func signalCmd() *cobra.Command {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
 				if err == nil {
-					if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
+					if syncErr := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &wake.Run); syncErr != nil {
 						return writeJSONError(cmd.OutOrStdout(), "internal_error", syncErr.Error())
 					}
 				}
@@ -447,7 +450,7 @@ func cancelCmd() *cobra.Command {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
 				if err == nil {
-					if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
+					if syncErr := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &wake.Run); syncErr != nil {
 						return writeJSONError(cmd.OutOrStdout(), "internal_error", syncErr.Error())
 					}
 				}
@@ -772,108 +775,4 @@ func cloneRaw(raw json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), raw...)
-}
-
-func ensureDarkLaunchProjectedShell(
-	ctx context.Context,
-	tx pgx.Tx,
-	instance *enginedb.EngineInstance,
-	run *enginedb.EngineRun,
-	definitionName string,
-	definitionVersion string,
-	input json.RawMessage,
-	startedHistoryID int64,
-) error {
-	if instance == nil || run == nil || startedHistoryID == 0 {
-		return errors.New("workflow.started history row is required before creating projected shell")
-	}
-
-	now := time.Now()
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO public.projects (id, name, api_key_hash)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (id) DO NOTHING
-	`, darkLaunchProjectID, "Engine Dark Launch", "engine-dark-launch"); err != nil {
-		return err
-	}
-
-	traceID := darkLaunchTraceID(run.ID)
-	traceUUID := uuid.New()
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO public.traces (
-		    id,
-		    project_id,
-		    trace_id,
-		    name,
-		    input,
-		    status,
-		    start_time,
-		    engine_run_id,
-		    engine_instance_key,
-		    engine_run_status,
-		    engine_pending_activity_tasks,
-		    engine_pending_inbox_items,
-		    engine_definition_name,
-		    engine_definition_version,
-		    engine_parent_run_id,
-		    engine_root_run_id,
-		    engine_child_key,
-		    engine_child_depth,
-		    engine_projection_state,
-		    engine_latest_history_id,
-		    engine_last_projected_history_id,
-		    engine_projection_updated_at
-		)
-		VALUES (
-		    $1,
-		    $2,
-		    $3,
-		    $4,
-		    $5::jsonb,
-		    'running',
-		    $6::timestamptz,
-		    $7,
-		    $8,
-		    'queued',
-		    0,
-		    0,
-		    $9,
-		    $10,
-		    NULL,
-		    $11,
-		    NULL,
-		    0,
-		    'up_to_date',
-		    $12,
-		    $12,
-		    $6::timestamptz
-		)
-	`, traceUUID, darkLaunchProjectID, traceID, definitionName, cloneRaw(input), now, run.ID, instance.InstanceKey, definitionName, definitionVersion, run.ID, startedHistoryID); err != nil {
-		return err
-	}
-
-	_, spanErr := tx.Exec(ctx, `
-		INSERT INTO public.spans (
-		    project_id,
-		    trace_id,
-		    span_id,
-		    name,
-		    type,
-		    status,
-		    level,
-		    start_time,
-		    input,
-		    depth
-		)
-		VALUES ($1, $2, $3, $4, 'chain', 'running', 'default', $5::timestamptz, $6::jsonb, 0)
-	`, darkLaunchProjectID, traceUUID, darkLaunchRootSpanID(run.ID), definitionName, now, cloneRaw(input))
-	return spanErr
-}
-
-func darkLaunchTraceID(runID uuid.UUID) string {
-	return "engine:" + runID.String()
-}
-
-func darkLaunchRootSpanID(runID uuid.UUID) string {
-	return "engine:root:" + runID.String()
 }

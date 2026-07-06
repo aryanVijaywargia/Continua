@@ -12,8 +12,8 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
-	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	"github.com/continua-ai/continua/engine/internal/store"
+	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	publicworkflow "github.com/continua-ai/continua/engine/pkg/workflow"
 )
 
@@ -23,9 +23,9 @@ type Worker struct {
 	activityLeaseTTL time.Duration
 }
 
-func NewWorker(store *store.Store, registry *Registry, activityLeaseTTL time.Duration) *Worker {
+func NewWorker(engineStore *store.Store, registry *Registry, activityLeaseTTL time.Duration) *Worker {
 	return &Worker{
-		store:            store,
+		store:            engineStore,
 		registry:         registry,
 		activityLeaseTTL: activityLeaseTTL,
 	}
@@ -77,7 +77,7 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 		return err
 	}
 	if err == nil {
-		if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
+		if syncErr := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &wake.Run); syncErr != nil {
 			return syncErr
 		}
 	}
@@ -148,7 +148,7 @@ func (w *Worker) retryTask(
 		return err
 	}
 
-	if err := engineprojector.UpdateLatestHistory(ctx, tx.Tx(), run.ProjectID, run.ID, appended.ID); err != nil {
+	if err := publicprojection.NewWriter(tx.Tx()).UpdateLatestHistory(ctx, run.ProjectID, run.ID, appended.ID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -226,7 +226,7 @@ func (w *Worker) failTask(
 		return err
 	}
 	if err == nil {
-		if syncErr := engineprojector.SyncProjectedRunSummary(ctx, tx.Tx(), &wake.Run); syncErr != nil {
+		if syncErr := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &wake.Run); syncErr != nil {
 			return syncErr
 		}
 	}
