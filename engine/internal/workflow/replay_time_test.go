@@ -357,6 +357,7 @@ func TestReplayNowAgainstDifferentRecordedEventFailsAsReplayMismatch(t *testing.
 func TestReplayTimeAPIValidation(t *testing.T) {
 	var sleepErr error
 	var sideEffectKeyErr error
+	var sideEffectNilErr error
 	var sideEffectFnErr error
 	fnFailure := errors.New("side effect exploded")
 
@@ -370,6 +371,8 @@ func TestReplayTimeAPIValidation(t *testing.T) {
 			sideEffectKeyErr = ctx.SideEffect("", func() (any, error) {
 				return "never", nil
 			}, &out)
+
+			sideEffectNilErr = ctx.SideEffect("nil-fn", nil, &out)
 
 			sideEffectFnErr = ctx.SideEffect("failing", func() (any, error) {
 				return nil, fnFailure
@@ -392,6 +395,9 @@ func TestReplayTimeAPIValidation(t *testing.T) {
 	}
 	if !errors.Is(sideEffectKeyErr, publicworkflow.ErrEmptyKey) {
 		t.Fatalf("SideEffect with empty key: want ErrEmptyKey, got %v", sideEffectKeyErr)
+	}
+	if sideEffectNilErr == nil || sideEffectNilErr.Error() != "workflow: SideEffect fn must not be nil" {
+		t.Fatalf("SideEffect with nil fn: want nil fn error, got %v", sideEffectNilErr)
 	}
 	if !errors.Is(sideEffectFnErr, fnFailure) {
 		t.Fatalf("SideEffect fn error must propagate, got %v", sideEffectFnErr)

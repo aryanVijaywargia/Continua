@@ -793,6 +793,9 @@ func (r *workflowRunner) SideEffect(key string, fn func() (any, error), out any)
 	if key == "" {
 		return publicworkflow.ErrEmptyKey
 	}
+	if fn == nil {
+		return errors.New("workflow: SideEffect fn must not be nil")
+	}
 	r.advanceState()
 
 	if next, ok := r.peek(); ok {
