@@ -318,6 +318,60 @@ func TestStartEngineRun_RejectsUnknownDefinitionAndInstanceConflict(t *testing.T
 	assert.Equal(t, "instance_conflict", replayedResp.Code)
 }
 
+func TestStartEngineRun_RejectsCatalogOnlyDefinitionAfterRegistryTruthSync(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+
+	_, err := platformStore.Pool().Exec(ctx, `
+		INSERT INTO engine.definition_catalog (definition_name, definition_version)
+		VALUES ('agent.research', 'v1')
+		ON CONFLICT (definition_name, definition_version) DO UPDATE SET
+			updated_at = NOW()
+	`)
+	require.NoError(t, err)
+
+	catalogOnly := invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "agent.research",
+		DefinitionVersion: "v1",
+		InstanceKey:       "catalog-only-before-sync",
+		RequestKey:        "req-catalog-only-before-sync",
+	})
+	require.Equal(t, http.StatusOK, catalogOnly.Code)
+	_ = decodeJSONBody[EngineStartRunResponse](t, catalogOnly)
+
+	beforeSync := countEngineRowsForProject(t, ctx, platformStore, projectID)
+	assert.Equal(t, 1, beforeSync.instances)
+	assert.Equal(t, 1, beforeSync.runs)
+
+	require.NoError(t, syncDefinitionCatalogToRegistry(ctx, engineQueries, []definitionCatalogTestEntry{
+		{name: "checkout", version: "v1"},
+	}))
+
+	_, err = engineQueries.GetDefinitionCatalogEntry(ctx, enginedb.GetDefinitionCatalogEntryParams{
+		DefinitionName:    "agent.research",
+		DefinitionVersion: "v1",
+	})
+	require.True(t, errors.Is(err, pgx.ErrNoRows))
+
+	rejected := invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "agent.research",
+		DefinitionVersion: "v1",
+		InstanceKey:       "catalog-only-after-sync",
+		RequestKey:        "req-catalog-only-after-sync",
+	})
+	require.Equal(t, http.StatusBadRequest, rejected.Code)
+	resp := decodeJSONBody[Error](t, rejected)
+	assert.Equal(t, "definition_not_registered", resp.Code)
+
+	afterReject := countEngineRowsForProject(t, ctx, platformStore, projectID)
+	assert.Equal(t, beforeSync, afterReject)
+
+	_, err = engineQueries.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
+		ProjectID:   projectID,
+		InstanceKey: "catalog-only-after-sync",
+	})
+	require.True(t, errors.Is(err, pgx.ErrNoRows))
+}
+
 func TestStartEngineRun_RejectsMissingRequiredFields(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
@@ -3170,6 +3224,61 @@ func publishEngineDefinition(ctx context.Context, queries *enginedb.Queries, nam
 		DefinitionVersion: "v1",
 	})
 	return err
+}
+
+type definitionCatalogTestEntry struct {
+	name    string
+	version string
+}
+
+func syncDefinitionCatalogToRegistry(ctx context.Context, queries *enginedb.Queries, entries []definitionCatalogTestEntry) error {
+	// Mirrors engine/internal/catalog/publisher.go without importing across the engine module's internal boundary.
+	liveDefinitions := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		liveDefinitions[entry.name+"@"+entry.version] = struct{}{}
+		if _, err := queries.UpsertDefinitionCatalogEntry(ctx, enginedb.UpsertDefinitionCatalogEntryParams{
+			DefinitionName:    entry.name,
+			DefinitionVersion: entry.version,
+		}); err != nil {
+			return err
+		}
+	}
+
+	rows, err := queries.ListDefinitionCatalog(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if _, ok := liveDefinitions[row.DefinitionName+"@"+row.DefinitionVersion]; ok {
+			continue
+		}
+		if _, err := queries.DeleteDefinitionCatalogEntry(ctx, enginedb.DeleteDefinitionCatalogEntryParams{
+			DefinitionName:    row.DefinitionName,
+			DefinitionVersion: row.DefinitionVersion,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+type engineProjectRowCounts struct {
+	instances int
+	runs      int
+}
+
+func countEngineRowsForProject(t *testing.T, ctx context.Context, platformStore *store.Store, projectID uuid.UUID) engineProjectRowCounts {
+	t.Helper()
+
+	var counts engineProjectRowCounts
+	err := platformStore.Pool().QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM engine.instances WHERE project_id = $1),
+			(SELECT COUNT(*) FROM engine.runs WHERE project_id = $1)
+	`, projectID).Scan(&counts.instances, &counts.runs)
+	require.NoError(t, err)
+	return counts
 }
 
 func invokeStartEngineRun(t *testing.T, server *Server, projectID uuid.UUID, req EngineStartRunRequest) *httptest.ResponseRecorder {
