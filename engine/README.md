@@ -24,6 +24,12 @@ What is still **preview / not yet there**:
 - no production path to register arbitrary user workflow definitions (the dark-launch runtime runs a fixed demo project)
 - the public `/v1/engine/*` REST control plane is gated behind `X-Continua-Engine-Preview` + `ENGINE_PUBLIC_API_ENABLED`
 
+## Activity Leases
+
+Local activity workers heartbeat claimed tasks at half of the configured activity lease TTL while the handler is running. If the worker process crashes, the heartbeat stops, the lease expires, and the task becomes claimable by another worker.
+
+Activity handlers must therefore be idempotent: activity execution is at-least-once across process crashes. If a running handler loses its lease, its context is cancelled, but a reclaimed execution may already be running concurrently in crash or lease-loss scenarios.
+
 ## Storage Model
 
 `engine/` is an isolated Go module, but not a mandate for a separate physical database.

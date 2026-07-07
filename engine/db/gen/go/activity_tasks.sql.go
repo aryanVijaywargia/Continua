@@ -818,6 +818,60 @@ func (q *Queries) GetActivityTaskRemoteConflictState(ctx context.Context, arg Ge
 	return i, err
 }
 
+const heartbeatLocalActivityTask = `-- name: HeartbeatLocalActivityTask :one
+UPDATE engine.activity_tasks
+SET lease_expires_at = NOW() + (lease_duration_ms * INTERVAL '1 millisecond'),
+    updated_at = NOW()
+WHERE id = $1
+  AND execution_target = 'local'
+  AND status = 'claimed'
+  AND claimed_by = $2
+  AND lease_duration_ms IS NOT NULL
+  AND lease_duration_ms > 0
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at > NOW()
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
+`
+
+type HeartbeatLocalActivityTaskParams struct {
+	ID        uuid.UUID `json:"id"`
+	ClaimedBy *string   `json:"claimed_by"`
+}
+
+func (q *Queries) HeartbeatLocalActivityTask(ctx context.Context, arg HeartbeatLocalActivityTaskParams) (EngineActivityTask, error) {
+	row := q.db.QueryRow(ctx, heartbeatLocalActivityTask, arg.ID, arg.ClaimedBy)
+	var i EngineActivityTask
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunID,
+		&i.HistoryID,
+		&i.ActivityKey,
+		&i.ActivityType,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.AvailableAt,
+		&i.AttemptCount,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MaxAttempts,
+		&i.InitialBackoffMs,
+		&i.MaxBackoffMs,
+		&i.BackoffMultiplier,
+		&i.ExecutionTarget,
+		&i.LeaseDurationMs,
+	)
+	return i, err
+}
+
 const heartbeatRemoteActivityTask = `-- name: HeartbeatRemoteActivityTask :one
 UPDATE engine.activity_tasks
 SET lease_expires_at = NOW() + (lease_duration_ms * INTERVAL '1 millisecond'),

@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -47,7 +48,7 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 		return w.failTask(ctx, task.ID, task.RunID, workerID, &code, &message)
 	}
 
-	output, handlerErr := handler(ctx, task.Input)
+	output, handlerErr := w.runHandlerWithHeartbeat(ctx, handler, task, workerID)
 	if handlerErr != nil {
 		if w.shouldRetryTask(&task, handlerErr) {
 			return w.retryTask(ctx, &task, workerID, handlerErr)
@@ -82,6 +83,59 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+type handlerResult struct {
+	output json.RawMessage
+	err    error
+}
+
+func (w *Worker) runHandlerWithHeartbeat(
+	ctx context.Context,
+	handler Handler,
+	task enginedb.EngineActivityTask,
+	workerID string,
+) (json.RawMessage, error) {
+	handlerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results := make(chan handlerResult, 1)
+	go func() {
+		output, err := handler(handlerCtx, task.Input)
+		results <- handlerResult{output: output, err: err}
+	}()
+
+	heartbeatInterval := w.activityLeaseTTL / 2
+	if heartbeatInterval <= 0 {
+		heartbeatInterval = 50 * time.Millisecond
+	}
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+	heartbeatC := ticker.C
+	ctxDone := ctx.Done()
+
+	for {
+		select {
+		case result := <-results:
+			return result.output, result.err
+		case <-ctxDone:
+			cancel()
+			ticker.Stop()
+			heartbeatC = nil
+			ctxDone = nil
+		case <-heartbeatC:
+			if _, err := w.store.HeartbeatLocalActivityTask(ctx, task.ID, workerID); err != nil {
+				if errors.Is(err, store.ErrStaleClaim) || errors.Is(err, store.ErrNotFound) {
+					log.Printf("activity worker lost lease for task %s", task.ID)
+					cancel()
+					ticker.Stop()
+					heartbeatC = nil
+					continue
+				}
+				log.Printf("activity worker heartbeat failed for task %s: %v", task.ID, err)
+			}
+		}
+	}
 }
 
 func (w *Worker) retryTask(
