@@ -571,7 +571,7 @@ func TestReplayDefinitionContinuationWaitFailedBeatsLateTerminalOutcome(t *testi
 	}
 }
 
-func TestReplayDefinitionMismatchProducesFailureDecision(t *testing.T) {
+func TestReplayDefinitionMismatchProducesQuarantineDecision(t *testing.T) {
 	input, _ := json.Marshal(map[string]string{"name": "Ada"})
 	historyRows := []enginedb.EngineHistory{
 		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
@@ -591,17 +591,33 @@ func TestReplayDefinitionMismatchProducesFailureDecision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replayDefinition() error = %v", err)
 	}
-	if decision.Kind != decisionFailed {
-		t.Fatalf("expected failed decision, got %+v", decision)
+	if decision.Kind != decisionQuarantined {
+		t.Fatalf("expected quarantined decision, got %+v", decision)
 	}
-	if len(decision.Events) != 2 {
-		t.Fatalf("expected replay mismatch + workflow failed events, got %+v", decision.Events)
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected replay mismatch to queue no history events, got %+v", decision.Events)
 	}
-	if decision.Events[0].EventType != enginehistory.EventWorkflowReplayMismatch {
-		t.Fatalf("expected first replay event to be workflow.replay_mismatch, got %+v", decision.Events)
+	if decision.FailureCode != "replay_mismatch" {
+		t.Fatalf("expected replay_mismatch failure code, got %q", decision.FailureCode)
 	}
-	if decision.Events[1].EventType != enginehistory.EventWorkflowFailed {
-		t.Fatalf("expected second replay event to be workflow.failed, got %+v", decision.Events)
+	if decision.FailureMessage == "" {
+		t.Fatal("expected replay mismatch failure message")
+	}
+	if len(decision.WaitingFor) == 0 {
+		t.Fatal("expected replay mismatch waiting_for reason")
+	}
+	var wait struct {
+		Kind   string `json:"kind"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(decision.WaitingFor, &wait); err != nil {
+		t.Fatalf("decode waiting_for: %v", err)
+	}
+	if wait.Kind != "replay_mismatch" || wait.Detail == "" {
+		t.Fatalf("expected replay_mismatch waiting_for detail, got %+v", wait)
+	}
+	if len(decision.ConsumedInboxIDs) != 0 {
+		t.Fatalf("expected replay mismatch to consume no inbox rows, got %+v", decision.ConsumedInboxIDs)
 	}
 }
 
@@ -693,7 +709,7 @@ func TestReplayDefinitionContinueAsNewMatchesSemanticallyEquivalentJSON(t *testi
 	}
 }
 
-func TestReplayDefinitionContinueAsNewMismatchProducesFailureDecision(t *testing.T) {
+func TestReplayDefinitionMismatchAfterContinuedAsNewQuarantines(t *testing.T) {
 	input := mustRawJSON(t, map[string]any{"cursor": 1})
 	historyRows := []enginedb.EngineHistory{
 		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
@@ -717,17 +733,11 @@ func TestReplayDefinitionContinueAsNewMismatchProducesFailureDecision(t *testing
 	if err != nil {
 		t.Fatalf("replayDefinition() error = %v", err)
 	}
-	if decision.Kind != decisionFailed {
-		t.Fatalf("expected failed decision, got %+v", decision)
+	if decision.Kind != decisionQuarantined {
+		t.Fatalf("expected quarantined decision, got %+v", decision)
 	}
-	if len(decision.Events) != 2 {
-		t.Fatalf("expected replay mismatch + workflow failed events, got %+v", decision.Events)
-	}
-	if decision.Events[0].EventType != enginehistory.EventWorkflowReplayMismatch {
-		t.Fatalf("expected first event to be workflow.replay_mismatch, got %+v", decision.Events[0])
-	}
-	if decision.Events[1].EventType != enginehistory.EventWorkflowFailed {
-		t.Fatalf("expected second event to be workflow.failed, got %+v", decision.Events[1])
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected replay mismatch to queue no history events, got %+v", decision.Events)
 	}
 }
 

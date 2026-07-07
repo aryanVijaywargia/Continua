@@ -131,7 +131,7 @@ func TestActivatorFailsRunWhenDefinitionVersionIsMissingWithoutStartedHistory(t 
 	}
 }
 
-func TestActivatorPersistsReplayMismatchFailure(t *testing.T) {
+func TestActivatorQuarantinesReplayMismatch(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	store := enginestore.New(db.Pool)
 	ctx := context.Background()
@@ -180,33 +180,169 @@ func TestActivatorPersistsReplayMismatchFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRun() error = %v", err)
 	}
-	if updatedRun.Status != enginedb.EngineRunLifecycleStatusFailed {
-		t.Fatalf("expected failed run status, got %+v", updatedRun)
+	if updatedRun.Status != enginedb.EngineRunLifecycleStatusQuarantined {
+		t.Fatalf("expected quarantined run status, got %+v", updatedRun)
 	}
 	if updatedRun.LastErrorCode == nil || *updatedRun.LastErrorCode != "replay_mismatch" {
 		t.Fatalf("expected replay_mismatch last_error_code, got %+v", updatedRun)
+	}
+	var wait struct {
+		Kind   string `json:"kind"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(updatedRun.WaitingFor, &wait); err != nil {
+		t.Fatalf("decode waiting_for: %v", err)
+	}
+	if wait.Kind != "replay_mismatch" || wait.Detail == "" {
+		t.Fatalf("expected replay_mismatch waiting_for detail, got %+v", wait)
+	}
+	if updatedRun.ClaimedBy != nil {
+		t.Fatalf("expected quarantine to release claim, got %+v", updatedRun.ClaimedBy)
+	}
+	if updatedRun.LeaseExpiresAt.Valid {
+		t.Fatalf("expected quarantine to clear lease, got %+v", updatedRun.LeaseExpiresAt)
 	}
 	updatedInstance, err := store.GetInstance(ctx, instance.ID)
 	if err != nil {
 		t.Fatalf("GetInstance() error = %v", err)
 	}
-	if updatedInstance.Status != enginedb.EngineInstanceLifecycleStatusFailed {
-		t.Fatalf("expected failed instance status, got %+v", updatedInstance)
+	if updatedInstance.Status != enginedb.EngineInstanceLifecycleStatusActive {
+		t.Fatalf("expected active instance status, got %+v", updatedInstance)
 	}
 
 	historyRows, err := store.GetHistoryByRun(ctx, run.ID)
 	if err != nil {
 		t.Fatalf("GetHistoryByRun() error = %v", err)
 	}
-	if len(historyRows) != 4 {
-		t.Fatalf("expected started + scheduled + replay mismatch + workflow failed, got %+v", historyRows)
+	if len(historyRows) != 2 {
+		t.Fatalf("expected history to remain at seeded started + scheduled rows, got %+v", historyRows)
 	}
-	if historyRows[2].EventType != enginehistory.EventWorkflowReplayMismatch {
-		t.Fatalf("expected workflow.replay_mismatch event, got %+v", historyRows[2])
+	if historyRows[0].EventType != enginehistory.EventWorkflowStarted {
+		t.Fatalf("expected first seeded event to remain workflow.started, got %+v", historyRows[0])
 	}
-	if historyRows[3].EventType != enginehistory.EventWorkflowFailed {
-		t.Fatalf("expected terminal workflow.failed event, got %+v", historyRows[3])
+	if historyRows[1].EventType != enginehistory.EventActivityScheduled {
+		t.Fatalf("expected second seeded event to remain activity.scheduled, got %+v", historyRows[1])
 	}
+}
+
+func TestActivatorQuarantinedRunRecoversAfterDefinitionRestore(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	input := mustJSON(t, map[string]string{"name": "Ada"})
+	output := mustJSON(t, map[string]string{"greeting": "hello, Ada"})
+	wantResult := mustJSON(t, map[string]string{"greeting": "hello, Ada"})
+	testCase := workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-replay-mismatch-restore",
+		definitionName:    "demo",
+		definitionVersion: "v1",
+		input:             input,
+	}
+	instance, run := createStartedRun(t, store, testCase)
+	appendHistoryEvent(t, store, testCase.projectID, instance.ID, run.ID, 2, enginehistory.EventActivityScheduled, enginehistory.ActivityScheduledPayload{
+		ActivityKey:  "step",
+		ActivityType: "demo.activity",
+		Input:        input,
+	})
+	appendHistoryEvent(t, store, testCase.projectID, instance.ID, run.ID, 3, enginehistory.EventActivityCompleted, enginehistory.ActivityCompletedPayload{
+		ActivityKey:  "step",
+		ActivityType: "demo.activity",
+		Output:       output,
+	})
+	seededHistoryCount := 3
+
+	badRegistry, err := NewRegistry(publicworkflow.Definition{
+		Name:    "demo",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var workflowInput map[string]string
+			if err := ctx.Input(&workflowInput); err != nil {
+				return err
+			}
+			var activityOutput map[string]string
+			return ctx.Activity("step-renamed", "demo.activity", workflowInput, &activityOutput)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry(bad) error = %v", err)
+	}
+	claim, err := store.ClaimNextRun(ctx, "worker-bad", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() bad deploy error = %v", err)
+	}
+	if err := NewActivator(store, badRegistry).Activate(ctx, &claim); err != nil {
+		t.Fatalf("Activate() bad deploy error = %v", err)
+	}
+
+	quarantinedRun, err := store.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun() after bad deploy error = %v", err)
+	}
+	if quarantinedRun.Status != enginedb.EngineRunLifecycleStatusQuarantined {
+		t.Fatalf("expected quarantined run after bad deploy, got %+v", quarantinedRun)
+	}
+	historyRows, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() after bad deploy error = %v", err)
+	}
+	if len(historyRows) != seededHistoryCount {
+		t.Fatalf("expected quarantine to leave seeded history unchanged, got %+v", historyRows)
+	}
+
+	matchingRegistry, err := NewRegistry(publicworkflow.Definition{
+		Name:    "demo",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var workflowInput map[string]string
+			if err := ctx.Input(&workflowInput); err != nil {
+				return err
+			}
+			var activityOutput map[string]string
+			if err := ctx.Activity("step", "demo.activity", workflowInput, &activityOutput); err != nil {
+				return err
+			}
+			return ctx.SetResult(activityOutput)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry(matching) error = %v", err)
+	}
+	requeuedRun, err := store.TransitionRunToQueuedFromQuarantined(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("TransitionRunToQueuedFromQuarantined() error = %v", err)
+	}
+	if requeuedRun.Status != enginedb.EngineRunLifecycleStatusQueued {
+		t.Fatalf("expected queued run after resume transition, got %+v", requeuedRun)
+	}
+	if len(requeuedRun.WaitingFor) != 0 || requeuedRun.LastErrorCode != nil || requeuedRun.LastErrorMessage != nil {
+		t.Fatalf("expected resume transition to clear quarantine reason and errors, got %+v", requeuedRun)
+	}
+
+	restoredClaim, err := store.ClaimNextRun(ctx, "worker-restored", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun() restored definition error = %v", err)
+	}
+	if err := NewActivator(store, matchingRegistry).Activate(ctx, &restoredClaim); err != nil {
+		t.Fatalf("Activate() restored definition error = %v", err)
+	}
+
+	completedRun, err := store.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun() completed error = %v", err)
+	}
+	if completedRun.Status != enginedb.EngineRunLifecycleStatusCompleted {
+		t.Fatalf("expected completed run after restored definition, got %+v", completedRun)
+	}
+	if !equalJSON(completedRun.Result, wantResult) {
+		t.Fatalf("expected result %s, got %s", wantResult, completedRun.Result)
+	}
+	historyRows, err = store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() completed error = %v", err)
+	}
+	assertHistoryEndsWith(t, historyRows, enginehistory.EventWorkflowCompleted)
 }
 
 func TestActivatorRejectsStaleClaimBeforeAppendingHistory(t *testing.T) {
