@@ -7,6 +7,14 @@ GO_BIN_DIR := $(shell go env GOPATH)/bin
 PATH := $(GO_BIN_DIR):$(PATH)
 export PATH
 GOLANGCI_LINT := $(GO_BIN_DIR)/golangci-lint
+
+# sqlc is pinned: generated output is version-stamped, so a mismatched sqlc dirties
+# db/gen and engine/db/gen. $(GO_BIN_DIR) is prepended to PATH above and may hold a
+# different sqlc that would shadow the pinned one, so select the pinned binary explicitly.
+SQLC_VERSION := v1.27.0
+SQLC := $(shell for c in '$(GO_BIN_DIR)/sqlc' /opt/homebrew/bin/sqlc /usr/local/bin/sqlc "$$(command -v sqlc 2>/dev/null)"; do \
+	  [ -x "$$c" ] && [ "$$($$c version 2>/dev/null)" = "$(SQLC_VERSION)" ] && { echo "$$c"; break; }; \
+	done)
 GO_BUILD_CACHE ?= /tmp/continua-go-build
 GOLANGCI_LINT_CACHE ?= /tmp/continua-golangci-cache
 LINT_ENV := GOCACHE=$(GO_BUILD_CACHE) GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE)
@@ -40,10 +48,16 @@ setup: ## Install all dependencies
 generate: ## Generate ALL code (contracts, sqlc, API types)
 	@echo "==> Generating contracts..."
 	pnpm --filter @continua/contracts generate
-	@echo "==> Generating platform database code..."
-	cd db/platform && sqlc generate
+	@if [ -z "$(SQLC)" ]; then \
+		echo "❌ sqlc $(SQLC_VERSION) not found; this repo pins $(SQLC_VERSION)."; \
+		echo "   Note: \$$GOPATH/bin is prepended to PATH and may shadow a pinned Homebrew sqlc."; \
+		echo "   Install sqlc $(SQLC_VERSION) (e.g. 'brew install sqlc' or the pinned release)."; \
+		exit 1; \
+	fi
+	@echo "==> Generating platform database code (using $(SQLC), $(SQLC_VERSION))..."
+	cd db/platform && $(SQLC) generate
 	@echo "==> Generating engine database code..."
-	cd engine/db && sqlc generate
+	cd engine/db && $(SQLC) generate
 	@echo "==> Copying generated Go types..."
 	@mkdir -p internal/api
 	@if [ -f contracts/generated/go/server_gen.go ]; then \
