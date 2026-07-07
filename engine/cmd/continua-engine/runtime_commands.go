@@ -143,8 +143,8 @@ func startCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start a dark-launch workflow instance",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if instanceKey == "" || definitionName == "" || definitionVersion == "" || requestKey == "" {
-				return writeJSONError(cmd.OutOrStdout(), "internal_error", "start requires --instance-key, --definition, --version, and --request-key")
+			if instanceKey == "" || definitionName == "" || requestKey == "" {
+				return writeJSONError(cmd.OutOrStdout(), "internal_error", "start requires --instance-key, --definition, and --request-key")
 			}
 
 			inputPayload, err := parseOptionalJSON(input)
@@ -153,9 +153,14 @@ func startCmd() *cobra.Command {
 			}
 
 			err = withRuntime(cmd.Context(), func(ctx context.Context, cfg *config.Config, store *enginestore.Store, definitions *engineworkflow.Registry, _ *activity.Registry) error {
-				if _, ok := definitions.Get(definitionName, definitionVersion); !ok {
+				resolvedVersion, ok := resolveStartDefinitionVersion(definitions, definitionName, definitionVersion)
+				if !ok {
+					if definitionVersion == "" {
+						return writeJSONError(cmd.OutOrStdout(), "definition_not_registered", fmt.Sprintf("definition %s is not registered", definitionName))
+					}
 					return writeJSONError(cmd.OutOrStdout(), "definition_not_registered", fmt.Sprintf("definition %s@%s is not registered", definitionName, definitionVersion))
 				}
+				definitionVersion = resolvedVersion
 
 				tx, err := store.BeginTx(ctx, pgx.TxOptions{})
 				if err != nil {
@@ -580,6 +585,21 @@ func buildRegistries() (definitions *engineworkflow.Registry, activities *activi
 		return nil, nil, err
 	}
 	return definitions, activities, nil
+}
+
+func resolveStartDefinitionVersion(definitions *engineworkflow.Registry, definitionName, definitionVersion string) (string, bool) {
+	if definitionVersion != "" {
+		if _, ok := definitions.Get(definitionName, definitionVersion); !ok {
+			return "", false
+		}
+		return definitionVersion, true
+	}
+
+	definition, ok := definitions.Latest(definitionName)
+	if !ok {
+		return "", false
+	}
+	return definition.Version, true
 }
 
 func loadInstanceState(
