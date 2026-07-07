@@ -341,7 +341,7 @@ func validateTraceFilter(filter *TraceFilter) error {
 	if filter.EngineRunStatus != "" {
 		value := strings.ToLower(strings.TrimSpace(filter.EngineRunStatus))
 		switch value {
-		case "queued", "running", "waiting", "suspended", "completed", "failed", "cancelled", "terminated", "continued_as_new":
+		case "queued", "running", "waiting", "suspended", "quarantined", "completed", "failed", "cancelled", "terminated", "continued_as_new":
 		default:
 			return &TraceFilterValidationError{Field: "engine_run_status", Value: filter.EngineRunStatus}
 		}

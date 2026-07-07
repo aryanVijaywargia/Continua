@@ -38,10 +38,11 @@ const (
 )
 
 const (
-	WaitKindActivity      = "activity"
-	WaitKindTimer         = "timer"
-	WaitKindSignal        = "signal"
-	WaitKindChildWorkflow = "child_workflow"
+	WaitKindActivity       = "activity"
+	WaitKindTimer          = "timer"
+	WaitKindSignal         = "signal"
+	WaitKindChildWorkflow  = "child_workflow"
+	WaitKindReplayMismatch = "replay_mismatch"
 )
 
 type WorkflowStartedPayload struct {
@@ -76,6 +77,15 @@ type WorkflowTerminatedPayload struct {
 }
 
 type WorkflowReplayMismatchPayload struct {
+	ExpectedType string `json:"expected_type"`
+	ExpectedKey  string `json:"expected_key"`
+	ActualType   string `json:"actual_type"`
+	ActualKey    string `json:"actual_key"`
+	Detail       string `json:"detail"`
+}
+
+type ReplayMismatchWait struct {
+	Kind         string `json:"kind"`
 	ExpectedType string `json:"expected_type"`
 	ExpectedKey  string `json:"expected_key"`
 	ActualType   string `json:"actual_type"`

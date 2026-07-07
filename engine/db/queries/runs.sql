@@ -136,6 +136,23 @@ WHERE id = $1
   AND claimed_by = $2
 RETURNING *;
 
+-- name: TransitionRunToQuarantined :one
+UPDATE engine.runs
+SET status = 'quarantined',
+    waiting_for = $3,
+    last_error_code = $4,
+    last_error_message = $5,
+    result = NULL,
+    completed_at = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING *;
+
 -- name: TransitionRunToCancelled :one
 UPDATE engine.runs
 SET status = 'cancelled',
@@ -185,7 +202,7 @@ SET status = 'terminated',
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
-  AND status IN ('queued', 'running', 'waiting', 'suspended')
+  AND status IN ('queued', 'running', 'waiting', 'suspended', 'quarantined')
 RETURNING *;
 
 -- name: TransitionRunToSuspended :one
@@ -210,6 +227,21 @@ SET status = 'queued',
     updated_at = NOW()
 WHERE id = $1
   AND status = 'suspended'
+RETURNING *;
+
+-- name: TransitionRunToQueuedFromQuarantined :one
+UPDATE engine.runs
+SET status = 'queued',
+    waiting_for = NULL,
+    last_error_code = NULL,
+    last_error_message = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    ready_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'quarantined'
 RETURNING *;
 
 -- name: WakeWaitingRun :one

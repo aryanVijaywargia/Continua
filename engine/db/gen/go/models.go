@@ -248,6 +248,7 @@ const (
 	EngineRunLifecycleStatusTerminated     EngineRunLifecycleStatus = "terminated"
 	EngineRunLifecycleStatusSuspended      EngineRunLifecycleStatus = "suspended"
 	EngineRunLifecycleStatusContinuedAsNew EngineRunLifecycleStatus = "continued_as_new"
+	EngineRunLifecycleStatusQuarantined    EngineRunLifecycleStatus = "quarantined"
 )
 
 func (e *EngineRunLifecycleStatus) Scan(src interface{}) error {

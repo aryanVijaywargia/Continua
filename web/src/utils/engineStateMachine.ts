@@ -12,7 +12,8 @@ export interface StateMachineStep {
 export function buildEngineStateMachine(status: EngineRunStatus): StateMachineStep[] {
   const isFailed = status === 'FAILED' || status === 'CANCELLED' || status === 'TERMINATED';
   const isClosed = status === 'COMPLETED' || isFailed || status === 'CONTINUED_AS_NEW';
-  const isWaiting = status === 'WAITING' || status === 'SUSPENDED';
+  const isWaiting =
+    status === 'WAITING' || status === 'SUSPENDED' || status === 'QUARANTINED';
   return [
     { id: 'created', label: 'Created', done: true, current: false },
     {

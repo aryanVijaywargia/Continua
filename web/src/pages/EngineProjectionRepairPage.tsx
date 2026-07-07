@@ -23,6 +23,7 @@ const RUN_STATUSES: EngineRunStatus[] = [
   'RUNNING',
   'WAITING',
   'SUSPENDED',
+  'QUARANTINED',
   'COMPLETED',
   'FAILED',
   'CANCELLED',

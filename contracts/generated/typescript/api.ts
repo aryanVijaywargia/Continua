@@ -684,7 +684,7 @@ export interface components {
         /** @enum {string} */
         EngineRepairReason: "already_up_to_date" | "history_expired" | "no_events_to_project" | "repair_requested" | "already_catching_up";
         /** @enum {string} */
-        EngineRunStatus: "QUEUED" | "RUNNING" | "WAITING" | "SUSPENDED" | "COMPLETED" | "FAILED" | "CANCELLED" | "TERMINATED" | "CONTINUED_AS_NEW";
+        EngineRunStatus: "QUEUED" | "RUNNING" | "WAITING" | "SUSPENDED" | "QUARANTINED" | "COMPLETED" | "FAILED" | "CANCELLED" | "TERMINATED" | "CONTINUED_AS_NEW";
         EngineTraceInfo: {
             /** Format: uuid */
             run_id: string;
@@ -2855,7 +2855,7 @@ export interface operations {
                 /** @description Filter by engine definition version */
                 engine_definition_version?: string;
                 /** @description Filter by engine run lifecycle status */
-                engine_run_status?: "queued" | "running" | "waiting" | "suspended" | "completed" | "failed" | "cancelled" | "terminated" | "continued_as_new";
+                engine_run_status?: "queued" | "running" | "waiting" | "suspended" | "quarantined" | "completed" | "failed" | "cancelled" | "terminated" | "continued_as_new";
                 /** @description Filter by engine parent run ID */
                 engine_parent_run_id?: string;
                 /** @description Filter by engine root run ID */
