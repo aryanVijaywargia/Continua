@@ -14,18 +14,19 @@ import (
 
 // historyFromDecision materializes the events queued by a prior activation into
 // history rows, simulating the durable write that precedes a crash-recovery
-// replay. startSequence is the sequence number of the first appended row.
-func historyFromDecision(t *testing.T, base []enginedb.EngineHistory, events []queuedHistoryEvent, startSequence int32) []enginedb.EngineHistory {
+// replay. Appended rows continue the base rows' sequence numbering.
+func historyFromDecision(t *testing.T, base []enginedb.EngineHistory, events []queuedHistoryEvent) []enginedb.EngineHistory {
 	t.Helper()
 
 	rows := append([]enginedb.EngineHistory(nil), base...)
+	nextSequence := base[len(base)-1].SequenceNo + 1
 	for i, event := range events {
-		rows = append(rows, historyRow(t, startSequence+int32(i), event.EventType, event.Payload))
+		rows = append(rows, historyRow(t, nextSequence+int32(i), event.EventType, event.Payload))
 	}
 	return rows
 }
 
-func startedHistory(t *testing.T, input json.RawMessage) []enginedb.EngineHistory {
+func startedHistory(t *testing.T) []enginedb.EngineHistory {
 	t.Helper()
 
 	return []enginedb.EngineHistory{
@@ -33,7 +34,6 @@ func startedHistory(t *testing.T, input json.RawMessage) []enginedb.EngineHistor
 			DefinitionName:    "time-demo",
 			DefinitionVersion: "v1",
 			InstanceKey:       "instance-time",
-			Input:             input,
 		}),
 	}
 }
@@ -52,7 +52,7 @@ func TestReplayNowRecordsOnFirstExecutionAndReplaysRecordedValue(t *testing.T) {
 		},
 	}
 
-	base := startedHistory(t, nil)
+	base := startedHistory(t)
 	before := time.Now().UTC()
 	decision, err := replayDefinition(definition, base, nil, nil)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestReplayNowRecordsOnFirstExecutionAndReplaysRecordedValue(t *testing.T) {
 	}
 
 	// Crash-recovery replay: the recorded events are durable history now.
-	replayRows := historyFromDecision(t, base, decision.Events, 2)
+	replayRows := historyFromDecision(t, base, decision.Events)
 	replayDecision, err := replayDefinition(definition, replayRows, nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() replay error = %v", err)
@@ -132,7 +132,7 @@ func TestReplaySideEffectRecordsOnceAndDoesNotReexecuteOnReplay(t *testing.T) {
 		},
 	}
 
-	base := startedHistory(t, nil)
+	base := startedHistory(t)
 	decision, err := replayDefinition(definition, base, nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() error = %v", err)
@@ -169,7 +169,7 @@ func TestReplaySideEffectRecordsOnceAndDoesNotReexecuteOnReplay(t *testing.T) {
 		t.Fatalf("expected recorded side effect value %q, got %s", "token-1", sideEffects[0].Value)
 	}
 
-	replayRows := historyFromDecision(t, base, decision.Events, 2)
+	replayRows := historyFromDecision(t, base, decision.Events)
 	replayDecision, err := replayDefinition(definition, replayRows, nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() replay error = %v", err)
@@ -202,7 +202,7 @@ func TestReplaySleepDurationSchedulesTimerAndSurvivesReplay(t *testing.T) {
 		},
 	}
 
-	base := startedHistory(t, nil)
+	base := startedHistory(t)
 	before := time.Now().UTC()
 	decision, err := replayDefinition(definition, base, nil, nil)
 	if err != nil {
@@ -232,7 +232,7 @@ func TestReplaySleepDurationSchedulesTimerAndSurvivesReplay(t *testing.T) {
 
 	// Restart mid-sleep: the recorded events replay without recomputing the
 	// deadline, so no mismatch and no duplicate timer.
-	midSleepRows := historyFromDecision(t, base, decision.Events, 2)
+	midSleepRows := historyFromDecision(t, base, decision.Events)
 	midSleepDecision, err := replayDefinition(definition, midSleepRows, nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() mid-sleep replay error = %v", err)
@@ -281,7 +281,7 @@ func TestReplaySideEffectKeyChangeFailsAsReplayMismatch(t *testing.T) {
 		},
 	}
 
-	base := startedHistory(t, nil)
+	base := startedHistory(t)
 	decision, err := replayDefinition(recordingDefinition, base, nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() error = %v", err)
@@ -304,7 +304,7 @@ func TestReplaySideEffectKeyChangeFailsAsReplayMismatch(t *testing.T) {
 		},
 	}
 
-	replayRows := historyFromDecision(t, base, decision.Events, 2)
+	replayRows := historyFromDecision(t, base, decision.Events)
 	mismatchDecision, err := replayDefinition(changedDefinition, replayRows, nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() replay error = %v", err)
@@ -379,7 +379,7 @@ func TestReplayTimeAPIValidation(t *testing.T) {
 		},
 	}
 
-	decision, err := replayDefinition(definition, startedHistory(t, nil), nil, nil)
+	decision, err := replayDefinition(definition, startedHistory(t), nil, nil)
 	if err != nil {
 		t.Fatalf("replayDefinition() error = %v", err)
 	}
