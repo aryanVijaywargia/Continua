@@ -68,7 +68,10 @@ type Context interface {
 	ActivityWithOptions(key, activityType string, input any, out any, opts ActivityOptions) error
 	ChildWorkflow(childKey, definitionName, definitionVersion string, input any, out any) error
 	ChildWorkflowWithOptions(childKey, definitionName, definitionVersion string, input any, out any, opts ChildWorkflowOptions) error
+	Now() time.Time
+	Sleep(key string, d time.Duration) error
 	SleepUntil(key string, at time.Time) error
+	SideEffect(key string, fn func() (any, error), out any) error
 	ReceiveSignal(name string, out any) error
 	CancellationRequested() bool
 	SetCustomStatus(value any) error

@@ -7,31 +7,33 @@ import (
 )
 
 const (
-	EventWorkflowStarted         = "workflow.started"
-	EventWorkflowCompleted       = "workflow.completed"
-	EventWorkflowFailed          = "workflow.failed"
-	EventWorkflowCancelled       = "workflow.cancelled"
-	EventWorkflowContinuedAsNew  = "workflow.continued_as_new"
-	EventWorkflowSuspended       = "workflow.suspended"
-	EventWorkflowResumed         = "workflow.resumed"
-	EventWorkflowTerminated      = "workflow.terminated"
-	EventWorkflowReplayMismatch  = "workflow.replay_mismatch"
-	EventActivityScheduled       = "activity.scheduled"
-	EventActivityCompleted       = "activity.completed"
-	EventActivityFailed          = "activity.failed"
-	EventActivityRetryScheduled  = "activity.retry_scheduled"
-	EventChildWorkflowScheduled  = "child_workflow.scheduled"
-	EventChildWorkflowStarted    = "child_workflow.started"
-	EventChildWorkflowCompleted  = "child_workflow.completed"
-	EventChildWorkflowFailed     = "child_workflow.failed"
-	EventChildWorkflowCancelled  = "child_workflow.cancelled"
-	EventChildWorkflowTerminated = "child_workflow.terminated"
-	EventChildWorkflowWaitFailed = "child_workflow.wait_failed"
-	EventTimerScheduled          = "timer.scheduled"
-	EventTimerFired              = "timer.fired"
-	EventSignalReceived          = "signal.received"
-	EventCancelRequested         = "cancel.requested"
-	EventCustomStatusUpdated     = "custom_status.updated"
+	EventWorkflowStarted            = "workflow.started"
+	EventWorkflowCompleted          = "workflow.completed"
+	EventWorkflowFailed             = "workflow.failed"
+	EventWorkflowCancelled          = "workflow.cancelled"
+	EventWorkflowContinuedAsNew     = "workflow.continued_as_new"
+	EventWorkflowSuspended          = "workflow.suspended"
+	EventWorkflowResumed            = "workflow.resumed"
+	EventWorkflowTerminated         = "workflow.terminated"
+	EventWorkflowReplayMismatch     = "workflow.replay_mismatch"
+	EventWorkflowTimeRecorded       = "workflow.time_recorded"
+	EventWorkflowSideEffectRecorded = "workflow.side_effect_recorded"
+	EventActivityScheduled          = "activity.scheduled"
+	EventActivityCompleted          = "activity.completed"
+	EventActivityFailed             = "activity.failed"
+	EventActivityRetryScheduled     = "activity.retry_scheduled"
+	EventChildWorkflowScheduled     = "child_workflow.scheduled"
+	EventChildWorkflowStarted       = "child_workflow.started"
+	EventChildWorkflowCompleted     = "child_workflow.completed"
+	EventChildWorkflowFailed        = "child_workflow.failed"
+	EventChildWorkflowCancelled     = "child_workflow.cancelled"
+	EventChildWorkflowTerminated    = "child_workflow.terminated"
+	EventChildWorkflowWaitFailed    = "child_workflow.wait_failed"
+	EventTimerScheduled             = "timer.scheduled"
+	EventTimerFired                 = "timer.fired"
+	EventSignalReceived             = "signal.received"
+	EventCancelRequested            = "cancel.requested"
+	EventCustomStatusUpdated        = "custom_status.updated"
 )
 
 const (
@@ -78,6 +80,15 @@ type WorkflowReplayMismatchPayload struct {
 	ActualType   string `json:"actual_type"`
 	ActualKey    string `json:"actual_key"`
 	Detail       string `json:"detail"`
+}
+
+type WorkflowTimeRecordedPayload struct {
+	Now time.Time `json:"now"`
+}
+
+type WorkflowSideEffectRecordedPayload struct {
+	SideEffectKey string          `json:"side_effect_key"`
+	Value         json.RawMessage `json:"value"`
 }
 
 type ActivityScheduledPayload struct {
@@ -313,6 +324,10 @@ func EventKey(eventType string, payload any) string {
 		return value.SignalName
 	case *SignalReceivedPayload:
 		return value.SignalName
+	case WorkflowSideEffectRecordedPayload:
+		return value.SideEffectKey
+	case *WorkflowSideEffectRecordedPayload:
+		return value.SideEffectKey
 	default:
 		return ""
 	}
@@ -338,6 +353,10 @@ func payloadTarget(eventType string) (any, error) {
 		return &WorkflowTerminatedPayload{}, nil
 	case EventWorkflowReplayMismatch:
 		return &WorkflowReplayMismatchPayload{}, nil
+	case EventWorkflowTimeRecorded:
+		return &WorkflowTimeRecordedPayload{}, nil
+	case EventWorkflowSideEffectRecorded:
+		return &WorkflowSideEffectRecordedPayload{}, nil
 	case EventActivityScheduled:
 		return &ActivityScheduledPayload{}, nil
 	case EventActivityCompleted:

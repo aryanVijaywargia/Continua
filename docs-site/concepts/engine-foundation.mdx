@@ -85,6 +85,19 @@ history replay. The end-to-end behaviour is covered by the runtime suite in
 [`engine/cmd/continua-engine/`](https://github.com/aryanVijaywargia/Continua/tree/main/engine/cmd/continua-engine),
 including timer/signal persistence and mid-activity restart recovery.
 
+### Deterministic workflow authoring
+
+Workflow code is replayed from history after crashes, so wall-clock time, randomness, and
+other non-deterministic values must be captured through workflow APIs instead of calling
+process-local sources directly. Use `ctx.Now()` to read a replay-stable timestamp,
+`ctx.Sleep(key, duration)` for relative timers, and `ctx.SideEffect(key, fn, out)` to run
+non-deterministic code once and store its JSON value in history. On replay, recorded
+values are returned without re-running the side effect.
+
+`ctx.SleepUntil(key, at)` remains available for absolute deadlines, but the deadline must
+already be deterministic. For example, prefer `ctx.Sleep("wait", 5*time.Minute)` over
+`ctx.SleepUntil("wait", time.Now().Add(5*time.Minute))`.
+
 ### CLI (real)
 
 A separate binary `continua-engine` with `version`, `migrate up` / `migrate down`, and the

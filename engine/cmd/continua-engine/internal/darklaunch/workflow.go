@@ -19,11 +19,18 @@ const (
 	RetryHandledDefinitionVersion    = "v1"
 	InvalidRetryDefinitionName       = "darklaunch.invalid-retry-policy"
 	InvalidRetryDefinitionVersion    = "v1"
+	SleepDemoDefinitionName          = "darklaunch.sleep-demo"
+	SleepDemoDefinitionVersion       = "v1"
 )
 
 type WorkflowInput struct {
 	Name    string `json:"name"`
 	TimerAt string `json:"timer_at"`
+}
+
+type SleepDemoInput struct {
+	Name    string `json:"name"`
+	SleepMS int    `json:"sleep_ms"`
 }
 
 type SignalPayload struct {
@@ -67,6 +74,11 @@ func Definitions() []workflow.Definition {
 			Version: InvalidRetryDefinitionVersion,
 			Run:     runInvalidRetryWorkflow,
 		},
+		{
+			Name:    SleepDemoDefinitionName,
+			Version: SleepDemoDefinitionVersion,
+			Run:     runSleepDemoWorkflow,
+		},
 	}
 }
 
@@ -99,6 +111,30 @@ func runInvalidRetryWorkflow(ctx workflow.Context) error {
 		&output,
 		workflow.ActivityOptions{RetryPolicy: &workflow.RetryPolicy{MaxAttempts: 0}},
 	)
+}
+
+func runSleepDemoWorkflow(ctx workflow.Context) error {
+	var input SleepDemoInput
+	if err := ctx.Input(&input); err != nil {
+		return err
+	}
+	if input.Name == "" {
+		input.Name = "world"
+	}
+
+	if err := ctx.Sleep("sleep", time.Duration(input.SleepMS)*time.Millisecond); err != nil {
+		return err
+	}
+
+	var signal SignalPayload
+	if err := ctx.ReceiveSignal("approval", &signal); err != nil {
+		return err
+	}
+
+	return ctx.SetResult(WorkflowResult{
+		Greeting: "hello, " + input.Name,
+		Approval: signal.Approval,
+	})
 }
 
 func runRetryWorkflow(ctx workflow.Context, maxAttempts int, handleActivityFailure bool) error {
