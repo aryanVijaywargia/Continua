@@ -101,7 +101,7 @@ func trailingVersionNumber(version string) (int64, bool) {
 	end := len(version)
 	start := end
 	for start > 0 {
-		r, size := utf8LastRuneInString(version[:start])
+		r, size := utf8.DecodeLastRuneInString(version[:start])
 		if !unicode.IsDigit(r) {
 			break
 		}
@@ -116,8 +116,4 @@ func trailingVersionNumber(version string) (int64, bool) {
 		return 0, false
 	}
 	return number, true
-}
-
-func utf8LastRuneInString(value string) (rune, int) {
-	return utf8.DecodeLastRuneInString(value)
 }
