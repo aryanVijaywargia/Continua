@@ -36,6 +36,15 @@ Current implemented guidance is:
 - use a separate engine connection pool so workflow/activity workers do not starve control-plane or debugger traffic
 - avoid cross-schema foreign keys to `public.projects` in the foundation phase
 
+### Definition Catalog
+
+`engine.definition_catalog` reflects the definitions registered in the live engine runtime.
+At `continua-engine serve` startup, the runtime rewrites the catalog by upserting the
+registered definitions and deleting stale rows. The platform `StartRun` path validates
+requests against this catalog, so inserting catalog rows out of band is unsupported; those
+rows are removed at the next serve start. Richer liveness metadata is future work tracked
+by the "definition catalog as registry truth" issue (#163).
+
 ## Module Isolation
 
 This is a fully isolated Go module with its own internal packages and generated DB layer.

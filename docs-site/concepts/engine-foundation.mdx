@@ -48,6 +48,15 @@ state from the platform server's own `DATABASE_URL` pool (the platform does not 
 console, the engine schema and its projections into `public.traces` must live in the
 **same** physical Postgres as the platform.
 
+### Definition catalog (registry truth)
+
+`engine.definition_catalog` is a runtime-synced catalog of definitions registered in the
+live engine process. When `continua-engine serve` starts, it upserts the registered
+definitions and deletes stale catalog rows. `POST /v1/engine/runs` validates start
+requests against this catalog; inserting catalog rows directly is unsupported, and those
+rows are removed on the next serve start. Richer liveness metadata is future work tracked
+by the "definition catalog as registry truth" issue (#163).
+
 ### Control endpoints (real)
 
 | Endpoint | Purpose |
