@@ -701,6 +701,34 @@ func (r *workflowRunner) skipRecordedActivityRetryEvents(activityKey string) {
 	}
 }
 
+func (r *workflowRunner) Now() time.Time {
+	r.advanceState()
+
+	if next, ok := r.peek(); ok {
+		recorded, ok := next.Payload.(*enginehistory.WorkflowTimeRecordedPayload)
+		if !ok {
+			r.replayMismatch(enginehistory.EventWorkflowTimeRecorded, "", next, "workflow time read did not match recorded history")
+		}
+		r.cursor++
+		return recorded.Now
+	}
+
+	recorded := time.Now().UTC()
+	r.queueEvent(enginehistory.EventWorkflowTimeRecorded, enginehistory.WorkflowTimeRecordedPayload{
+		Now: recorded,
+	})
+	return recorded
+}
+
+func (r *workflowRunner) Sleep(key string, d time.Duration) error {
+	if key == "" {
+		return publicworkflow.ErrEmptyKey
+	}
+
+	base := r.Now()
+	return r.SleepUntil(key, base.Add(d))
+}
+
 func (r *workflowRunner) SleepUntil(key string, at time.Time) error {
 	if key == "" {
 		return publicworkflow.ErrEmptyKey
@@ -759,6 +787,40 @@ func (r *workflowRunner) SleepUntil(key string, at time.Time) error {
 		nil,
 	)
 	return nil
+}
+
+func (r *workflowRunner) SideEffect(key string, fn func() (any, error), out any) error {
+	if key == "" {
+		return publicworkflow.ErrEmptyKey
+	}
+	if fn == nil {
+		return errors.New("workflow: SideEffect fn must not be nil")
+	}
+	r.advanceState()
+
+	if next, ok := r.peek(); ok {
+		recorded, ok := next.Payload.(*enginehistory.WorkflowSideEffectRecordedPayload)
+		if !ok || recorded.SideEffectKey != key {
+			r.replayMismatch(enginehistory.EventWorkflowSideEffectRecorded, key, next, "workflow side effect did not match recorded history")
+		}
+		r.cursor++
+		return unmarshalOptional(recorded.Value, out)
+	}
+
+	value, err := fn()
+	if err != nil {
+		return err
+	}
+	valueRaw, err := enginehistory.MarshalPayload(value)
+	if err != nil {
+		return err
+	}
+	recorded := enginehistory.WorkflowSideEffectRecordedPayload{
+		SideEffectKey: key,
+		Value:         cloneRaw(valueRaw),
+	}
+	r.queueEvent(enginehistory.EventWorkflowSideEffectRecorded, recorded)
+	return unmarshalOptional(recorded.Value, out)
 }
 
 func (r *workflowRunner) ReceiveSignal(name string, out any) error {
