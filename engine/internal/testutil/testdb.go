@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/continua-ai/continua/engine/internal/migrations"
+	"github.com/continua-ai/continua/engine/pkg/projection"
 )
 
 // DefaultTestDatabaseURL is the fallback test database URL for engine tests.
@@ -25,7 +26,9 @@ import (
 // as a built-in function.
 const DefaultTestDatabaseURL = "postgres://continua:continua@localhost:5432/continua_test?sslmode=disable"
 
-var DefaultPlatformProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+// DefaultPlatformProjectID aliases the dark-launch demo project owned by the
+// projection writer, which most engine fixtures seed as their platform project.
+var DefaultPlatformProjectID = projection.DarkLaunchProjectID
 
 // TestDatabase is an isolated Postgres database prepared with both platform and
 // engine migrations.

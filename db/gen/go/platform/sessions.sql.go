@@ -14,11 +14,12 @@ import (
 )
 
 const countSessions = `-- name: CountSessions :one
-SELECT COUNT(*) FROM sessions WHERE project_id = $1
+SELECT COUNT(*) FROM sessions
+WHERE ($1::uuid IS NULL OR project_id = $1::uuid)
 `
 
-func (q *Queries) CountSessions(ctx context.Context, projectID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countSessions, projectID)
+func (q *Queries) CountSessions(ctx context.Context, projectFilterID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countSessions, projectFilterID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -197,15 +198,15 @@ const listSessionsWithTraceCount = `-- name: ListSessionsWithTraceCount :many
 SELECT s.id, s.project_id, s.name, s.user_id, s.metadata, s.created_at, s.updated_at, s.external_id,
     (SELECT COUNT(*) FROM traces t WHERE t.session_id = s.id AND t.project_id = s.project_id) as trace_count
 FROM sessions s
-WHERE s.project_id = $1
+WHERE ($1::uuid IS NULL OR s.project_id = $1::uuid)
 ORDER BY s.created_at DESC, s.id DESC
-LIMIT $2 OFFSET $3
+LIMIT $3 OFFSET $2
 `
 
 type ListSessionsWithTraceCountParams struct {
-	ProjectID uuid.UUID `json:"project_id"`
-	Limit     int32     `json:"limit"`
-	Offset    int32     `json:"offset"`
+	ProjectFilterID pgtype.UUID `json:"project_filter_id"`
+	Offset          int32       `json:"offset"`
+	Limit           int32       `json:"limit"`
 }
 
 type ListSessionsWithTraceCountRow struct {
@@ -221,7 +222,7 @@ type ListSessionsWithTraceCountRow struct {
 }
 
 func (q *Queries) ListSessionsWithTraceCount(ctx context.Context, arg ListSessionsWithTraceCountParams) ([]ListSessionsWithTraceCountRow, error) {
-	rows, err := q.db.Query(ctx, listSessionsWithTraceCount, arg.ProjectID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listSessionsWithTraceCount, arg.ProjectFilterID, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

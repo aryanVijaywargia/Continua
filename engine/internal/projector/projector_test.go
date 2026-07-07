@@ -50,7 +50,7 @@ func TestProjectorPollOnce_RestartSafeForProjectedActivityRows(t *testing.T) {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("expected 1 history row, got %d", len(rows))
 	}
-	if err := projectHistoryRow(fixture.ctx, tx, &target, &rows[0]); err != nil {
+	if err := projectHistoryRow(fixture.ctx, tx, publicprojection.NewWriter(tx.Tx()), &target, &rows[0]); err != nil {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("projectHistoryRow() error = %v", err)
 	}
@@ -176,9 +176,8 @@ func TestProjectorPollOnce_DoesNotOverwriteTerminalTraceSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	if err := WriteTerminalSummary(
+	if err := publicprojection.NewWriter(tx.Tx()).WriteTerminalSummary(
 		fixture.ctx,
-		tx.Tx(),
 		fixture.projectID,
 		fixture.run.ID,
 		enginedb.EngineRunLifecycleStatusCompleted,
@@ -405,9 +404,9 @@ func TestAdvanceProjectionCheckpoint_IsMonotonicForStaleUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	if err := advanceProjectionCheckpoint(fixture.ctx, tx.Tx(), fixture.traceID, fixture.run.ID, 0); err != nil {
+	if err := publicprojection.NewWriter(tx.Tx()).AdvanceCheckpoint(fixture.ctx, fixture.traceID, fixture.run.ID, 0); err != nil {
 		_ = tx.Rollback(fixture.ctx)
-		t.Fatalf("advanceProjectionCheckpoint() error = %v", err)
+		t.Fatalf("AdvanceCheckpoint() error = %v", err)
 	}
 	if err := tx.Commit(fixture.ctx); err != nil {
 		t.Fatalf("tx.Commit() error = %v", err)
@@ -545,7 +544,7 @@ func TestProjectorBarrier_ConcurrentFullPurgeBlocksCheckpointWithoutHistoryRows(
 		t.Fatalf("expected zero remaining history rows after purge, got %d", len(rows))
 	}
 
-	applied, err := advanceProjectionCheckpointWithBarrier(fixture.ctx, tx.Tx(), &target, target.LastProjectedHistoryID)
+	applied, err := advanceProjectionCheckpointWithBarrier(fixture.ctx, publicprojection.NewWriter(tx.Tx()), &target, target.LastProjectedHistoryID)
 	if err != nil {
 		t.Fatalf("advanceProjectionCheckpointWithBarrier() error = %v", err)
 	}
@@ -591,7 +590,7 @@ func TestProjectionStateAdvancesAcrossStartActivationAndProjector(t *testing.T) 
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	if err := UpdateLatestHistory(fixture.ctx, tx.Tx(), fixture.projectID, fixture.run.ID, activityHistory.ID); err != nil {
+	if err := publicprojection.NewWriter(tx.Tx()).UpdateLatestHistory(fixture.ctx, fixture.projectID, fixture.run.ID, activityHistory.ID); err != nil {
 		_ = tx.Rollback(fixture.ctx)
 		t.Fatalf("UpdateLatestHistory() error = %v", err)
 	}
@@ -851,7 +850,7 @@ func TestProjectorPollOnce_TerminatedHistoryProjectsFailureAndCleanup(t *testing
 	if err := json.Unmarshal(activitySpanMetadata, &metadata); err != nil {
 		t.Fatalf("json.Unmarshal(activity span metadata) error = %v", err)
 	}
-	if metadata[terminalHistoryMetadataKey] != float64(terminalHistory.ID) {
+	if metadata[publicprojection.TerminalHistoryMetadataKey] != float64(terminalHistory.ID) {
 		t.Fatalf("expected terminal history metadata %d, got %+v", terminalHistory.ID, metadata)
 	}
 
@@ -1372,10 +1371,10 @@ func TestSyncProjectedRunSummary_MissingProjectedTraceFailsForPublicRuns(t *test
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	err = SyncProjectedRunSummary(ctx, tx.Tx(), &run)
+	err = publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &run)
 	_ = tx.Rollback(ctx)
 	if err == nil {
-		t.Fatal("expected SyncProjectedRunSummary to fail when projected trace is missing")
+		t.Fatal("expected SyncRunSummary to fail when projected trace is missing")
 	}
 }
 
@@ -1385,7 +1384,7 @@ func TestSyncProjectedRunSummary_AllowsDarkLaunchRunsWithoutProjectedTrace(t *te
 	ctx := context.Background()
 
 	_, run := createStartedRun(t, store, workflowTestCase{
-		projectID:         darkLaunchProjectID,
+		projectID:         publicprojection.DarkLaunchProjectID,
 		instanceKey:       "instance-darklaunch",
 		definitionName:    "darklaunch",
 		definitionVersion: "v1",
@@ -1395,9 +1394,9 @@ func TestSyncProjectedRunSummary_AllowsDarkLaunchRunsWithoutProjectedTrace(t *te
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	if err := SyncProjectedRunSummary(ctx, tx.Tx(), &run); err != nil {
+	if err := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &run); err != nil {
 		_ = tx.Rollback(ctx)
-		t.Fatalf("SyncProjectedRunSummary() error = %v", err)
+		t.Fatalf("SyncRunSummary() error = %v", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("tx.Commit() error = %v", err)
@@ -1482,7 +1481,7 @@ func newProjectorFixture(t *testing.T) *projectorFixture {
 		    $10,
 		    NOW()
 		)
-	`, traceID, projectID, engineTracePrefix+run.ID.String(), "Projected Demo", run.ID, instance.InstanceKey, instance.DefinitionName, run.DefinitionVersion, publicprojection.StateUpToDate.String(), historyRows[0].ID); err != nil {
+	`, traceID, projectID, publicprojection.TraceExternalID(run.ID), "Projected Demo", run.ID, instance.InstanceKey, instance.DefinitionName, run.DefinitionVersion, publicprojection.StateUpToDate.String(), historyRows[0].ID); err != nil {
 		t.Fatalf("insert projected trace shell: %v", err)
 	}
 

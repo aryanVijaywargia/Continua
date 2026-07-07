@@ -1,3 +1,9 @@
+// Package enginecontrol is the platform-side adapter over the engine's
+// projection Writer (engine/pkg/projection). It owns control-plane policy —
+// terminal-state checks, purge modes, repair acceptance, backfill filtering —
+// while every actual write into the projected trace/span tables and the
+// engine history journal goes through the Writer, which it shares with the
+// engine-side projector.
 package enginecontrol
 
 import (
@@ -9,15 +15,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
-	platformdb "github.com/continua-ai/continua/db/gen/go/platform"
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	"github.com/continua-ai/continua/internal/store"
 )
-
-const engineRootSpanPrefix = "engine:root:"
 
 type APIError struct {
 	Code       string
@@ -131,18 +133,19 @@ func (s *Service) PurgeRun(
 		_ = tx.Rollback(ctx)
 	}()
 
-	trace, run, projectionState, err := loadLockedRunTrace(ctx, tx, projectID, runID)
+	writer := publicprojection.NewWriter(tx.Tx())
+	locked, projectionState, err := loadLockedRunTrace(ctx, writer, projectID, runID)
 	if err != nil {
 		return PurgeResult{}, err
 	}
-	if !isTerminalRun(run.Status) {
+	if !isTerminalRun(locked.Run.Status) {
 		return PurgeResult{}, &APIError{
 			Code:       "run_not_terminal",
 			Message:    "run has not reached a terminal state",
 			HTTPStatus: 409,
 		}
 	}
-	if err := ensureTerminalShell(ctx, tx, &trace, &run); err != nil {
+	if err := writer.EnsureTerminalShell(ctx, locked.TraceID, &locked.Run); err != nil {
 		return PurgeResult{}, err
 	}
 
@@ -161,13 +164,10 @@ func (s *Service) PurgeRun(
 			}
 			return result, nil
 		}
-		if err := tx.DeleteSpanEventsByTrace(ctx, trace.ID); err != nil {
+		if err := writer.PurgeProjectionDetail(ctx, locked.TraceID); err != nil {
 			return PurgeResult{}, err
 		}
-		if err := tx.DeleteNonRootSpansByTrace(ctx, trace.ID); err != nil {
-			return PurgeResult{}, err
-		}
-		if mutated, err := tx.FlipProjectionStateToSummaryOnly(ctx, runID); err != nil {
+		if mutated, err := writer.MarkProjectionSummaryOnly(ctx, runID); err != nil {
 			return PurgeResult{}, err
 		} else if mutated == 0 {
 			return PurgeResult{}, fmt.Errorf("flip projection state to summary_only matched zero rows for run %s", runID)
@@ -181,22 +181,13 @@ func (s *Service) PurgeRun(
 			}
 			return result, nil
 		}
-		if err := tx.DeleteSpanEventsByTrace(ctx, trace.ID); err != nil {
+		if err := writer.PurgeProjectionDetail(ctx, locked.TraceID); err != nil {
 			return PurgeResult{}, err
 		}
-		if err := tx.DeleteNonRootSpansByTrace(ctx, trace.ID); err != nil {
+		if err := writer.DeleteRunJournal(ctx, runID); err != nil {
 			return PurgeResult{}, err
 		}
-		if _, err := enginedb.New(tx.Tx()).ClearActivityTaskHistoryByRun(ctx, runID); err != nil {
-			return PurgeResult{}, err
-		}
-		if _, err := enginedb.New(tx.Tx()).ClearInboxHistoryByRun(ctx, pgtype.UUID{Bytes: runID, Valid: true}); err != nil {
-			return PurgeResult{}, err
-		}
-		if err := enginedb.New(tx.Tx()).DeleteHistoryByRun(ctx, runID); err != nil {
-			return PurgeResult{}, err
-		}
-		if mutated, err := tx.FlipProjectionStateToJournalExpired(ctx, runID); err != nil {
+		if mutated, err := writer.MarkProjectionJournalExpired(ctx, runID); err != nil {
 			return PurgeResult{}, err
 		} else if mutated == 0 {
 			return PurgeResult{}, fmt.Errorf("flip projection state to journal_expired matched zero rows for run %s", runID)
@@ -228,11 +219,12 @@ func (s *Service) RepairRun(
 		_ = tx.Rollback(ctx)
 	}()
 
-	trace, run, projectionState, err := loadLockedRunTrace(ctx, tx, projectID, runID)
+	writer := publicprojection.NewWriter(tx.Tx())
+	locked, projectionState, err := loadLockedRunTrace(ctx, writer, projectID, runID)
 	if err != nil {
 		return RepairResult{}, err
 	}
-	if err := tx.BackfillEngineTraceLineage(ctx, trace.ID, &run); err != nil {
+	if err := writer.BackfillTraceLineage(ctx, locked.TraceID, &locked.Run); err != nil {
 		return RepairResult{}, err
 	}
 
@@ -245,8 +237,8 @@ func (s *Service) RepairRun(
 	case publicprojection.StateJournalExpired.String():
 		result.Reason = RepairReasonHistoryExpired
 	case publicprojection.StateSummaryOnly.String():
-		lastProjected := derefInt64(trace.EngineLastProjectedHistoryID)
-		latest, err := enginedb.New(tx.Tx()).GetLatestHistoryIDByRun(ctx, runID)
+		lastProjected := derefInt64(locked.EngineLastProjectedHistoryID)
+		latest, err := writer.LatestJournalHistoryID(ctx, runID)
 		if err != nil {
 			return RepairResult{}, err
 		}
@@ -254,7 +246,7 @@ func (s *Service) RepairRun(
 			result.Reason = RepairReasonNoEventsToProject
 			break
 		}
-		if mutated, err := tx.FlipProjectionStateToCatchingUp(ctx, runID); err != nil {
+		if mutated, err := writer.MarkProjectionCatchingUp(ctx, runID); err != nil {
 			return RepairResult{}, err
 		} else if mutated == 0 {
 			return RepairResult{}, fmt.Errorf("flip projection state to catching_up matched zero rows for run %s", runID)
@@ -346,32 +338,22 @@ func (s *Service) BackfillProjections(
 	return result, nil
 }
 
+// loadLockedRunTrace row-locks the run+trace pair through the projection
+// writer and normalizes the projection state for control-plane decisions.
 func loadLockedRunTrace(
 	ctx context.Context,
-	tx *store.Tx,
+	writer *publicprojection.Writer,
 	projectID uuid.UUID,
 	runID uuid.UUID,
-) (platformdb.Trace, enginedb.EngineRun, string, error) {
-	trace, err := tx.GetTraceByProjectAndEngineRunIDForUpdate(ctx, projectID, runID)
+) (*publicprojection.LockedRunTrace, string, error) {
+	locked, err := writer.LockRunTrace(ctx, projectID, runID)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return platformdb.Trace{}, enginedb.EngineRun{}, "", notFoundError("engine run")
+		if errors.Is(err, publicprojection.ErrRunNotFound) {
+			return nil, "", notFoundError("engine run")
 		}
-		return platformdb.Trace{}, enginedb.EngineRun{}, "", err
+		return nil, "", err
 	}
-
-	run, err := enginedb.New(tx.Tx()).GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
-		ProjectID: projectID,
-		ID:        runID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return platformdb.Trace{}, enginedb.EngineRun{}, "", notFoundError("engine run")
-		}
-		return platformdb.Trace{}, enginedb.EngineRun{}, "", err
-	}
-
-	return trace, run, normalizedProjectionState(trace.EngineProjectionState), nil
+	return locked, normalizedProjectionState(locked.EngineProjectionState), nil
 }
 
 func normalizedProjectionState(value *string) string {
@@ -406,67 +388,6 @@ func isTerminalRun(status enginedb.EngineRunLifecycleStatus) bool {
 	}
 }
 
-func ensureTerminalShell(
-	ctx context.Context,
-	tx *store.Tx,
-	trace *platformdb.Trace,
-	run *enginedb.EngineRun,
-) error {
-	if trace == nil || run == nil {
-		return errors.New("terminal shell requires trace and run")
-	}
-	if err := tx.BackfillEngineTraceLineage(ctx, trace.ID, run); err != nil {
-		return err
-	}
-	completedAt := terminalCompletedAt(run)
-	traceStatus, spanStatus := publicprojection.TerminalStatuses(string(run.Status))
-	outputPayload, err := publicprojection.TerminalOutputPayload(
-		string(run.Status),
-		run.Result,
-		run.LastErrorCode,
-		run.LastErrorMessage,
-	)
-	if err != nil {
-		return err
-	}
-
-	if _, err := tx.UpdateEngineTraceSummary(ctx, &platformdb.UpdateEngineTraceSummaryParams{
-		EngineRunID:                pgtype.UUID{Bytes: run.ID, Valid: true},
-		EngineRunStatus:            stringPtr(string(run.Status)),
-		EngineCustomStatus:         cloneRaw(run.CustomStatus),
-		EngineWaitState:            cloneRaw(run.WaitingFor),
-		EnginePendingActivityTasks: int64Ptr(0),
-		EnginePendingInboxItems:    int64Ptr(0),
-	}); err != nil {
-		return err
-	}
-	if err := tx.EnsureTerminalTraceShell(ctx, trace.ID, traceStatus, completedAt, outputPayload); err != nil {
-		return err
-	}
-	if err := tx.EnsureTerminalRootSpanShell(
-		ctx,
-		trace.ID,
-		engineRootSpanPrefix+run.ID.String(),
-		spanStatus,
-		completedAt,
-		outputPayload,
-		run.LastErrorMessage,
-	); err != nil {
-		return err
-	}
-	return nil
-}
-
-func terminalCompletedAt(run *enginedb.EngineRun) time.Time {
-	if run == nil {
-		return time.Time{}
-	}
-	if run.CompletedAt.Valid {
-		return run.CompletedAt.Time
-	}
-	return run.UpdatedAt
-}
-
 func notFoundError(resource string) error {
 	return &APIError{
 		Code:       "not_found",
@@ -480,24 +401,6 @@ func derefInt64(value *int64) int64 {
 		return 0
 	}
 	return *value
-}
-
-func stringPtr(value string) *string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	return &value
-}
-
-func int64Ptr(value int64) *int64 {
-	return &value
-}
-
-func cloneRaw(raw []byte) []byte {
-	if len(raw) == 0 {
-		return nil
-	}
-	return append([]byte(nil), raw...)
 }
 
 func derefString(value *string) string {

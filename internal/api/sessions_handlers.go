@@ -15,14 +15,14 @@ const sessionNarrativeTraceLimit int32 = 100
 
 // ListSessions returns a paginated list of sessions.
 func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams) {
-	projectID, ok := boundProjectIDFromRequest(w, r)
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
 	if !ok {
 		return
 	}
 
 	limit, offset := normalizePagination(params.Limit, params.Offset)
 
-	filter := sessionFilterFromParams(projectID, &params, limit, offset)
+	filter := sessionFilterFromParams(scope, &params, limit, offset)
 
 	var sessions []store.SessionWithCount
 	var total int64
@@ -37,13 +37,13 @@ func (s *Server) ListSessions(w http.ResponseWriter, r *http.Request, params Lis
 		sessions = result.Sessions
 		total = result.Total
 	} else {
-		sessions, err = s.store.ListSessionsWithTraceCount(r.Context(), projectID, limit, offset)
+		sessions, err = s.store.ListSessionsWithTraceCount(r.Context(), scope, limit, offset)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list sessions")
 			return
 		}
 
-		total, err = s.store.CountSessions(r.Context(), projectID)
+		total, err = s.store.CountSessions(r.Context(), scope)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", "Failed to count sessions")
 			return

@@ -18,6 +18,7 @@ import (
 	"github.com/continua-ai/continua/db/gen/go/platform"
 	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/store"
+	"github.com/continua-ai/continua/internal/testutil"
 )
 
 // =============================================================================
@@ -280,9 +281,9 @@ func TestMultiTenancy_ListTracesScoped(t *testing.T) {
 
 	// Query traces for project A
 	tracesA, err := q.ListTraces(ctx, platform.ListTracesParams{
-		ProjectID: projectAID,
-		Limit:     10,
-		Offset:    0,
+		ProjectFilterID: testutil.PgtypeUUID(projectAID),
+		Limit:           10,
+		Offset:          0,
 	})
 	require.NoError(t, err)
 
@@ -292,9 +293,9 @@ func TestMultiTenancy_ListTracesScoped(t *testing.T) {
 
 	// Query traces for project B
 	tracesB, err := q.ListTraces(ctx, platform.ListTracesParams{
-		ProjectID: projectBID,
-		Limit:     10,
-		Offset:    0,
+		ProjectFilterID: testutil.PgtypeUUID(projectBID),
+		Limit:           10,
+		Offset:          0,
 	})
 	require.NoError(t, err)
 

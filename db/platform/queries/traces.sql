@@ -26,39 +26,44 @@ SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2;
 SELECT sqlc.embed(t), s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
-WHERE t.project_id = $1
+WHERE (sqlc.narg(project_filter_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(t.start_time, t.server_received_at) DESC, t.id DESC
-LIMIT $2 OFFSET $3;
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: ListTracesAsc :many
 SELECT sqlc.embed(t), s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
-WHERE t.project_id = $1
+WHERE (sqlc.narg(project_filter_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(t.start_time, t.server_received_at) ASC, t.id ASC
-LIMIT $2 OFFSET $3;
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: ListTracesBySession :many
 SELECT sqlc.embed(t), s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
-WHERE t.project_id = $1 AND t.session_id = $2
+WHERE t.session_id = sqlc.arg(session_id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(t.start_time, t.server_received_at) DESC, t.id DESC
-LIMIT $3 OFFSET $4;
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: ListTracesBySessionAsc :many
 SELECT sqlc.embed(t), s.external_id AS session_external_id
 FROM traces t
 LEFT JOIN sessions s ON s.id = t.session_id AND s.project_id = t.project_id
-WHERE t.project_id = $1 AND t.session_id = $2
+WHERE t.session_id = sqlc.arg(session_id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(t.start_time, t.server_received_at) ASC, t.id ASC
-LIMIT $3 OFFSET $4;
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: CountTraces :one
-SELECT COUNT(*) FROM traces WHERE project_id = $1;
+SELECT COUNT(*) FROM traces
+WHERE (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid);
 
 -- name: CountTracesBySession :one
-SELECT COUNT(*) FROM traces WHERE project_id = $1 AND session_id = $2;
+SELECT COUNT(*) FROM traces
+WHERE session_id = sqlc.arg(session_id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid);
 
 -- name: CreateTrace :one
 INSERT INTO traces (

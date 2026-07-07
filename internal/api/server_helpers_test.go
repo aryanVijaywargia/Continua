@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/continua-ai/continua/internal/api/middleware"
+	"github.com/continua-ai/continua/internal/store"
 )
 
 func TestNormalizePagination_Defaults(t *testing.T) {
@@ -54,7 +55,7 @@ func TestNormalizePagination_ClampsNonPositiveLimit(t *testing.T) {
 func TestTraceFilterFromParams_EngineOnlyUsesDynamicQuery(t *testing.T) {
 	engineOnly := true
 
-	filter := traceFilterFromParams(uuid.New(), &ListTracesParams{
+	filter := traceFilterFromParams(store.BoundScope(uuid.New()), &ListTracesParams{
 		EngineOnly: &engineOnly,
 	}, 50, 0)
 
@@ -69,7 +70,7 @@ func TestTraceFilterFromParams_EngineOnlyUsesDynamicQuery(t *testing.T) {
 func TestTraceFilterFromParams_EngineOnlyFalseIsDefaultPath(t *testing.T) {
 	engineOnly := false
 
-	filter := traceFilterFromParams(uuid.New(), &ListTracesParams{
+	filter := traceFilterFromParams(store.BoundScope(uuid.New()), &ListTracesParams{
 		EngineOnly: &engineOnly,
 	}, 50, 0)
 

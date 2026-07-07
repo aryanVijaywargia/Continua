@@ -132,13 +132,13 @@ func (t *Tx) GetTraceUUID(ctx context.Context, projectID uuid.UUID, traceID stri
 	return id, err
 }
 
-// ListTraces returns paginated traces for a project.
-func (s *Store) ListTraces(ctx context.Context, projectID uuid.UUID, limit, offset int32, sortDir SortDirection) ([]TraceRead, error) {
+// ListTraces returns paginated traces within the supplied scope.
+func (s *Store) ListTraces(ctx context.Context, scope Scope, limit, offset int32, sortDir SortDirection) ([]TraceRead, error) {
 	if normalizeSortDirection(sortDir) == SortDirectionAsc {
 		rows, err := s.q.ListTracesAsc(ctx, platform.ListTracesAscParams{
-			ProjectID: projectID,
-			Limit:     limit,
-			Offset:    offset,
+			ProjectFilterID: scope.nullableProjectFilter(),
+			Limit:           limit,
+			Offset:          offset,
 		})
 		if err != nil {
 			return nil, err
@@ -147,9 +147,9 @@ func (s *Store) ListTraces(ctx context.Context, projectID uuid.UUID, limit, offs
 	}
 
 	rows, err := s.q.ListTraces(ctx, platform.ListTracesParams{
-		ProjectID: projectID,
-		Limit:     limit,
-		Offset:    offset,
+		ProjectFilterID: scope.nullableProjectFilter(),
+		Limit:           limit,
+		Offset:          offset,
 	})
 	if err != nil {
 		return nil, err
@@ -157,20 +157,20 @@ func (s *Store) ListTraces(ctx context.Context, projectID uuid.UUID, limit, offs
 	return mapTraceReadRows(rows), nil
 }
 
-// ListTracesBySession returns paginated traces for a session.
+// ListTracesBySession returns paginated traces for a session within the supplied scope.
 func (s *Store) ListTracesBySession(
 	ctx context.Context,
-	projectID uuid.UUID,
+	scope Scope,
 	sessionID uuid.UUID,
 	limit,
 	offset int32,
 	sortDir SortDirection,
 ) ([]TraceRead, error) {
 	params := platform.ListTracesBySessionParams{
-		ProjectID: projectID,
-		SessionID: pgtype.UUID{Bytes: sessionID, Valid: true},
-		Limit:     limit,
-		Offset:    offset,
+		SessionID:       pgtype.UUID{Bytes: sessionID, Valid: true},
+		ProjectFilterID: scope.nullableProjectFilter(),
+		Limit:           limit,
+		Offset:          offset,
 	}
 
 	if normalizeSortDirection(sortDir) == SortDirectionAsc {
@@ -188,16 +188,16 @@ func (s *Store) ListTracesBySession(
 	return mapTraceReadRows(rows), nil
 }
 
-// CountTraces returns the total number of traces for a project.
-func (s *Store) CountTraces(ctx context.Context, projectID uuid.UUID) (int64, error) {
-	return s.q.CountTraces(ctx, projectID)
+// CountTraces returns the total number of traces within the supplied scope.
+func (s *Store) CountTraces(ctx context.Context, scope Scope) (int64, error) {
+	return s.q.CountTraces(ctx, scope.nullableProjectFilter())
 }
 
-// CountTracesBySession returns the total number of traces for a session.
-func (s *Store) CountTracesBySession(ctx context.Context, projectID, sessionID uuid.UUID) (int64, error) {
+// CountTracesBySession returns the total number of traces for a session within the supplied scope.
+func (s *Store) CountTracesBySession(ctx context.Context, scope Scope, sessionID uuid.UUID) (int64, error) {
 	return s.q.CountTracesBySession(ctx, platform.CountTracesBySessionParams{
-		ProjectID: projectID,
-		SessionID: pgtype.UUID{Bytes: sessionID, Valid: true},
+		SessionID:       pgtype.UUID{Bytes: sessionID, Valid: true},
+		ProjectFilterID: scope.nullableProjectFilter(),
 	})
 }
 

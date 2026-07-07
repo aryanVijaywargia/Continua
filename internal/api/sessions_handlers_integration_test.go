@@ -139,6 +139,43 @@ func TestListSessions_OperatorSelectedProjectReturnsOnlyThatProject(t *testing.T
 	assert.Equal(t, sessionA.ID, resp.Sessions[0].Id)
 }
 
+func TestListSessions_OperatorUnboundedSearchListsAcrossProjects(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectAID := testutil.CreateTestProject(t, ctx, q)
+	projectBID := testutil.CreateTestProject(t, ctx, q)
+	base := time.Date(2026, 3, 9, 13, 0, 0, 0, time.UTC)
+
+	// A unique token keeps the searched result set deterministic even in a
+	// shared test database.
+	token := testutil.UniqueID("operator-unbounded-sess")
+	sessionA := createSessionRecord(t, ctx, s, projectAID, token+"-a", "Operator Unbounded A", "user-a", base)
+	sessionB := createSessionRecord(t, ctx, s, projectBID, token+"-b", "Operator Unbounded B", "user-b", base.Add(time.Hour))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions?q="+token, nil)
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
+	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	rec := httptest.NewRecorder()
+
+	server.ListSessions(rec, req.WithContext(reqCtx), ListSessionsParams{Q: testutil.StrPtr(token)})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[SessionList](t, rec)
+	assert.Equal(t, 2, resp.Total)
+	require.Len(t, resp.Sessions, 2)
+
+	ids := make([]uuid.UUID, len(resp.Sessions))
+	for i := range resp.Sessions {
+		ids[i] = resp.Sessions[i].Id
+	}
+	assert.ElementsMatch(t, []uuid.UUID{sessionA.ID, sessionB.ID}, ids)
+}
+
 func TestListSessions_PublicDemoIgnoresProjectIDQueryParam(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()

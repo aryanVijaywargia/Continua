@@ -220,12 +220,12 @@ func traceSortDirectionFromParams(params *ListTracesParams) store.SortDirection 
 	return store.SortDirectionDesc
 }
 
-func traceFilterFromParams(projectID uuid.UUID, params *ListTracesParams, limit, offset int32) store.TraceFilter {
+func traceFilterFromParams(scope store.Scope, params *ListTracesParams, limit, offset int32) store.TraceFilter {
 	filter := store.TraceFilter{
-		ProjectID: projectID,
-		SortDir:   traceSortDirectionFromParams(params),
-		Limit:     limit,
-		Offset:    offset,
+		Scope:   scope,
+		SortDir: traceSortDirectionFromParams(params),
+		Limit:   limit,
+		Offset:  offset,
 	}
 
 	if params.Q != nil {
@@ -343,14 +343,14 @@ func sessionSortFromParams(params *ListSessionsParams) (store.SessionSortBy, sto
 	return store.SessionSortByCreatedAt, store.SortDirectionDesc
 }
 
-func sessionFilterFromParams(projectID uuid.UUID, params *ListSessionsParams, limit, offset int32) store.SessionFilter {
+func sessionFilterFromParams(scope store.Scope, params *ListSessionsParams, limit, offset int32) store.SessionFilter {
 	sortBy, sortDir := sessionSortFromParams(params)
 	filter := store.SessionFilter{
-		ProjectID: projectID,
-		SortBy:    sortBy,
-		SortDir:   sortDir,
-		Limit:     limit,
-		Offset:    offset,
+		Scope:   scope,
+		SortBy:  sortBy,
+		SortDir: sortDir,
+		Limit:   limit,
+		Offset:  offset,
 	}
 
 	if params.Q != nil {

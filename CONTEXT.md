@@ -51,6 +51,23 @@ once per trace load (a one-shot latch, reset when the trace changes), writing it
 the URL. It must not re-open after the operator closes the panel within the same
 trace load.
 
+**Workspace provider**
+The single provider seam of the trace-detail workspace (`TraceDetailWorkspaceProvider`
+plus `useTraceDetailWorkspace()` in `web/src/pages/traceDetail/`). It owns everything
+*derived* from loaded trace data — span index, span tree, analyses, URL-derived
+selection, the expansion open set, and workspace actions — while the page keeps
+fetching (react-query and the polling timeline) and mounts the provider only after
+data loads, so the provider never sees loading/error states.
+
+> Decision (2026-07-05): one provider, drawn at "loaded trace data + everything derived
+> from it." The provider does not fetch. Selection stays URL-derived (see **Selected
+> span**) and expansion stays owned by the expansion reducer — the provider re-exports
+> their surfaces, never forks their state. Reusable, individually tested leaves
+> (TreeRail, ExecutionWaterfall, SpanDetail, FailureSummary) keep props as their real
+> interface; the provider exists to delete pass-through props in the intermediate
+> layers, not to make every component a context consumer. Do not add a second context
+> or move fetching into this one.
+
 ## Request scoping
 
 **Scope**
