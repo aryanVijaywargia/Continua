@@ -104,6 +104,21 @@ func (o *storeOps) HeartbeatRemoteActivityTask(
 	return enginedb.EngineActivityTask{}, o.classifyRemoteActivityTaskCASMiss(ctx, projectID, id, err)
 }
 
+func (o *storeOps) HeartbeatLocalActivityTask(
+	ctx context.Context,
+	id uuid.UUID,
+	claimedBy string,
+) (enginedb.EngineActivityTask, error) {
+	task, err := o.q.HeartbeatLocalActivityTask(ctx, enginedb.HeartbeatLocalActivityTaskParams{
+		ID:        id,
+		ClaimedBy: nullableWorkerID(claimedBy),
+	})
+	if err == nil {
+		return task, nil
+	}
+	return enginedb.EngineActivityTask{}, o.classifyActivityTaskCASMiss(ctx, id, err)
+}
+
 func (o *storeOps) CompleteActivityTask(
 	ctx context.Context,
 	id uuid.UUID,

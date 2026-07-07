@@ -136,6 +136,186 @@ func TestWorkerLateCompletionAfterTerminateReturnsNoOp(t *testing.T) {
 	}
 }
 
+func TestWorkerLongRunningLocalActivityHeartbeatsLease(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	_, _, task := createRunWithPendingActivity(
+		t,
+		store,
+		enginetest.DefaultPlatformProjectID,
+		"instance-activity-heartbeat",
+		"long-running-local",
+	)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	registry, err := NewRegistry(map[string]Handler{
+		testActivityType: func(context.Context, json.RawMessage) (json.RawMessage, error) {
+			close(started)
+			<-release
+			return []byte(`{"ok":true}`), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	leaseTTL := 300 * time.Millisecond
+	worker := NewWorker(store, registry, leaseTTL)
+	workerDone := make(chan error, 1)
+	go func() {
+		workerDone <- worker.PollOnce(ctx, "activity-worker")
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("activity handler did not start")
+	}
+
+	originalClaim, err := store.GetActivityTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetActivityTask(original claim) error = %v", err)
+	}
+	if !originalClaim.LeaseExpiresAt.Valid {
+		t.Fatalf("expected claimed task lease_expires_at, got %+v", originalClaim)
+	}
+	originalLeaseExpiresAt := originalClaim.LeaseExpiresAt.Time
+
+	var renewedTask enginedb.EngineActivityTask
+	waitUntil(t, 5*time.Second, func() bool {
+		current, err := store.GetActivityTask(ctx, task.ID)
+		if err != nil {
+			t.Fatalf("GetActivityTask(mid-run) error = %v", err)
+		}
+		if !current.LeaseExpiresAt.Valid {
+			return false
+		}
+		if current.LeaseExpiresAt.Time.After(originalLeaseExpiresAt) {
+			renewedTask = current
+		}
+		return time.Now().After(originalLeaseExpiresAt.Add(2*leaseTTL)) &&
+			current.LeaseExpiresAt.Time.After(originalLeaseExpiresAt)
+	})
+
+	_, err = store.ClaimNextActivityTask(ctx, "competing-worker", leaseTTL)
+	if !errors.Is(err, enginestore.ErrNotFound) {
+		t.Fatalf("expected renewed local activity lease to block competing claim, got %v", err)
+	}
+	if !renewedTask.LeaseExpiresAt.Valid || !renewedTask.LeaseExpiresAt.Time.After(originalLeaseExpiresAt) {
+		t.Fatalf("expected heartbeat to advance lease beyond %s, got %+v", originalLeaseExpiresAt, renewedTask)
+	}
+
+	close(release)
+
+	select {
+	case err := <-workerDone:
+		if err != nil {
+			t.Fatalf("PollOnce() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("activity worker did not finish after release")
+	}
+
+	completedTask, err := store.GetActivityTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetActivityTask(completed) error = %v", err)
+	}
+	if completedTask.Status != enginedb.EngineActivityTaskStatusCompleted {
+		t.Fatalf("expected completed activity task, got %+v", completedTask)
+	}
+	if completedTask.AttemptCount != 1 {
+		t.Fatalf("expected attempt_count=1, got %+v", completedTask)
+	}
+	var completedOutput struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(completedTask.Output, &completedOutput); err != nil {
+		t.Fatalf("json.Unmarshal(completed output) error = %v", err)
+	}
+	if !completedOutput.OK {
+		t.Fatalf("expected completed output ok=true, got %s", string(completedTask.Output))
+	}
+}
+
+func TestWorkerLocalActivityLeaseLossCancelsHandlerContext(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	_, _, task := createRunWithPendingActivity(
+		t,
+		store,
+		enginetest.DefaultPlatformProjectID,
+		"instance-activity-lease-lost",
+		"lease-lost-local",
+	)
+
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	registry, err := NewRegistry(map[string]Handler{
+		testActivityType: func(ctx context.Context, _ json.RawMessage) (json.RawMessage, error) {
+			close(started)
+			<-ctx.Done()
+			close(cancelled)
+			return []byte(`{"ok":true}`), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	worker := NewWorker(store, registry, 200*time.Millisecond)
+	workerDone := make(chan error, 1)
+	go func() {
+		workerDone <- worker.PollOnce(ctx, "activity-worker")
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("activity handler did not start")
+	}
+
+	if _, err := db.Pool.Exec(ctx, `
+		UPDATE engine.activity_tasks
+		SET claimed_by = 'other-worker',
+		    lease_expires_at = NOW() + INTERVAL '1 minute',
+		    updated_at = NOW()
+		WHERE id = $1
+	`, task.ID); err != nil {
+		t.Fatalf("lease loss setup update error = %v", err)
+	}
+
+	select {
+	case <-cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("activity handler context was not cancelled after lease loss")
+	}
+
+	select {
+	case err := <-workerDone:
+		if err != nil {
+			t.Fatalf("PollOnce() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("activity worker did not finish after lease loss")
+	}
+
+	staleTask, err := store.GetActivityTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetActivityTask(stale) error = %v", err)
+	}
+	if staleTask.Status == enginedb.EngineActivityTaskStatusCompleted {
+		t.Fatalf("expected stale worker not to complete task, got %+v", staleTask)
+	}
+	if staleTask.ClaimedBy == nil || *staleTask.ClaimedBy != "other-worker" {
+		t.Fatalf("expected lease loss to preserve other worker claim, got %+v", staleTask)
+	}
+}
+
 func TestComputeRetryDelayMS(t *testing.T) {
 	initial := int64(333)
 	maxBackoff := int64(1000)
@@ -782,6 +962,22 @@ func createWaitingRunWithPendingActivity(
 	t.Helper()
 	cfg.waiting = true
 	return createRunWithPendingActivityConfig(t, store, cfg)
+}
+
+func waitUntil(t *testing.T, timeout time.Duration, condition func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if condition() {
+		return
+	}
+	t.Fatalf("condition was not met within %s", timeout)
 }
 
 func mustJSON(t *testing.T, value any) json.RawMessage {

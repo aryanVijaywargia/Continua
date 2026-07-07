@@ -150,6 +150,20 @@ WHERE id = sqlc.arg(id)
   AND lease_expires_at > NOW()
 RETURNING *;
 
+-- name: HeartbeatLocalActivityTask :one
+UPDATE engine.activity_tasks
+SET lease_expires_at = NOW() + (lease_duration_ms * INTERVAL '1 millisecond'),
+    updated_at = NOW()
+WHERE id = sqlc.arg(id)
+  AND execution_target = 'local'
+  AND status = 'claimed'
+  AND claimed_by = sqlc.arg(claimed_by)
+  AND lease_duration_ms IS NOT NULL
+  AND lease_duration_ms > 0
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at > NOW()
+RETURNING *;
+
 -- name: CompleteRemoteActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'completed',
