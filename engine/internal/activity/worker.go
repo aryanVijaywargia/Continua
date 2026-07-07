@@ -48,7 +48,7 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 		return w.failTask(ctx, task.ID, task.RunID, workerID, &code, &message)
 	}
 
-	output, handlerErr := w.runHandlerWithHeartbeat(ctx, handler, task, workerID)
+	output, handlerErr := w.runHandlerWithHeartbeat(ctx, handler, &task, workerID)
 	if handlerErr != nil {
 		if w.shouldRetryTask(&task, handlerErr) {
 			return w.retryTask(ctx, &task, workerID, handlerErr)
@@ -93,7 +93,7 @@ type handlerResult struct {
 func (w *Worker) runHandlerWithHeartbeat(
 	ctx context.Context,
 	handler Handler,
-	task enginedb.EngineActivityTask,
+	task *enginedb.EngineActivityTask,
 	workerID string,
 ) (json.RawMessage, error) {
 	handlerCtx, cancel := context.WithCancel(ctx)
