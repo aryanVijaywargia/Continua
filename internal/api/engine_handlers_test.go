@@ -321,12 +321,10 @@ func TestStartEngineRun_RejectsUnknownDefinitionAndInstanceConflict(t *testing.T
 func TestStartEngineRun_RejectsCatalogOnlyDefinitionAfterRegistryTruthSync(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 
-	_, err := platformStore.Pool().Exec(ctx, `
-		INSERT INTO engine.definition_catalog (definition_name, definition_version)
-		VALUES ('agent.research', 'v1')
-		ON CONFLICT (definition_name, definition_version) DO UPDATE SET
-			updated_at = NOW()
-	`)
+	_, err := engineQueries.UpsertDefinitionCatalogEntry(ctx, enginedb.UpsertDefinitionCatalogEntryParams{
+		DefinitionName:    "agent.research",
+		DefinitionVersion: "v1",
+	})
 	require.NoError(t, err)
 
 	catalogOnly := invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
@@ -338,7 +336,7 @@ func TestStartEngineRun_RejectsCatalogOnlyDefinitionAfterRegistryTruthSync(t *te
 	require.Equal(t, http.StatusOK, catalogOnly.Code)
 	_ = decodeJSONBody[EngineStartRunResponse](t, catalogOnly)
 
-	beforeSync := countEngineRowsForProject(t, ctx, platformStore, projectID)
+	beforeSync := countEngineRowsForProject(ctx, t, platformStore, projectID)
 	assert.Equal(t, 1, beforeSync.instances)
 	assert.Equal(t, 1, beforeSync.runs)
 
@@ -362,7 +360,7 @@ func TestStartEngineRun_RejectsCatalogOnlyDefinitionAfterRegistryTruthSync(t *te
 	resp := decodeJSONBody[Error](t, rejected)
 	assert.Equal(t, "definition_not_registered", resp.Code)
 
-	afterReject := countEngineRowsForProject(t, ctx, platformStore, projectID)
+	afterReject := countEngineRowsForProject(ctx, t, platformStore, projectID)
 	assert.Equal(t, beforeSync, afterReject)
 
 	_, err = engineQueries.GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
@@ -3268,7 +3266,7 @@ type engineProjectRowCounts struct {
 	runs      int
 }
 
-func countEngineRowsForProject(t *testing.T, ctx context.Context, platformStore *store.Store, projectID uuid.UUID) engineProjectRowCounts {
+func countEngineRowsForProject(ctx context.Context, t *testing.T, platformStore *store.Store, projectID uuid.UUID) engineProjectRowCounts {
 	t.Helper()
 
 	var counts engineProjectRowCounts
