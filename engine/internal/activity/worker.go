@@ -109,6 +109,10 @@ func (w *Worker) runHandlerWithHeartbeat(
 	if heartbeatInterval <= 0 {
 		heartbeatInterval = 50 * time.Millisecond
 	}
+	heartbeatTimeout := heartbeatInterval / 2
+	if heartbeatTimeout <= 0 {
+		heartbeatTimeout = heartbeatInterval
+	}
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 	heartbeatC := ticker.C
@@ -124,7 +128,10 @@ func (w *Worker) runHandlerWithHeartbeat(
 			heartbeatC = nil
 			ctxDone = nil
 		case <-heartbeatC:
-			if _, err := w.store.HeartbeatLocalActivityTask(ctx, task.ID, workerID); err != nil {
+			heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, heartbeatTimeout)
+			_, err := w.store.HeartbeatLocalActivityTask(heartbeatCtx, task.ID, workerID)
+			heartbeatCancel()
+			if err != nil {
 				if errors.Is(err, store.ErrStaleClaim) || errors.Is(err, store.ErrNotFound) {
 					log.Printf("activity worker lost lease for task %s", task.ID)
 					cancel()

@@ -28,7 +28,7 @@ What is still **preview / not yet there**:
 
 Local activity workers heartbeat claimed tasks at half of the configured activity lease TTL while the handler is running. If the worker process crashes, the heartbeat stops, the lease expires, and the task becomes claimable by another worker.
 
-Activity handlers must therefore be idempotent: activity execution is at-least-once across process crashes. If a running handler loses its lease, its context is cancelled, but a reclaimed execution may already be running concurrently in crash or lease-loss scenarios.
+Activity handlers must therefore be idempotent: activity execution is at-least-once across process crashes. If a running handler loses its lease, such as due to a slow heartbeat, its context is cancelled, but a reclaimed execution may briefly run concurrently until cancellation takes effect. After a genuine process crash, the prior execution is gone; a new worker resumes the task sequentially once the lease expires.
 
 ## Storage Model
 
