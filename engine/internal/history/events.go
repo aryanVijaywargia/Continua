@@ -18,6 +18,7 @@ const (
 	EventWorkflowReplayMismatch     = publichistory.EventWorkflowReplayMismatch
 	EventWorkflowTimeRecorded       = publichistory.EventWorkflowTimeRecorded
 	EventWorkflowSideEffectRecorded = publichistory.EventWorkflowSideEffectRecorded
+	EventWorkflowVersionMarker      = publichistory.EventWorkflowVersionMarker
 	EventActivityScheduled          = publichistory.EventActivityScheduled
 	EventActivityCompleted          = publichistory.EventActivityCompleted
 	EventActivityFailed             = publichistory.EventActivityFailed
@@ -54,6 +55,7 @@ type WorkflowTerminatedPayload = publichistory.WorkflowTerminatedPayload
 type WorkflowReplayMismatchPayload = publichistory.WorkflowReplayMismatchPayload
 type WorkflowTimeRecordedPayload = publichistory.WorkflowTimeRecordedPayload
 type WorkflowSideEffectRecordedPayload = publichistory.WorkflowSideEffectRecordedPayload
+type WorkflowVersionMarkerPayload = publichistory.WorkflowVersionMarkerPayload
 type ActivityScheduledPayload = publichistory.ActivityScheduledPayload
 type ActivityCompletedPayload = publichistory.ActivityCompletedPayload
 type ActivityFailedPayload = publichistory.ActivityFailedPayload

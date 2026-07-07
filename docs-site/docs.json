@@ -42,6 +42,7 @@
           {
             "group": "Workflows",
             "pages": [
+              "guides/workflow-code-versioning",
               "guides/debugging-failures",
               "guides/comparing-sessions"
             ]

@@ -125,6 +125,10 @@ type replayMismatchPanic struct {
 	payload enginehistory.WorkflowReplayMismatchPayload
 }
 
+type controlledFailurePanic struct {
+	failure enginehistory.WorkflowFailedPayload
+}
+
 type codedWorkflowError struct {
 	code    string
 	message string
@@ -352,6 +356,9 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 			}
 			r.queueEvent(enginehistory.EventWorkflowFailed, failure)
 			decision = r.failedDecision(failure)
+			err = nil
+		case controlledFailurePanic:
+			decision = r.recordWorkflowFailure(value.failure)
 			err = nil
 		default:
 			panicMessage := fmt.Sprintf("workflow panic: %v", value)
@@ -823,6 +830,44 @@ func (r *workflowRunner) SideEffect(key string, fn func() (any, error), out any)
 	return unmarshalOptional(recorded.Value, out)
 }
 
+func (r *workflowRunner) GetVersion(changeID string, minSupported, maxSupported int) int {
+	r.advanceState()
+	if changeID == "" {
+		r.failControlled("version_invalid", "workflow version change_id is required")
+	}
+	if minSupported < 1 {
+		r.failControlled("version_invalid", "workflow version min_supported must be at least 1")
+	}
+	if minSupported > maxSupported {
+		r.failControlled("version_invalid", "workflow version min_supported must be less than or equal to max_supported")
+	}
+	if maxSupported > int(^uint32(0)>>1) {
+		r.failControlled("version_invalid", "workflow version max_supported exceeds int32")
+	}
+
+	if next, ok := r.peek(); ok {
+		recorded, ok := next.Payload.(*enginehistory.WorkflowVersionMarkerPayload)
+		if !ok {
+			return minSupported
+		}
+		if recorded.ChangeID != changeID {
+			r.replayMismatch(enginehistory.EventWorkflowVersionMarker, changeID, next, "workflow version marker did not match recorded history")
+		}
+		r.cursor++
+		if recorded.Version < int32(minSupported) {
+			r.failControlled("version_unsupported", fmt.Sprintf("workflow version %d for change %q is below min_supported %d", recorded.Version, changeID, minSupported))
+		}
+		return int(recorded.Version)
+	}
+
+	recorded := enginehistory.WorkflowVersionMarkerPayload{
+		ChangeID: changeID,
+		Version:  int32(maxSupported),
+	}
+	r.queueEvent(enginehistory.EventWorkflowVersionMarker, recorded)
+	return maxSupported
+}
+
 func (r *workflowRunner) ReceiveSignal(name string, out any) error {
 	r.advanceState()
 	if next, ok := r.peek(); ok {
@@ -969,6 +1014,31 @@ func (r *workflowRunner) replayMismatch(expectedType, expectedKey string, actual
 			Detail:       detail,
 		},
 	})
+}
+
+func (r *workflowRunner) failControlled(code, message string) {
+	panic(controlledFailurePanic{
+		failure: enginehistory.WorkflowFailedPayload{
+			ErrorCode:    code,
+			ErrorMessage: message,
+		},
+	})
+}
+
+func (r *workflowRunner) recordWorkflowFailure(failure enginehistory.WorkflowFailedPayload) activationDecision {
+	if next, ok := r.peek(); ok {
+		recorded, ok := next.Payload.(*enginehistory.WorkflowFailedPayload)
+		if !ok || recorded.ErrorCode != failure.ErrorCode || recorded.ErrorMessage != failure.ErrorMessage {
+			r.replayMismatch(enginehistory.EventWorkflowFailed, "", next, "workflow failure did not match recorded history")
+		}
+		r.cursor++
+	} else {
+		r.queueEvent(enginehistory.EventWorkflowFailed, failure)
+	}
+	if next, ok := r.peek(); ok {
+		r.replayMismatch("", "", next, "recorded history contains events after workflow failure")
+	}
+	return r.failedDecision(failure)
 }
 
 func (r *workflowRunner) waitingDecision() activationDecision {

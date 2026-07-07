@@ -72,6 +72,7 @@ type Context interface {
 	Sleep(key string, d time.Duration) error
 	SleepUntil(key string, at time.Time) error
 	SideEffect(key string, fn func() (any, error), out any) error
+	GetVersion(changeID string, minSupported, maxSupported int) int
 	ReceiveSignal(name string, out any) error
 	CancellationRequested() bool
 	SetCustomStatus(value any) error

@@ -18,6 +18,7 @@ const (
 	EventWorkflowReplayMismatch     = "workflow.replay_mismatch"
 	EventWorkflowTimeRecorded       = "workflow.time_recorded"
 	EventWorkflowSideEffectRecorded = "workflow.side_effect_recorded"
+	EventWorkflowVersionMarker      = "workflow.version_marker"
 	EventActivityScheduled          = "activity.scheduled"
 	EventActivityCompleted          = "activity.completed"
 	EventActivityFailed             = "activity.failed"
@@ -89,6 +90,11 @@ type WorkflowTimeRecordedPayload struct {
 type WorkflowSideEffectRecordedPayload struct {
 	SideEffectKey string          `json:"side_effect_key"`
 	Value         json.RawMessage `json:"value"`
+}
+
+type WorkflowVersionMarkerPayload struct {
+	ChangeID string `json:"change_id"`
+	Version  int32  `json:"version"`
 }
 
 type ActivityScheduledPayload struct {
@@ -328,6 +334,10 @@ func EventKey(eventType string, payload any) string {
 		return value.SideEffectKey
 	case *WorkflowSideEffectRecordedPayload:
 		return value.SideEffectKey
+	case WorkflowVersionMarkerPayload:
+		return value.ChangeID
+	case *WorkflowVersionMarkerPayload:
+		return value.ChangeID
 	default:
 		return ""
 	}
@@ -357,6 +367,8 @@ func payloadTarget(eventType string) (any, error) {
 		return &WorkflowTimeRecordedPayload{}, nil
 	case EventWorkflowSideEffectRecorded:
 		return &WorkflowSideEffectRecordedPayload{}, nil
+	case EventWorkflowVersionMarker:
+		return &WorkflowVersionMarkerPayload{}, nil
 	case EventActivityScheduled:
 		return &ActivityScheduledPayload{}, nil
 	case EventActivityCompleted:

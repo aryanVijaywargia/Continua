@@ -1,6 +1,7 @@
 package darklaunch
 
 import (
+	"os"
 	"time"
 
 	"github.com/continua-ai/continua/engine/pkg/workflow"
@@ -21,6 +22,12 @@ const (
 	InvalidRetryDefinitionVersion    = "v1"
 	SleepDemoDefinitionName          = "darklaunch.sleep-demo"
 	SleepDemoDefinitionVersion       = "v1"
+	VersionDemoDefinitionName        = "darklaunch.version-demo"
+	VersionDemoDefinitionVersion     = "v1"
+	VersionDemoChangeID              = "approval-gate"
+	TestVersionDemoCodeEnv           = "CONTINUA_ENGINE_TEST_VERSION_DEMO_CODE"
+	VersionDemoCodeOld               = "old"
+	VersionDemoCodeNew               = "new"
 )
 
 type WorkflowInput struct {
@@ -79,6 +86,11 @@ func Definitions() []workflow.Definition {
 			Version: SleepDemoDefinitionVersion,
 			Run:     runSleepDemoWorkflow,
 		},
+		{
+			Name:    VersionDemoDefinitionName,
+			Version: VersionDemoDefinitionVersion,
+			Run:     runVersionDemoWorkflow,
+		},
 	}
 }
 
@@ -134,6 +146,74 @@ func runSleepDemoWorkflow(ctx workflow.Context) error {
 	return ctx.SetResult(WorkflowResult{
 		Greeting: "hello, " + input.Name,
 		Approval: signal.Approval,
+	})
+}
+
+func runVersionDemoWorkflow(ctx workflow.Context) error {
+	if os.Getenv(TestVersionDemoCodeEnv) == VersionDemoCodeNew {
+		return runVersionDemoNewWorkflow(ctx)
+	}
+	return runVersionDemoOldWorkflow(ctx)
+}
+
+func runVersionDemoOldWorkflow(ctx workflow.Context) error {
+	var input WorkflowInput
+	if err := ctx.Input(&input); err != nil {
+		return err
+	}
+	if input.Name == "" {
+		input.Name = "world"
+	}
+
+	var activityOutput ActivityOutput
+	if err := ctx.Activity("greet", DemoActivityType, ActivityInput{Name: input.Name}, &activityOutput); err != nil {
+		return err
+	}
+
+	var signal SignalPayload
+	if err := ctx.ReceiveSignal("approval", &signal); err != nil {
+		return err
+	}
+
+	return ctx.SetResult(map[string]string{
+		"branch":   "old",
+		"greeting": activityOutput.Greeting,
+		"approval": signal.Approval,
+	})
+}
+
+func runVersionDemoNewWorkflow(ctx workflow.Context) error {
+	version := ctx.GetVersion(VersionDemoChangeID, 1, 2)
+
+	var input WorkflowInput
+	if err := ctx.Input(&input); err != nil {
+		return err
+	}
+	if input.Name == "" {
+		input.Name = "world"
+	}
+
+	var activityOutput ActivityOutput
+	if err := ctx.Activity("greet", DemoActivityType, ActivityInput{Name: input.Name}, &activityOutput); err != nil {
+		return err
+	}
+
+	if version >= 2 {
+		return ctx.SetResult(map[string]string{
+			"branch":   "new",
+			"greeting": activityOutput.Greeting,
+		})
+	}
+
+	var signal SignalPayload
+	if err := ctx.ReceiveSignal("approval", &signal); err != nil {
+		return err
+	}
+
+	return ctx.SetResult(map[string]string{
+		"branch":   "old",
+		"greeting": activityOutput.Greeting,
+		"approval": signal.Approval,
 	})
 }
 

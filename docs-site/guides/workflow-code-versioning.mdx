@@ -1,0 +1,101 @@
+---
+title: "Workflow code versioning"
+description: "Safely deploy durable workflow code changes while runs are still in flight."
+---
+
+The durable engine replays workflow code against recorded history. If deployed code
+changes which commands a run emits, old in-flight runs can fail replay unless the change
+is versioned.
+
+Use this guide for single-node preview deployments of Go workflow definitions.
+
+<Warning>
+  The durable engine is still preview. These rules describe the current Go-defined
+  runtime and dark-launch CLI behavior, not a production multi-node rollout protocol.
+</Warning>
+
+## Safe deploy rule
+
+Before deploying a workflow code change, decide whether existing runs for the same
+definition name and version might still be active.
+
+- If no runs are in flight, deploy normally.
+- If runs are in flight and the command sequence changes, guard the change with
+  `ctx.GetVersion`.
+- If the change is a new definition contract, register a new `definition_version`
+  instead.
+
+The run row stores `definition_version` when the run starts. Existing runs continue to
+load that exact definition version during activation, while new runs can bind to a newer
+registered version.
+
+## Use GetVersion for in-place behavior changes
+
+Use `ctx.GetVersion(changeID, minSupported, maxSupported)` when you need to change the
+behavior of an existing definition version without breaking runs that already started.
+
+Example:
+
+```go
+version := ctx.GetVersion("approval-gate", 1, 2)
+
+if version >= 2 {
+    // New runs record version 2 and take the new branch.
+    return ctx.SetResult(newResult)
+}
+
+// Marker-less old runs return minSupported, so they keep the old command sequence.
+if err := ctx.ReceiveSignal("approval", &approval); err != nil {
+    return err
+}
+return ctx.SetResult(oldResult)
+```
+
+On first execution, `GetVersion` records a `workflow.version_marker` event with
+`maxSupported` and returns that value. On replay, the recorded marker controls the branch.
+If a run started before the `GetVersion` call existed, the next history event is not a
+version marker, so `GetVersion` returns `minSupported` without recording anything. The old
+run keeps following the old branch.
+
+## Use definition versions for contract changes
+
+Bump `definition_version` when the new code should be a distinct workflow definition
+contract:
+
+- Input or result schema changes.
+- Activity or child workflow contracts change.
+- Operators should be able to start old and new definitions explicitly.
+- Old runs should stay pinned to the old registered definition implementation.
+
+When the dark-launch `continua-engine start` command omits `--version`, the runtime
+resolves the latest registered version for `--definition` and pins that version into the
+new run. Latest is numeric-aware: versions with trailing integers sort by that integer,
+so `v10` is newer than `v2`; non-numeric versions fall back to lexicographic ordering.
+
+Explicit `--version` keeps exact-match behavior. If the requested definition name or
+version is not registered, the command returns `definition_not_registered`.
+
+## Dropping old branches
+
+Do not raise `minSupported` until all runs that recorded or imply the older branch are
+terminal.
+
+If a replay sees a recorded `workflow.version_marker` whose version is below
+`minSupported`, the workflow fails in a controlled way with failure code
+`version_unsupported`. This is not a replay mismatch: it means the deployed code
+intentionally no longer supports that in-flight branch.
+
+## Single-node upgrade playbook
+
+1. Check whether the definition version has non-terminal runs.
+2. For in-place behavior changes, add `GetVersion` before the first changed command and
+   keep the old branch byte-for-byte compatible with existing history.
+3. For new contracts, register a higher `definition_version` and start new runs on that
+   version.
+4. Deploy the new binary.
+5. Let old runs drain. Keep old `GetVersion` branches until every affected run is
+   terminal.
+6. After old runs drain, raise `minSupported` or remove the old branch in a later deploy.
+
+For long waits on human signals, prefer keeping compatibility branches longer than the
+expected maximum wait time.
