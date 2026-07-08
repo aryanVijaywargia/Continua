@@ -226,14 +226,11 @@ func (w *Worker) shouldRetryTask(task *enginedb.EngineActivityTask, handlerErr e
 }
 
 func nextHistorySequence(ctx context.Context, tx *store.Tx, runID uuid.UUID) (int32, error) {
-	historyRows, err := tx.GetHistoryByRun(ctx, runID)
+	maxSequence, err := tx.GetMaxHistorySequenceByRun(ctx, runID)
 	if err != nil {
 		return 0, err
 	}
-	if len(historyRows) == 0 {
-		return 1, nil
-	}
-	return historyRows[len(historyRows)-1].SequenceNo + 1, nil
+	return maxSequence + 1, nil
 }
 
 func activityErrorCode(err error) string {

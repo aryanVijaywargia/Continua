@@ -21,6 +21,11 @@ SELECT COALESCE(MAX(id), 0)::bigint
 FROM engine.history
 WHERE run_id = $1;
 
+-- name: GetMaxHistorySequenceByRun :one
+SELECT COALESCE(MAX(sequence_no), 0)::int
+FROM engine.history
+WHERE run_id = $1;
+
 -- name: ListHistoryByRunAfterID :many
 SELECT *
 FROM engine.history

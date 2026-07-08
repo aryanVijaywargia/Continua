@@ -151,6 +151,19 @@ func (q *Queries) GetLatestHistoryIDByRun(ctx context.Context, runID uuid.UUID) 
 	return column_1, err
 }
 
+const getMaxHistorySequenceByRun = `-- name: GetMaxHistorySequenceByRun :one
+SELECT COALESCE(MAX(sequence_no), 0)::int
+FROM engine.history
+WHERE run_id = $1
+`
+
+func (q *Queries) GetMaxHistorySequenceByRun(ctx context.Context, runID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, getMaxHistorySequenceByRun, runID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listHistoryByRunAfterID = `-- name: ListHistoryByRunAfterID :many
 SELECT id, project_id, instance_id, run_id, sequence_no, event_type, payload, created_at
 FROM engine.history
