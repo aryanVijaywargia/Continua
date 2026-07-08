@@ -471,6 +471,74 @@ func TestWorkerRetryableFailureSchedulesRetryWithoutWakingRun(t *testing.T) {
 	}
 }
 
+func TestWorkerRetryScheduledSequenceContinuesFromMaxHistory(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+
+	initial := int64(333)
+	maxBackoff := int64(1000)
+	multiplier := 1.5
+	instance, run, task := createWaitingRunWithPendingActivity(t, store, pendingActivityConfig{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-activity-retry-max-sequence",
+		activityKey:       "compose-greeting",
+		maxAttempts:       3,
+		initialBackoffMS:  &initial,
+		maxBackoffMS:      &maxBackoff,
+		backoffMultiplier: &multiplier,
+	})
+
+	if _, err := store.AppendHistory(ctx, enginedb.AppendHistoryParams{
+		ProjectID:  run.ProjectID,
+		InstanceID: instance.ID,
+		RunID:      run.ID,
+		SequenceNo: 10,
+		EventType:  "activity.out_of_band_marker",
+		Payload:    []byte(`{"event":"activity.out_of_band_marker"}`),
+	}); err != nil {
+		t.Fatalf("AppendHistory(high sequence marker) error = %v", err)
+	}
+
+	registry, err := NewRegistry(map[string]Handler{
+		testActivityType: func(context.Context, json.RawMessage) (json.RawMessage, error) {
+			return nil, errors.New("boom")
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	worker := NewWorker(store, registry, time.Minute)
+	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+		t.Fatalf("PollOnce() error = %v", err)
+	}
+
+	retriedTask, err := store.GetActivityTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetActivityTask() error = %v", err)
+	}
+	if retriedTask.Status != enginedb.EngineActivityTaskStatusQueued {
+		t.Fatalf("expected queued retry task, got %+v", retriedTask)
+	}
+
+	historyRows, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+	if len(historyRows) != 4 {
+		t.Fatalf("expected started + activity.scheduled + marker + retry history, got %+v", historyRows)
+	}
+
+	retryHistory := historyRows[len(historyRows)-1]
+	if retryHistory.EventType != enginehistory.EventActivityRetryScheduled {
+		t.Fatalf("expected final history row to be activity.retry_scheduled, got %+v", retryHistory)
+	}
+	if retryHistory.SequenceNo != 11 {
+		t.Fatalf("expected retry_scheduled sequence_no 11 after max sequence 10, got %+v", retryHistory)
+	}
+}
+
 func TestWorkerSingleAttemptFailureWakesWaitingRun(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	store := enginestore.New(db.Pool)
