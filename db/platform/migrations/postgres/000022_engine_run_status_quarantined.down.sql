@@ -40,4 +40,7 @@ ALTER TABLE traces
     CHECK (
         engine_run_status IS NULL
         OR engine_run_status IN ('queued', 'running', 'waiting', 'suspended', 'completed', 'failed', 'cancelled', 'terminated', 'continued_as_new')
-    );
+    ) NOT VALID;
+
+ALTER TABLE traces
+    VALIDATE CONSTRAINT traces_engine_run_status_check;

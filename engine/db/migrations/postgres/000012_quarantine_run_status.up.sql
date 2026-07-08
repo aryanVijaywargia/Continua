@@ -1,1 +1,1 @@
-ALTER TYPE engine.run_lifecycle_status ADD VALUE IF NOT EXISTS 'quarantined';
+ALTER TYPE engine.run_lifecycle_status ADD VALUE IF NOT EXISTS 'quarantined' AFTER 'suspended';
