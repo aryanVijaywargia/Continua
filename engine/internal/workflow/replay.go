@@ -128,6 +128,10 @@ type replayMismatchPanic struct {
 	failureCode string
 }
 
+type internalInvariantPanic struct {
+	detail string
+}
+
 type controlledFailurePanic struct {
 	failure enginehistory.WorkflowFailedPayload
 }
