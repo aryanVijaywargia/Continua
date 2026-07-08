@@ -117,7 +117,7 @@ func TestReplayDefinitionDemoProgression(t *testing.T) {
 		if len(decision.ConsumedInboxIDs) != 1 || decision.ConsumedInboxIDs[0] != inboxRows[0].ID {
 			t.Fatalf("expected queued signal inbox item to be consumed, got %+v", decision.ConsumedInboxIDs)
 		}
-		if !equalJSON(decision.Result, mustRawJSON(t, map[string]string{"approval": "granted"})) {
+		if !equalJSONForTest(t, decision.Result, mustRawJSON(t, map[string]string{"approval": "granted"})) {
 			t.Fatalf("expected completed result to reflect signal payload, got %s", decision.Result)
 		}
 	})
@@ -204,7 +204,7 @@ func TestReplayDefinitionDemoProgression(t *testing.T) {
 		if decision.Events[1].EventType != enginehistory.EventWorkflowCompleted {
 			t.Fatalf("expected second event to be workflow.completed, got %+v", decision.Events)
 		}
-		if !equalJSON(decision.Result, result) {
+		if !equalJSONForTest(t, decision.Result, result) {
 			t.Fatalf("expected completed result %s, got %s", result, decision.Result)
 		}
 	})

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"time"
 
@@ -123,7 +124,8 @@ type pendingInboxItem struct {
 type blockedPanic struct{}
 
 type replayMismatchPanic struct {
-	payload enginehistory.WorkflowReplayMismatchPayload
+	payload     enginehistory.WorkflowReplayMismatchPayload
+	failureCode string
 }
 
 type controlledFailurePanic struct {
@@ -350,7 +352,8 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 			decision = r.waitingDecision()
 			err = nil
 		case replayMismatchPanic:
-			decision = r.quarantinedDecision(&value.payload)
+			mismatch := value
+			decision = r.quarantinedDecision(&mismatch)
 			err = nil
 		case controlledFailurePanic:
 			decision = r.recordWorkflowFailure(value.failure)
@@ -392,7 +395,14 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 			continuedAsNew := enginehistory.WorkflowContinuedAsNewPayload{Input: cloneRaw(continuationInput)}
 			if next, ok := r.peek(); ok {
 				recorded, ok := next.Payload.(*enginehistory.WorkflowContinuedAsNewPayload)
-				if !ok || !equalJSON(recorded.Input, continuedAsNew.Input) {
+				if !ok {
+					r.replayMismatch(enginehistory.EventWorkflowContinuedAsNew, "", next, "workflow continuation did not match recorded history")
+				}
+				equal, err := equalJSON(recorded.Input, continuedAsNew.Input)
+				if err != nil {
+					r.historyCorrupt(enginehistory.EventWorkflowContinuedAsNew, "", next, err)
+				}
+				if !equal {
 					r.replayMismatch(enginehistory.EventWorkflowContinuedAsNew, "", next, "workflow continuation did not match recorded history")
 				}
 				r.cursor++
@@ -439,7 +449,14 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 	completed := enginehistory.WorkflowCompletedPayload{Result: cloneRaw(r.result)}
 	if next, ok := r.peek(); ok {
 		recorded, ok := next.Payload.(*enginehistory.WorkflowCompletedPayload)
-		if !ok || !equalJSON(recorded.Result, completed.Result) {
+		if !ok {
+			r.replayMismatch(enginehistory.EventWorkflowCompleted, "", next, "workflow completion did not match recorded history")
+		}
+		equal, err := equalJSON(recorded.Result, completed.Result)
+		if err != nil {
+			r.historyCorrupt(enginehistory.EventWorkflowCompleted, "", next, err)
+		}
+		if !equal {
 			r.replayMismatch(enginehistory.EventWorkflowCompleted, "", next, "workflow completion did not match recorded history")
 		}
 		r.cursor++
@@ -487,7 +504,14 @@ func (r *workflowRunner) ActivityWithOptions(
 
 	if next, ok := r.peek(); ok {
 		scheduled, ok := next.Payload.(*enginehistory.ActivityScheduledPayload)
-		if !ok || !matchActivityScheduled(scheduled, key, activityType, inputRaw) {
+		if !ok {
+			r.replayMismatch(enginehistory.EventActivityScheduled, key, next, "activity scheduling did not match recorded history")
+		}
+		match, err := matchActivityScheduled(scheduled, key, activityType, inputRaw)
+		if err != nil {
+			r.historyCorrupt(enginehistory.EventActivityScheduled, key, next, err)
+		}
+		if !match {
 			r.replayMismatch(enginehistory.EventActivityScheduled, key, next, "activity scheduling did not match recorded history")
 		}
 		r.cursor++
@@ -598,7 +622,14 @@ func (r *workflowRunner) ChildWorkflowWithOptions(
 
 	if next, ok := r.peek(); ok {
 		scheduled, ok := next.Payload.(*enginehistory.ChildWorkflowScheduledPayload)
-		if !ok || !matchChildWorkflowScheduled(scheduled, childKey, definitionName, definitionVersion, inputRaw, instanceKey) {
+		if !ok {
+			r.replayMismatch(enginehistory.EventChildWorkflowScheduled, childKey, next, "child workflow scheduling did not match recorded history")
+		}
+		match, err := matchChildWorkflowScheduled(scheduled, childKey, definitionName, definitionVersion, inputRaw, instanceKey)
+		if err != nil {
+			r.historyCorrupt(enginehistory.EventChildWorkflowScheduled, childKey, next, err)
+		}
+		if !match {
 			r.replayMismatch(enginehistory.EventChildWorkflowScheduled, childKey, next, "child workflow scheduling did not match recorded history")
 		}
 		r.cursor++
@@ -905,7 +936,14 @@ func (r *workflowRunner) SetCustomStatus(value any) error {
 
 	if next, ok := r.peek(); ok {
 		recorded, ok := next.Payload.(*enginehistory.CustomStatusUpdatedPayload)
-		if !ok || !equalJSON(recorded.Status, statusRaw) {
+		if !ok {
+			r.replayMismatch(enginehistory.EventCustomStatusUpdated, "", next, "custom status update did not match recorded history")
+		}
+		equal, err := equalJSON(recorded.Status, statusRaw)
+		if err != nil {
+			r.historyCorrupt(enginehistory.EventCustomStatusUpdated, "", next, err)
+		}
+		if !equal {
 			r.replayMismatch(enginehistory.EventCustomStatusUpdated, "", next, "custom status update did not match recorded history")
 		}
 		r.customStatus = cloneRaw(statusRaw)
@@ -1005,6 +1043,14 @@ func (r *workflowRunner) replayMismatch(expectedType, expectedKey string, actual
 	})
 }
 
+func (r *workflowRunner) historyCorrupt(expectedType, expectedKey string, actual decodedEvent, decodeErr error) {
+	detail := fmt.Sprintf("history payload decode failed: %v", decodeErr)
+	panic(replayMismatchPanic{
+		payload:     replayMismatchPayload(expectedType, expectedKey, actual, detail),
+		failureCode: "history_corrupt",
+	})
+}
+
 func replayMismatchPayload(
 	expectedType, expectedKey string,
 	actual decodedEvent,
@@ -1084,22 +1130,27 @@ func (r *workflowRunner) failedDecision(failure enginehistory.WorkflowFailedPayl
 	}
 }
 
-func (r *workflowRunner) quarantinedDecision(mismatch *enginehistory.WorkflowReplayMismatchPayload) activationDecision {
+func (r *workflowRunner) quarantinedDecision(mismatch *replayMismatchPanic) activationDecision {
+	payload := mismatch.payload
+	failureCode := mismatch.failureCode
+	if failureCode == "" {
+		failureCode = "replay_mismatch"
+	}
 	waitingFor := mustMarshalPayload(enginehistory.ReplayMismatchWait{
 		Kind:         enginehistory.WaitKindReplayMismatch,
-		ExpectedType: mismatch.ExpectedType,
-		ExpectedKey:  mismatch.ExpectedKey,
-		ActualType:   mismatch.ActualType,
-		ActualKey:    mismatch.ActualKey,
-		Detail:       mismatch.Detail,
+		ExpectedType: payload.ExpectedType,
+		ExpectedKey:  payload.ExpectedKey,
+		ActualType:   payload.ActualType,
+		ActualKey:    payload.ActualKey,
+		Detail:       payload.Detail,
 	})
 	return activationDecision{
 		Kind:           decisionQuarantined,
 		NextSequence:   r.nextSequence,
 		WaitingFor:     cloneRaw(waitingFor),
 		CustomStatus:   cloneRaw(r.customStatus),
-		FailureCode:    "replay_mismatch",
-		FailureMessage: mismatch.Detail,
+		FailureCode:    failureCode,
+		FailureMessage: payload.Detail,
 	}
 }
 
@@ -1132,10 +1183,11 @@ func matchActivityScheduled(
 	recorded *enginehistory.ActivityScheduledPayload,
 	key, activityType string,
 	input json.RawMessage,
-) bool {
-	return recorded.ActivityKey == key &&
-		recorded.ActivityType == activityType &&
-		equalJSON(recorded.Input, input)
+) (bool, error) {
+	if recorded.ActivityKey != key || recorded.ActivityType != activityType {
+		return false, nil
+	}
+	return equalJSON(recorded.Input, input)
 }
 
 func matchChildWorkflowScheduled(
@@ -1143,12 +1195,14 @@ func matchChildWorkflowScheduled(
 	childKey, definitionName, definitionVersion string,
 	input json.RawMessage,
 	instanceKey string,
-) bool {
-	return recorded.ChildKey == childKey &&
-		recorded.DefinitionName == definitionName &&
-		recorded.DefinitionVersion == definitionVersion &&
-		recorded.ChildInstanceKey == instanceKey &&
-		equalJSON(recorded.Input, input)
+) (bool, error) {
+	if recorded.ChildKey != childKey ||
+		recorded.DefinitionName != definitionName ||
+		recorded.DefinitionVersion != definitionVersion ||
+		recorded.ChildInstanceKey != instanceKey {
+		return false, nil
+	}
+	return equalJSON(recorded.Input, input)
 }
 
 func defaultChildInstanceKey(projectID, parentRunID uuid.UUID, childKey string) string {
@@ -1357,23 +1411,44 @@ func unmarshalOptional(raw []byte, out any) error {
 	return json.Unmarshal(raw, out)
 }
 
-func equalJSON(left, right json.RawMessage) bool {
+func equalJSON(left, right json.RawMessage) (bool, error) {
 	if bytes.Equal(bytes.TrimSpace(left), bytes.TrimSpace(right)) {
-		return true
+		return true, nil
 	}
 	if len(left) == 0 && len(right) == 0 {
-		return true
+		return true, nil
+	}
+	if len(left) == 0 || len(right) == 0 {
+		return false, nil
 	}
 
-	var leftValue any
-	var rightValue any
-	if err := json.Unmarshal(left, &leftValue); err != nil {
-		return false
+	leftValue, err := decodeJSONValue(left)
+	if err != nil {
+		return false, fmt.Errorf("decode recorded payload: %w", err)
 	}
-	if err := json.Unmarshal(right, &rightValue); err != nil {
-		return false
+	rightValue, err := decodeJSONValue(right)
+	if err != nil {
+		return false, fmt.Errorf("decode replayed payload: %w", err)
 	}
-	return reflect.DeepEqual(leftValue, rightValue)
+	return reflect.DeepEqual(leftValue, rightValue), nil
+}
+
+func decodeJSONValue(raw json.RawMessage) (any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("multiple JSON values")
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 func cloneRaw(raw json.RawMessage) json.RawMessage {

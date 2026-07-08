@@ -64,7 +64,7 @@ func TestReplayDefinitionHappyPath(t *testing.T) {
 	if len(decision.Events) != 0 {
 		t.Fatalf("expected no new history events during replay, got %+v", decision.Events)
 	}
-	if !equalJSON(decision.Result, result) {
+	if !equalJSONForTest(t, decision.Result, result) {
 		t.Fatalf("expected replayed result %s, got %s", result, decision.Result)
 	}
 }
@@ -140,7 +140,7 @@ func TestReplayDefinitionChildWorkflowRoundTrip(t *testing.T) {
 	if len(decision.Events) != 0 {
 		t.Fatalf("expected no new history events during child workflow replay, got %+v", decision.Events)
 	}
-	if !equalJSON(decision.Result, result) {
+	if !equalJSONForTest(t, decision.Result, result) {
 		t.Fatalf("expected replayed result %s, got %s", result, decision.Result)
 	}
 }
@@ -646,7 +646,7 @@ func TestReplayDefinitionContinueAsNewFirstExecution(t *testing.T) {
 	if decision.Events[0].EventType != enginehistory.EventWorkflowContinuedAsNew {
 		t.Fatalf("expected workflow.continued_as_new event, got %+v", decision.Events[0])
 	}
-	if !equalJSON(decision.ContinuationInput, continuationInput) {
+	if !equalJSONForTest(t, decision.ContinuationInput, continuationInput) {
 		t.Fatalf("expected continuation input %s, got %s", continuationInput, decision.ContinuationInput)
 	}
 }
@@ -704,7 +704,7 @@ func TestReplayDefinitionContinueAsNewMatchesSemanticallyEquivalentJSON(t *testi
 	if len(decision.Events) != 0 {
 		t.Fatalf("expected semantic JSON replay equality to avoid new events, got %+v", decision.Events)
 	}
-	if !equalJSON(decision.ContinuationInput, recordedInput) {
+	if !equalJSONForTest(t, decision.ContinuationInput, recordedInput) {
 		t.Fatalf("expected continuation input to match recorded JSON, got %s", decision.ContinuationInput)
 	}
 }
@@ -793,7 +793,7 @@ func TestReplayDefinitionSkipsRecordedActivityRetryEvents(t *testing.T) {
 	if len(decision.Events) != 0 {
 		t.Fatalf("expected no new events while replaying recorded retries, got %+v", decision.Events)
 	}
-	if !equalJSON(decision.Result, output) {
+	if !equalJSONForTest(t, decision.Result, output) {
 		t.Fatalf("expected replayed result %s, got %s", output, decision.Result)
 	}
 }
@@ -842,7 +842,7 @@ func TestReplayDefinitionSkipsSingleRecordedActivityRetryEvent(t *testing.T) {
 	if len(decision.Events) != 0 {
 		t.Fatalf("expected single recorded retry replay to avoid new events, got %+v", decision.Events)
 	}
-	if !equalJSON(decision.Result, output) {
+	if !equalJSONForTest(t, decision.Result, output) {
 		t.Fatalf("expected replayed result %s, got %s", output, decision.Result)
 	}
 }
@@ -961,7 +961,7 @@ func TestReplayDefinitionIgnoresSuspendResumeControlEvents(t *testing.T) {
 	if len(decision.Events) != 0 {
 		t.Fatalf("expected suspend/resume control events to be ignored during replay, got %+v", decision.Events)
 	}
-	if !equalJSON(decision.Result, output) {
+	if !equalJSONForTest(t, decision.Result, output) {
 		t.Fatalf("expected replayed result %s, got %s", output, decision.Result)
 	}
 }
@@ -1009,7 +1009,7 @@ func TestReplayDefinitionCancellationRequestedRespectsHistoryOrder(t *testing.T)
 	if len(decision.Events) != 0 {
 		t.Fatalf("expected no new history events during replay, got %+v", decision.Events)
 	}
-	if !equalJSON(decision.Result, result) {
+	if !equalJSONForTest(t, decision.Result, result) {
 		t.Fatalf("expected replayed result %s, got %s", result, decision.Result)
 	}
 }
@@ -1089,7 +1089,7 @@ func TestReplayDefinitionCancellationRequestedFoldsPendingCancelAtFrontier(t *te
 	if len(decision.ConsumedInboxIDs) != 1 || decision.ConsumedInboxIDs[0] != cancelInboxID {
 		t.Fatalf("expected pending cancel inbox to be consumed, got %+v", decision.ConsumedInboxIDs)
 	}
-	if !equalJSON(decision.Result, result) {
+	if !equalJSONForTest(t, decision.Result, result) {
 		t.Fatalf("expected completed result %s, got %s", result, decision.Result)
 	}
 }
@@ -1224,7 +1224,7 @@ func TestReplayDefinitionPendingSignalBeforeCancelPreservesFrontierOrder(t *test
 	if len(decision.ConsumedInboxIDs) != 2 || decision.ConsumedInboxIDs[0] != signalInboxID || decision.ConsumedInboxIDs[1] != cancelInboxID {
 		t.Fatalf("expected signal then cancel inbox consumption, got %+v", decision.ConsumedInboxIDs)
 	}
-	if !equalJSON(decision.Result, result) {
+	if !equalJSONForTest(t, decision.Result, result) {
 		t.Fatalf("expected completed result %s, got %s", result, decision.Result)
 	}
 }
@@ -1306,7 +1306,7 @@ func TestReplayDefinitionPendingTimerBeforeCancelPreservesFrontierOrder(t *testi
 	if len(decision.ConsumedInboxIDs) != 2 || decision.ConsumedInboxIDs[0] != timerInboxID || decision.ConsumedInboxIDs[1] != cancelInboxID {
 		t.Fatalf("expected timer then cancel inbox consumption, got %+v", decision.ConsumedInboxIDs)
 	}
-	if !equalJSON(decision.Result, result) {
+	if !equalJSONForTest(t, decision.Result, result) {
 		t.Fatalf("expected completed result %s, got %s", result, decision.Result)
 	}
 }
@@ -1373,6 +1373,29 @@ func mustRawJSON(t *testing.T, value any) json.RawMessage {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	return raw
+}
+
+func equalJSONForTest(t *testing.T, left, right json.RawMessage) bool {
+	t.Helper()
+
+	equal, err := equalJSON(left, right)
+	if err != nil {
+		t.Fatalf("equalJSON() error = %v", err)
+	}
+	return equal
+}
+
+func TestEqualJSONPreservesNumberPrecision(t *testing.T) {
+	equal, err := equalJSON(
+		json.RawMessage(`{"value":9007199254740992}`),
+		json.RawMessage(`{"value":9007199254740993}`),
+	)
+	if err != nil {
+		t.Fatalf("equalJSON() error = %v", err)
+	}
+	if equal {
+		t.Fatal("equalJSON() = true, want false for distinct large integers")
+	}
 }
 
 func testDefinition(timerAt time.Time) publicworkflow.Definition {

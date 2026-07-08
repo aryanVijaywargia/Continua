@@ -335,7 +335,7 @@ func TestActivatorQuarantinedRunRecoversAfterDefinitionRestore(t *testing.T) {
 	if completedRun.Status != enginedb.EngineRunLifecycleStatusCompleted {
 		t.Fatalf("expected completed run after restored definition, got %+v", completedRun)
 	}
-	if !equalJSON(completedRun.Result, wantResult) {
+	if !equalJSONForTest(t, completedRun.Result, wantResult) {
 		t.Fatalf("expected result %s, got %s", wantResult, completedRun.Result)
 	}
 	historyRows, err = store.GetHistoryByRun(ctx, run.ID)

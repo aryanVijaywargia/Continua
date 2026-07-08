@@ -116,7 +116,7 @@ func TestReplayGetVersionRecordsMaxSupportedOnFirstExecutionAndReplaysRecordedVa
 	if markers[0].Version != 2 {
 		t.Fatalf("first execution must record maxSupported (2), got %d", markers[0].Version)
 	}
-	if !equalJSON(decision.Result, mustRawJSON(t, map[string]int{"version": 2})) {
+	if !equalJSONForTest(t, decision.Result, mustRawJSON(t, map[string]int{"version": 2})) {
 		t.Fatalf("expected GetVersion to return maxSupported on first execution, result = %s", decision.Result)
 	}
 
@@ -133,7 +133,7 @@ func TestReplayGetVersionRecordsMaxSupportedOnFirstExecutionAndReplaysRecordedVa
 	if len(replayDecision.Events) != 0 {
 		t.Fatalf("expected no new events on replay, got %+v", replayDecision.Events)
 	}
-	if !equalJSON(replayDecision.Result, decision.Result) {
+	if !equalJSONForTest(t, replayDecision.Result, decision.Result) {
 		t.Fatalf("replayed result %s differs from first execution %s", replayDecision.Result, decision.Result)
 	}
 }
@@ -178,7 +178,7 @@ func TestReplayGetVersionMarkerlessOldRunTakesOldBranchUnderNewCode(t *testing.T
 		t.Fatalf("expected no failure completing the in-flight run, got %q: %q", inFlightDecision.FailureCode, inFlightDecision.FailureMessage)
 	}
 	wantOldResult := mustRawJSON(t, map[string]string{"branch": "old", "greeting": "hello, Ada"})
-	if !equalJSON(inFlightDecision.Result, wantOldResult) {
+	if !equalJSONForTest(t, inFlightDecision.Result, wantOldResult) {
 		t.Fatalf("expected old-branch result %s, got %s", wantOldResult, inFlightDecision.Result)
 	}
 	if markers := collectVersionMarkers(t, inFlightDecision.Events); len(markers) != 0 {
@@ -203,7 +203,7 @@ func TestReplayGetVersionMarkerlessOldRunTakesOldBranchUnderNewCode(t *testing.T
 	if len(replayDecision.Events) != 0 {
 		t.Fatalf("expected no new events on full replay, got %+v", replayDecision.Events)
 	}
-	if !equalJSON(replayDecision.Result, wantOldResult) {
+	if !equalJSONForTest(t, replayDecision.Result, wantOldResult) {
 		t.Fatalf("full replay under new code returned %s, want %s", replayDecision.Result, wantOldResult)
 	}
 }
@@ -221,7 +221,7 @@ func TestReplayGetVersionNewRunTakesNewBranch(t *testing.T) {
 	if decision.NewActivity != nil {
 		t.Fatalf("new branch must not schedule the old activity, got %+v", decision.NewActivity)
 	}
-	if !equalJSON(decision.Result, mustRawJSON(t, map[string]string{"branch": "new"})) {
+	if !equalJSONForTest(t, decision.Result, mustRawJSON(t, map[string]string{"branch": "new"})) {
 		t.Fatalf("expected new-branch result, got %s", decision.Result)
 	}
 
