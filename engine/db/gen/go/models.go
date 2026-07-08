@@ -373,6 +373,7 @@ type EngineInbox struct {
 	ResolvedAt     pgtype.Timestamptz `json:"resolved_at"`
 	CreatedAt      time.Time          `json:"created_at"`
 	UpdatedAt      time.Time          `json:"updated_at"`
+	Ordinal        *int64             `json:"ordinal"`
 }
 
 type EngineInstance struct {
