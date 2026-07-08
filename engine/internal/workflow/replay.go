@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"time"
 
@@ -1421,15 +1422,33 @@ func equalJSON(left, right json.RawMessage) (bool, error) {
 		return false, nil
 	}
 
-	var leftValue any
-	var rightValue any
-	if err := json.Unmarshal(left, &leftValue); err != nil {
+	leftValue, err := decodeJSONValue(left)
+	if err != nil {
 		return false, fmt.Errorf("decode recorded payload: %w", err)
 	}
-	if err := json.Unmarshal(right, &rightValue); err != nil {
+	rightValue, err := decodeJSONValue(right)
+	if err != nil {
 		return false, fmt.Errorf("decode replayed payload: %w", err)
 	}
 	return reflect.DeepEqual(leftValue, rightValue), nil
+}
+
+func decodeJSONValue(raw json.RawMessage) (any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("multiple JSON values")
+		}
+		return nil, err
+	}
+	return value, nil
 }
 
 func cloneRaw(raw json.RawMessage) json.RawMessage {

@@ -1385,6 +1385,19 @@ func equalJSONForTest(t *testing.T, left, right json.RawMessage) bool {
 	return equal
 }
 
+func TestEqualJSONPreservesNumberPrecision(t *testing.T) {
+	equal, err := equalJSON(
+		json.RawMessage(`{"value":9007199254740992}`),
+		json.RawMessage(`{"value":9007199254740993}`),
+	)
+	if err != nil {
+		t.Fatalf("equalJSON() error = %v", err)
+	}
+	if equal {
+		t.Fatal("equalJSON() = true, want false for distinct large integers")
+	}
+}
+
 func testDefinition(timerAt time.Time) publicworkflow.Definition {
 	return publicworkflow.Definition{
 		Name:    "demo",
