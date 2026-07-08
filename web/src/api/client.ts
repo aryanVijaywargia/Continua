@@ -349,6 +349,7 @@ export type EngineRunStatus =
   | 'RUNNING'
   | 'WAITING'
   | 'SUSPENDED'
+  | 'QUARANTINED'
   | 'COMPLETED'
   | 'FAILED'
   | 'CANCELLED'

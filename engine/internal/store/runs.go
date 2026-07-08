@@ -82,6 +82,17 @@ func (o *storeOps) TransitionRunToFailed(
 	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
 }
 
+func (o *storeOps) TransitionRunToQuarantined(
+	ctx context.Context,
+	arg enginedb.TransitionRunToQuarantinedParams,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToQuarantined(ctx, arg)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunCASMiss(ctx, arg.ID, err)
+}
+
 func (o *storeOps) TransitionRunToCancelled(
 	ctx context.Context,
 	arg enginedb.TransitionRunToCancelledParams,
@@ -113,6 +124,17 @@ func (o *storeOps) TransitionRunToTerminated(
 		return run, nil
 	}
 	return enginedb.EngineRun{}, o.classifyRunInvariantMiss(ctx, id, "terminate", err)
+}
+
+func (o *storeOps) TransitionRunToQueuedFromQuarantined(
+	ctx context.Context,
+	id uuid.UUID,
+) (enginedb.EngineRun, error) {
+	run, err := o.q.TransitionRunToQueuedFromQuarantined(ctx, id)
+	if err == nil {
+		return run, nil
+	}
+	return enginedb.EngineRun{}, o.classifyRunInvariantMiss(ctx, id, "resume quarantine", err)
 }
 
 func (o *storeOps) WakeWaitingRun(ctx context.Context, id uuid.UUID) (WakeWaitingRunResult, error) {

@@ -798,6 +798,120 @@ func (q *Queries) TransitionRunToFailed(ctx context.Context, arg TransitionRunTo
 	return i, err
 }
 
+const transitionRunToQuarantined = `-- name: TransitionRunToQuarantined :one
+UPDATE engine.runs
+SET status = 'quarantined',
+    waiting_for = $3,
+    last_error_code = $4,
+    last_error_message = $5,
+    result = NULL,
+    completed_at = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'running'
+  AND claimed_by = $2
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
+`
+
+type TransitionRunToQuarantinedParams struct {
+	ID               uuid.UUID `json:"id"`
+	ClaimedBy        *string   `json:"claimed_by"`
+	WaitingFor       []byte    `json:"waiting_for"`
+	LastErrorCode    *string   `json:"last_error_code"`
+	LastErrorMessage *string   `json:"last_error_message"`
+}
+
+func (q *Queries) TransitionRunToQuarantined(ctx context.Context, arg TransitionRunToQuarantinedParams) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, transitionRunToQuarantined,
+		arg.ID,
+		arg.ClaimedBy,
+		arg.WaitingFor,
+		arg.LastErrorCode,
+		arg.LastErrorMessage,
+	)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+		&i.ContinuedFromRunID,
+		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
+	)
+	return i, err
+}
+
+const transitionRunToQueuedFromQuarantined = `-- name: TransitionRunToQueuedFromQuarantined :one
+UPDATE engine.runs
+SET status = 'queued',
+    waiting_for = NULL,
+    last_error_code = NULL,
+    last_error_message = NULL,
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    ready_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+  AND status = 'quarantined'
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
+`
+
+func (q *Queries) TransitionRunToQueuedFromQuarantined(ctx context.Context, id uuid.UUID) (EngineRun, error) {
+	row := q.db.QueryRow(ctx, transitionRunToQueuedFromQuarantined, id)
+	var i EngineRun
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.InstanceID,
+		&i.RunNumber,
+		&i.DefinitionVersion,
+		&i.Status,
+		&i.ReadyAt,
+		&i.AttemptCount,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.ClaimedBy,
+		&i.ClaimedAt,
+		&i.LeaseExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Result,
+		&i.CustomStatus,
+		&i.WaitingFor,
+		&i.CompletedAt,
+		&i.ContinuedFromRunID,
+		&i.ContinuedToRunID,
+		&i.ParentRunID,
+		&i.RootRunID,
+		&i.ChildKey,
+		&i.ChildDepth,
+	)
+	return i, err
+}
+
 const transitionRunToQueuedFromSuspended = `-- name: TransitionRunToQueuedFromSuspended :one
 UPDATE engine.runs
 SET status = 'queued',
@@ -903,7 +1017,7 @@ SET status = 'terminated',
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
-  AND status IN ('queued', 'running', 'waiting', 'suspended')
+  AND status IN ('queued', 'running', 'waiting', 'suspended', 'quarantined')
 RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 

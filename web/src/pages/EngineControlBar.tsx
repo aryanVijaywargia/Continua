@@ -43,6 +43,7 @@ const NON_TERMINAL_ENGINE_STATUSES: ReadonlySet<EngineRunStatus> = new Set([
   'RUNNING',
   'WAITING',
   'SUSPENDED',
+  'QUARANTINED',
 ]);
 
 const PURGEABLE_ENGINE_STATUSES: ReadonlySet<EngineRunStatus> = new Set([
@@ -106,7 +107,8 @@ export function EngineControlBar({
     engine.status === 'QUEUED' ||
     engine.status === 'RUNNING' ||
     engine.status === 'WAITING';
-  const resumeEnabled = engine.status === 'SUSPENDED';
+  const resumeEnabled =
+    engine.status === 'SUSPENDED' || engine.status === 'QUARANTINED';
   const terminateEnabled = NON_TERMINAL_ENGINE_STATUSES.has(engine.status);
   const purgeEnabled = PURGEABLE_ENGINE_STATUSES.has(engine.status);
   const signalSubmitDisabled =

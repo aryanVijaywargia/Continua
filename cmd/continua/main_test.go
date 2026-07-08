@@ -48,9 +48,9 @@ func TestRunMigrationsDownRejectsTerminatedTracesWithIdentifiers(t *testing.T) {
 		t.Fatalf("insert terminated trace: %v", err)
 	}
 
-	err = runMigrationsDown(5)
+	err = runMigrationsDown(6)
 	if err == nil {
-		t.Fatal("expected migrate down 5 to fail when terminated trace rows exist")
+		t.Fatal("expected migrate down 6 to fail when terminated trace rows exist")
 	}
 
 	message := err.Error()

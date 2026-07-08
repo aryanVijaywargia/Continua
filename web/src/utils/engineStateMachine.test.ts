@@ -3,6 +3,7 @@ import {
   buildEngineStateMachine,
   isTerminalEngineStatus,
 } from './engineStateMachine';
+import type { EngineRunStatus } from '../api/client';
 
 describe('buildEngineStateMachine', () => {
   it('marks a running workflow as current on the running step', () => {
@@ -22,9 +23,9 @@ describe('buildEngineStateMachine', () => {
     expect(steps[1]).toMatchObject({ done: false, current: false });
   });
 
-  it('flags waiting and suspended runs as a warned waiting step', () => {
-    for (const status of ['WAITING', 'SUSPENDED'] as const) {
-      const steps = buildEngineStateMachine(status);
+  it('flags waiting, suspended, and quarantined runs as a warned waiting step', () => {
+    for (const status of ['WAITING', 'SUSPENDED', 'QUARANTINED'] as const) {
+      const steps = buildEngineStateMachine(status as EngineRunStatus);
       expect(steps[2]).toMatchObject({ current: true, warn: true, done: true });
     }
   });
@@ -55,8 +56,14 @@ describe('isTerminalEngineStatus', () => {
     ] as const) {
       expect(isTerminalEngineStatus(status)).toBe(true);
     }
-    for (const status of ['QUEUED', 'RUNNING', 'WAITING', 'SUSPENDED'] as const) {
-      expect(isTerminalEngineStatus(status)).toBe(false);
+    for (const status of [
+      'QUEUED',
+      'RUNNING',
+      'WAITING',
+      'SUSPENDED',
+      'QUARANTINED',
+    ] as const) {
+      expect(isTerminalEngineStatus(status as EngineRunStatus)).toBe(false);
     }
   });
 });

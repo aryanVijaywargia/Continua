@@ -30,6 +30,7 @@ const (
 	decisionWaiting        decisionKind = "waiting"
 	decisionCompleted      decisionKind = "completed"
 	decisionFailed         decisionKind = "failed"
+	decisionQuarantined    decisionKind = "quarantined"
 	decisionCancelled      decisionKind = "cancelled"
 	decisionContinuedAsNew decisionKind = "continued_as_new"
 )
@@ -349,13 +350,7 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 			decision = r.waitingDecision()
 			err = nil
 		case replayMismatchPanic:
-			r.queueEvent(enginehistory.EventWorkflowReplayMismatch, value.payload)
-			failure := enginehistory.WorkflowFailedPayload{
-				ErrorCode:    "replay_mismatch",
-				ErrorMessage: value.payload.Detail,
-			}
-			r.queueEvent(enginehistory.EventWorkflowFailed, failure)
-			decision = r.failedDecision(failure)
+			decision = r.quarantinedDecision(&value.payload)
 			err = nil
 		case controlledFailurePanic:
 			decision = r.recordWorkflowFailure(value.failure)
@@ -1006,14 +1001,22 @@ func (r *workflowRunner) blockOnWait(wait any, scheduledEvent *queuedHistoryEven
 
 func (r *workflowRunner) replayMismatch(expectedType, expectedKey string, actual decodedEvent, detail string) {
 	panic(replayMismatchPanic{
-		payload: enginehistory.WorkflowReplayMismatchPayload{
-			ExpectedType: expectedType,
-			ExpectedKey:  expectedKey,
-			ActualType:   actual.EventType,
-			ActualKey:    enginehistory.EventKey(actual.EventType, actual.Payload),
-			Detail:       detail,
-		},
+		payload: replayMismatchPayload(expectedType, expectedKey, actual, detail),
 	})
+}
+
+func replayMismatchPayload(
+	expectedType, expectedKey string,
+	actual decodedEvent,
+	detail string,
+) enginehistory.WorkflowReplayMismatchPayload {
+	return enginehistory.WorkflowReplayMismatchPayload{
+		ExpectedType: expectedType,
+		ExpectedKey:  expectedKey,
+		ActualType:   actual.EventType,
+		ActualKey:    enginehistory.EventKey(actual.EventType, actual.Payload),
+		Detail:       detail,
+	}
 }
 
 func (r *workflowRunner) failControlled(code, message string) {
@@ -1078,6 +1081,25 @@ func (r *workflowRunner) failedDecision(failure enginehistory.WorkflowFailedPayl
 		FailureCode:       failure.ErrorCode,
 		FailureMessage:    failure.ErrorMessage,
 		ChildWaitFailures: append([]childWaitFailure(nil), r.childWaitFailures...),
+	}
+}
+
+func (r *workflowRunner) quarantinedDecision(mismatch *enginehistory.WorkflowReplayMismatchPayload) activationDecision {
+	waitingFor := mustMarshalPayload(enginehistory.ReplayMismatchWait{
+		Kind:         enginehistory.WaitKindReplayMismatch,
+		ExpectedType: mismatch.ExpectedType,
+		ExpectedKey:  mismatch.ExpectedKey,
+		ActualType:   mismatch.ActualType,
+		ActualKey:    mismatch.ActualKey,
+		Detail:       mismatch.Detail,
+	})
+	return activationDecision{
+		Kind:           decisionQuarantined,
+		NextSequence:   r.nextSequence,
+		WaitingFor:     cloneRaw(waitingFor),
+		CustomStatus:   cloneRaw(r.customStatus),
+		FailureCode:    "replay_mismatch",
+		FailureMessage: mismatch.Detail,
 	}
 }
 

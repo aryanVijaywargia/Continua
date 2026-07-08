@@ -11,6 +11,7 @@ const ENGINE_PENDING_WORK_POLL_STATUSES: ReadonlySet<EngineRunStatus> = new Set(
   'RUNNING',
   'WAITING',
   'SUSPENDED',
+  'QUARANTINED',
 ]);
 
 export function shouldPollEnginePendingWork(

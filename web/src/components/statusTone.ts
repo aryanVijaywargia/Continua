@@ -19,6 +19,11 @@ export const STATUS_TONE = {
     text: 'var(--c-amber-text)',
     label: 'Suspended',
   },
+  QUARANTINED: {
+    dot: 'var(--c-amber)',
+    text: 'var(--c-amber-text)',
+    label: 'Quarantined',
+  },
   STARTED: {
     dot: 'var(--c-blue)',
     text: 'var(--c-blue-text)',

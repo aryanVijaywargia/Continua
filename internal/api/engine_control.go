@@ -864,6 +864,12 @@ func (s *engineControlService) SuspendRun(
 			return engineRunSummary{}, err
 		}
 		return s.buildRunSummary(ctx, &instance, &run)
+	case enginedb.EngineRunLifecycleStatusQuarantined:
+		return engineRunSummary{}, &engineAPIError{
+			Code:       "run_not_suspendable",
+			Message:    "cannot suspend a quarantined run; resume or terminate it",
+			HTTPStatus: 409,
+		}
 	case enginedb.EngineRunLifecycleStatusRunning:
 		return engineRunSummary{}, &engineAPIError{
 			Code:       "run_not_suspendable",
@@ -1029,14 +1035,20 @@ func (s *engineControlService) ResumeRun(
 			HTTPStatus: 409,
 		}
 	}
-	if run.Status != enginedb.EngineRunLifecycleStatusSuspended {
+	if run.Status != enginedb.EngineRunLifecycleStatusSuspended &&
+		run.Status != enginedb.EngineRunLifecycleStatusQuarantined {
 		if err := tx.Commit(ctx); err != nil {
 			return engineRunSummary{}, err
 		}
 		return s.buildRunSummary(ctx, &instance, &run)
 	}
 
-	updatedRun, err := engineTx.TransitionRunToQueuedFromSuspended(ctx, run.ID)
+	var updatedRun enginedb.EngineRun
+	if run.Status == enginedb.EngineRunLifecycleStatusQuarantined {
+		updatedRun, err = engineTx.TransitionRunToQueuedFromQuarantined(ctx, run.ID)
+	} else {
+		updatedRun, err = engineTx.TransitionRunToQueuedFromSuspended(ctx, run.ID)
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return engineRunSummary{}, fmt.Errorf("resume transition invariant failed for run %s", run.ID)

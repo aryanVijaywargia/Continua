@@ -325,6 +325,8 @@ func projectedEngineRunStatusFromTrace(trace *store.TraceRead) EngineRunStatus {
 		return EngineRunStatusQUEUED
 	case string(enginedb.EngineRunLifecycleStatusSuspended):
 		return EngineRunStatusSUSPENDED
+	case string(enginedb.EngineRunLifecycleStatusQuarantined):
+		return EngineRunStatusQUARANTINED
 	case string(enginedb.EngineRunLifecycleStatusWaiting):
 		return EngineRunStatusWAITING
 	case string(enginedb.EngineRunLifecycleStatusContinuedAsNew):
@@ -519,6 +521,8 @@ func engineRunStatusToAPI(status enginedb.EngineRunLifecycleStatus) EngineRunSta
 		return EngineRunStatusQUEUED
 	case enginedb.EngineRunLifecycleStatusSuspended:
 		return EngineRunStatusSUSPENDED
+	case enginedb.EngineRunLifecycleStatusQuarantined:
+		return EngineRunStatusQUARANTINED
 	case enginedb.EngineRunLifecycleStatusContinuedAsNew:
 		return EngineRunStatusCONTINUEDASNEW
 	case enginedb.EngineRunLifecycleStatusCompleted:

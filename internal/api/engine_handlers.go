@@ -457,6 +457,7 @@ func normalizeEngineRunStatusValue(value string) (string, error) {
 		EngineRunStatusRUNNING,
 		EngineRunStatusWAITING,
 		EngineRunStatusSUSPENDED,
+		EngineRunStatusQUARANTINED,
 		EngineRunStatusCOMPLETED,
 		EngineRunStatusFAILED,
 		EngineRunStatusCANCELLED,

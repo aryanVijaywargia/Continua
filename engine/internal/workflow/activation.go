@@ -291,6 +291,18 @@ func (a *Activator) commitDecision(
 			return err
 		}
 		return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusFailed)
+	case decisionQuarantined:
+		updatedRun, err := tx.TransitionRunToQuarantined(ctx, enginedb.TransitionRunToQuarantinedParams{
+			ID:               run.ID,
+			ClaimedBy:        workerClaimedBy,
+			WaitingFor:       decision.WaitingFor,
+			LastErrorCode:    &decision.FailureCode,
+			LastErrorMessage: &decision.FailureMessage,
+		})
+		if err != nil {
+			return err
+		}
+		return publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &updatedRun)
 	case decisionCancelled:
 		updatedRun, err := tx.TransitionRunToCancelled(ctx, enginedb.TransitionRunToCancelledParams{
 			ID:           run.ID,

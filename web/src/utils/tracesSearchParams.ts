@@ -28,6 +28,7 @@ const ENGINE_RUN_STATUS_LABELS = {
   running: 'Running',
   waiting: 'Waiting',
   suspended: 'Suspended',
+  quarantined: 'Quarantined',
   completed: 'Completed',
   failed: 'Failed',
   cancelled: 'Cancelled',

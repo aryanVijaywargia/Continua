@@ -1450,6 +1450,96 @@ func TestTerminateEngineRun_SuspendedRunSucceeds(t *testing.T) {
 	}, historyEventTypes(historyRows))
 }
 
+func TestEngineRunQuarantineSurfacedInRunDetail(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	runID, reason := seedQuarantinedEngineRun(ctx, t, engineQueries, server, projectID, "detail")
+
+	rec := invokeGetEngineRun(t, server, projectID, runID)
+	require.Equal(t, http.StatusOK, rec.Code)
+	resp := decodeJSONBody[EngineRunResponse](t, rec)
+	assert.Equal(t, EngineRunStatusQUARANTINED, resp.Status)
+	require.NotNil(t, resp.WaitState)
+	assert.Equal(t, publichistory.WaitKindReplayMismatch, derefString(resp.WaitState.Kind))
+	assert.Equal(t, reason["detail"], resp.WaitState.AdditionalProperties["detail"])
+	require.NotNil(t, resp.Failure)
+	assert.Equal(t, "replay_mismatch", resp.Failure.ErrorCode)
+
+	pendingRec := invokeGetEngineRunPendingWork(t, server, projectID, runID)
+	require.Equal(t, http.StatusOK, pendingRec.Code)
+}
+
+func TestEngineRunResumeFromQuarantineRequeues(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	runID, _ := seedQuarantinedEngineRun(ctx, t, engineQueries, server, projectID, "resume")
+
+	resumeRec := invokeResumeEngineRun(t, server, projectID, runID)
+	require.Equal(t, http.StatusOK, resumeRec.Code)
+	resumed := decodeJSONBody[EngineRunResponse](t, resumeRec)
+	assert.Equal(t, EngineRunStatusQUEUED, resumed.Status)
+
+	run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineRunLifecycleStatusQueued, run.Status)
+	assert.Len(t, run.WaitingFor, 0)
+	assert.Nil(t, run.LastErrorCode)
+	assert.Nil(t, run.LastErrorMessage)
+	assert.WithinDuration(t, time.Now(), run.ReadyAt, 5*time.Second)
+
+	historyRows, err := engineQueries.GetHistoryByRun(ctx, runID)
+	require.NoError(t, err)
+	require.Len(t, historyRows, 2)
+	assert.Equal(t, publichistory.EventWorkflowResumed, historyRows[1].EventType)
+}
+
+func TestEngineRunSuspendQuarantinedConflicts(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	runID, reason := seedQuarantinedEngineRun(ctx, t, engineQueries, server, projectID, "suspend")
+
+	suspendRec := invokeSuspendEngineRun(t, server, projectID, runID)
+	require.Equal(t, http.StatusConflict, suspendRec.Code)
+	assert.Equal(t, "run_not_suspendable", decodeJSONBody[Error](t, suspendRec).Code)
+
+	run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineRunLifecycleStatusQuarantined, run.Status)
+	var wait map[string]any
+	require.NoError(t, json.Unmarshal(run.WaitingFor, &wait))
+	assert.Equal(t, reason["kind"], wait["kind"])
+	assert.Equal(t, reason["detail"], wait["detail"])
+}
+
+func TestEngineRunTerminateQuarantinedRun(t *testing.T) {
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	runID, _ := seedQuarantinedEngineRun(ctx, t, engineQueries, server, projectID, "terminate")
+
+	rec := invokeTerminateEngineRun(t, server, projectID, runID)
+	require.Equal(t, http.StatusOK, rec.Code)
+	resp := decodeJSONBody[EngineRunResultResponse](t, rec)
+	assert.Equal(t, EngineRunStatusTERMINATED, resp.Status)
+
+	run, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineRunLifecycleStatusTerminated, run.Status)
+	assert.Len(t, run.WaitingFor, 0)
+}
+
 func TestSuspendResumeEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testing.T) {
 	ctx := context.Background()
 	platformStore := store.New(testutil.TestDB(t))
@@ -3259,6 +3349,55 @@ func syncDefinitionCatalogToRegistry(ctx context.Context, queries *enginedb.Quer
 	}
 
 	return nil
+}
+
+func seedQuarantinedEngineRun(
+	ctx context.Context,
+	t *testing.T,
+	engineQueries *enginedb.Queries,
+	server *Server,
+	projectID uuid.UUID,
+	suffix string,
+) (uuid.UUID, map[string]any) {
+	t.Helper()
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-quarantine-" + suffix,
+		RequestKey:        "req-quarantine-" + suffix,
+	}))
+	worker := "quarantine-seed-" + suffix
+	claimed, err := engineQueries.ClaimNextRunByProject(ctx, enginedb.ClaimNextRunByProjectParams{
+		ClaimedBy:           &worker,
+		LeaseDurationMicros: int64(time.Minute / time.Microsecond),
+		ProjectFilterID:     projectID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, start.RunId, claimed.ID)
+
+	reason := map[string]any{
+		"kind":          publichistory.WaitKindReplayMismatch,
+		"expected_type": publichistory.EventActivityScheduled,
+		"expected_key":  "step",
+		"actual_type":   publichistory.EventActivityScheduled,
+		"actual_key":    "step-renamed",
+		"detail":        "activity scheduling did not match recorded history",
+	}
+	reasonPayload, err := json.Marshal(reason)
+	require.NoError(t, err)
+	errorCode := "replay_mismatch"
+	errorMessage := "replay mismatch quarantined"
+
+	_, err = engineQueries.TransitionRunToQuarantined(ctx, enginedb.TransitionRunToQuarantinedParams{
+		ID:               start.RunId,
+		ClaimedBy:        &worker,
+		WaitingFor:       reasonPayload,
+		LastErrorCode:    &errorCode,
+		LastErrorMessage: &errorMessage,
+	})
+	require.NoError(t, err)
+	return start.RunId, reason
 }
 
 type engineProjectRowCounts struct {

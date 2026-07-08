@@ -247,6 +247,7 @@ const (
 	EngineRunLifecycleStatusWaiting        EngineRunLifecycleStatus = "waiting"
 	EngineRunLifecycleStatusTerminated     EngineRunLifecycleStatus = "terminated"
 	EngineRunLifecycleStatusSuspended      EngineRunLifecycleStatus = "suspended"
+	EngineRunLifecycleStatusQuarantined    EngineRunLifecycleStatus = "quarantined"
 	EngineRunLifecycleStatusContinuedAsNew EngineRunLifecycleStatus = "continued_as_new"
 )
 

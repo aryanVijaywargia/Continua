@@ -1261,6 +1261,7 @@ paths:
               - running
               - waiting
               - suspended
+              - quarantined
               - completed
               - failed
               - cancelled
@@ -1788,6 +1789,7 @@ components:
         - RUNNING
         - WAITING
         - SUSPENDED
+        - QUARANTINED
         - COMPLETED
         - FAILED
         - CANCELLED
