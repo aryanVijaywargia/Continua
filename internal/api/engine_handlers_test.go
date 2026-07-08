@@ -3368,9 +3368,10 @@ func seedQuarantinedEngineRun(
 		RequestKey:        "req-quarantine-" + suffix,
 	}))
 	worker := "quarantine-seed-" + suffix
-	claimed, err := engineQueries.ClaimNextRun(ctx, enginedb.ClaimNextRunParams{
+	claimed, err := engineQueries.ClaimNextRunByProject(ctx, enginedb.ClaimNextRunByProjectParams{
 		ClaimedBy:           &worker,
 		LeaseDurationMicros: int64(time.Minute / time.Microsecond),
+		ProjectFilterID:     projectID,
 	})
 	require.NoError(t, err)
 	require.Equal(t, start.RunId, claimed.ID)
