@@ -12,7 +12,7 @@ import (
 
 func TestListPendingInboxByRunFIFOOnAvailableAtTie(t *testing.T) {
 	ts := newTestStore(t)
-	_, run := createInboxOrderingRun(t, ts, "list-pending")
+	run := createInboxOrderingRun(t, ts, "list-pending")
 	insertInboxOrderingItems(t, ts, run, "signal")
 
 	items, err := ts.store.ListPendingInboxByRun(ts.ctx, run.ID)
@@ -25,7 +25,7 @@ func TestListPendingInboxByRunFIFOOnAvailableAtTie(t *testing.T) {
 
 func TestClaimNextInboxItemFIFOOnAvailableAtTie(t *testing.T) {
 	ts := newTestStore(t)
-	_, run := createInboxOrderingRun(t, ts, "claim-next")
+	run := createInboxOrderingRun(t, ts, "claim-next")
 	insertInboxOrderingItems(t, ts, run, "signal")
 
 	items := make([]enginedb.EngineInbox, 0, inboxOrderingItemCount)
@@ -42,7 +42,7 @@ func TestClaimNextInboxItemFIFOOnAvailableAtTie(t *testing.T) {
 
 func TestListOpenInboxItemsByRunAndKindFIFOOnAvailableAtTie(t *testing.T) {
 	ts := newTestStore(t)
-	_, run := createInboxOrderingRun(t, ts, "list-open-kind")
+	run := createInboxOrderingRun(t, ts, "list-open-kind")
 	insertInboxOrderingItems(t, ts, run, "signal")
 
 	items, err := ts.store.ListOpenInboxItemsByRunAndKind(ts.ctx, run.ID, "signal")
@@ -55,7 +55,7 @@ func TestListOpenInboxItemsByRunAndKindFIFOOnAvailableAtTie(t *testing.T) {
 
 func TestListDiscardedTimerInboxItemsByRunFIFOOnAvailableAtTie(t *testing.T) {
 	ts := newTestStore(t)
-	_, run := createInboxOrderingRun(t, ts, "discarded-timers")
+	run := createInboxOrderingRun(t, ts, "discarded-timers")
 	insertInboxOrderingItems(t, ts, run, "timer")
 
 	if _, err := ts.store.DiscardOpenInboxItemsByRun(ts.ctx, run.ID); err != nil {
@@ -75,13 +75,13 @@ func createInboxOrderingRun(
 	t *testing.T,
 	ts *testStore,
 	instanceKey string,
-) (enginedb.EngineInstance, enginedb.EngineRun) {
+) enginedb.EngineRun {
 	t.Helper()
 
 	projectID := uuidOrFatal(t)
 	instance := ts.createInstance(t, projectID, "instance-inbox-ordering-"+instanceKey)
 	run := ts.createRun(t, instance, 1)
-	return instance, run
+	return run
 }
 
 func insertInboxOrderingItems(
