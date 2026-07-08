@@ -110,7 +110,7 @@ func TestReplayNowRecordsOnFirstExecutionAndReplaysRecordedValue(t *testing.T) {
 	if len(replayDecision.Events) != 0 {
 		t.Fatalf("expected no new events on replay, got %+v", replayDecision.Events)
 	}
-	if !equalJSON(replayDecision.Result, decision.Result) {
+	if !equalJSONForTest(t, replayDecision.Result, decision.Result) {
 		t.Fatalf("replayed result %s differs from first execution %s", replayDecision.Result, decision.Result)
 	}
 }
@@ -165,7 +165,7 @@ func TestReplaySideEffectRecordsOnceAndDoesNotReexecuteOnReplay(t *testing.T) {
 	if sideEffects[0].SideEffectKey != "token" {
 		t.Fatalf("expected side effect key %q, got %q", "token", sideEffects[0].SideEffectKey)
 	}
-	if !equalJSON(sideEffects[0].Value, mustRawJSON(t, "token-1")) {
+	if !equalJSONForTest(t, sideEffects[0].Value, mustRawJSON(t, "token-1")) {
 		t.Fatalf("expected recorded side effect value %q, got %s", "token-1", sideEffects[0].Value)
 	}
 
@@ -183,7 +183,7 @@ func TestReplaySideEffectRecordsOnceAndDoesNotReexecuteOnReplay(t *testing.T) {
 	if len(replayDecision.Events) != 0 {
 		t.Fatalf("expected no new events on replay, got %+v", replayDecision.Events)
 	}
-	if !equalJSON(replayDecision.Result, mustRawJSON(t, map[string]string{"token": "token-1"})) {
+	if !equalJSONForTest(t, replayDecision.Result, mustRawJSON(t, map[string]string{"token": "token-1"})) {
 		t.Fatalf("expected replay to return recorded token-1, got %s", replayDecision.Result)
 	}
 }
@@ -261,7 +261,7 @@ func TestReplaySleepDurationSchedulesTimerAndSurvivesReplay(t *testing.T) {
 	if firedDecision.Kind != decisionCompleted {
 		t.Fatalf("expected completed decision after timer fired, got %+v", firedDecision)
 	}
-	if !equalJSON(firedDecision.Result, mustRawJSON(t, map[string]string{"status": "woke"})) {
+	if !equalJSONForTest(t, firedDecision.Result, mustRawJSON(t, map[string]string{"status": "woke"})) {
 		t.Fatalf("unexpected post-sleep result %s", firedDecision.Result)
 	}
 }
