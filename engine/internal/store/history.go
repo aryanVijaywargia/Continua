@@ -21,6 +21,10 @@ func (o *storeOps) GetLatestHistoryIDByRun(ctx context.Context, runID uuid.UUID)
 	return o.q.GetLatestHistoryIDByRun(ctx, runID)
 }
 
+func (o *storeOps) GetMaxHistorySequenceByRun(ctx context.Context, runID uuid.UUID) (int32, error) {
+	return o.q.GetMaxHistorySequenceByRun(ctx, runID)
+}
+
 func (o *storeOps) ListHistoryByRunAfterID(
 	ctx context.Context,
 	arg enginedb.ListHistoryByRunAfterIDParams,
