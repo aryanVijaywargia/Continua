@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
+	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	engineruntime "github.com/continua-ai/continua/engine/pkg/runtime"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
 )
@@ -101,15 +103,33 @@ func TestRuntimeRunsUserWorkflowEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalPayload(workflow started) error = %v", err)
 	}
-	if _, err := store.AppendHistory(ctx, enginedb.AppendHistoryParams{
+	startedEvent, err := store.AppendHistory(ctx, enginedb.AppendHistoryParams{
 		ProjectID:  projectID,
 		InstanceID: instance.ID,
 		RunID:      run.ID,
 		SequenceNo: 1,
 		EventType:  enginehistory.EventWorkflowStarted,
 		Payload:    startedPayload,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("AppendHistory(workflow started) error = %v", err)
+	}
+
+	// Seed the shell because the start path creates it transactionally and
+	// non-dark-launch projects require it.
+	tx, err := store.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+	traceName := "usertest.greeter"
+	if err := publicprojection.NewWriter(tx.Tx()).CreateTraceShell(ctx, &instance, &run, &publicprojection.TraceShellSeed{}, &startedEvent, input, &traceName); err != nil {
+		t.Fatalf("CreateTraceShell() error = %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("Commit() error = %v", err)
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
