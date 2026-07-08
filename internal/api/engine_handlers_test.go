@@ -1454,7 +1454,7 @@ func TestEngineRunQuarantineSurfacedInRunDetail(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
-	runID, reason := seedQuarantinedEngineRun(t, ctx, engineQueries, server, projectID, "detail")
+	runID, reason := seedQuarantinedEngineRun(ctx, t, engineQueries, server, projectID, "detail")
 
 	rec := invokeGetEngineRun(t, server, projectID, runID)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -1474,7 +1474,7 @@ func TestEngineRunResumeFromQuarantineRequeues(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
-	runID, _ := seedQuarantinedEngineRun(t, ctx, engineQueries, server, projectID, "resume")
+	runID, _ := seedQuarantinedEngineRun(ctx, t, engineQueries, server, projectID, "resume")
 
 	resumeRec := invokeResumeEngineRun(t, server, projectID, runID)
 	require.Equal(t, http.StatusOK, resumeRec.Code)
@@ -1502,7 +1502,7 @@ func TestEngineRunSuspendQuarantinedConflicts(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
-	runID, reason := seedQuarantinedEngineRun(t, ctx, engineQueries, server, projectID, "suspend")
+	runID, reason := seedQuarantinedEngineRun(ctx, t, engineQueries, server, projectID, "suspend")
 
 	suspendRec := invokeSuspendEngineRun(t, server, projectID, runID)
 	require.Equal(t, http.StatusConflict, suspendRec.Code)
@@ -1524,7 +1524,7 @@ func TestEngineRunTerminateQuarantinedRun(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 
-	runID, _ := seedQuarantinedEngineRun(t, ctx, engineQueries, server, projectID, "terminate")
+	runID, _ := seedQuarantinedEngineRun(ctx, t, engineQueries, server, projectID, "terminate")
 
 	rec := invokeTerminateEngineRun(t, server, projectID, runID)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -3352,8 +3352,8 @@ func syncDefinitionCatalogToRegistry(ctx context.Context, queries *enginedb.Quer
 }
 
 func seedQuarantinedEngineRun(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	engineQueries *enginedb.Queries,
 	server *Server,
 	projectID uuid.UUID,

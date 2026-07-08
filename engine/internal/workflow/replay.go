@@ -350,7 +350,7 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 			decision = r.waitingDecision()
 			err = nil
 		case replayMismatchPanic:
-			decision = r.quarantinedDecision(value.payload)
+			decision = r.quarantinedDecision(&value.payload)
 			err = nil
 		case controlledFailurePanic:
 			decision = r.recordWorkflowFailure(value.failure)
@@ -1084,7 +1084,7 @@ func (r *workflowRunner) failedDecision(failure enginehistory.WorkflowFailedPayl
 	}
 }
 
-func (r *workflowRunner) quarantinedDecision(mismatch enginehistory.WorkflowReplayMismatchPayload) activationDecision {
+func (r *workflowRunner) quarantinedDecision(mismatch *enginehistory.WorkflowReplayMismatchPayload) activationDecision {
 	waitingFor := mustMarshalPayload(enginehistory.ReplayMismatchWait{
 		Kind:         enginehistory.WaitKindReplayMismatch,
 		ExpectedType: mismatch.ExpectedType,
