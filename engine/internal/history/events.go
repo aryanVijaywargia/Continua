@@ -38,11 +38,12 @@ const (
 )
 
 const (
-	WaitKindActivity       = publichistory.WaitKindActivity
-	WaitKindTimer          = publichistory.WaitKindTimer
-	WaitKindSignal         = publichistory.WaitKindSignal
-	WaitKindChildWorkflow  = publichistory.WaitKindChildWorkflow
-	WaitKindReplayMismatch = publichistory.WaitKindReplayMismatch
+	WaitKindActivity        = publichistory.WaitKindActivity
+	WaitKindTimer           = publichistory.WaitKindTimer
+	WaitKindSignal          = publichistory.WaitKindSignal
+	WaitKindChildWorkflow   = publichistory.WaitKindChildWorkflow
+	WaitKindReplayMismatch  = publichistory.WaitKindReplayMismatch
+	WaitKindEngineInvariant = publichistory.WaitKindEngineInvariant
 )
 
 type WorkflowStartedPayload = publichistory.WorkflowStartedPayload
@@ -55,6 +56,7 @@ type WorkflowResumedPayload = publichistory.WorkflowResumedPayload
 type WorkflowTerminatedPayload = publichistory.WorkflowTerminatedPayload
 type WorkflowReplayMismatchPayload = publichistory.WorkflowReplayMismatchPayload
 type ReplayMismatchWait = publichistory.ReplayMismatchWait
+type EngineInvariantWait = publichistory.EngineInvariantWait
 type WorkflowTimeRecordedPayload = publichistory.WorkflowTimeRecordedPayload
 type WorkflowSideEffectRecordedPayload = publichistory.WorkflowSideEffectRecordedPayload
 type WorkflowVersionMarkerPayload = publichistory.WorkflowVersionMarkerPayload

@@ -128,6 +128,15 @@ type replayMismatchPanic struct {
 	failureCode string
 }
 
+// internalInvariantPanic marks engine-side invariant violations. These quarantine
+// the run with engine_invariant instead of failing it as a user workflow panic:
+// like replay_mismatch and history_corrupt, the run may be recoverable once a
+// fixed engine binary is deployed, and the existing quarantine resume path is
+// wait-kind-agnostic.
+type internalInvariantPanic struct {
+	detail string
+}
+
 type controlledFailurePanic struct {
 	failure enginehistory.WorkflowFailedPayload
 }
@@ -354,6 +363,9 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 		case replayMismatchPanic:
 			mismatch := value
 			decision = r.quarantinedDecision(&mismatch)
+			err = nil
+		case internalInvariantPanic:
+			decision = r.invariantQuarantinedDecision(value.detail)
 			err = nil
 		case controlledFailurePanic:
 			decision = r.recordWorkflowFailure(value.failure)
@@ -1022,7 +1034,7 @@ func (r *workflowRunner) removePendingFrontier(inboxID uuid.UUID) {
 		return
 	}
 
-	panic(fmt.Sprintf("frontier inbox %s missing from pending frontier", inboxID))
+	panic(internalInvariantPanic{detail: fmt.Sprintf("frontier inbox %s missing from pending frontier", inboxID)})
 }
 
 func (r *workflowRunner) blockOnWait(wait any, scheduledEvent *queuedHistoryEvent, _ any) {
@@ -1031,7 +1043,7 @@ func (r *workflowRunner) blockOnWait(wait any, scheduledEvent *queuedHistoryEven
 	}
 	waitingFor, err := enginehistory.MarshalPayload(wait)
 	if err != nil {
-		panic(fmt.Sprintf("marshal waiting state: %v", err))
+		panic(internalInvariantPanic{detail: fmt.Sprintf("marshal waiting state: %v", err)})
 	}
 	r.waitingFor = waitingFor
 	panic(blockedPanic{})
@@ -1151,6 +1163,21 @@ func (r *workflowRunner) quarantinedDecision(mismatch *replayMismatchPanic) acti
 		CustomStatus:   cloneRaw(r.customStatus),
 		FailureCode:    failureCode,
 		FailureMessage: payload.Detail,
+	}
+}
+
+func (r *workflowRunner) invariantQuarantinedDecision(detail string) activationDecision {
+	waitingFor := mustMarshalPayload(enginehistory.EngineInvariantWait{
+		Kind:   enginehistory.WaitKindEngineInvariant,
+		Detail: detail,
+	})
+	return activationDecision{
+		Kind:           decisionQuarantined,
+		NextSequence:   r.nextSequence,
+		WaitingFor:     cloneRaw(waitingFor),
+		CustomStatus:   cloneRaw(r.customStatus),
+		FailureCode:    "engine_invariant",
+		FailureMessage: detail,
 	}
 }
 
@@ -1399,7 +1426,7 @@ func normalizedChildTerminatedError(code, message string) (normalizedCode, norma
 func mustMarshalPayload(payload any) json.RawMessage {
 	raw, err := enginehistory.MarshalPayload(payload)
 	if err != nil {
-		panic(fmt.Sprintf("marshal history payload: %v", err))
+		panic(internalInvariantPanic{detail: fmt.Sprintf("marshal history payload: %v", err)})
 	}
 	return raw
 }

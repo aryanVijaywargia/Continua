@@ -3,6 +3,7 @@ package workflow
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -1383,6 +1384,118 @@ func equalJSONForTest(t *testing.T, left, right json.RawMessage) bool {
 		t.Fatalf("equalJSON() error = %v", err)
 	}
 	return equal
+}
+
+func TestReplayDefinitionEngineInvariantViolationQuarantines(t *testing.T) {
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-1",
+		}),
+	}
+	definition := publicworkflow.Definition{
+		Name:    "demo",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			ctx.(*workflowRunner).removePendingFrontier(uuid.New())
+			return nil
+		},
+	}
+
+	decision, err := replayDefinition(definition, historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionQuarantined {
+		t.Fatalf("expected quarantined decision, got %+v", decision)
+	}
+	if decision.FailureCode != "engine_invariant" {
+		t.Fatalf("expected engine_invariant failure code, got %q", decision.FailureCode)
+	}
+	if !strings.Contains(decision.FailureMessage, "missing from pending frontier") {
+		t.Fatalf("expected invariant detail in failure message, got %q", decision.FailureMessage)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected no events for quarantined invariant violation, got %+v", decision.Events)
+	}
+	if len(decision.ConsumedInboxIDs) != 0 {
+		t.Fatalf("expected no consumed inbox IDs, got %+v", decision.ConsumedInboxIDs)
+	}
+	if len(decision.WaitingFor) == 0 {
+		t.Fatalf("expected waiting state for quarantined invariant violation")
+	}
+	var waitingFor struct {
+		Kind   string `json:"kind"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(decision.WaitingFor, &waitingFor); err != nil {
+		t.Fatalf("decode waiting state: %v", err)
+	}
+	if waitingFor.Kind != "engine_invariant" {
+		t.Fatalf("expected engine_invariant waiting kind, got %q", waitingFor.Kind)
+	}
+	if waitingFor.Detail == "" {
+		t.Fatalf("expected non-empty invariant waiting detail")
+	}
+}
+
+func TestReplayDefinitionUserPanicKeepsWorkflowPanicCode(t *testing.T) {
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "demo",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-1",
+		}),
+	}
+	definition := publicworkflow.Definition{
+		Name:    "demo",
+		Version: "v1",
+		Run: func(publicworkflow.Context) error {
+			panic("user boom")
+		},
+	}
+
+	decision, err := replayDefinition(definition, historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinition() error = %v", err)
+	}
+	if decision.Kind != decisionFailed {
+		t.Fatalf("expected failed decision, got %+v", decision)
+	}
+	if decision.FailureCode != "workflow_panic" {
+		t.Fatalf("expected workflow_panic failure code, got %q", decision.FailureCode)
+	}
+	if !strings.Contains(decision.FailureMessage, "user boom") {
+		t.Fatalf("expected user panic detail in failure message, got %q", decision.FailureMessage)
+	}
+	if len(decision.Events) != 1 {
+		t.Fatalf("expected one workflow failed event, got %+v", decision.Events)
+	}
+	if decision.Events[0].EventType != enginehistory.EventWorkflowFailed {
+		t.Fatalf("expected workflow failed event, got %+v", decision.Events[0])
+	}
+}
+
+func TestRemovePendingFrontierMissingInboxPanicsTyped(t *testing.T) {
+	r := &workflowRunner{}
+	id := uuid.New()
+
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatalf("expected removePendingFrontier to panic")
+		}
+		invariant, ok := recovered.(internalInvariantPanic)
+		if !ok {
+			t.Fatalf("expected internalInvariantPanic, got %T: %[1]v", recovered)
+		}
+		if !strings.Contains(invariant.detail, id.String()) {
+			t.Fatalf("expected invariant detail to contain inbox ID %s, got %q", id, invariant.detail)
+		}
+	}()
+
+	r.removePendingFrontier(id)
 }
 
 func TestEqualJSONPreservesNumberPrecision(t *testing.T) {
