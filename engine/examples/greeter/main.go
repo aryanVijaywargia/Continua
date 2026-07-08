@@ -27,6 +27,12 @@ type greetOutput struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -44,13 +50,11 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// Start runs through the continua-engine CLI or the preview engine control plane.
-	if err := rt.Run(ctx); err != nil {
-		log.Fatal(err)
-	}
+	return rt.Run(ctx)
 }
 
 func runGreeterWorkflow(ctx workflow.Context) error {

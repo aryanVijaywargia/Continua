@@ -52,7 +52,7 @@ type Runtime struct {
 }
 
 // New validates the options and builds the workflow/activity registries.
-func New(opts Options) (*Runtime, error) {
+func New(opts Options) (*Runtime, error) { //nolint:gocritic // Keep the public constructor ergonomic for literal Options values.
 	if opts.DatabaseURL == "" {
 		return nil, errors.New("runtime: database URL is required")
 	}
@@ -89,7 +89,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	}
 
 	cfg := config.Defaults(r.options.DatabaseURL)
-	applyRuntimeOverrides(cfg, r.options)
+	applyRuntimeOverrides(cfg, &r.options)
 
 	pool, err := enginestore.NewPool(ctx, cfg)
 	if err != nil {
@@ -127,7 +127,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	return group.Wait()
 }
 
-func applyRuntimeOverrides(cfg *config.Config, opts Options) {
+func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	if opts.WorkflowPollInterval != 0 {
 		cfg.Runtime.WorkflowPollInterval = opts.WorkflowPollInterval
 	}
