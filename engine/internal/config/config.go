@@ -49,45 +49,8 @@ type RuntimeConfig struct {
 	ProjectIDFilter         *uuid.UUID
 }
 
-// Load resolves the engine database configuration from environment variables.
-func Load() (*Config, error) {
-	databaseURL := os.Getenv("ENGINE_DATABASE_URL")
-	if databaseURL == "" {
-		databaseURL = os.Getenv("DATABASE_URL")
-	}
-	if databaseURL == "" {
-		return nil, errors.New("ENGINE_DATABASE_URL or DATABASE_URL environment variable is required")
-	}
-
-	workflowPollInterval, err := durationFromEnv("ENGINE_WORKFLOW_POLL_INTERVAL", defaultWorkflowPoll)
-	if err != nil {
-		return nil, err
-	}
-	activityPollInterval, err := durationFromEnv("ENGINE_ACTIVITY_POLL_INTERVAL", defaultActivityPoll)
-	if err != nil {
-		return nil, err
-	}
-	maintenancePollInterval, err := durationFromEnv("ENGINE_MAINTENANCE_POLL_INTERVAL", defaultMaintenancePoll)
-	if err != nil {
-		return nil, err
-	}
-	runLeaseTTL, err := durationFromEnv("ENGINE_RUN_LEASE_TTL", defaultRunLeaseTTL)
-	if err != nil {
-		return nil, err
-	}
-	activityLeaseTTL, err := durationFromEnv("ENGINE_ACTIVITY_LEASE_TTL", defaultActivityLease)
-	if err != nil {
-		return nil, err
-	}
-	requestDedupeTTL, err := durationFromEnv("ENGINE_REQUEST_DEDUPE_TTL", defaultRequestDedupe)
-	if err != nil {
-		return nil, err
-	}
-	projectIDFilter, err := uuidFromEnv("CONTINUA_ENGINE_TEST_PROJECT_FILTER")
-	if err != nil {
-		return nil, err
-	}
-
+// Defaults returns the engine runtime defaults for a database URL.
+func Defaults(databaseURL string) *Config {
 	return &Config{
 		Database: DatabaseConfig{
 			URL:               databaseURL,
@@ -98,15 +61,65 @@ func Load() (*Config, error) {
 			HealthCheckPeriod: defaultHealthCheck,
 		},
 		Runtime: RuntimeConfig{
-			WorkflowPollInterval:    workflowPollInterval,
-			ActivityPollInterval:    activityPollInterval,
-			MaintenancePollInterval: maintenancePollInterval,
-			RunLeaseTTL:             runLeaseTTL,
-			ActivityLeaseTTL:        activityLeaseTTL,
-			RequestDedupeTTL:        requestDedupeTTL,
-			ProjectIDFilter:         projectIDFilter,
+			WorkflowPollInterval:    defaultWorkflowPoll,
+			ActivityPollInterval:    defaultActivityPoll,
+			MaintenancePollInterval: defaultMaintenancePoll,
+			RunLeaseTTL:             defaultRunLeaseTTL,
+			ActivityLeaseTTL:        defaultActivityLease,
+			RequestDedupeTTL:        defaultRequestDedupe,
 		},
-	}, nil
+	}
+}
+
+// Load resolves the engine database configuration from environment variables.
+func Load() (*Config, error) {
+	databaseURL := os.Getenv("ENGINE_DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = os.Getenv("DATABASE_URL")
+	}
+	if databaseURL == "" {
+		return nil, errors.New("ENGINE_DATABASE_URL or DATABASE_URL environment variable is required")
+	}
+
+	cfg := Defaults(databaseURL)
+
+	workflowPollInterval, err := durationFromEnv("ENGINE_WORKFLOW_POLL_INTERVAL", cfg.Runtime.WorkflowPollInterval)
+	if err != nil {
+		return nil, err
+	}
+	activityPollInterval, err := durationFromEnv("ENGINE_ACTIVITY_POLL_INTERVAL", cfg.Runtime.ActivityPollInterval)
+	if err != nil {
+		return nil, err
+	}
+	maintenancePollInterval, err := durationFromEnv("ENGINE_MAINTENANCE_POLL_INTERVAL", cfg.Runtime.MaintenancePollInterval)
+	if err != nil {
+		return nil, err
+	}
+	runLeaseTTL, err := durationFromEnv("ENGINE_RUN_LEASE_TTL", cfg.Runtime.RunLeaseTTL)
+	if err != nil {
+		return nil, err
+	}
+	activityLeaseTTL, err := durationFromEnv("ENGINE_ACTIVITY_LEASE_TTL", cfg.Runtime.ActivityLeaseTTL)
+	if err != nil {
+		return nil, err
+	}
+	requestDedupeTTL, err := durationFromEnv("ENGINE_REQUEST_DEDUPE_TTL", cfg.Runtime.RequestDedupeTTL)
+	if err != nil {
+		return nil, err
+	}
+	projectIDFilter, err := uuidFromEnv("CONTINUA_ENGINE_TEST_PROJECT_FILTER")
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.Runtime.WorkflowPollInterval = workflowPollInterval
+	cfg.Runtime.ActivityPollInterval = activityPollInterval
+	cfg.Runtime.MaintenancePollInterval = maintenancePollInterval
+	cfg.Runtime.RunLeaseTTL = runLeaseTTL
+	cfg.Runtime.ActivityLeaseTTL = activityLeaseTTL
+	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL
+	cfg.Runtime.ProjectIDFilter = projectIDFilter
+	return cfg, nil
 }
 
 func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) {

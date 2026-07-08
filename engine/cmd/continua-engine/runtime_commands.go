@@ -15,18 +15,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/activity"
-	"github.com/continua-ai/continua/engine/internal/catalog"
 	"github.com/continua-ai/continua/engine/internal/config"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
-	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
-	engineworker "github.com/continua-ai/continua/engine/internal/worker"
 	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
+	engineruntime "github.com/continua-ai/continua/engine/pkg/runtime"
 
 	"github.com/continua-ai/continua/engine/cmd/continua-engine/internal/darklaunch"
 )
@@ -96,38 +93,31 @@ func serveCmd() *cobra.Command {
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
-			return withRuntime(ctx, func(ctx context.Context, cfg *config.Config, store *enginestore.Store, definitions *engineworkflow.Registry, activities *activity.Registry) error {
-				if err := catalog.PublishStoreDefinitions(ctx, store, definitions.List()); err != nil {
-					return err
-				}
-
-				workflowWorker := engineworkflow.NewWorker(store, definitions, cfg.Runtime.RunLeaseTTL)
-				activityWorker := activity.NewWorker(store, activities, cfg.Runtime.ActivityLeaseTTL)
-				maintenanceWorker := engineworker.NewMaintenanceWorker(store)
-				projectorWorker := engineprojector.New(store)
-
-				log.Printf("starting continua-engine serve")
-
-				group, groupCtx := errgroup.WithContext(ctx)
-				group.Go(func() error {
-					return engineworker.RunLoop(groupCtx, cfg.Runtime.WorkflowPollInterval, "workflow", workflowWorker.PollOnce)
-				})
-				group.Go(func() error {
-					return engineworker.RunLoop(groupCtx, cfg.Runtime.ActivityPollInterval, "activity", activityWorker.PollOnce)
-				})
-				group.Go(func() error {
-					return engineworker.RunLoop(groupCtx, cfg.Runtime.MaintenancePollInterval, "maintenance", maintenanceWorker.PollOnce)
-				})
-				group.Go(func() error {
-					return engineworker.RunLoop(groupCtx, cfg.Runtime.WorkflowPollInterval, "projector", projectorWorker.PollOnce)
-				})
-
-				err := group.Wait()
-				if err == nil {
-					log.Printf("continua-engine serve stopped")
-				}
+			cfg, err := config.Load()
+			if err != nil {
 				return err
+			}
+			rt, err := engineruntime.New(engineruntime.Options{
+				DatabaseURL:             cfg.Database.URL,
+				Workflows:               darklaunch.Definitions(),
+				Activities:              runtimeHandlers(darklaunch.Handlers()),
+				ProjectID:               cfg.Runtime.ProjectIDFilter,
+				WorkflowPollInterval:    cfg.Runtime.WorkflowPollInterval,
+				ActivityPollInterval:    cfg.Runtime.ActivityPollInterval,
+				MaintenancePollInterval: cfg.Runtime.MaintenancePollInterval,
+				RunLeaseTTL:             cfg.Runtime.RunLeaseTTL,
+				ActivityLeaseTTL:        cfg.Runtime.ActivityLeaseTTL,
 			})
+			if err != nil {
+				return err
+			}
+
+			log.Printf("starting continua-engine serve")
+			err = rt.Run(ctx)
+			if err == nil {
+				log.Printf("continua-engine serve stopped")
+			}
+			return err
 		},
 	}
 }
@@ -585,6 +575,14 @@ func buildRegistries() (definitions *engineworkflow.Registry, activities *activi
 		return nil, nil, err
 	}
 	return definitions, activities, nil
+}
+
+func runtimeHandlers(handlers map[string]activity.Handler) map[string]engineruntime.ActivityHandler {
+	converted := make(map[string]engineruntime.ActivityHandler, len(handlers))
+	for activityType, handler := range handlers {
+		converted[activityType] = engineruntime.ActivityHandler(handler)
+	}
+	return converted
 }
 
 func resolveStartDefinitionVersion(definitions *engineworkflow.Registry, definitionName, definitionVersion string) (string, bool) {

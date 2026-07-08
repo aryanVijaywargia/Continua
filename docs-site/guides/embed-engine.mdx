@@ -1,0 +1,74 @@
+---
+title: "Embed the engine"
+description: "Run the preview durable engine inside a Go program with your own workflow and activity registries."
+---
+
+The engine can run as an embedded Go library. Your process registers workflow
+definitions and activity handlers, then starts the same worker loop that powers
+`continua-engine serve`.
+
+<Warning>
+  The durable engine is still preview. Workflow authoring is Go-only, and run
+  start still happens through the `continua-engine` CLI or the preview control
+  plane.
+</Warning>
+
+## Register definitions and handlers
+
+Use `github.com/continua-ai/continua/engine/pkg/runtime` from inside a Go program in the
+engine module:
+
+```go
+rt, err := runtime.New(runtime.Options{
+    DatabaseURL: os.Getenv("DATABASE_URL"),
+    Workflows: []workflow.Definition{
+        {
+            Name:    "examples.greeter",
+            Version: "v1",
+            Run:     runGreeterWorkflow,
+        },
+    },
+    Activities: map[string]runtime.ActivityHandler{
+        "examples.greet": greetActivity,
+    },
+})
+if err != nil {
+    return err
+}
+return rt.Run(ctx)
+```
+
+`runtime.New` validates the database URL and the supplied registries, but it does not
+connect to Postgres. `Run` opens the engine pool, publishes the registered definitions
+to `engine.definition_catalog`, then starts the workflow worker, activity worker,
+maintenance worker, and projector until the context is cancelled.
+
+See `engine/examples/greeter` for a minimal compilable program with signal handling.
+
+## Start runs
+
+The embedded process executes runs for definitions it registered. Creating those runs is
+still a control-plane operation:
+
+```bash
+continua-engine start \
+  --instance-key greeter-1 \
+  --definition examples.greeter \
+  --version v1 \
+  --request-key greeter-1 \
+  --input '{"name":"Ada"}'
+```
+
+In deployments that use the preview REST control plane, start requests can also come
+through `POST /v1/engine/runs`. The registered definition name and version must already
+be present in the runtime-published catalog.
+
+## Scope and caveats
+
+- The runtime is preview and not a production-ready multi-tenant worker host.
+- Workflow and activity authoring is Go-only.
+- There is no dynamic definition loading path yet; user code registers definitions in
+  the Go process at startup.
+- The runtime uses the same Postgres-backed history, leases, timers, signals, activity
+  tasks, child workflows, cancellation, continue-as-new, and projection path as
+  `continua-engine serve`.
