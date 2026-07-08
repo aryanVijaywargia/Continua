@@ -10,10 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
 
-	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/activity"
 	"github.com/continua-ai/continua/engine/internal/catalog"
 	"github.com/continua-ai/continua/engine/internal/config"
@@ -21,8 +19,6 @@ import (
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	engineworker "github.com/continua-ai/continua/engine/internal/worker"
 	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
-	publichistory "github.com/continua-ai/continua/engine/pkg/history"
-	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
 )
 
@@ -108,9 +104,6 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if err := catalog.PublishStoreDefinitions(ctx, store, r.definitions.List()); err != nil {
 		return err
 	}
-	if err := ensureInitialProjectionShells(ctx, store, r.options.ProjectID); err != nil {
-		return err
-	}
 
 	workflowWorker := engineworkflow.NewWorker(store, r.definitions, cfg.Runtime.RunLeaseTTL)
 	activityWorker := activity.NewWorker(store, r.activities, cfg.Runtime.ActivityLeaseTTL)
@@ -151,119 +144,4 @@ func applyRuntimeOverrides(cfg *config.Config, opts Options) {
 		cfg.Runtime.ActivityLeaseTTL = opts.ActivityLeaseTTL
 	}
 	cfg.Runtime.ProjectIDFilter = opts.ProjectID
-}
-
-func ensureInitialProjectionShells(ctx context.Context, store *enginestore.Store, projectID *uuid.UUID) error {
-	tx, err := store.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	runIDs, err := missingProjectionShellRunIDs(ctx, tx, projectID)
-	if err != nil {
-		return err
-	}
-
-	for _, runID := range runIDs {
-		if err := ensureInitialProjectionShell(ctx, tx, runID); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit(ctx)
-}
-
-func missingProjectionShellRunIDs(ctx context.Context, tx *enginestore.Tx, projectID *uuid.UUID) ([]uuid.UUID, error) {
-	const baseQuery = `
-		SELECT r.id
-		FROM engine.runs AS r
-		WHERE EXISTS (
-			SELECT 1
-			FROM engine.history AS h
-			WHERE h.run_id = r.id
-			  AND h.event_type = $1
-		)
-		  AND NOT EXISTS (
-			SELECT 1
-			FROM public.traces AS t
-			WHERE t.engine_run_id = r.id
-		)`
-
-	var (
-		rows pgx.Rows
-		err  error
-	)
-	if projectID == nil {
-		rows, err = tx.Tx().Query(ctx, baseQuery+"\nORDER BY r.created_at ASC, r.id ASC", publichistory.EventWorkflowStarted)
-	} else {
-		rows, err = tx.Tx().Query(ctx, baseQuery+"\n  AND r.project_id = $2\nORDER BY r.created_at ASC, r.id ASC", publichistory.EventWorkflowStarted, *projectID)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var runIDs []uuid.UUID
-	for rows.Next() {
-		var runID uuid.UUID
-		if err := rows.Scan(&runID); err != nil {
-			return nil, err
-		}
-		runIDs = append(runIDs, runID)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return runIDs, nil
-}
-
-func ensureInitialProjectionShell(ctx context.Context, tx *enginestore.Tx, runID uuid.UUID) error {
-	run, err := tx.GetRunForUpdate(ctx, runID)
-	if err != nil {
-		return err
-	}
-	instance, err := tx.GetInstance(ctx, run.InstanceID)
-	if err != nil {
-		return err
-	}
-	startedEvent, ok, err := workflowStartedEvent(ctx, tx, run.ID)
-	if err != nil || !ok {
-		return err
-	}
-
-	var startedPayload publichistory.WorkflowStartedPayload
-	if err := publichistory.UnmarshalPayload(startedEvent.Payload, &startedPayload); err != nil {
-		return err
-	}
-
-	traceName := instance.DefinitionName
-	return publicprojection.NewWriter(tx.Tx()).CreateTraceShell(
-		ctx,
-		&instance,
-		&run,
-		&publicprojection.TraceShellSeed{},
-		&startedEvent,
-		startedPayload.Input,
-		&traceName,
-	)
-}
-
-func workflowStartedEvent(
-	ctx context.Context,
-	tx *enginestore.Tx,
-	runID uuid.UUID,
-) (enginedb.EngineHistory, bool, error) {
-	historyRows, err := tx.GetHistoryByRun(ctx, runID)
-	if err != nil {
-		return enginedb.EngineHistory{}, false, err
-	}
-	for i := range historyRows {
-		if historyRows[i].EventType == publichistory.EventWorkflowStarted {
-			return historyRows[i], true, nil
-		}
-	}
-	return enginedb.EngineHistory{}, false, nil
 }
