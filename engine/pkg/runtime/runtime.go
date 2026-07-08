@@ -85,7 +85,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return errors.New("runtime: nil runtime")
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return errors.New("runtime: context is required")
 	}
 
 	cfg := config.Defaults(r.options.DatabaseURL)

@@ -109,3 +109,32 @@ func TestNewValidatesOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeRunRejectsNilContext(t *testing.T) {
+	rt, err := New(Options{
+		DatabaseURL: "postgres://example/db",
+		Workflows: []workflow.Definition{{
+			Name:    "usertest.greeter",
+			Version: "v1",
+			Run: func(workflow.Context) error {
+				return nil
+			},
+		}},
+		Activities: map[string]ActivityHandler{
+			"usertest.greet": func(context.Context, json.RawMessage) (json.RawMessage, error) {
+				return nil, nil
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = rt.Run(nil) //nolint:staticcheck // This test verifies the invalid nil-context path.
+	if err == nil {
+		t.Fatal("Run(nil) error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "context is required") {
+		t.Fatalf("Run(nil) error = %q, want context required error", err.Error())
+	}
+}

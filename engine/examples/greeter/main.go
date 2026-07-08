@@ -53,7 +53,8 @@ func run() error {
 		return err
 	}
 
-	// Start runs through the continua-engine CLI or the preview engine control plane.
+	// Run the engine worker loop. To create runs, use the continua-engine CLI
+	// or the preview engine control plane.
 	return rt.Run(ctx)
 }
 
