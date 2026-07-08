@@ -266,7 +266,7 @@ func TestReplaySleepDurationSchedulesTimerAndSurvivesReplay(t *testing.T) {
 	}
 }
 
-func TestReplaySideEffectKeyChangeFailsAsReplayMismatch(t *testing.T) {
+func TestReplaySideEffectKeyChangeQuarantinesAsReplayMismatch(t *testing.T) {
 	recordingDefinition := publicworkflow.Definition{
 		Name:    "time-demo",
 		Version: "v1",
@@ -309,15 +309,28 @@ func TestReplaySideEffectKeyChangeFailsAsReplayMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replayDefinition() replay error = %v", err)
 	}
-	if mismatchDecision.Kind != decisionFailed {
-		t.Fatalf("expected failed decision for side effect key change, got %+v", mismatchDecision)
+	if mismatchDecision.Kind != decisionQuarantined {
+		t.Fatalf("expected quarantined decision for side effect key change, got %+v", mismatchDecision)
+	}
+	if len(mismatchDecision.Events) != 0 {
+		t.Fatalf("expected replay mismatch to queue no history events, got %+v", mismatchDecision.Events)
 	}
 	if mismatchDecision.FailureCode != "replay_mismatch" {
 		t.Fatalf("expected replay_mismatch failure code, got %q", mismatchDecision.FailureCode)
 	}
+	var wait struct {
+		Kind   string `json:"kind"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(mismatchDecision.WaitingFor, &wait); err != nil {
+		t.Fatalf("decode waiting_for: %v", err)
+	}
+	if wait.Kind != "replay_mismatch" || wait.Detail == "" {
+		t.Fatalf("expected replay_mismatch waiting_for detail, got %+v", wait)
+	}
 }
 
-func TestReplayNowAgainstDifferentRecordedEventFailsAsReplayMismatch(t *testing.T) {
+func TestReplayNowAgainstDifferentRecordedEventQuarantinesAsReplayMismatch(t *testing.T) {
 	input := mustRawJSON(t, map[string]string{"name": "Ada"})
 	historyRows := []enginedb.EngineHistory{
 		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
@@ -346,11 +359,24 @@ func TestReplayNowAgainstDifferentRecordedEventFailsAsReplayMismatch(t *testing.
 	if err != nil {
 		t.Fatalf("replayDefinition() error = %v", err)
 	}
-	if decision.Kind != decisionFailed {
-		t.Fatalf("expected failed decision when Now() faces a foreign recorded event, got %+v", decision)
+	if decision.Kind != decisionQuarantined {
+		t.Fatalf("expected quarantined decision when Now() faces a foreign recorded event, got %+v", decision)
+	}
+	if len(decision.Events) != 0 {
+		t.Fatalf("expected replay mismatch to queue no history events, got %+v", decision.Events)
 	}
 	if decision.FailureCode != "replay_mismatch" {
 		t.Fatalf("expected replay_mismatch failure code, got %q", decision.FailureCode)
+	}
+	var wait struct {
+		Kind   string `json:"kind"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(decision.WaitingFor, &wait); err != nil {
+		t.Fatalf("decode waiting_for: %v", err)
+	}
+	if wait.Kind != "replay_mismatch" || wait.Detail == "" {
+		t.Fatalf("expected replay_mismatch waiting_for detail, got %+v", wait)
 	}
 }
 
