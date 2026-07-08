@@ -24,7 +24,7 @@ WHERE id = (
     FROM engine.inbox
     WHERE (status = 'pending' AND available_at <= NOW())
        OR (status = 'claimed' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
-    ORDER BY available_at ASC, id ASC
+    ORDER BY available_at ASC, ordinal ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
@@ -36,7 +36,7 @@ FROM engine.inbox
 WHERE run_id = $1
   AND status = 'pending'
   AND available_at <= NOW()
-ORDER BY available_at ASC, id ASC;
+ORDER BY available_at ASC, ordinal ASC;
 
 -- name: CountOpenInboxByRun :one
 SELECT COUNT(*)
@@ -51,7 +51,7 @@ FROM engine.inbox
 WHERE run_id = $1
   AND kind = $2
   AND status IN ('pending', 'claimed')
-ORDER BY available_at ASC, id ASC;
+ORDER BY available_at ASC, ordinal ASC;
 
 -- name: ListDiscardedTimerInboxItemsByRun :many
 SELECT *
@@ -59,7 +59,7 @@ FROM engine.inbox
 WHERE run_id = $1
   AND kind = 'timer'
   AND status = 'discarded'
-ORDER BY available_at ASC, id ASC;
+ORDER BY available_at ASC, ordinal ASC;
 
 -- name: ListDueTimerRunIDs :many
 SELECT DISTINCT run_id

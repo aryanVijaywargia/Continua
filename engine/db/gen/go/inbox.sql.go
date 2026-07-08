@@ -25,11 +25,11 @@ WHERE id = (
     FROM engine.inbox
     WHERE (status = 'pending' AND available_at <= NOW())
        OR (status = 'claimed' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
-    ORDER BY available_at ASC, id ASC
+    ORDER BY available_at ASC, ordinal ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
 `
 
 type ClaimNextInboxItemParams struct {
@@ -57,6 +57,7 @@ func (q *Queries) ClaimNextInboxItem(ctx context.Context, arg ClaimNextInboxItem
 		&i.ResolvedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Ordinal,
 	)
 	return i, err
 }
@@ -104,7 +105,7 @@ INSERT INTO engine.inbox (
     dedupe_key
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
 `
 
 type CreateInboxItemParams struct {
@@ -147,6 +148,7 @@ func (q *Queries) CreateInboxItem(ctx context.Context, arg CreateInboxItemParams
 		&i.ResolvedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Ordinal,
 	)
 	return i, err
 }
@@ -161,7 +163,7 @@ SET status = 'discarded',
     updated_at = NOW()
 WHERE run_id = $1
   AND status IN ('pending', 'claimed')
-RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
 `
 
 func (q *Queries) DiscardOpenInboxItemsByRun(ctx context.Context, runID pgtype.UUID) ([]EngineInbox, error) {
@@ -190,6 +192,7 @@ func (q *Queries) DiscardOpenInboxItemsByRun(ctx context.Context, runID pgtype.U
 			&i.ResolvedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Ordinal,
 		); err != nil {
 			return nil, err
 		}
@@ -202,12 +205,12 @@ func (q *Queries) DiscardOpenInboxItemsByRun(ctx context.Context, runID pgtype.U
 }
 
 const listDiscardedTimerInboxItemsByRun = `-- name: ListDiscardedTimerInboxItemsByRun :many
-SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
 FROM engine.inbox
 WHERE run_id = $1
   AND kind = 'timer'
   AND status = 'discarded'
-ORDER BY available_at ASC, id ASC
+ORDER BY available_at ASC, ordinal ASC
 `
 
 func (q *Queries) ListDiscardedTimerInboxItemsByRun(ctx context.Context, runID pgtype.UUID) ([]EngineInbox, error) {
@@ -236,6 +239,7 @@ func (q *Queries) ListDiscardedTimerInboxItemsByRun(ctx context.Context, runID p
 			&i.ResolvedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Ordinal,
 		); err != nil {
 			return nil, err
 		}
@@ -309,12 +313,12 @@ func (q *Queries) ListDueTimerRunIDsByProject(ctx context.Context, projectID uui
 }
 
 const listOpenInboxItemsByRunAndKind = `-- name: ListOpenInboxItemsByRunAndKind :many
-SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
 FROM engine.inbox
 WHERE run_id = $1
   AND kind = $2
   AND status IN ('pending', 'claimed')
-ORDER BY available_at ASC, id ASC
+ORDER BY available_at ASC, ordinal ASC
 `
 
 type ListOpenInboxItemsByRunAndKindParams struct {
@@ -348,6 +352,7 @@ func (q *Queries) ListOpenInboxItemsByRunAndKind(ctx context.Context, arg ListOp
 			&i.ResolvedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Ordinal,
 		); err != nil {
 			return nil, err
 		}
@@ -360,12 +365,12 @@ func (q *Queries) ListOpenInboxItemsByRunAndKind(ctx context.Context, arg ListOp
 }
 
 const listPendingInboxByRun = `-- name: ListPendingInboxByRun :many
-SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+SELECT id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
 FROM engine.inbox
 WHERE run_id = $1
   AND status = 'pending'
   AND available_at <= NOW()
-ORDER BY available_at ASC, id ASC
+ORDER BY available_at ASC, ordinal ASC
 `
 
 func (q *Queries) ListPendingInboxByRun(ctx context.Context, runID pgtype.UUID) ([]EngineInbox, error) {
@@ -394,6 +399,7 @@ func (q *Queries) ListPendingInboxByRun(ctx context.Context, runID pgtype.UUID) 
 			&i.ResolvedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Ordinal,
 		); err != nil {
 			return nil, err
 		}
@@ -414,7 +420,7 @@ SET status = 'discarded',
     lease_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
 `
 
 func (q *Queries) MarkInboxDiscarded(ctx context.Context, id uuid.UUID) (EngineInbox, error) {
@@ -437,6 +443,7 @@ func (q *Queries) MarkInboxDiscarded(ctx context.Context, id uuid.UUID) (EngineI
 		&i.ResolvedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Ordinal,
 	)
 	return i, err
 }
@@ -451,7 +458,7 @@ SET status = 'processed',
     updated_at = NOW()
 WHERE id = $1
   AND status = 'pending'
-RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at
+RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
 `
 
 func (q *Queries) MarkInboxProcessed(ctx context.Context, id uuid.UUID) (EngineInbox, error) {
@@ -474,6 +481,7 @@ func (q *Queries) MarkInboxProcessed(ctx context.Context, id uuid.UUID) (EngineI
 		&i.ResolvedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Ordinal,
 	)
 	return i, err
 }
