@@ -29,7 +29,7 @@ func (q *Queries) DeleteDefinitionCatalogEntry(ctx context.Context, arg DeleteDe
 }
 
 const getDefinitionCatalogEntry = `-- name: GetDefinitionCatalogEntry :one
-SELECT definition_name, definition_version, published_at, updated_at
+SELECT definition_name, definition_version, published_at, updated_at, runtime_published_at, enabled
 FROM engine.definition_catalog
 WHERE definition_name = $1
   AND definition_version = $2
@@ -48,12 +48,14 @@ func (q *Queries) GetDefinitionCatalogEntry(ctx context.Context, arg GetDefiniti
 		&i.DefinitionVersion,
 		&i.PublishedAt,
 		&i.UpdatedAt,
+		&i.RuntimePublishedAt,
+		&i.Enabled,
 	)
 	return i, err
 }
 
 const listDefinitionCatalog = `-- name: ListDefinitionCatalog :many
-SELECT definition_name, definition_version, published_at, updated_at
+SELECT definition_name, definition_version, published_at, updated_at, runtime_published_at, enabled
 FROM engine.definition_catalog
 ORDER BY definition_name ASC, definition_version ASC
 `
@@ -72,6 +74,8 @@ func (q *Queries) ListDefinitionCatalog(ctx context.Context) ([]EngineDefinition
 			&i.DefinitionVersion,
 			&i.PublishedAt,
 			&i.UpdatedAt,
+			&i.RuntimePublishedAt,
+			&i.Enabled,
 		); err != nil {
 			return nil, err
 		}
@@ -91,7 +95,7 @@ INSERT INTO engine.definition_catalog (
 VALUES ($1, $2)
 ON CONFLICT (definition_name, definition_version) DO UPDATE SET
     updated_at = NOW()
-RETURNING definition_name, definition_version, published_at, updated_at
+RETURNING definition_name, definition_version, published_at, updated_at, runtime_published_at, enabled
 `
 
 type UpsertDefinitionCatalogEntryParams struct {
@@ -107,6 +111,8 @@ func (q *Queries) UpsertDefinitionCatalogEntry(ctx context.Context, arg UpsertDe
 		&i.DefinitionVersion,
 		&i.PublishedAt,
 		&i.UpdatedAt,
+		&i.RuntimePublishedAt,
+		&i.Enabled,
 	)
 	return i, err
 }
