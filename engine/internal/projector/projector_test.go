@@ -1378,13 +1378,13 @@ func TestSyncProjectedRunSummary_MissingProjectedTraceFailsForPublicRuns(t *test
 	}
 }
 
-func TestSyncProjectedRunSummary_AllowsDarkLaunchRunsWithoutProjectedTrace(t *testing.T) {
+func TestSyncProjectedRunSummary_FailsForDefaultProjectWithoutProjectedTrace(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	store := enginestore.New(db.Pool)
 	ctx := context.Background()
 
 	_, run := createStartedRun(t, store, workflowTestCase{
-		projectID:         publicprojection.DarkLaunchProjectID,
+		projectID:         enginetest.DefaultPlatformProjectID,
 		instanceKey:       "instance-darklaunch",
 		definitionName:    "darklaunch",
 		definitionVersion: "v1",
@@ -1394,12 +1394,10 @@ func TestSyncProjectedRunSummary_AllowsDarkLaunchRunsWithoutProjectedTrace(t *te
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	if err := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &run); err != nil {
-		_ = tx.Rollback(ctx)
-		t.Fatalf("SyncRunSummary() error = %v", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatalf("tx.Commit() error = %v", err)
+	err = publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &run)
+	_ = tx.Rollback(ctx)
+	if err == nil {
+		t.Fatal("expected SyncRunSummary to fail when projected trace is missing")
 	}
 }
 

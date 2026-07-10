@@ -1,0 +1,59 @@
+---
+title: "Engine project provisioning"
+description: "Create a platform project and point the preview engine runtime at it."
+---
+
+Engine runs are projected into the same platform tables as traces and spans. Before an
+engine runtime starts with a project filter, that project must already exist in the
+platform.
+
+## Create a platform project
+
+Create a project from the debugger Projects page or the projects API:
+
+```bash
+curl -X POST http://localhost:8080/api/projects \
+  -H "X-API-Key: <admin-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"engine-prod","description":"Durable engine runs"}'
+```
+
+Save the returned `id` and the plaintext `api_key`. The API key is shown only once. See
+[Managing projects](/guides/managing-projects) for rotation and deletion workflows.
+
+## Configure the engine runtime
+
+Point the engine at the same Postgres database as the platform when you want runs to show
+up in the debugger:
+
+```bash
+export ENGINE_DATABASE_URL="postgres://continua:continua@localhost:5432/continua?sslmode=disable"
+export ENGINE_PROJECT_ID="<project-id>"
+
+continua-engine migrate up
+continua-engine serve
+```
+
+`ENGINE_PROJECT_ID` scopes the worker runtime to that project. Startup fails fast if the
+project row is missing, so create the project before starting workers.
+
+When embedding the Go runtime directly, pass the same project id through
+`runtime.Options.ProjectID`:
+
+```go
+projectID := uuid.MustParse(os.Getenv("ENGINE_PROJECT_ID"))
+rt, err := runtime.New(runtime.Options{
+    DatabaseURL: os.Getenv("ENGINE_DATABASE_URL"),
+    ProjectID:   &projectID,
+    Workflows:   definitions,
+    Activities:  handlers,
+})
+```
+
+See [Embed the engine](/guides/embed-engine) for the full runtime setup.
+
+## Inspect runs
+
+Runs projected for the provisioned project appear in the debugger's
+[Engine runs console](/debugger/engine-runs). Use that page to inspect status, pending
+work, history freshness, and projection repair state.

@@ -99,6 +99,7 @@ func TestActivatorFailsRunWhenDefinitionVersionIsMissingWithoutStartedHistory(t 
 	if err != nil {
 		t.Fatalf("CreateRun() error = %v", err)
 	}
+	enginetest.SeedProjectionShell(t, db.Pool, &instance, &run, "demo", "v-missing", nil, 1)
 
 	claimed, err := store.ClaimNextRun(ctx, "worker-a", time.Minute)
 	if err != nil {
@@ -425,11 +426,12 @@ func TestActivatorContinueAsNewCreatesNewRunAndInheritedTraceShell(t *testing.T)
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-continue-as-new",
-		definitionName:    "continue-demo",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]any{"cursor": 1}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-continue-as-new",
+		definitionName:      "continue-demo",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]any{"cursor": 1}),
+		skipProjectionShell: true,
 	}
 	instance, run := createStartedRun(t, store, testCase)
 	startedHistory := mustStartedHistory(t, store, run.ID)
@@ -729,11 +731,12 @@ func TestActivatorContinueAsNewFailsWhenProjectedTraceShellIsMissing(t *testing.
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-continue-missing-shell",
-		definitionName:    "continue-demo",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]any{"cursor": 1}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-continue-missing-shell",
+		definitionName:      "continue-demo",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]any{"cursor": 1}),
+		skipProjectionShell: true,
 	}
 	_, run := createStartedRun(t, store, testCase)
 
@@ -785,11 +788,12 @@ func TestActivatorContinueAsNewPreservesChainAcrossMultipleHops(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-continue-chain",
-		definitionName:    "continue-chain",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]any{"cursor": 1}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-continue-chain",
+		definitionName:      "continue-chain",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]any{"cursor": 1}),
+		skipProjectionShell: true,
 	}
 	instance, run := createStartedRun(t, store, testCase)
 	startedHistory := mustStartedHistory(t, store, run.ID)
@@ -872,11 +876,12 @@ func TestActivatorSchedulesChildWorkflowAndCreatesLineage(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-parent-child",
-		definitionName:    "checkout",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]string{"order_id": "ord-123"}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-parent-child",
+		definitionName:      "checkout",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]string{"order_id": "ord-123"}),
+		skipProjectionShell: true,
 	}
 	instance, run := createStartedRun(t, store, testCase)
 	insertProjectedTraceShell(t, ctx, db.Pool, instance, run, "Checkout Parent Trace", 1)
@@ -1091,11 +1096,12 @@ func TestActivatorChildWorkflowConflictFailsDeterministically(t *testing.T) {
 	}
 
 	instance, run := createStartedRun(t, store, workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-binding-conflict-parent",
-		definitionName:    "checkout-binding-conflict",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]string{"order_id": "ord-conflict"}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-binding-conflict-parent",
+		definitionName:      "checkout-binding-conflict",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]string{"order_id": "ord-conflict"}),
+		skipProjectionShell: true,
 	})
 	insertProjectedTraceShell(t, ctx, db.Pool, instance, run, "Binding Conflict Parent", 1)
 
@@ -1168,11 +1174,12 @@ func TestActivatorChildContinueAsNewBlocksParentUntilTerminalRun(t *testing.T) {
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-child-continue-parent",
-		definitionName:    "checkout-child-continue",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]string{"order_id": "ord-child-continue"}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-child-continue-parent",
+		definitionName:      "checkout-child-continue",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]string{"order_id": "ord-child-continue"}),
+		skipProjectionShell: true,
 	}
 	instance, parentRun := createStartedRun(t, store, testCase)
 	insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Continue Parent", 1)
@@ -1325,11 +1332,12 @@ func TestActivatorChildTerminalOutcomesRecordMatchingParentAndChildHistory(t *te
 
 			parentDefinitionName := "checkout-child-terminal-" + testCase.name
 			instance, parentRun := createStartedRun(t, store, workflowTestCase{
-				projectID:         enginetest.DefaultPlatformProjectID,
-				instanceKey:       "instance-" + testCase.name + "-parent",
-				definitionName:    parentDefinitionName,
-				definitionVersion: "v1",
-				input:             mustJSON(t, map[string]string{"order_id": "ord-" + testCase.name}),
+				projectID:           enginetest.DefaultPlatformProjectID,
+				instanceKey:         "instance-" + testCase.name + "-parent",
+				definitionName:      parentDefinitionName,
+				definitionVersion:   "v1",
+				input:               mustJSON(t, map[string]string{"order_id": "ord-" + testCase.name}),
+				skipProjectionShell: true,
 			})
 			insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Terminal Parent "+testCase.name, 1)
 
@@ -1453,11 +1461,12 @@ func TestActivatorChildContinuationDepthWaitFailureAndLateTerminalGuard(t *testi
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-child-follow-depth",
-		definitionName:    "checkout-child-follow-depth",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]string{"order_id": "ord-follow-depth"}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-child-follow-depth",
+		definitionName:      "checkout-child-follow-depth",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]string{"order_id": "ord-follow-depth"}),
+		skipProjectionShell: true,
 	}
 	instance, parentRun := createStartedRun(t, store, testCase)
 	insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Follow Depth Parent", 1)
@@ -1571,11 +1580,12 @@ func TestActivatorChildTerminalWakeGuardRequiresMatchingWaitIdentity(t *testing.
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-child-wake-guard",
-		definitionName:    "checkout-child-wake-guard",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]string{"order_id": "ord-wake-guard"}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-child-wake-guard",
+		definitionName:      "checkout-child-wake-guard",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]string{"order_id": "ord-wake-guard"}),
+		skipProjectionShell: true,
 	}
 	instance, parentRun := createStartedRun(t, store, testCase)
 	insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Wake Guard Parent", 1)
@@ -1635,11 +1645,12 @@ func TestActivatorCancelledDecisionEnqueuesActiveChildCancelIdempotently(t *test
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-child-cancel-parent",
-		definitionName:    "checkout-child-cancel",
-		definitionVersion: "v1",
-		input:             mustJSON(t, map[string]string{"order_id": "ord-cancel-child"}),
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-child-cancel-parent",
+		definitionName:      "checkout-child-cancel",
+		definitionVersion:   "v1",
+		input:               mustJSON(t, map[string]string{"order_id": "ord-cancel-child"}),
+		skipProjectionShell: true,
 	}
 	instance, parentRun := createStartedRun(t, store, testCase)
 	insertProjectedTraceShell(t, ctx, db.Pool, instance, parentRun, "Child Cancel Parent", 1)
@@ -1957,10 +1968,11 @@ func TestActivatorWaitingDecisionDoesNotMutateProjectedTraceSummary(t *testing.T
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-projected-wait",
-		definitionName:    "projected-wait",
-		definitionVersion: "v1",
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-projected-wait",
+		definitionName:      "projected-wait",
+		definitionVersion:   "v1",
+		skipProjectionShell: true,
 	}
 	instance, run := createStartedRun(t, store, testCase)
 
@@ -2028,10 +2040,11 @@ func TestActivatorFailureMovesProjectedTraceIntoCatchingUpWithoutProjectingTermi
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-projected-failure",
-		definitionName:    "missing-definition",
-		definitionVersion: "v-missing",
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-projected-failure",
+		definitionName:      "missing-definition",
+		definitionVersion:   "v-missing",
+		skipProjectionShell: true,
 	}
 	instance, run := createStartedRun(t, store, testCase)
 
@@ -2113,10 +2126,11 @@ func TestActivatorCancellationTransitionsRunToCancelledWithoutProjectingTerminal
 	ctx := context.Background()
 
 	testCase := workflowTestCase{
-		projectID:         enginetest.DefaultPlatformProjectID,
-		instanceKey:       "instance-cancelled",
-		definitionName:    "cancelled-workflow",
-		definitionVersion: "v1",
+		projectID:           enginetest.DefaultPlatformProjectID,
+		instanceKey:         "instance-cancelled",
+		definitionName:      "cancelled-workflow",
+		definitionVersion:   "v1",
+		skipProjectionShell: true,
 	}
 	instance, run := createStartedRun(t, store, testCase)
 
@@ -2484,11 +2498,12 @@ func TestActivatorLateSignalWakeIsNotStranded(t *testing.T) {
 }
 
 type workflowTestCase struct {
-	projectID         uuid.UUID
-	instanceKey       string
-	definitionName    string
-	definitionVersion string
-	input             json.RawMessage
+	projectID           uuid.UUID
+	instanceKey         string
+	definitionName      string
+	definitionVersion   string
+	input               json.RawMessage
+	skipProjectionShell bool
 }
 
 func createStartedRun(
@@ -2499,6 +2514,7 @@ func createStartedRun(
 	t.Helper()
 
 	ctx := context.Background()
+	enginetest.EnsurePlatformProject(t, store.Pool(), testCase.projectID)
 	instance, err := store.CreateInstance(ctx, enginedb.CreateInstanceParams{
 		ProjectID:      testCase.projectID,
 		InstanceKey:    testCase.instanceKey,
@@ -2518,12 +2534,15 @@ func createStartedRun(
 		t.Fatalf("CreateRun() error = %v", err)
 	}
 
-	appendHistoryEvent(t, store, testCase.projectID, instance.ID, run.ID, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+	startedHistory := appendHistoryEvent(t, store, testCase.projectID, instance.ID, run.ID, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
 		DefinitionName:    testCase.definitionName,
 		DefinitionVersion: testCase.definitionVersion,
 		InstanceKey:       testCase.instanceKey,
 		Input:             testCase.input,
 	})
+	if !testCase.skipProjectionShell {
+		enginetest.SeedProjectionShell(t, store.Pool(), &instance, &run, testCase.definitionName, testCase.definitionVersion, testCase.input, startedHistory.ID)
+	}
 
 	return instance, run
 }
@@ -2595,23 +2614,25 @@ func appendHistoryEvent(
 	sequenceNo int32,
 	eventType string,
 	payload any,
-) {
+) enginedb.EngineHistory {
 	t.Helper()
 
 	raw, err := enginehistory.MarshalPayload(payload)
 	if err != nil {
 		t.Fatalf("MarshalPayload() error = %v", err)
 	}
-	if _, err := store.AppendHistory(context.Background(), enginedb.AppendHistoryParams{
+	row, err := store.AppendHistory(context.Background(), enginedb.AppendHistoryParams{
 		ProjectID:  projectID,
 		InstanceID: instanceID,
 		RunID:      runID,
 		SequenceNo: sequenceNo,
 		EventType:  eventType,
 		Payload:    raw,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("AppendHistory() error = %v", err)
 	}
+	return row
 }
 
 func mustStartedHistory(t *testing.T, store *enginestore.Store, runID uuid.UUID) enginedb.EngineHistory {

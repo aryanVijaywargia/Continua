@@ -115,10 +115,13 @@ the control bar. Polling-based.
   with the runtime. There is no TypeScript/Python SDK for *authoring* workflows yet (the
   Python SDK's `ActivityWorker` / `@activity` / `EngineControlClient` target this surface
   but aren't a full authoring runtime).
-- **No production definition loading.** The runtime today registers definitions through a
-  built-in "dark-launch" harness against a fixed demo project. There's no supported path
-  yet to register and version arbitrary user workflow definitions in a multi-tenant
-  deployment.
+- **No production definition loading.** The runtime today registers definitions from the
+  Go process that starts workers; the bundled dark-launch CLI is still only a demo
+  consumer. There's no supported path yet to dynamically register and version arbitrary
+  user workflow definitions in a multi-tenant deployment.
+- **Explicit project provisioning.** Scoped workers must point at an existing platform
+  project with `ENGINE_PROJECT_ID` or `runtime.Options.ProjectID`; missing projects fail
+  startup. See [Engine project provisioning](/guides/engine-project-provisioning).
 - **Preview-gated REST control plane.** The `/v1/engine/*` endpoints require
   `X-Continua-Engine-Preview` + `ENGINE_PUBLIC_API_ENABLED`, and shapes may change
   before GA.
@@ -127,10 +130,10 @@ the control bar. Polling-based.
 
 - **Durable Go workflows (preview).** Go-defined workflows and activities registered with
   the runtime execute end-to-end with retries, timers, signals, child workflows, and
-  crash-recovery. Today they register through the built-in dark-launch harness
-  (`continua-engine serve`); running your *own* workflow means adding it to that registry
-  and rebuilding, as there's no dynamic definition loading yet. Don't put it on a
-  production-critical path yet, it's preview.
+  crash-recovery. Running your *own* workflow means registering it in the Go runtime that
+  starts workers and provisioning a platform project for its projections, as there's no
+  dynamic definition loading yet. Don't put it on a production-critical path yet, it's
+  preview.
 - **Operator tooling & inspection.** The control endpoints + runs console are useful for
   driving and observing run state, pending work, and history.
 

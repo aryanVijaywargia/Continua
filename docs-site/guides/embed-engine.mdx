@@ -19,8 +19,13 @@ Use `github.com/continua-ai/continua/engine/pkg/runtime` from inside a Go progra
 engine module:
 
 ```go
+projectID, err := uuid.Parse(os.Getenv("ENGINE_PROJECT_ID"))
+if err != nil {
+    return fmt.Errorf("parse ENGINE_PROJECT_ID: %w", err)
+}
 rt, err := runtime.New(runtime.Options{
-    DatabaseURL: os.Getenv("DATABASE_URL"),
+    DatabaseURL: os.Getenv("ENGINE_DATABASE_URL"),
+    ProjectID:   &projectID,
     Workflows: []workflow.Definition{
         {
             Name:    "examples.greeter",
@@ -42,6 +47,10 @@ return rt.Run(ctx)
 connect to Postgres. `Run` opens the engine pool, publishes the registered definitions
 to `engine.definition_catalog`, then starts the workflow worker, activity worker,
 maintenance worker, and projector until the context is cancelled.
+
+If `ProjectID` is set, `Run` verifies that the platform project exists before workers
+start. Create the project first and set `ENGINE_PROJECT_ID`; see
+[Engine project provisioning](/guides/engine-project-provisioning).
 
 See `engine/examples/greeter` for a minimal compilable program with signal handling.
 
@@ -69,6 +78,8 @@ be present in the runtime-published catalog.
 - Workflow and activity authoring is Go-only.
 - There is no dynamic definition loading path yet; user code registers definitions in
   the Go process at startup.
+- A scoped runtime requires a pre-created platform project. Missing projects fail startup
+  instead of creating implicit projection rows.
 - The runtime uses the same Postgres-backed history, leases, timers, signals, activity
   tasks, child workflows, cancellation, continue-as-new, and projection path as
   `continua-engine serve`.

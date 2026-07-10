@@ -200,7 +200,7 @@ func (a *Activator) commitDecision(
 	// checkpoint so projected shells can move into catching_up before the
 	// projector catches up. decisionCancelled remains engine-only per the
 	// operational hardening change.
-	if latestHistoryID != nil && decision.Kind != decisionCancelled {
+	if latestHistoryID != nil && decision.Kind != decisionCancelled && decision.Kind != decisionContinuedAsNew {
 		if err := publicprojection.NewWriter(tx.Tx()).UpdateLatestHistory(ctx, run.ProjectID, run.ID, *latestHistoryID); err != nil {
 			return err
 		}
@@ -325,7 +325,13 @@ func (a *Activator) commitDecision(
 		}
 		return updateRunInstanceStatus(ctx, tx, run.InstanceID, enginedb.EngineInstanceLifecycleStatusCancelled)
 	case decisionContinuedAsNew:
-		return a.commitContinuationDecision(ctx, tx, instance, run, workerClaimedBy, decision)
+		if err := a.commitContinuationDecision(ctx, tx, instance, run, workerClaimedBy, decision); err != nil {
+			return err
+		}
+		if latestHistoryID != nil {
+			return publicprojection.NewWriter(tx.Tx()).UpdateLatestHistory(ctx, run.ProjectID, run.ID, *latestHistoryID)
+		}
+		return nil
 	default:
 		return fmt.Errorf("unsupported activation decision kind %q", decision.Kind)
 	}

@@ -910,6 +910,7 @@ func createRunWithPendingActivityConfig(
 	if cfg.activityType == "" {
 		cfg.activityType = testActivityType
 	}
+	enginetest.EnsurePlatformProject(t, store.Pool(), cfg.projectID)
 
 	instance, err := store.CreateInstance(ctx, enginedb.CreateInstanceParams{
 		ProjectID:      cfg.projectID,
@@ -939,16 +940,18 @@ func createRunWithPendingActivityConfig(
 	if err != nil {
 		t.Fatalf("MarshalPayload(started) error = %v", err)
 	}
-	if _, err := store.AppendHistory(ctx, enginedb.AppendHistoryParams{
+	startedHistory, err := store.AppendHistory(ctx, enginedb.AppendHistoryParams{
 		ProjectID:  cfg.projectID,
 		InstanceID: instance.ID,
 		RunID:      run.ID,
 		SequenceNo: 1,
 		EventType:  enginehistory.EventWorkflowStarted,
 		Payload:    startedPayload,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("AppendHistory(started) error = %v", err)
 	}
+	enginetest.SeedProjectionShell(t, store.Pool(), &instance, &run, "activity-terminate", "v1", nil, startedHistory.ID)
 
 	activityPayload, err := enginehistory.MarshalPayload(enginehistory.ActivityScheduledPayload{
 		ActivityKey:  cfg.activityKey,

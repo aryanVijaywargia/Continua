@@ -28,9 +28,8 @@ import (
 	"github.com/continua-ai/continua/engine/cmd/continua-engine/internal/darklaunch"
 )
 
-// darkLaunchProjectID aliases the projection writer's single definition of
-// the fixed dark-launch demo project.
-var darkLaunchProjectID = publicprojection.DarkLaunchProjectID
+// darkLaunchProjectID is the fixed demo project used by the dark-launch CLI.
+var darkLaunchProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 type commandExitError struct {
 	code int
@@ -159,6 +158,9 @@ func startCmd() *cobra.Command {
 				defer func() {
 					_ = tx.Rollback(ctx)
 				}()
+				if err := ensureDarkLaunchProject(ctx, tx); err != nil {
+					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
+				}
 
 				claim, err := tx.ClaimStartRequestDedupe(ctx, enginestore.ClaimStartRequestDedupeParams{
 					ProjectID:    darkLaunchProjectID,
@@ -250,7 +252,7 @@ func startCmd() *cobra.Command {
 				if err != nil {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
-				if err := publicprojection.NewWriter(tx.Tx()).EnsureDarkLaunchShell(ctx, &instance, &run, definitionName, definitionVersion, inputPayload, startedEvent.ID); err != nil {
+				if err := publicprojection.NewWriter(tx.Tx()).EnsureStartShell(ctx, &instance, &run, definitionName, definitionVersion, inputPayload, startedEvent.ID); err != nil {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
 
@@ -294,6 +296,17 @@ func startCmd() *cobra.Command {
 	cmd.Flags().StringVar(&requestKey, "request-key", "", "Durable request dedupe key")
 	cmd.Flags().StringVar(&input, "input", "", "Optional workflow input as JSON")
 	return cmd
+}
+
+func ensureDarkLaunchProject(ctx context.Context, tx *enginestore.Tx) error {
+	if _, err := tx.Tx().Exec(ctx, `
+		INSERT INTO public.projects (id, name, api_key_hash)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id) DO NOTHING
+	`, darkLaunchProjectID, "Engine Dark Launch", "engine-dark-launch"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func signalCmd() *cobra.Command {

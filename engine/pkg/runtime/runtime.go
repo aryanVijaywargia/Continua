@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -96,10 +97,19 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 	store := enginestore.New(pool)
+	defer func() {
+		store.Close()
+	}()
 	if r.options.ProjectID != nil {
+		exists, err := store.PlatformProjectExists(ctx, *r.options.ProjectID)
+		if err != nil {
+			return fmt.Errorf("runtime: validate project %s: %w", r.options.ProjectID.String(), err)
+		}
+		if !exists {
+			return fmt.Errorf("runtime: project %s not found; create the project in the platform and set ENGINE_PROJECT_ID before starting the engine runtime", r.options.ProjectID.String())
+		}
 		store = store.WithProjectFilter(*r.options.ProjectID)
 	}
-	defer store.Close()
 
 	if err := catalog.PublishStoreDefinitions(ctx, store, r.definitions.List()); err != nil {
 		return err
