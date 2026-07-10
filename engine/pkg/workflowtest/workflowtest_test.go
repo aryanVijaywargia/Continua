@@ -451,7 +451,7 @@ func TestExecuteContinueAsNew(t *testing.T) {
 }
 
 func TestExecuteSideEffectRunsOnce(t *testing.T) {
-	var calls int
+	calls := 0
 	def := workflow.Definition{
 		Name:    "side-effect",
 		Version: "v1",
@@ -490,7 +490,7 @@ func TestExecuteSideEffectRunsOnce(t *testing.T) {
 }
 
 func TestExecuteNowStableAcrossActivations(t *testing.T) {
-	var seen []time.Time
+	seen := make([]time.Time, 0)
 	def := workflow.Definition{
 		Name:    "now",
 		Version: "v1",
@@ -522,7 +522,7 @@ func TestExecuteNowStableAcrossActivations(t *testing.T) {
 }
 
 func TestExecuteDetectsNonDeterminism(t *testing.T) {
-	var attempts int
+	attempts := 0
 	env := workflowtest.NewEnvironment()
 	env.RegisterActivity("type.a", func(input json.RawMessage) (any, error) { return nil, nil })
 	env.RegisterActivity("type.b", func(input json.RawMessage) (any, error) { return nil, nil })
