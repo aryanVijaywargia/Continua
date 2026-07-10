@@ -87,6 +87,27 @@ func (q *Queries) ListDefinitionCatalog(ctx context.Context) ([]EngineDefinition
 	return items, nil
 }
 
+const touchDefinitionCatalogEntry = `-- name: TouchDefinitionCatalogEntry :execrows
+UPDATE engine.definition_catalog
+SET runtime_published_at = NOW(),
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2
+`
+
+type TouchDefinitionCatalogEntryParams struct {
+	DefinitionName    string `json:"definition_name"`
+	DefinitionVersion string `json:"definition_version"`
+}
+
+func (q *Queries) TouchDefinitionCatalogEntry(ctx context.Context, arg TouchDefinitionCatalogEntryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, touchDefinitionCatalogEntry, arg.DefinitionName, arg.DefinitionVersion)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upsertDefinitionCatalogEntry = `-- name: UpsertDefinitionCatalogEntry :one
 INSERT INTO engine.definition_catalog (
     definition_name,
@@ -94,6 +115,7 @@ INSERT INTO engine.definition_catalog (
 )
 VALUES ($1, $2)
 ON CONFLICT (definition_name, definition_version) DO UPDATE SET
+    runtime_published_at = NOW(),
     updated_at = NOW()
 RETURNING definition_name, definition_version, published_at, updated_at, runtime_published_at, enabled
 `

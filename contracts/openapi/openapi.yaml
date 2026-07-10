@@ -118,6 +118,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /v1/engine/definitions:
+    get:
+      operationId: listEngineDefinitions
+      summary: List registered engine workflow definitions
+      tags: [Engine]
+      responses:
+        '200':
+          description: Engine definition catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineDefinitionListResponse'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /v1/engine/runs:
     post:
       operationId: startEngineRun
@@ -2248,6 +2273,34 @@ components:
           type: string
         trace_id:
           type: string
+
+    EngineDefinition:
+      type: object
+      required: [definition_name, definition_version, enabled, live, runtime_published_at, published_at]
+      properties:
+        definition_name:
+          type: string
+        definition_version:
+          type: string
+        enabled:
+          type: boolean
+        live:
+          type: boolean
+        runtime_published_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+
+    EngineDefinitionListResponse:
+      type: object
+      required: [definitions]
+      properties:
+        definitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineDefinition'
 
     EngineInstanceResponse:
       type: object

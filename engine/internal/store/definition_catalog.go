@@ -24,6 +24,13 @@ func (o *storeOps) ListDefinitionCatalog(ctx context.Context) ([]enginedb.Engine
 	return o.q.ListDefinitionCatalog(ctx)
 }
 
+func (o *storeOps) TouchDefinitionCatalogEntry(
+	ctx context.Context,
+	arg enginedb.TouchDefinitionCatalogEntryParams,
+) (int64, error) {
+	return o.q.TouchDefinitionCatalogEntry(ctx, arg)
+}
+
 func (o *storeOps) DeleteDefinitionCatalogEntry(
 	ctx context.Context,
 	arg enginedb.DeleteDefinitionCatalogEntryParams,

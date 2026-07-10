@@ -59,6 +59,24 @@ func (s *Server) GetEngineInstance(w http.ResponseWriter, r *http.Request, insta
 	writeJSON(w, http.StatusOK, engineInstanceResponseToAPI(&result))
 }
 
+func (s *Server) ListEngineDefinitions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded); !ok {
+		return
+	}
+	if s.engineControl == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	result, err := s.engineControl.ListDefinitions(r.Context())
+	if err != nil {
+		writeEngineError(w, err, "Failed to list engine definitions")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, engineDefinitionListResponseToAPI(result))
+}
+
 func (s *Server) StartEngineRun(w http.ResponseWriter, r *http.Request, _ StartEngineRunParams) {
 	projectID, ok := projectIDOrUnauthorized(w, r)
 	if !ok {

@@ -25,6 +25,8 @@ const (
 	engineCancelDedupeKey   = "cancel:"
 	engineTerminateCode     = "terminated"
 	engineTerminateMessage  = "run terminated by operator"
+
+	engineDefinitionLivenessWindow = 60 * time.Second
 )
 
 type engineControlService struct {
@@ -146,6 +148,11 @@ type enginePendingSignalItem struct {
 	AvailableAt time.Time
 }
 
+type engineDefinitionCatalogResult struct {
+	Entry enginedb.EngineDefinitionCatalog
+	Live  bool
+}
+
 type engineAPIError struct {
 	Code       string
 	Message    string
@@ -173,6 +180,13 @@ func engineNotFoundError(message string) *engineAPIError {
 		Message:    message,
 		HTTPStatus: 404,
 	}
+}
+
+func definitionCatalogEntryLive(entry *enginedb.EngineDefinitionCatalog, now time.Time) bool {
+	if entry == nil || !entry.Enabled {
+		return false
+	}
+	return !entry.RuntimePublishedAt.Before(now.Add(-engineDefinitionLivenessWindow))
 }
 
 func (s *engineControlService) getRunForScope(
@@ -283,10 +297,12 @@ func (s *engineControlService) StartRun(
 		}
 	}
 
-	if _, err := engineTx.GetDefinitionCatalogEntry(ctx, enginedb.GetDefinitionCatalogEntryParams{
+	now := time.Now().UTC()
+	entry, err := engineTx.GetDefinitionCatalogEntry(ctx, enginedb.GetDefinitionCatalogEntryParams{
 		DefinitionName:    req.DefinitionName,
 		DefinitionVersion: req.DefinitionVersion,
-	}); err != nil {
+	})
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return engineStartRunResult{}, finalizeStartFailure(ctx, engineTx, tx.Tx(), claim.Row.ID, &engineAPIError{
 				Code:       "definition_not_registered",
@@ -296,8 +312,20 @@ func (s *engineControlService) StartRun(
 		}
 		return engineStartRunResult{}, err
 	}
-
-	now := time.Now().UTC()
+	if !entry.Enabled {
+		return engineStartRunResult{}, finalizeStartFailure(ctx, engineTx, tx.Tx(), claim.Row.ID, &engineAPIError{
+			Code:       "definition_not_registered",
+			Message:    fmt.Sprintf("definition %s@%s is disabled", req.DefinitionName, req.DefinitionVersion),
+			HTTPStatus: 400,
+		})
+	}
+	if entry.RuntimePublishedAt.Before(now.Add(-engineDefinitionLivenessWindow)) {
+		return engineStartRunResult{}, finalizeStartFailure(ctx, engineTx, tx.Tx(), claim.Row.ID, &engineAPIError{
+			Code:       "definition_not_registered",
+			Message:    fmt.Sprintf("definition %s@%s has no live runtime", req.DefinitionName, req.DefinitionVersion),
+			HTTPStatus: 400,
+		})
+	}
 
 	if _, err := tx.Tx().Exec(ctx, "SAVEPOINT start_create_instance"); err != nil {
 		return engineStartRunResult{}, err
@@ -505,6 +533,35 @@ func (s *engineControlService) GetRun(
 	}
 
 	return s.buildRunSummary(ctx, &instance, &run)
+}
+
+func (s *engineControlService) ListDefinitions(ctx context.Context) ([]engineDefinitionCatalogResult, error) {
+	tx, err := s.platform.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	rows, err := enginedb.New(tx.Tx()).ListDefinitionCatalog(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	definitions := make([]engineDefinitionCatalogResult, len(rows))
+	for i := range rows {
+		definitions[i] = engineDefinitionCatalogResult{
+			Entry: rows[i],
+			Live:  definitionCatalogEntryLive(&rows[i], now),
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return definitions, nil
 }
 
 func (s *engineControlService) GetRunResult(

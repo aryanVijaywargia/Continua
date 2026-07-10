@@ -302,6 +302,19 @@ class EngineStartRunResponse(BaseModel):
     trace_id: str
 
 
+class EngineDefinition(BaseModel):
+    definition_name: str
+    definition_version: str
+    enabled: bool
+    live: bool
+    runtime_published_at: AwareDatetime
+    published_at: AwareDatetime
+
+
+class EngineDefinitionListResponse(BaseModel):
+    definitions: list[EngineDefinition]
+
+
 class EngineRunResultResponse(BaseModel):
     run_id: UUID
     continued_from_run_id: UUID | None = None
