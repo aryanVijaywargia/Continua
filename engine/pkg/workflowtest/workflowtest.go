@@ -213,7 +213,10 @@ func (s *simulation) run(remaining int) (*Result, error) {
 				continue
 			}
 			if decision.NewChildWorkflow != nil {
-				if handled, err := s.resolveChild(decision.NewChildWorkflow, remaining); err != nil || !handled {
+				if handled, blocked, err := s.resolveChild(decision.NewChildWorkflow, remaining); err != nil || !handled || blocked != nil {
+					if blocked != nil {
+						return blocked, nil
+					}
 					return result, err
 				}
 				continue
@@ -297,10 +300,10 @@ func (s *simulation) resolveActivity(activity *internalworkflow.SimActivity) (bo
 	return true, nil
 }
 
-func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining int) (bool, error) {
+func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining int) (handled bool, blocked *Result, err error) {
 	def, ok := s.env.definitions[definitionKey(child.DefinitionName, child.DefinitionVersion)]
 	if !ok {
-		return false, nil
+		return false, nil, nil
 	}
 	childRunID := uuid.New()
 	childInstanceID := uuid.New()
@@ -313,7 +316,7 @@ func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining in
 		ChildDepth:       s.engineRun.ChildDepth + 1,
 	})
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	s.history = append(s.history, s.historyRow(nextSequence(s.history), history.EventChildWorkflowStarted, startedPayload))
 
@@ -329,8 +332,46 @@ func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining in
 
 	childResult, err := childSim.run(remaining)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
+	for childResult.Status == StatusContinuedAsNew {
+		if remaining <= 0 {
+			return false, nil, fmt.Errorf("workflowtest: activation cap %d exceeded", activationCap)
+		}
+		remaining--
+		childSim = newSimulation(s.env, def, cloneRaw(childResult.ContinuationInput))
+		childSim.engineRun.ProjectID = s.engineRun.ProjectID
+		childSim.engineRun.RootRunID = s.engineRun.RootRunID
+		childSim.engineRun.ChildDepth = s.engineRun.ChildDepth + 1
+		childSim.engineRun.ID = uuid.New()
+		childSim.engineRun.InstanceID = childInstanceID
+		childSim.history[0].ProjectID = s.engineRun.ProjectID
+		childSim.history[0].InstanceID = childInstanceID
+		childSim.history[0].RunID = childSim.engineRun.ID
+		childResult, err = childSim.run(remaining)
+		if err != nil {
+			return false, nil, err
+		}
+	}
+	if childResult.Status == StatusBlocked {
+		blocked := &Result{
+			Status:   StatusBlocked,
+			WaitKind: history.WaitKindChildWorkflow,
+			WaitKey:  child.ChildKey,
+			history:  append([]enginedb.EngineHistory(nil), s.history...),
+		}
+		return true, blocked, nil
+	}
+	if childResult.Status == StatusQuarantined {
+		return false, nil, fmt.Errorf(
+			"workflowtest: child definition %s@%s quarantined: %s %s",
+			child.DefinitionName,
+			child.DefinitionVersion,
+			childResult.ErrorCode,
+			childResult.ErrorMessage,
+		)
+	}
+	terminalChildRunID := childSim.engineRun.ID
 	status, runStatus := childStatuses(childResult.Status)
 	code := childResult.ErrorCode
 	message := childResult.ErrorMessage
@@ -348,7 +389,7 @@ func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining in
 		ChildInstanceID:            childInstanceID,
 		ChildInstanceKey:           child.ChildInstanceKey,
 		CurrentChildRunID:          childRunID,
-		TerminalChildRunID:         pgtype.UUID{Bytes: childRunID, Valid: true},
+		TerminalChildRunID:         pgtype.UUID{Bytes: terminalChildRunID, Valid: true},
 		RootRunID:                  s.engineRun.RootRunID,
 		ChildDepth:                 s.engineRun.ChildDepth + 1,
 		Status:                     status,
@@ -357,13 +398,13 @@ func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining in
 		TerminalLastErrorMessage:   stringPtr(message),
 		TerminalRunStatus:          enginedb.NullEngineRunLifecycleStatus{EngineRunLifecycleStatus: runStatus, Valid: true},
 	})
-	return true, nil
+	return true, nil, nil
 }
 
 func (s *simulation) appendEvents(nextSequence int32, events []internalworkflow.SimEvent) {
 	seq := nextSequence
 	for _, event := range events {
-		s.history = append(s.history, s.historyRow(seq, event.EventType, normalizeEventPayload(event.EventType, event.Payload)))
+		s.history = append(s.history, s.historyRow(seq, event.EventType, event.Payload))
 		seq++
 	}
 }
@@ -485,25 +526,6 @@ func cloneRaw(raw json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), raw...)
-}
-
-func normalizeEventPayload(eventType string, payload json.RawMessage) json.RawMessage {
-	if eventType != history.EventActivityScheduled && eventType != history.EventChildWorkflowScheduled {
-		return payload
-	}
-	var value map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &value); err != nil {
-		return payload
-	}
-	if string(value["input"]) != "null" {
-		return payload
-	}
-	delete(value, "input")
-	normalized, err := json.Marshal(value)
-	if err != nil {
-		return payload
-	}
-	return normalized
 }
 
 func stringPtr(value string) *string {

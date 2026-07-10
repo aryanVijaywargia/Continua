@@ -141,7 +141,7 @@ func TestRetryHandledDemoKit(t *testing.T) {
 	}
 }
 
-func lookupDefinition(t *testing.T, name, version string) workflow.Definition {
+func lookupDefinition(t *testing.T, name, version string) workflow.Definition { //nolint:unparam // all dark-launch demo definitions are v1 today
 	t.Helper()
 	for _, def := range darklaunch.Definitions() {
 		if def.Name == name && def.Version == version {
