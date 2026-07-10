@@ -20,10 +20,10 @@ import (
 )
 
 func TestStartEngineRun_RejectsDisabledDefinition(t *testing.T) {
-	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	deleteDefinitionCatalogEntry(ctx, t, engineQueries, "checkout", "v1")
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
-	disableDefinitionCatalogEntry(ctx, t, platformStore, "checkout", "v1")
+	disableDefinitionCatalogEntry(ctx, t, engineQueries, "checkout", "v1")
 	instanceKey := "disabled-definition-" + uuid.NewString()
 
 	rec := invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
@@ -39,10 +39,10 @@ func TestStartEngineRun_RejectsDisabledDefinition(t *testing.T) {
 }
 
 func TestStartEngineRun_RejectsStaleDefinition(t *testing.T) {
-	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	deleteDefinitionCatalogEntry(ctx, t, engineQueries, "checkout", "v1")
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
-	backdateDefinitionCatalogEntry(ctx, t, platformStore, "checkout", "v1")
+	backdateDefinitionCatalogEntry(ctx, t, engineQueries, "checkout", "v1")
 	instanceKey := "stale-definition-" + uuid.NewString()
 
 	rec := invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
@@ -106,8 +106,8 @@ func TestListEngineDefinitions_ReportsLiveness(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
-	backdateDefinitionCatalogEntry(ctx, t, platformStore, staleName, "v1")
-	disableDefinitionCatalogEntry(ctx, t, platformStore, disabledName, "v2")
+	backdateDefinitionCatalogEntry(ctx, t, engineQueries, staleName, "v1")
+	disableDefinitionCatalogEntry(ctx, t, engineQueries, disabledName, "v2")
 
 	handler := newAuthenticatedRouter(t, server, platformStore)
 	req := httptest.NewRequest(http.MethodGet, "/v1/engine/definitions", nil)
@@ -192,39 +192,36 @@ func requireEngineDefinitionEntry(
 func disableDefinitionCatalogEntry(
 	ctx context.Context,
 	t *testing.T,
-	platformStore *store.Store,
+	engineQueries *enginedb.Queries,
 	definitionName string,
 	definitionVersion string,
 ) {
 	t.Helper()
 
-	tag, err := platformStore.Pool().Exec(ctx, `
-		UPDATE engine.definition_catalog
-		SET enabled = false
-		WHERE definition_name = $1
-		  AND definition_version = $2
-	`, definitionName, definitionVersion)
+	affected, err := engineQueries.SetDefinitionCatalogEnabled(ctx, enginedb.SetDefinitionCatalogEnabledParams{
+		DefinitionName:    definitionName,
+		DefinitionVersion: definitionVersion,
+		Enabled:           false,
+	})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, tag.RowsAffected())
+	require.EqualValues(t, 1, affected)
 }
 
 func backdateDefinitionCatalogEntry(
 	ctx context.Context,
 	t *testing.T,
-	platformStore *store.Store,
+	engineQueries *enginedb.Queries,
 	definitionName string,
 	definitionVersion string,
 ) {
 	t.Helper()
 
-	tag, err := platformStore.Pool().Exec(ctx, `
-		UPDATE engine.definition_catalog
-		SET runtime_published_at = NOW() - INTERVAL '10 minutes'
-		WHERE definition_name = $1
-		  AND definition_version = $2
-	`, definitionName, definitionVersion)
+	_, err := engineQueries.SetDefinitionCatalogRuntimePublishedAt(ctx, enginedb.SetDefinitionCatalogRuntimePublishedAtParams{
+		DefinitionName:     definitionName,
+		DefinitionVersion:  definitionVersion,
+		RuntimePublishedAt: time.Now().Add(-10 * time.Minute),
+	})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, tag.RowsAffected())
 }
 
 func requireNoEngineInstance(

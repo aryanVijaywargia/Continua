@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 )
@@ -29,6 +30,20 @@ func (o *storeOps) TouchDefinitionCatalogEntry(
 	arg enginedb.TouchDefinitionCatalogEntryParams,
 ) (int64, error) {
 	return o.q.TouchDefinitionCatalogEntry(ctx, arg)
+}
+
+func (o *storeOps) SetDefinitionCatalogRuntimePublishedAt(
+	ctx context.Context,
+	arg enginedb.SetDefinitionCatalogRuntimePublishedAtParams,
+) (time.Time, error) {
+	return mapResult(o.q.SetDefinitionCatalogRuntimePublishedAt(ctx, arg))
+}
+
+func (o *storeOps) SetDefinitionCatalogEnabled(
+	ctx context.Context,
+	arg enginedb.SetDefinitionCatalogEnabledParams,
+) (int64, error) {
+	return o.q.SetDefinitionCatalogEnabled(ctx, arg)
 }
 
 func (o *storeOps) DeleteDefinitionCatalogEntry(

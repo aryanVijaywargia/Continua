@@ -117,14 +117,11 @@ func backdatePublishedRuntime(
 ) time.Time {
 	t.Helper()
 
-	var backdated time.Time
-	err := db.Pool.QueryRow(ctx, `
-		UPDATE engine.definition_catalog
-		SET runtime_published_at = NOW() - INTERVAL '10 minutes'
-		WHERE definition_name = $1
-		  AND definition_version = $2
-		RETURNING runtime_published_at
-	`, definitionName, definitionVersion).Scan(&backdated)
+	backdated, err := enginedb.New(db.Pool).SetDefinitionCatalogRuntimePublishedAt(ctx, enginedb.SetDefinitionCatalogRuntimePublishedAtParams{
+		DefinitionName:     definitionName,
+		DefinitionVersion:  definitionVersion,
+		RuntimePublishedAt: time.Now().Add(-10 * time.Minute),
+	})
 	if err != nil {
 		t.Fatalf("backdate definition catalog runtime: %v", err)
 	}
@@ -141,17 +138,16 @@ func setPublishedDefinitionEnabled(
 ) {
 	t.Helper()
 
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE engine.definition_catalog
-		SET enabled = $3
-		WHERE definition_name = $1
-		  AND definition_version = $2
-	`, definitionName, definitionVersion, enabled)
+	affected, err := enginedb.New(db.Pool).SetDefinitionCatalogEnabled(ctx, enginedb.SetDefinitionCatalogEnabledParams{
+		DefinitionName:    definitionName,
+		DefinitionVersion: definitionVersion,
+		Enabled:           enabled,
+	})
 	if err != nil {
 		t.Fatalf("set definition catalog enabled: %v", err)
 	}
-	if tag.RowsAffected() != 1 {
-		t.Fatalf("expected to update 1 definition catalog row, updated %d", tag.RowsAffected())
+	if affected != 1 {
+		t.Fatalf("expected to update 1 definition catalog row, updated %d", affected)
 	}
 }
 

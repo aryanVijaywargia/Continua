@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"time"
 )
 
 const deleteDefinitionCatalogEntry = `-- name: DeleteDefinitionCatalogEntry :execrows
@@ -85,6 +86,50 @@ func (q *Queries) ListDefinitionCatalog(ctx context.Context) ([]EngineDefinition
 		return nil, err
 	}
 	return items, nil
+}
+
+const setDefinitionCatalogEnabled = `-- name: SetDefinitionCatalogEnabled :execrows
+UPDATE engine.definition_catalog
+SET enabled = $3,
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2
+`
+
+type SetDefinitionCatalogEnabledParams struct {
+	DefinitionName    string `json:"definition_name"`
+	DefinitionVersion string `json:"definition_version"`
+	Enabled           bool   `json:"enabled"`
+}
+
+func (q *Queries) SetDefinitionCatalogEnabled(ctx context.Context, arg SetDefinitionCatalogEnabledParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setDefinitionCatalogEnabled, arg.DefinitionName, arg.DefinitionVersion, arg.Enabled)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setDefinitionCatalogRuntimePublishedAt = `-- name: SetDefinitionCatalogRuntimePublishedAt :one
+UPDATE engine.definition_catalog
+SET runtime_published_at = $3,
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2
+RETURNING runtime_published_at
+`
+
+type SetDefinitionCatalogRuntimePublishedAtParams struct {
+	DefinitionName     string    `json:"definition_name"`
+	DefinitionVersion  string    `json:"definition_version"`
+	RuntimePublishedAt time.Time `json:"runtime_published_at"`
+}
+
+func (q *Queries) SetDefinitionCatalogRuntimePublishedAt(ctx context.Context, arg SetDefinitionCatalogRuntimePublishedAtParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, setDefinitionCatalogRuntimePublishedAt, arg.DefinitionName, arg.DefinitionVersion, arg.RuntimePublishedAt)
+	var runtime_published_at time.Time
+	err := row.Scan(&runtime_published_at)
+	return runtime_published_at, err
 }
 
 const touchDefinitionCatalogEntry = `-- name: TouchDefinitionCatalogEntry :execrows

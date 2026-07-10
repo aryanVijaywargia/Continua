@@ -27,6 +27,21 @@ SET runtime_published_at = NOW(),
 WHERE definition_name = $1
   AND definition_version = $2;
 
+-- name: SetDefinitionCatalogRuntimePublishedAt :one
+UPDATE engine.definition_catalog
+SET runtime_published_at = $3,
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2
+RETURNING runtime_published_at;
+
+-- name: SetDefinitionCatalogEnabled :execrows
+UPDATE engine.definition_catalog
+SET enabled = $3,
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2;
+
 -- name: DeleteDefinitionCatalogEntry :execrows
 DELETE FROM engine.definition_catalog
 WHERE definition_name = $1
