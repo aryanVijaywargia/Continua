@@ -463,6 +463,21 @@ type EngineControlResponse struct {
 	WakeApplied bool               `json:"wake_applied"`
 }
 
+// EngineDefinition defines model for EngineDefinition.
+type EngineDefinition struct {
+	DefinitionName     string    `json:"definition_name"`
+	DefinitionVersion  string    `json:"definition_version"`
+	Enabled            bool      `json:"enabled"`
+	Live               bool      `json:"live"`
+	PublishedAt        time.Time `json:"published_at"`
+	RuntimePublishedAt time.Time `json:"runtime_published_at"`
+}
+
+// EngineDefinitionListResponse defines model for EngineDefinitionListResponse.
+type EngineDefinitionListResponse struct {
+	Definitions []EngineDefinition `json:"definitions"`
+}
+
 // EngineFailureSummary defines model for EngineFailureSummary.
 type EngineFailureSummary struct {
 	// ErrorCode Stable reserved value: `definition_version_mismatch`. Clients may
@@ -1782,6 +1797,9 @@ type ServerInterface interface {
 	// Renew a remote activity task lease
 	// (POST /v1/engine/activities/{id}/heartbeat)
 	HeartbeatRemoteActivityTask(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params HeartbeatRemoteActivityTaskParams)
+	// List registered engine workflow definitions
+	// (GET /v1/engine/definitions)
+	ListEngineDefinitions(w http.ResponseWriter, r *http.Request)
 	// Get an engine instance and current run
 	// (GET /v1/engine/instances/{instance_key})
 	GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string)
@@ -1941,6 +1959,12 @@ func (_ Unimplemented) FailRemoteActivityTask(w http.ResponseWriter, r *http.Req
 // Renew a remote activity task lease
 // (POST /v1/engine/activities/{id}/heartbeat)
 func (_ Unimplemented) HeartbeatRemoteActivityTask(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params HeartbeatRemoteActivityTaskParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List registered engine workflow definitions
+// (GET /v1/engine/definitions)
+func (_ Unimplemented) ListEngineDefinitions(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3045,6 +3069,28 @@ func (siw *ServerInterfaceWrapper) HeartbeatRemoteActivityTask(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// ListEngineDefinitions operation middleware
+func (siw *ServerInterfaceWrapper) ListEngineDefinitions(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEngineDefinitions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEngineInstance operation middleware
 func (siw *ServerInterfaceWrapper) GetEngineInstance(w http.ResponseWriter, r *http.Request) {
 
@@ -4011,6 +4057,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/engine/activities/{id}/heartbeat", wrapper.HeartbeatRemoteActivityTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/engine/definitions", wrapper.ListEngineDefinitions)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/engine/instances/{instance_key}", wrapper.GetEngineInstance)

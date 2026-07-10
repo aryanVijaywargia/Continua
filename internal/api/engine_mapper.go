@@ -127,6 +127,27 @@ func engineHistoryEventToAPI(event *enginedb.EngineHistory) EngineHistoryEvent {
 	}
 }
 
+func engineDefinitionListResponseToAPI(definitions []engineDefinitionCatalogResult) EngineDefinitionListResponse {
+	response := EngineDefinitionListResponse{
+		Definitions: make([]EngineDefinition, 0, len(definitions)),
+	}
+	for i := range definitions {
+		response.Definitions = append(response.Definitions, engineDefinitionToAPI(&definitions[i]))
+	}
+	return response
+}
+
+func engineDefinitionToAPI(definition *engineDefinitionCatalogResult) EngineDefinition {
+	return EngineDefinition{
+		DefinitionName:     definition.Entry.DefinitionName,
+		DefinitionVersion:  definition.Entry.DefinitionVersion,
+		Enabled:            definition.Entry.Enabled,
+		Live:               definition.Live,
+		PublishedAt:        definition.Entry.PublishedAt,
+		RuntimePublishedAt: definition.Entry.RuntimePublishedAt,
+	}
+}
+
 func engineControlResponseToAPI(result *engineControlResult) EngineControlResponse {
 	return EngineControlResponse{
 		Accepted:    result.Accepted,

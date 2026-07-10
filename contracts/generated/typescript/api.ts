@@ -47,6 +47,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/engine/definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List registered engine workflow definitions */
+        get: operations["listEngineDefinitions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/engine/runs": {
         parameters: {
             query?: never;
@@ -928,6 +945,19 @@ export interface components {
             instance_key: string;
             trace_id: string;
         };
+        EngineDefinition: {
+            definition_name: string;
+            definition_version: string;
+            enabled: boolean;
+            live: boolean;
+            /** Format: date-time */
+            runtime_published_at: string;
+            /** Format: date-time */
+            published_at: string;
+        };
+        EngineDefinitionListResponse: {
+            definitions: components["schemas"]["EngineDefinition"][];
+        };
         EngineInstanceResponse: {
             /** Format: uuid */
             instance_id: string;
@@ -1583,6 +1613,44 @@ export interface operations {
                 };
             };
             /** @description Batch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listEngineDefinitions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Engine definition catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineDefinitionListResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Engine API disabled */
             404: {
                 headers: {
                     [name: string]: unknown;

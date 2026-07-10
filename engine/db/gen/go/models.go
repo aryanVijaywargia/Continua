@@ -339,10 +339,12 @@ type EngineChildWorkflow struct {
 }
 
 type EngineDefinitionCatalog struct {
-	DefinitionName    string    `json:"definition_name"`
-	DefinitionVersion string    `json:"definition_version"`
-	PublishedAt       time.Time `json:"published_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	DefinitionName     string    `json:"definition_name"`
+	DefinitionVersion  string    `json:"definition_version"`
+	PublishedAt        time.Time `json:"published_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	RuntimePublishedAt time.Time `json:"runtime_published_at"`
+	Enabled            bool      `json:"enabled"`
 }
 
 type EngineHistory struct {

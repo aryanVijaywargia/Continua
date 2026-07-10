@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"time"
 )
 
 const deleteDefinitionCatalogEntry = `-- name: DeleteDefinitionCatalogEntry :execrows
@@ -29,7 +30,7 @@ func (q *Queries) DeleteDefinitionCatalogEntry(ctx context.Context, arg DeleteDe
 }
 
 const getDefinitionCatalogEntry = `-- name: GetDefinitionCatalogEntry :one
-SELECT definition_name, definition_version, published_at, updated_at
+SELECT definition_name, definition_version, published_at, updated_at, runtime_published_at, enabled
 FROM engine.definition_catalog
 WHERE definition_name = $1
   AND definition_version = $2
@@ -48,12 +49,14 @@ func (q *Queries) GetDefinitionCatalogEntry(ctx context.Context, arg GetDefiniti
 		&i.DefinitionVersion,
 		&i.PublishedAt,
 		&i.UpdatedAt,
+		&i.RuntimePublishedAt,
+		&i.Enabled,
 	)
 	return i, err
 }
 
 const listDefinitionCatalog = `-- name: ListDefinitionCatalog :many
-SELECT definition_name, definition_version, published_at, updated_at
+SELECT definition_name, definition_version, published_at, updated_at, runtime_published_at, enabled
 FROM engine.definition_catalog
 ORDER BY definition_name ASC, definition_version ASC
 `
@@ -72,6 +75,8 @@ func (q *Queries) ListDefinitionCatalog(ctx context.Context) ([]EngineDefinition
 			&i.DefinitionVersion,
 			&i.PublishedAt,
 			&i.UpdatedAt,
+			&i.RuntimePublishedAt,
+			&i.Enabled,
 		); err != nil {
 			return nil, err
 		}
@@ -83,6 +88,71 @@ func (q *Queries) ListDefinitionCatalog(ctx context.Context) ([]EngineDefinition
 	return items, nil
 }
 
+const setDefinitionCatalogEnabled = `-- name: SetDefinitionCatalogEnabled :execrows
+UPDATE engine.definition_catalog
+SET enabled = $3,
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2
+`
+
+type SetDefinitionCatalogEnabledParams struct {
+	DefinitionName    string `json:"definition_name"`
+	DefinitionVersion string `json:"definition_version"`
+	Enabled           bool   `json:"enabled"`
+}
+
+func (q *Queries) SetDefinitionCatalogEnabled(ctx context.Context, arg SetDefinitionCatalogEnabledParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setDefinitionCatalogEnabled, arg.DefinitionName, arg.DefinitionVersion, arg.Enabled)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setDefinitionCatalogRuntimePublishedAt = `-- name: SetDefinitionCatalogRuntimePublishedAt :one
+UPDATE engine.definition_catalog
+SET runtime_published_at = $3,
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2
+RETURNING runtime_published_at
+`
+
+type SetDefinitionCatalogRuntimePublishedAtParams struct {
+	DefinitionName     string    `json:"definition_name"`
+	DefinitionVersion  string    `json:"definition_version"`
+	RuntimePublishedAt time.Time `json:"runtime_published_at"`
+}
+
+func (q *Queries) SetDefinitionCatalogRuntimePublishedAt(ctx context.Context, arg SetDefinitionCatalogRuntimePublishedAtParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, setDefinitionCatalogRuntimePublishedAt, arg.DefinitionName, arg.DefinitionVersion, arg.RuntimePublishedAt)
+	var runtime_published_at time.Time
+	err := row.Scan(&runtime_published_at)
+	return runtime_published_at, err
+}
+
+const touchDefinitionCatalogEntry = `-- name: TouchDefinitionCatalogEntry :execrows
+UPDATE engine.definition_catalog
+SET runtime_published_at = NOW(),
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2
+`
+
+type TouchDefinitionCatalogEntryParams struct {
+	DefinitionName    string `json:"definition_name"`
+	DefinitionVersion string `json:"definition_version"`
+}
+
+func (q *Queries) TouchDefinitionCatalogEntry(ctx context.Context, arg TouchDefinitionCatalogEntryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, touchDefinitionCatalogEntry, arg.DefinitionName, arg.DefinitionVersion)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upsertDefinitionCatalogEntry = `-- name: UpsertDefinitionCatalogEntry :one
 INSERT INTO engine.definition_catalog (
     definition_name,
@@ -90,8 +160,9 @@ INSERT INTO engine.definition_catalog (
 )
 VALUES ($1, $2)
 ON CONFLICT (definition_name, definition_version) DO UPDATE SET
+    runtime_published_at = NOW(),
     updated_at = NOW()
-RETURNING definition_name, definition_version, published_at, updated_at
+RETURNING definition_name, definition_version, published_at, updated_at, runtime_published_at, enabled
 `
 
 type UpsertDefinitionCatalogEntryParams struct {
@@ -107,6 +178,8 @@ func (q *Queries) UpsertDefinitionCatalogEntry(ctx context.Context, arg UpsertDe
 		&i.DefinitionVersion,
 		&i.PublishedAt,
 		&i.UpdatedAt,
+		&i.RuntimePublishedAt,
+		&i.Enabled,
 	)
 	return i, err
 }

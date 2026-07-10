@@ -131,6 +131,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return engineworker.RunLoop(groupCtx, cfg.Runtime.MaintenancePollInterval, "maintenance", maintenanceWorker.PollOnce)
 	})
 	group.Go(func() error {
+		return engineworker.RunLoop(groupCtx, cfg.Runtime.MaintenancePollInterval, "catalog-heartbeat", func(ctx context.Context, _ string) error {
+			return catalog.HeartbeatStoreDefinitions(ctx, store, r.definitions.List())
+		})
+	})
+	group.Go(func() error {
 		return engineworker.RunLoop(groupCtx, cfg.Runtime.WorkflowPollInterval, "projector", projectorWorker.PollOnce)
 	})
 

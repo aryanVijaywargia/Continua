@@ -5,6 +5,7 @@ INSERT INTO engine.definition_catalog (
 )
 VALUES ($1, $2)
 ON CONFLICT (definition_name, definition_version) DO UPDATE SET
+    runtime_published_at = NOW(),
     updated_at = NOW()
 RETURNING *;
 
@@ -18,6 +19,28 @@ WHERE definition_name = $1
 SELECT *
 FROM engine.definition_catalog
 ORDER BY definition_name ASC, definition_version ASC;
+
+-- name: TouchDefinitionCatalogEntry :execrows
+UPDATE engine.definition_catalog
+SET runtime_published_at = NOW(),
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2;
+
+-- name: SetDefinitionCatalogRuntimePublishedAt :one
+UPDATE engine.definition_catalog
+SET runtime_published_at = $3,
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2
+RETURNING runtime_published_at;
+
+-- name: SetDefinitionCatalogEnabled :execrows
+UPDATE engine.definition_catalog
+SET enabled = $3,
+    updated_at = NOW()
+WHERE definition_name = $1
+  AND definition_version = $2;
 
 -- name: DeleteDefinitionCatalogEntry :execrows
 DELETE FROM engine.definition_catalog
