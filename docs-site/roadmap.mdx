@@ -46,9 +46,8 @@ The `continua-engine` worker runtime executes **Go-defined** workflows end-to-en
 Preview caveats:
 
 - **Go-only authoring**: no TypeScript/Python SDK for authoring workflows yet.
-- **No production definition loading**: definitions register through a built-in
-  dark-launch harness against a fixed demo project; there's no multi-tenant
-  register-and-version path yet.
+- **No production definition loading**: definitions register through the Go runtime that
+  starts workers; there's no multi-tenant register-and-version path yet.
 - **Preview-gated REST**: `/v1/engine/*` requires `X-Continua-Engine-Preview` +
   `ENGINE_PUBLIC_API_ENABLED`, and shapes may change before GA.
 

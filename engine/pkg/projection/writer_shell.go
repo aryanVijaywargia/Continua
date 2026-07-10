@@ -1,6 +1,6 @@
 // writer_shell.go holds the Writer methods that create projected trace shells:
 // the initial trace+root-span pair for new runs, continuations, and child
-// workflows, plus the dark-launch CLI bootstrap shell.
+// workflows, plus start-path shells.
 package projection
 
 import (
@@ -204,10 +204,9 @@ func (w *Writer) CreateTraceShell(
 	return nil
 }
 
-// EnsureDarkLaunchShell bootstraps the fixed dark-launch demo project and a
-// projected shell for a CLI-started run. Dark-launch shells are best-effort;
-// see requireProjectedRow for the matching tolerance rule on later writes.
-func (w *Writer) EnsureDarkLaunchShell(
+// EnsureStartShell creates the projected shell for a started run. Start paths
+// create shells transactionally; the platform project row must already exist.
+func (w *Writer) EnsureStartShell(
 	ctx context.Context,
 	instance *enginedb.EngineInstance,
 	run *enginedb.EngineRun,
@@ -221,13 +220,6 @@ func (w *Writer) EnsureDarkLaunchShell(
 	}
 
 	now := time.Now()
-	if _, err := w.tx.Exec(ctx, `
-		INSERT INTO public.projects (id, name, api_key_hash)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (id) DO NOTHING
-	`, DarkLaunchProjectID, "Engine Dark Launch", "engine-dark-launch"); err != nil {
-		return err
-	}
 
 	traceID := TraceExternalID(run.ID)
 	traceUUID := uuid.New()
@@ -280,7 +272,7 @@ func (w *Writer) EnsureDarkLaunchShell(
 		    $12,
 		    $6::timestamptz
 		)
-	`, traceUUID, DarkLaunchProjectID, traceID, definitionName, cloneRaw(input), now, run.ID, instance.InstanceKey, definitionName, definitionVersion, run.ID, startedHistoryID); err != nil {
+	`, traceUUID, run.ProjectID, traceID, definitionName, cloneRaw(input), now, run.ID, instance.InstanceKey, definitionName, definitionVersion, run.ID, startedHistoryID); err != nil {
 		return err
 	}
 
@@ -298,7 +290,7 @@ func (w *Writer) EnsureDarkLaunchShell(
 		    depth
 		)
 		VALUES ($1, $2, $3, $4, 'chain', 'running', 'default', $5::timestamptz, $6::jsonb, 0)
-	`, DarkLaunchProjectID, traceUUID, RootSpanExternalID(run.ID), definitionName, now, cloneRaw(input))
+	`, run.ProjectID, traceUUID, RootSpanExternalID(run.ID), definitionName, now, cloneRaw(input))
 	return spanErr
 }
 

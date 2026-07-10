@@ -21,7 +21,7 @@ The engine module ships a working durable runtime:
 What is still **preview / not yet there**:
 
 - workflow authoring is Go-only — no TypeScript/Python authoring SDK
-- no production path to register arbitrary user workflow definitions (the dark-launch runtime runs a fixed demo project)
+- no production path to register arbitrary user workflow definitions (the dark-launch CLI still ships a fixed demo registry)
 - the public `/v1/engine/*` REST control plane is gated behind `X-Continua-Engine-Preview` + `ENGINE_PUBLIC_API_ENABLED`
 
 ## Activity Leases
@@ -75,7 +75,7 @@ bin/continua-engine version
 bin/continua-engine migrate up
 bin/continua-engine migrate down 1
 
-# durable runtime (dark-launch demo project)
+# durable runtime (dark-launch demo registry)
 bin/continua-engine serve                                   # run workflow + activity + maintenance + projector workers
 bin/continua-engine start  --instance-key <k> --definition <name> --version <v> --request-key <r> [--input <json>]
 bin/continua-engine signal --instance-key <k> --signal-name <s> [--payload <json>]
@@ -87,6 +87,9 @@ Database config is env-only:
 
 - `ENGINE_DATABASE_URL` overrides `DATABASE_URL`
 - `DATABASE_URL` is the fallback when no engine-specific URL is set
+- `ENGINE_PROJECT_ID` scopes `serve` to an existing platform project; startup fails if
+  that project row is missing. The dark-launch `start` command bootstraps only its local
+  demo project row for CLI demo runs.
 
 ## Schema Overview
 

@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/migrations"
 	"github.com/continua-ai/continua/engine/pkg/projection"
 )
@@ -26,9 +28,8 @@ import (
 // as a built-in function.
 const DefaultTestDatabaseURL = "postgres://continua:continua@localhost:5432/continua_test?sslmode=disable"
 
-// DefaultPlatformProjectID aliases the dark-launch demo project owned by the
-// projection writer, which most engine fixtures seed as their platform project.
-var DefaultPlatformProjectID = projection.DarkLaunchProjectID
+// DefaultPlatformProjectID is the shared platform project most engine fixtures seed.
+var DefaultPlatformProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 // TestDatabase is an isolated Postgres database prepared with both platform and
 // engine migrations.
@@ -149,6 +150,37 @@ func EnsurePlatformProject(t *testing.T, pool *pgxpool.Pool, projectID uuid.UUID
 	}
 }
 
+// SeedProjectionShell creates the platform trace/root-span shell expected by
+// strict projection writes.
+func SeedProjectionShell(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	instance *enginedb.EngineInstance,
+	run *enginedb.EngineRun,
+	definitionName string,
+	definitionVersion string,
+	input json.RawMessage,
+	startedHistoryID int64,
+) {
+	t.Helper()
+
+	ctx := context.Background()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin seed projection shell tx: %v", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	if err := projection.NewWriter(tx).EnsureStartShell(ctx, instance, run, definitionName, definitionVersion, input, startedHistoryID); err != nil {
+		t.Fatalf("seed projection shell: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit seed projection shell tx: %v", err)
+	}
+}
+
 func testDatabaseURL() string {
 	if value := os.Getenv("ENGINE_TEST_DATABASE_URL"); value != "" {
 		return value
@@ -189,6 +221,8 @@ func dropDatabase(ctx context.Context, adminPool *pgxpool.Pool, databaseName str
 		FROM pg_stat_activity
 		WHERE datname = $1
 		  AND pid <> pg_backend_pid()
+		  AND usename = current_user
+		  AND backend_type = 'client backend'
 	`, databaseName); err != nil {
 		return fmt.Errorf("terminate active connections: %w", err)
 	}

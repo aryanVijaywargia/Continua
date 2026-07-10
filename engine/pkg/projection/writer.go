@@ -1,6 +1,6 @@
 // writer.go holds the projection Writer: the single owner of every engine-run
-// write into the platform debugger tables (public.traces, public.spans,
-// public.span_events, and the dark-launch bootstrap row in public.projects).
+// write into the platform debugger tables (public.traces, public.spans, and
+// public.span_events).
 //
 // The Writer sits at the engine→platform seam and has exactly two adapters:
 //
@@ -39,12 +39,6 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 )
-
-// DarkLaunchProjectID is the fixed demo project used by the engine's
-// dark-launch runtime. Projected debugger shells for this project are
-// best-effort: the dark-launch CLI may execute runs whose shells were never
-// created, so guarded writes tolerate missing rows for this project only.
-var DarkLaunchProjectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 // Sentinel errors surfaced by Writer reads that guard writes.
 var (
@@ -97,12 +91,10 @@ func NewWriter(tx pgx.Tx) *Writer {
 	return &Writer{tx: tx}
 }
 
-// requireProjectedRow is the single statement of the dark-launch tolerance
-// rule: a guarded projection write must match an existing projected row,
-// except for runs in the fixed dark-launch demo project, whose shells are
-// best-effort and may legitimately be absent.
-func requireProjectedRow(tag pgconn.CommandTag, projectID uuid.UUID, missing func() error) error {
-	if tag.RowsAffected() == 0 && projectID != DarkLaunchProjectID {
+// requireProjectedRow ensures a guarded projection write matched an existing
+// projected row.
+func requireProjectedRow(tag pgconn.CommandTag, missing func() error) error {
+	if tag.RowsAffected() == 0 {
 		return missing()
 	}
 	return nil
@@ -176,7 +168,7 @@ func (w *Writer) UpdateLatestHistory(
 	if err != nil {
 		return err
 	}
-	return requireProjectedRow(commandTag, projectID, func() error {
+	return requireProjectedRow(commandTag, func() error {
 		return fmt.Errorf("projected trace not found for run %s", runID)
 	})
 }
@@ -222,7 +214,7 @@ func (w *Writer) WriteTerminalSummary(
 	if err != nil {
 		return err
 	}
-	if err := requireProjectedRow(commandTag, projectID, func() error {
+	if err := requireProjectedRow(commandTag, func() error {
 		return fmt.Errorf("projected trace not found for run %s", runID)
 	}); err != nil {
 		return err
@@ -251,7 +243,7 @@ func (w *Writer) WriteTerminalSummary(
 	if err != nil {
 		return err
 	}
-	return requireProjectedRow(commandTag, projectID, func() error {
+	return requireProjectedRow(commandTag, func() error {
 		return fmt.Errorf("projected root span not found for run %s", runID)
 	})
 }
@@ -289,7 +281,7 @@ func (w *Writer) SyncRunSummary(ctx context.Context, run *enginedb.EngineRun) er
 	if err != nil {
 		return err
 	}
-	return requireProjectedRow(commandTag, run.ProjectID, func() error {
+	return requireProjectedRow(commandTag, func() error {
 		return fmt.Errorf("projected trace not found for run %s", run.ID)
 	})
 }
@@ -329,7 +321,7 @@ func (w *Writer) WriteTerminalProjection(
 	if err != nil {
 		return err
 	}
-	if err := requireProjectedRow(commandTag, ref.ProjectID, func() error {
+	if err := requireProjectedRow(commandTag, func() error {
 		return fmt.Errorf("projected trace not found for run %s", ref.RunID)
 	}); err != nil {
 		return err
@@ -400,7 +392,7 @@ func (w *Writer) upsertTerminalRootSpan(
 	if err != nil {
 		return err
 	}
-	return requireProjectedRow(commandTag, ref.ProjectID, func() error {
+	return requireProjectedRow(commandTag, func() error {
 		return fmt.Errorf("projected trace not found for run %s", ref.RunID)
 	})
 }

@@ -107,7 +107,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	projectIDFilter, err := uuidFromEnv("CONTINUA_ENGINE_TEST_PROJECT_FILTER")
+	projectIDFilter, err := runtimeProjectIDFromEnv()
 	if err != nil {
 		return nil, err
 	}
@@ -135,12 +135,17 @@ func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) 
 	return parsed, nil
 }
 
-func uuidFromEnv(key string) (*uuid.UUID, error) {
-	value := os.Getenv(key)
-	if value == "" {
-		return nil, nil
+func runtimeProjectIDFromEnv() (*uuid.UUID, error) {
+	if value := os.Getenv("ENGINE_PROJECT_ID"); value != "" {
+		return parseUUIDEnv("ENGINE_PROJECT_ID", value)
 	}
+	if value := os.Getenv("CONTINUA_ENGINE_TEST_PROJECT_FILTER"); value != "" {
+		return parseUUIDEnv("CONTINUA_ENGINE_TEST_PROJECT_FILTER", value)
+	}
+	return nil, nil
+}
 
+func parseUUIDEnv(key, value string) (*uuid.UUID, error) {
 	parsed, err := uuid.Parse(value)
 	if err != nil {
 		return nil, errors.New(key + " must be a valid UUID: " + err.Error())
