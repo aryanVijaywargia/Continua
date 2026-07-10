@@ -21,9 +21,9 @@ import (
 
 func TestStartEngineRun_RejectsDisabledDefinition(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	deleteDefinitionCatalogEntry(t, ctx, engineQueries, "checkout", "v1")
+	deleteDefinitionCatalogEntry(ctx, t, engineQueries, "checkout", "v1")
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
-	disableDefinitionCatalogEntry(t, ctx, platformStore, "checkout", "v1")
+	disableDefinitionCatalogEntry(ctx, t, platformStore, "checkout", "v1")
 	instanceKey := "disabled-definition-" + uuid.NewString()
 
 	rec := invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
@@ -35,14 +35,14 @@ func TestStartEngineRun_RejectsDisabledDefinition(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, "definition_not_registered", decodeJSONBody[Error](t, rec).Code)
-	requireNoEngineInstance(t, ctx, engineQueries, projectID, instanceKey)
+	requireNoEngineInstance(ctx, t, engineQueries, projectID, instanceKey)
 }
 
 func TestStartEngineRun_RejectsStaleDefinition(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	deleteDefinitionCatalogEntry(t, ctx, engineQueries, "checkout", "v1")
+	deleteDefinitionCatalogEntry(ctx, t, engineQueries, "checkout", "v1")
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
-	backdateDefinitionCatalogEntry(t, ctx, platformStore, "checkout", "v1")
+	backdateDefinitionCatalogEntry(ctx, t, platformStore, "checkout", "v1")
 	instanceKey := "stale-definition-" + uuid.NewString()
 
 	rec := invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
@@ -54,12 +54,12 @@ func TestStartEngineRun_RejectsStaleDefinition(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, "definition_not_registered", decodeJSONBody[Error](t, rec).Code)
-	requireNoEngineInstance(t, ctx, engineQueries, projectID, instanceKey)
+	requireNoEngineInstance(ctx, t, engineQueries, projectID, instanceKey)
 }
 
 func TestStartEngineRun_AcceptsFreshEnabledDefinition(t *testing.T) {
 	ctx, _, engineQueries, server, projectID := setupEngineHandlerTest(t)
-	deleteDefinitionCatalogEntry(t, ctx, engineQueries, "checkout", "v1")
+	deleteDefinitionCatalogEntry(ctx, t, engineQueries, "checkout", "v1")
 	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
 	instanceKey := "fresh-definition-" + uuid.NewString()
 
@@ -106,8 +106,8 @@ func TestListEngineDefinitions_ReportsLiveness(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
-	backdateDefinitionCatalogEntry(t, ctx, platformStore, staleName, "v1")
-	disableDefinitionCatalogEntry(t, ctx, platformStore, disabledName, "v2")
+	backdateDefinitionCatalogEntry(ctx, t, platformStore, staleName, "v1")
+	disableDefinitionCatalogEntry(ctx, t, platformStore, disabledName, "v2")
 
 	handler := newAuthenticatedRouter(t, server, platformStore)
 	req := httptest.NewRequest(http.MethodGet, "/v1/engine/definitions", nil)
@@ -149,8 +149,8 @@ func TestListEngineDefinitions_ReportsLiveness(t *testing.T) {
 }
 
 func deleteDefinitionCatalogEntry(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	engineQueries *enginedb.Queries,
 	definitionName string,
 	definitionVersion string,
@@ -190,8 +190,8 @@ func requireEngineDefinitionEntry(
 }
 
 func disableDefinitionCatalogEntry(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	platformStore *store.Store,
 	definitionName string,
 	definitionVersion string,
@@ -209,8 +209,8 @@ func disableDefinitionCatalogEntry(
 }
 
 func backdateDefinitionCatalogEntry(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	platformStore *store.Store,
 	definitionName string,
 	definitionVersion string,
@@ -228,8 +228,8 @@ func backdateDefinitionCatalogEntry(
 }
 
 func requireNoEngineInstance(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	engineQueries *enginedb.Queries,
 	projectID uuid.UUID,
 	instanceKey string,
