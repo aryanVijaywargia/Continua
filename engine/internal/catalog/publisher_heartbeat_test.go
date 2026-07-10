@@ -23,15 +23,15 @@ func TestHeartbeatStoreDefinitions_RefreshesAllRegisteredDefinitions(t *testing.
 	if err := PublishDefinitions(ctx, store, definitions); err != nil {
 		t.Fatalf("PublishDefinitions() error = %v", err)
 	}
-	checkoutBackdated := backdatePublishedRuntime(t, db, ctx, "checkout", "v1")
-	shippingBackdated := backdatePublishedRuntime(t, db, ctx, "shipping", "v2")
-	setPublishedDefinitionEnabled(t, db, ctx, "shipping", "v2", false)
+	checkoutBackdated := backdatePublishedRuntime(ctx, t, db, "checkout", "v1")
+	shippingBackdated := backdatePublishedRuntime(ctx, t, db, "shipping", "v2")
+	setPublishedDefinitionEnabled(ctx, t, db, "shipping", "v2", false)
 
 	if err := HeartbeatStoreDefinitions(ctx, store, definitions); err != nil {
 		t.Fatalf("HeartbeatStoreDefinitions() error = %v", err)
 	}
 
-	checkout := getPublishedDefinition(t, db, ctx, "checkout", "v1")
+	checkout := getPublishedDefinition(ctx, t, db, "checkout", "v1")
 	if !checkout.RuntimePublishedAt.After(checkoutBackdated) {
 		t.Fatalf("expected checkout runtime_published_at to refresh after %s, got %s",
 			checkoutBackdated, checkout.RuntimePublishedAt)
@@ -40,7 +40,7 @@ func TestHeartbeatStoreDefinitions_RefreshesAllRegisteredDefinitions(t *testing.
 		t.Fatalf("expected checkout to remain enabled, got %+v", checkout)
 	}
 
-	shipping := getPublishedDefinition(t, db, ctx, "shipping", "v2")
+	shipping := getPublishedDefinition(ctx, t, db, "shipping", "v2")
 	if !shipping.RuntimePublishedAt.After(shippingBackdated) {
 		t.Fatalf("expected shipping runtime_published_at to refresh after %s, got %s",
 			shippingBackdated, shipping.RuntimePublishedAt)
@@ -109,9 +109,9 @@ func heartbeatTestDefinitions(t *testing.T) []publicworkflow.Definition {
 }
 
 func backdatePublishedRuntime(
+	ctx context.Context,
 	t *testing.T,
 	db *enginetest.TestDatabase,
-	ctx context.Context,
 	definitionName string,
 	definitionVersion string,
 ) time.Time {
@@ -132,9 +132,9 @@ func backdatePublishedRuntime(
 }
 
 func setPublishedDefinitionEnabled(
+	ctx context.Context,
 	t *testing.T,
 	db *enginetest.TestDatabase,
-	ctx context.Context,
 	definitionName string,
 	definitionVersion string,
 	enabled bool,
@@ -156,9 +156,9 @@ func setPublishedDefinitionEnabled(
 }
 
 func getPublishedDefinition(
+	ctx context.Context,
 	t *testing.T,
 	db *enginetest.TestDatabase,
-	ctx context.Context,
 	definitionName string,
 	definitionVersion string,
 ) enginedb.EngineDefinitionCatalog {
