@@ -19,7 +19,10 @@ Use `github.com/continua-ai/continua/engine/pkg/runtime` from inside a Go progra
 engine module:
 
 ```go
-projectID := uuid.MustParse(os.Getenv("ENGINE_PROJECT_ID"))
+projectID, err := uuid.Parse(os.Getenv("ENGINE_PROJECT_ID"))
+if err != nil {
+    return fmt.Errorf("parse ENGINE_PROJECT_ID: %w", err)
+}
 rt, err := runtime.New(runtime.Options{
     DatabaseURL: os.Getenv("ENGINE_DATABASE_URL"),
     ProjectID:   &projectID,

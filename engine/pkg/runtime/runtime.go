@@ -97,6 +97,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 	store := enginestore.New(pool)
+	defer func() {
+		store.Close()
+	}()
 	if r.options.ProjectID != nil {
 		exists, err := store.PlatformProjectExists(ctx, *r.options.ProjectID)
 		if err != nil {
@@ -107,7 +110,6 @@ func (r *Runtime) Run(ctx context.Context) error {
 		}
 		store = store.WithProjectFilter(*r.options.ProjectID)
 	}
-	defer store.Close()
 
 	if err := catalog.PublishStoreDefinitions(ctx, store, r.definitions.List()); err != nil {
 		return err

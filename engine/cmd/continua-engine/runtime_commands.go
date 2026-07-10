@@ -158,11 +158,7 @@ func startCmd() *cobra.Command {
 				defer func() {
 					_ = tx.Rollback(ctx)
 				}()
-				if _, err := tx.Tx().Exec(ctx, `
-					INSERT INTO public.projects (id, name, api_key_hash)
-					VALUES ($1, $2, $3)
-					ON CONFLICT (id) DO NOTHING
-				`, darkLaunchProjectID, "Engine Dark Launch", "engine-dark-launch"); err != nil {
+				if err := ensureDarkLaunchProject(ctx, tx); err != nil {
 					return writeJSONError(cmd.OutOrStdout(), "internal_error", err.Error())
 				}
 
@@ -300,6 +296,17 @@ func startCmd() *cobra.Command {
 	cmd.Flags().StringVar(&requestKey, "request-key", "", "Durable request dedupe key")
 	cmd.Flags().StringVar(&input, "input", "", "Optional workflow input as JSON")
 	return cmd
+}
+
+func ensureDarkLaunchProject(ctx context.Context, tx *enginestore.Tx) error {
+	if _, err := tx.Tx().Exec(ctx, `
+		INSERT INTO public.projects (id, name, api_key_hash)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id) DO NOTHING
+	`, darkLaunchProjectID, "Engine Dark Launch", "engine-dark-launch"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func signalCmd() *cobra.Command {

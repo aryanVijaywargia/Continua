@@ -206,6 +206,8 @@ func (w *Writer) CreateTraceShell(
 
 // EnsureStartShell creates the projected shell for a started run. Start paths
 // create shells transactionally; the platform project row must already exist.
+// It is only valid for root-level run starts: it writes a NULL parent run and
+// root_run_id = run.ID. Child and continuation runs must use CreateTraceShell.
 func (w *Writer) EnsureStartShell(
 	ctx context.Context,
 	instance *enginedb.EngineInstance,
