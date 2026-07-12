@@ -116,7 +116,7 @@ type WorkflowVersionMarkerPayload struct {
 type ActivityScheduledPayload struct {
 	ActivityKey  string          `json:"activity_key"`
 	ActivityType string          `json:"activity_type"`
-	Input        json.RawMessage `json:"input"`
+	Input        json.RawMessage `json:"input,omitempty"`
 }
 
 type ActivityCompletedPayload struct {
@@ -145,7 +145,7 @@ type ChildWorkflowScheduledPayload struct {
 	ChildKey          string          `json:"child_key"`
 	DefinitionName    string          `json:"definition_name"`
 	DefinitionVersion string          `json:"definition_version"`
-	Input             json.RawMessage `json:"input"`
+	Input             json.RawMessage `json:"input,omitempty"`
 	ChildInstanceKey  string          `json:"child_instance_key"`
 }
 

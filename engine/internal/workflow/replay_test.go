@@ -70,6 +70,68 @@ func TestReplayDefinitionHappyPath(t *testing.T) {
 	}
 }
 
+func TestReplayDefinitionNilActivityInputRoundTrip(t *testing.T) {
+	historyRows := make([]enginedb.EngineHistory, 0, 2)
+	historyRows = append(historyRows,
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "nil-input",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-1",
+		}),
+	)
+	definition := publicworkflow.Definition{
+		Name:    "nil-input",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var out string
+			if err := ctx.Activity("nil-activity", "demo.nil", nil, &out); err != nil {
+				return err
+			}
+			return ctx.SetResult(out)
+		},
+	}
+
+	firstDecision, err := replayDefinition(definition, historyRows, nil, nil)
+	if err != nil {
+		t.Fatalf("first replayDefinition() error = %v", err)
+	}
+	if firstDecision.Kind != decisionWaiting {
+		t.Fatalf("expected waiting decision, got %+v", firstDecision)
+	}
+	if len(firstDecision.Events) != 1 || firstDecision.Events[0].EventType != enginehistory.EventActivityScheduled {
+		t.Fatalf("expected activity scheduled event, got %+v", firstDecision.Events)
+	}
+
+	historyRows = append(historyRows, enginedb.EngineHistory{
+		SequenceNo: 2,
+		EventType:  firstDecision.Events[0].EventType,
+		Payload:    firstDecision.Events[0].Payload,
+	})
+	output := mustRawJSON(t, "done")
+	activityTasks := []enginedb.EngineActivityTask{{
+		ActivityKey:  "nil-activity",
+		ActivityType: "demo.nil",
+		Output:       output,
+		Status:       enginedb.EngineActivityTaskStatusCompleted,
+	}}
+	secondDecision, err := replayDefinition(definition, historyRows, activityTasks, nil)
+	if err != nil {
+		t.Fatalf("second replayDefinition() error = %v", err)
+	}
+	if secondDecision.Kind != decisionCompleted {
+		t.Fatalf("expected completed decision, got %+v", secondDecision)
+	}
+	if len(secondDecision.Events) != 2 {
+		t.Fatalf("expected activity completed + workflow completed events, got %+v", secondDecision.Events)
+	}
+	if secondDecision.Events[0].EventType != enginehistory.EventActivityCompleted {
+		t.Fatalf("expected activity completed event, got %+v", secondDecision.Events)
+	}
+	if secondDecision.Events[1].EventType != enginehistory.EventWorkflowCompleted {
+		t.Fatalf("expected workflow completed event, got %+v", secondDecision.Events)
+	}
+}
+
 func TestReplayDefinitionChildWorkflowRoundTrip(t *testing.T) {
 	projectID := uuid.New()
 	runID := uuid.New()

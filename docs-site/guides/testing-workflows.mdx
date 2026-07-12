@@ -1,0 +1,119 @@
+---
+title: "Testing workflows"
+description: "Unit test Go workflow definitions in memory with scripted activities, signals, timers, and child workflows."
+---
+
+`github.com/continua-ai/continua/engine/pkg/workflowtest` runs a `workflow.Definition`
+through the same replay runner used by the durable engine, but without Postgres or
+workers. Use it for fast unit tests around workflow logic, deterministic replay, and
+activity or signal handling.
+
+<Warning>
+  The kit is for the preview Go workflow SDK. It does not simulate every production
+  worker behavior: activity retries are not replayed, activities run once, and workflow
+  authoring is Go-only.
+</Warning>
+
+## Example
+
+```go
+package workflows_test
+
+import (
+    "encoding/json"
+    "testing"
+
+    "github.com/continua-ai/continua/engine/pkg/workflow"
+    "github.com/continua-ai/continua/engine/pkg/workflowtest"
+)
+
+func TestGreetingWorkflow(t *testing.T) {
+    def := workflow.Definition{
+        Name:    "examples.greeter",
+        Version: "v1",
+        Run: func(ctx workflow.Context) error {
+            var greeting struct {
+                Message string `json:"message"`
+            }
+            if err := ctx.Activity("greet", "examples.greet", map[string]string{"name": "Ada"}, &greeting); err != nil {
+                return err
+            }
+
+            var approval struct {
+                Value string `json:"value"`
+            }
+            if err := ctx.ReceiveSignal("approval", &approval); err != nil {
+                return err
+            }
+
+            return ctx.SetResult(map[string]string{
+                "message":  greeting.Message,
+                "approval": approval.Value,
+            })
+        },
+    }
+
+    env := workflowtest.NewEnvironment()
+    env.RegisterActivity("examples.greet", func(input json.RawMessage) (any, error) {
+        var decoded map[string]string
+        if err := json.Unmarshal(input, &decoded); err != nil {
+            return nil, err
+        }
+        return map[string]string{"message": "hello, " + decoded["name"]}, nil
+    })
+    if err := env.QueueSignal("approval", map[string]string{"value": "granted"}); err != nil {
+        t.Fatal(err)
+    }
+
+    result, err := env.Execute(def, nil)
+    if err != nil {
+        t.Fatal(err)
+    }
+    if result.Status != workflowtest.StatusCompleted {
+        t.Fatalf("status = %q", result.Status)
+    }
+
+    var out map[string]string
+    if err := result.DecodeResult(&out); err != nil {
+        t.Fatal(err)
+    }
+    if out["approval"] != "granted" {
+        t.Fatalf("approval = %q", out["approval"])
+    }
+}
+```
+
+## Timers
+
+Timers auto-fire. `ctx.Sleep` and `ctx.SleepUntil` schedule a timer, the test kit adds
+the matching timer inbox item, and the next activation observes the fired timer without
+waiting for wall-clock time.
+
+## Cancellation
+
+Call `env.RequestCancellation()` before `Execute` to enqueue a cancellation request
+after any queued signals. A workflow that returns `workflow.ErrCancelled` finishes with
+`workflowtest.StatusCancelled`; a workflow that observes cancellation and returns nil
+or sets a result can still complete.
+
+## Child workflows
+
+Register child definitions with `env.RegisterDefinition`. Children share the same
+activity handlers and child definition registry, but they do not inherit the parent's
+queued signals or cancellation request. If a child definition is not registered, the
+parent result is `workflowtest.StatusBlocked` with a child-workflow wait key.
+
+## Determinism
+
+The kit records side effects, time reads, scheduled activities, timers, signals, and
+child workflows in history, then replays through the real runner on later activations.
+`ctx.SideEffect` functions run once, and `ctx.Now()` returns the recorded time across
+activations. If workflow code diverges from recorded history, the result is
+`workflowtest.StatusQuarantined` with error code `replay_mismatch`.
+
+## Activity failures
+
+Activity handlers return `(any, error)`. A plain error records an activity failure with
+code `activity_failed`. Use `workflowtest.NewActivityError(code, message)` when a test
+needs a specific activity failure code. The kit records one attempt only; retry policy
+timing and repeated worker attempts are outside the in-memory simulation.
