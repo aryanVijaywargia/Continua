@@ -20,6 +20,8 @@ const (
 	RetryHandledDefinitionVersion    = "v1"
 	InvalidRetryDefinitionName       = "darklaunch.invalid-retry-policy"
 	InvalidRetryDefinitionVersion    = "v1"
+	RemoteDemoDefinitionName         = "darklaunch.remote-demo"
+	RemoteDemoDefinitionVersion      = "v1"
 	SleepDemoDefinitionName          = "darklaunch.sleep-demo"
 	SleepDemoDefinitionVersion       = "v1"
 	VersionDemoDefinitionName        = "darklaunch.version-demo"
@@ -82,6 +84,11 @@ func Definitions() []workflow.Definition {
 			Run:     runInvalidRetryWorkflow,
 		},
 		{
+			Name:    RemoteDemoDefinitionName,
+			Version: RemoteDemoDefinitionVersion,
+			Run:     runRemoteDemoWorkflow,
+		},
+		{
 			Name:    SleepDemoDefinitionName,
 			Version: SleepDemoDefinitionVersion,
 			Run:     runSleepDemoWorkflow,
@@ -123,6 +130,37 @@ func runInvalidRetryWorkflow(ctx workflow.Context) error {
 		&output,
 		workflow.ActivityOptions{RetryPolicy: &workflow.RetryPolicy{MaxAttempts: 0}},
 	)
+}
+
+func runRemoteDemoWorkflow(ctx workflow.Context) error {
+	var input WorkflowInput
+	if err := ctx.Input(&input); err != nil {
+		return err
+	}
+	if input.Name == "" {
+		input.Name = "world"
+	}
+
+	var output ActivityOutput
+	if err := ctx.ActivityWithOptions(
+		"remote-greeting",
+		RemoteActivityType,
+		ActivityInput{Name: input.Name},
+		&output,
+		workflow.ActivityOptions{
+			ExecutionTarget: workflow.ActivityExecutionTargetRemote,
+			RetryPolicy: &workflow.RetryPolicy{
+				MaxAttempts:       3,
+				InitialBackoff:    500 * time.Millisecond,
+				MaxBackoff:        500 * time.Millisecond,
+				BackoffMultiplier: 1,
+			},
+		},
+	); err != nil {
+		return err
+	}
+
+	return ctx.SetResult(output)
 }
 
 func runSleepDemoWorkflow(ctx workflow.Context) error {

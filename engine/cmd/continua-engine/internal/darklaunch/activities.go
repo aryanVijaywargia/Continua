@@ -8,7 +8,10 @@ import (
 	"github.com/continua-ai/continua/engine/internal/activity"
 )
 
-const DemoActivityType = "darklaunch.compose-greeting"
+const (
+	DemoActivityType   = "darklaunch.compose-greeting"
+	RemoteActivityType = "darklaunch.remote-compose-greeting"
+)
 
 type ActivityInput struct {
 	Name string `json:"name"`
