@@ -109,7 +109,7 @@ jobs:
           ./bin/continua-engine serve > engine.log 2>&1 &
           echo $! > engine.pid
           for i in {1..30}; do
-            if psql "${DATABASE_URL}" -Atc "SELECT 1 FROM engine.definition_catalog WHERE definition_name = 'darklaunch.remote-demo' AND definition_version = 'v1' AND enabled = true LIMIT 1;" | grep -q 1; then
+            if psql "${DATABASE_URL}" -Atc "SELECT 1 FROM engine.definition_catalog WHERE definition_name = 'darklaunch.remote-demo' AND definition_version = 'v1' LIMIT 1;" | grep -q 1; then
               echo "Engine is ready"
               break
             fi
