@@ -26,8 +26,9 @@ var (
 )
 
 type storeOps struct {
-	q             *enginedb.Queries
-	projectFilter *uuid.UUID
+	q               *enginedb.Queries
+	projectFilter   *uuid.UUID
+	completionGrace time.Duration
 }
 
 // Store provides engine database access backed by a dedicated pgx pool.
@@ -59,8 +60,23 @@ func (s *Store) WithProjectFilter(projectID uuid.UUID) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
-			q:             s.q,
-			projectFilter: &filter,
+			q:               s.q,
+			projectFilter:   &filter,
+			completionGrace: s.completionGrace,
+		},
+	}
+}
+
+func (s *Store) WithLeaseCompletionGrace(d time.Duration) *Store {
+	if s == nil {
+		return nil
+	}
+	return &Store{
+		pool: s.pool,
+		storeOps: &storeOps{
+			q:               s.q,
+			projectFilter:   s.projectFilter,
+			completionGrace: d,
 		},
 	}
 }
@@ -129,8 +145,9 @@ func (s *Store) BeginTx(ctx context.Context, opts pgx.TxOptions) (*Tx, error) {
 	return &Tx{
 		tx: tx,
 		storeOps: &storeOps{
-			q:             s.q.WithTx(tx),
-			projectFilter: s.projectFilter,
+			q:               s.q.WithTx(tx),
+			projectFilter:   s.projectFilter,
+			completionGrace: s.completionGrace,
 		},
 	}, nil
 }

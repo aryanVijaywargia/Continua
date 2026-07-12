@@ -30,8 +30,9 @@ const (
 )
 
 type engineControlService struct {
-	platform *store.Store
-	engine   *enginedb.Queries
+	platform        *store.Store
+	engine          *enginedb.Queries
+	completionGrace time.Duration
 }
 
 type engineStartRunRequest struct {

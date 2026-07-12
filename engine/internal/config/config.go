@@ -45,6 +45,7 @@ type RuntimeConfig struct {
 	MaintenancePollInterval time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
+	LeaseCompletionGrace    time.Duration
 	RequestDedupeTTL        time.Duration
 	ProjectIDFilter         *uuid.UUID
 }
