@@ -50,14 +50,45 @@ jobs:
       - name: Build server
         run: go build -o bin/continua ./cmd/continua
 
+      - name: Build engine CLI
+        run: cd engine && go build -o ../bin/continua-engine ./cmd/continua-engine
+
       - name: Run migrations
         run: ./bin/continua migrate up
         env:
           DATABASE_URL: postgres://continua:continua@localhost:5432/continua?sslmode=disable
 
+      - name: Run engine migrations
+        run: ./bin/continua-engine migrate up
+        env:
+          DATABASE_URL: postgres://continua:continua@localhost:5432/continua?sslmode=disable
+
+      - name: Seed worker E2E API key
+        run: |
+          API_KEY="continua-worker-e2e-ci"
+          API_KEY_HASH="$(printf '%s' "${API_KEY}" | shasum -a 256 | awk '{print $1}')"
+          psql "${DATABASE_URL}" \
+            -v ON_ERROR_STOP=1 \
+            -v demo_project_id="11111111-1111-4111-8111-111111111111" \
+            -v demo_project_name="Worker E2E Project" \
+            -v demo_api_key_hash="${API_KEY_HASH}" <<'SQL'
+          DELETE FROM projects
+          WHERE id = :'demo_project_id'::uuid;
+
+          INSERT INTO projects (id, name, api_key_hash)
+          VALUES (
+            :'demo_project_id'::uuid,
+            :'demo_project_name',
+            :'demo_api_key_hash'
+          );
+          SQL
+          echo "CONTINUA_WORKER_E2E_API_KEY=${API_KEY}" >> "${GITHUB_ENV}"
+        env:
+          DATABASE_URL: postgres://continua:continua@localhost:5432/continua?sslmode=disable
+
       - name: Start server
         run: |
-          ./bin/continua serve &
+          ./bin/continua serve > server.log 2>&1 &
           echo $! > server.pid
           # Wait for server to be ready
           for i in {1..30}; do
@@ -70,7 +101,23 @@ jobs:
           done
         env:
           DATABASE_URL: postgres://continua:continua@localhost:5432/continua?sslmode=disable
+          ENGINE_PUBLIC_API_ENABLED: "true"
           PORT: 8081
+
+      - name: Start engine
+        run: |
+          ./bin/continua-engine serve > engine.log 2>&1 &
+          echo $! > engine.pid
+          for i in {1..30}; do
+            if psql "${DATABASE_URL}" -Atc "SELECT 1 FROM engine.definition_catalog WHERE definition_name = 'darklaunch.remote-demo' AND definition_version = 'v1' LIMIT 1;" | grep -q 1; then
+              echo "Engine is ready"
+              break
+            fi
+            echo "Waiting for engine... ($i/30)"
+            sleep 1
+          done
+        env:
+          DATABASE_URL: postgres://continua:continua@localhost:5432/continua?sslmode=disable
 
       - name: Install Python SDK dependencies
         run: |
@@ -84,15 +131,32 @@ jobs:
         env:
           CONTINUA_API_URL: http://localhost:8081
 
+      - name: Run Python worker E2E
+        run: |
+          cd sdks/python
+          uv run pytest tests/test_worker_e2e_integration.py -v
+        env:
+          CONTINUA_ENDPOINT: http://localhost:8081
+          CONTINUA_API_KEY: ${{ env.CONTINUA_WORKER_E2E_API_KEY }}
+
       - name: Stop server
         if: always()
         run: |
           if [ -f server.pid ]; then
             kill $(cat server.pid) || true
           fi
+          if [ -f engine.pid ]; then
+            kill $(cat engine.pid) || true
+          fi
 
       - name: Collect server logs
         if: failure()
         run: |
-          echo "=== Server logs would be collected here ==="
-          # In a real setup, you'd redirect server output to a file and cat it here
+          if [ -f server.log ]; then
+            echo "=== Server logs ==="
+            cat server.log
+          fi
+          if [ -f engine.log ]; then
+            echo "=== Engine logs ==="
+            cat engine.log
+          fi

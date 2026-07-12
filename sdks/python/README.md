@@ -78,6 +78,15 @@ uv run mypy src/
 uv build
 ```
 
+### Engine worker E2E test
+
+`tests/test_worker_e2e_integration.py` exercises a live Python `ActivityWorker`
+against the Go engine remote activity REST endpoints. Run it with
+`CONTINUA_ENDPOINT` and `CONTINUA_API_KEY` pointing at a local platform server
+started with `ENGINE_PUBLIC_API_ENABLED=true`. The same database must also have
+`continua-engine migrate up` applied and `continua-engine serve` running, with a
+project/API key seeded using the SHA-256 hash scheme in `scripts/seed-demo.sh`.
+
 ## Publishing
 
 The Python package is published from this directory:
