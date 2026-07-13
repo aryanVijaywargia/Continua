@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/continua-ai/continua/engine/internal/activity"
@@ -43,6 +45,12 @@ type Options struct {
 	MaintenancePollInterval time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
+	// MetricsRegistry receives engine Prometheus collectors when configured.
+	MetricsRegistry prometheus.Registerer
+	// MetricsAddr configures the Prometheus HTTP listen address when non-empty.
+	MetricsAddr string
+	// MetricsListener supplies a caller-owned listener for the Prometheus endpoint.
+	MetricsListener net.Listener
 }
 
 // Runtime is an embedded engine instance built from Options.

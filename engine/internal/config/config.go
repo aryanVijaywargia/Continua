@@ -47,6 +47,7 @@ type RuntimeConfig struct {
 	ActivityLeaseTTL        time.Duration
 	RequestDedupeTTL        time.Duration
 	ProjectIDFilter         *uuid.UUID
+	MetricsAddr             string
 }
 
 // Defaults returns the engine runtime defaults for a database URL.

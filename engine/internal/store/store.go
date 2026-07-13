@@ -13,6 +13,7 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/config"
+	enginemetrics "github.com/continua-ai/continua/engine/internal/metrics"
 )
 
 const uniqueViolationSQLState = "23505"
@@ -49,6 +50,11 @@ func New(pool *pgxpool.Pool) *Store {
 		pool:     pool,
 		storeOps: &storeOps{q: enginedb.New(pool)},
 	}
+}
+
+// WithMetrics is a no-op acceptance-test seam for attaching engine metrics.
+func (s *Store) WithMetrics(_ *enginemetrics.Metrics) *Store {
+	return s
 }
 
 func (s *Store) WithProjectFilter(projectID uuid.UUID) *Store {
