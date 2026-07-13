@@ -49,6 +49,7 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 			w.logger.Warn("workflow worker stale claim",
 				"worker", "workflow",
 				"worker_id", workerID,
+				"project_id", run.ProjectID,
 				"run_id", run.ID,
 				"event", "stale_claim",
 			)

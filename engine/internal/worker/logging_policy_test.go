@@ -3,6 +3,7 @@ package worker
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,17 +17,14 @@ func TestNoBareLogPrintfUnderEngineInternalAndPkg(t *testing.T) {
 
 	for _, directory := range []string{"internal", "pkg"} {
 		root := filepath.Join(engineRoot, directory)
-		if _, err := os.Stat(root); os.IsNotExist(err) {
-			continue
-		} else if err != nil {
-			t.Logf("skipping %s: %v", root, err)
+		if _, err := os.Stat(root); err != nil {
+			t.Errorf("stat %s: %v", root, err)
 			continue
 		}
 
-		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {
-				t.Logf("skipping %s: %v", path, walkErr)
-				return nil
+				return walkErr
 			}
 			if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
 				return nil
@@ -34,8 +32,7 @@ func TestNoBareLogPrintfUnderEngineInternalAndPkg(t *testing.T) {
 
 			contents, err := os.ReadFile(path)
 			if err != nil {
-				t.Logf("skipping %s: %v", path, err)
-				return nil
+				return fmt.Errorf("read %s: %w", path, err)
 			}
 
 			scanner := bufio.NewScanner(bytes.NewReader(contents))
@@ -45,7 +42,13 @@ func TestNoBareLogPrintfUnderEngineInternalAndPkg(t *testing.T) {
 					t.Errorf("%s:%d: %s", path, lineNumber, strings.TrimSpace(line))
 				}
 			}
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("scan %s: %w", path, err)
+			}
 			return nil
 		})
+		if err != nil {
+			t.Errorf("scan %s: %v", root, err)
+		}
 	}
 }

@@ -117,10 +117,12 @@ func serveCmd() *cobra.Command {
 
 			logger.Info("starting continua-engine serve", "event", "serve_start")
 			err = rt.Run(ctx)
-			if err == nil {
-				logger.Info("continua-engine serve stopped", "event", "serve_stop")
+			if err != nil {
+				logger.Error("continua-engine serve failed", "event", "serve_failed", "err", err)
+				return err
 			}
-			return err
+			logger.Info("continua-engine serve stopped", "event", "serve_stop")
+			return nil
 		},
 	}
 }
