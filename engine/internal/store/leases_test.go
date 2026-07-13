@@ -185,7 +185,7 @@ func TestCompleteRemoteActivityTaskWithinGraceAccepted(t *testing.T) {
 	ts := newTestStore(t)
 	projectID := uuidOrFatal(t)
 	task := ts.createRemoteLeaseTestTask(t, projectID, "complete-within-grace", "email.send", 1)
-	claimed := ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", task.ActivityType, 1)
+	claimed := ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", task.ActivityType)
 	ts.expireRemoteLeaseTestTask(t, task.ID)
 
 	output := []byte(`{}`)
@@ -219,7 +219,7 @@ func TestCompleteRemoteActivityTaskBeyondGraceRejected(t *testing.T) {
 	ts := newTestStore(t)
 	projectID := uuidOrFatal(t)
 	task := ts.createRemoteLeaseTestTask(t, projectID, "complete-beyond-grace", "email.send", 1)
-	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", task.ActivityType, 1)
+	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", task.ActivityType)
 	ts.expireRemoteLeaseTestTask(t, task.ID)
 
 	_, err := ts.store.WithLeaseCompletionGrace(5*time.Second).CompleteRemoteActivityTask(
@@ -249,10 +249,10 @@ func TestRemoteActivityTaskReclaimRejectsStaleOwnerDespiteGrace(t *testing.T) {
 	ts := newTestStore(t)
 	projectID := uuidOrFatal(t)
 	task := ts.createRemoteLeaseTestTask(t, projectID, "reclaimed-task", "email.send", 2)
-	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", task.ActivityType, 1)
+	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", task.ActivityType)
 	ts.expireRemoteLeaseTestTask(t, task.ID)
 
-	reclaimed := ts.claimRemoteLeaseTestTasks(t, projectID, "worker-b", task.ActivityType, 1)
+	reclaimed := ts.claimRemoteLeaseTestTasks(t, projectID, "worker-b", task.ActivityType)
 	if reclaimed[0].ID != task.ID || reclaimed[0].AttemptCount != 2 ||
 		reclaimed[0].ClaimedBy == nil || *reclaimed[0].ClaimedBy != "worker-b" {
 		t.Fatalf("worker-b reclaim = %+v, want task %s at attempt 2", reclaimed[0], task.ID)
@@ -289,8 +289,8 @@ func TestRetryAndFailRemoteActivityTaskWithinGraceAccepted(t *testing.T) {
 	projectID := uuidOrFatal(t)
 	failTask := ts.createRemoteLeaseTestTask(t, projectID, "fail-within-grace", "email.fail", 1)
 	retryTask := ts.createRemoteLeaseTestTask(t, projectID, "retry-within-grace", "email.retry", 2)
-	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", failTask.ActivityType, 1)
-	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", retryTask.ActivityType, 1)
+	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", failTask.ActivityType)
+	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", retryTask.ActivityType)
 	ts.expireRemoteLeaseTestTask(t, failTask.ID)
 	ts.expireRemoteLeaseTestTask(t, retryTask.ID)
 
@@ -344,7 +344,7 @@ func TestHeartbeatRemoteActivityTaskIgnoresCompletionGrace(t *testing.T) {
 	ts := newTestStore(t)
 	projectID := uuidOrFatal(t)
 	task := ts.createRemoteLeaseTestTask(t, projectID, "heartbeat-strict", "email.send", 1)
-	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", task.ActivityType, 1)
+	ts.claimRemoteLeaseTestTasks(t, projectID, "worker-a", task.ActivityType)
 	ts.expireRemoteLeaseTestTask(t, task.ID)
 
 	_, err := ts.store.WithLeaseCompletionGrace(30*time.Second).HeartbeatRemoteActivityTask(
@@ -389,9 +389,9 @@ func (ts *testStore) claimRemoteLeaseTestTasks(
 	projectID uuid.UUID,
 	workerID string,
 	activityType string,
-	maxTasks int32,
 ) []enginedb.EngineActivityTask {
 	t.Helper()
+	const maxTasks int32 = 1
 	tasks, err := ts.store.ClaimRemoteActivityTasks(
 		ts.ctx, projectID, workerID, []string{activityType}, maxTasks, time.Minute,
 	)
