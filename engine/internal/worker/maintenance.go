@@ -47,6 +47,21 @@ func (w *MaintenanceWorker) PollOnce(ctx context.Context, _ string) error {
 		}
 	}
 
-	_, err = w.store.ExpireRequestDedupe(ctx)
-	return err
+	if _, err = w.store.ExpireRequestDedupe(ctx); err != nil {
+		return err
+	}
+
+	metrics := w.store.Metrics()
+	if metrics == nil {
+		return nil
+	}
+	snapshot, err := w.store.SampleRuntimeMetrics(ctx)
+	if err != nil {
+		return err
+	}
+	metrics.SetQueueDepth("runs_ready", snapshot.RunsReady)
+	metrics.SetQueueDepth("activity_tasks_pending", snapshot.ActivityTasksPending)
+	metrics.SetQueueDepth("inbox_pending", snapshot.InboxPending)
+	metrics.SetProjectorLagRows(snapshot.ProjectorLagRows)
+	return nil
 }

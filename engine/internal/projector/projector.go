@@ -662,6 +662,7 @@ func (p *Projector) pollSingleHistoryRow(ctx context.Context) (bool, error) {
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
+	p.store.Metrics().AddProjectorRowsProjected(len(historyRows))
 	return true, nil
 }
 

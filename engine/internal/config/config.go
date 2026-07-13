@@ -120,6 +120,7 @@ func Load() (*Config, error) {
 	cfg.Runtime.ActivityLeaseTTL = activityLeaseTTL
 	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL
 	cfg.Runtime.ProjectIDFilter = projectIDFilter
+	cfg.Runtime.MetricsAddr = os.Getenv("ENGINE_METRICS_ADDR")
 	return cfg, nil
 }
 

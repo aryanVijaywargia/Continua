@@ -89,6 +89,7 @@ func (tx *Tx) ClaimStartRequestDedupe(
 	for attempts := 0; attempts < 2; attempts++ {
 		row, err := tx.q.CreateStartRequestDedupeClaim(ctx, createArg)
 		if err == nil {
+			tx.recordStartRequestDedupeClaim(StartRequestDedupeClaimStateClaimedNew)
 			return StartRequestDedupeClaim{
 				Row:   row,
 				State: StartRequestDedupeClaimStateClaimedNew,
@@ -108,12 +109,14 @@ func (tx *Tx) ClaimStartRequestDedupe(
 
 		switch row.Status {
 		case enginedb.EngineRequestDedupeStatusCompleted, enginedb.EngineRequestDedupeStatusFailed:
+			tx.recordStartRequestDedupeClaim(StartRequestDedupeClaimStateExistingFinalized)
 			return StartRequestDedupeClaim{
 				Row:   row,
 				State: StartRequestDedupeClaimStateExistingFinalized,
 			}, nil
 		case enginedb.EngineRequestDedupeStatusInProgress:
 			if !row.ExpiresAt.Before(time.Now()) {
+				tx.recordStartRequestDedupeClaim(StartRequestDedupeClaimStateExistingInProgress)
 				return StartRequestDedupeClaim{
 					Row:   row,
 					State: StartRequestDedupeClaimStateExistingInProgress,
@@ -132,6 +135,7 @@ func (tx *Tx) ClaimStartRequestDedupe(
 			return StartRequestDedupeClaim{}, normalizeError(renewErr)
 		}
 
+		tx.recordStartRequestDedupeClaim(StartRequestDedupeClaimStateClaimedReclaimed)
 		return StartRequestDedupeClaim{
 			Row:   renewed,
 			State: StartRequestDedupeClaimStateClaimedReclaimed,
@@ -143,4 +147,19 @@ func (tx *Tx) ClaimStartRequestDedupe(
 		arg.RequestScope,
 		arg.RequestKey,
 	)
+}
+
+func (tx *Tx) recordStartRequestDedupeClaim(state StartRequestDedupeClaimState) {
+	var outcome string
+	switch state {
+	case StartRequestDedupeClaimStateClaimedNew, StartRequestDedupeClaimStateClaimedReclaimed:
+		outcome = "new"
+	case StartRequestDedupeClaimStateExistingFinalized:
+		outcome = "existing_finalized"
+	case StartRequestDedupeClaimStateExistingInProgress:
+		outcome = "existing_in_progress"
+	}
+	if outcome != "" {
+		tx.Metrics().IncDedupeClaim(outcome)
+	}
 }

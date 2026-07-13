@@ -36,10 +36,12 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 	task, err := w.store.ClaimNextActivityTask(ctx, workerID, w.activityLeaseTTL)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			w.store.Metrics().IncClaim("activity_task", "empty")
 			return nil
 		}
 		return err
 	}
+	w.store.Metrics().IncClaim("activity_task", "claimed")
 
 	handler, ok := w.registry.Get(task.ActivityType)
 	if !ok {
@@ -67,6 +69,7 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 	_, err = tx.CompleteActivityTask(ctx, task.ID, workerID, output)
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
+			w.store.Metrics().IncClaim("activity_task", "stale")
 			log.Printf("activity worker stale completion for task %s", task.ID)
 			return nil
 		}
@@ -82,7 +85,11 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 			return syncErr
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	w.store.Metrics().IncActivityAttempt("completed")
+	return nil
 }
 
 type handlerResult struct {
@@ -174,6 +181,7 @@ func (w *Worker) retryTask(
 	retriedTask, err := tx.RetryActivityTask(ctx, task.ID, workerID, retryDelayMS)
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
+			w.store.Metrics().IncClaim("activity_task", "stale")
 			log.Printf("activity worker stale retry for task %s", task.ID)
 			return nil
 		}
@@ -212,7 +220,11 @@ func (w *Worker) retryTask(
 	if err := publicprojection.NewWriter(tx.Tx()).UpdateLatestHistory(ctx, run.ProjectID, run.ID, appended.ID); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	w.store.Metrics().IncActivityAttempt("retried")
+	return nil
 }
 
 func (w *Worker) shouldRetryTask(task *enginedb.EngineActivityTask, handlerErr error) bool {
@@ -273,6 +285,7 @@ func (w *Worker) failTask(
 	_, err = tx.FailActivityTask(ctx, taskID, workerID, errorCode, errorMessage)
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
+			w.store.Metrics().IncClaim("activity_task", "stale")
 			log.Printf("activity worker stale failure for task %s", taskID)
 			return nil
 		}
@@ -288,5 +301,9 @@ func (w *Worker) failTask(
 			return syncErr
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	w.store.Metrics().IncActivityAttempt("failed")
+	return nil
 }

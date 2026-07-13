@@ -106,6 +106,7 @@ func serveCmd() *cobra.Command {
 				MaintenancePollInterval: cfg.Runtime.MaintenancePollInterval,
 				RunLeaseTTL:             cfg.Runtime.RunLeaseTTL,
 				ActivityLeaseTTL:        cfg.Runtime.ActivityLeaseTTL,
+				MetricsAddr:             cfg.Runtime.MetricsAddr,
 			})
 			if err != nil {
 				return err

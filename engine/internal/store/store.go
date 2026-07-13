@@ -29,6 +29,7 @@ var (
 type storeOps struct {
 	q             *enginedb.Queries
 	projectFilter *uuid.UUID
+	metrics       *enginemetrics.Metrics
 }
 
 // Store provides engine database access backed by a dedicated pgx pool.
@@ -52,9 +53,19 @@ func New(pool *pgxpool.Pool) *Store {
 	}
 }
 
-// WithMetrics is a no-op acceptance-test seam for attaching engine metrics.
-func (s *Store) WithMetrics(_ *enginemetrics.Metrics) *Store {
-	return s
+// WithMetrics returns a store copy that records engine metrics.
+func (s *Store) WithMetrics(metrics *enginemetrics.Metrics) *Store {
+	if s == nil {
+		return nil
+	}
+	return &Store{
+		pool: s.pool,
+		storeOps: &storeOps{
+			q:             s.q,
+			projectFilter: s.projectFilter,
+			metrics:       metrics,
+		},
+	}
 }
 
 func (s *Store) WithProjectFilter(projectID uuid.UUID) *Store {
@@ -67,8 +78,17 @@ func (s *Store) WithProjectFilter(projectID uuid.UUID) *Store {
 		storeOps: &storeOps{
 			q:             s.q,
 			projectFilter: &filter,
+			metrics:       s.metrics,
 		},
 	}
+}
+
+// Metrics returns the metrics recorder attached to the store.
+func (o *storeOps) Metrics() *enginemetrics.Metrics {
+	if o == nil {
+		return nil
+	}
+	return o.metrics
 }
 
 func (o *storeOps) ProjectFilter() *uuid.UUID {
@@ -137,6 +157,7 @@ func (s *Store) BeginTx(ctx context.Context, opts pgx.TxOptions) (*Tx, error) {
 		storeOps: &storeOps{
 			q:             s.q.WithTx(tx),
 			projectFilter: s.projectFilter,
+			metrics:       s.metrics,
 		},
 	}, nil
 }
