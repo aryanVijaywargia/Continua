@@ -3,7 +3,7 @@ package workflow
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/continua-ai/continua/engine/internal/store"
@@ -13,13 +13,18 @@ type Worker struct {
 	store       *store.Store
 	activator   *Activator
 	runLeaseTTL time.Duration
+	logger      *slog.Logger
 }
 
-func NewWorker(engineStore *store.Store, definitions *Registry, runLeaseTTL time.Duration) *Worker {
+func NewWorker(engineStore *store.Store, definitions *Registry, runLeaseTTL time.Duration, logger *slog.Logger) *Worker {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Worker{
 		store:       engineStore,
 		activator:   NewActivator(engineStore, definitions),
 		runLeaseTTL: runLeaseTTL,
+		logger:      logger,
 	}
 }
 
@@ -41,7 +46,12 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 	if err := w.activator.Activate(ctx, &run); err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
 			metrics.IncClaim("run", "stale")
-			log.Printf("workflow worker stale claim for run %s", run.ID)
+			w.logger.Warn("workflow worker stale claim",
+				"worker", "workflow",
+				"worker_id", workerID,
+				"run_id", run.ID,
+				"event", "stale_claim",
+			)
 			return nil
 		}
 		return err

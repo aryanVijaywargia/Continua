@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -41,6 +42,8 @@ type Options struct {
 	Workflows []workflow.Definition
 	// Activities maps activity type to handler.
 	Activities map[string]ActivityHandler
+	// Logger receives structured workflow and activity worker events.
+	Logger *slog.Logger
 	// ProjectID optionally scopes all polling to a single project.
 	ProjectID *uuid.UUID
 	// Poll intervals and lease TTLs; zero values use the engine defaults.
@@ -144,8 +147,8 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 
-	workflowWorker := engineworkflow.NewWorker(store, r.definitions, cfg.Runtime.RunLeaseTTL)
-	activityWorker := activity.NewWorker(store, r.activities, cfg.Runtime.ActivityLeaseTTL)
+	workflowWorker := engineworkflow.NewWorker(store, r.definitions, cfg.Runtime.RunLeaseTTL, r.options.Logger)
+	activityWorker := activity.NewWorker(store, r.activities, cfg.Runtime.ActivityLeaseTTL, r.options.Logger)
 	maintenanceWorker := engineworker.NewMaintenanceWorker(store)
 	projectorWorker := engineprojector.New(store)
 	metricsListener := r.options.MetricsListener

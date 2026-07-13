@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os/signal"
 	"syscall"
 	"time"
@@ -96,10 +95,12 @@ func serveCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			logger := config.NewLogger(cfg.Logging, cmd.ErrOrStderr())
 			rt, err := engineruntime.New(engineruntime.Options{
 				DatabaseURL:             cfg.Database.URL,
 				Workflows:               darklaunch.Definitions(),
 				Activities:              runtimeHandlers(darklaunch.Handlers()),
+				Logger:                  logger,
 				ProjectID:               cfg.Runtime.ProjectIDFilter,
 				WorkflowPollInterval:    cfg.Runtime.WorkflowPollInterval,
 				ActivityPollInterval:    cfg.Runtime.ActivityPollInterval,
@@ -114,10 +115,10 @@ func serveCmd() *cobra.Command {
 				return err
 			}
 
-			log.Printf("starting continua-engine serve")
+			logger.Info("starting continua-engine serve", "event", "serve_start")
 			err = rt.Run(ctx)
 			if err == nil {
-				log.Printf("continua-engine serve stopped")
+				logger.Info("continua-engine serve stopped", "event", "serve_stop")
 			}
 			return err
 		},
