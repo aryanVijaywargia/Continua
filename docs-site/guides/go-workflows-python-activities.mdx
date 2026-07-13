@@ -1,0 +1,131 @@
+---
+title: "Go workflows with Python activities"
+description: "Orchestrate durable workflows in Go and execute their remote activities in Python."
+---
+
+Use a Go workflow for durable orchestration and a Python worker for the activity code.
+The workflow schedules work through the preview engine REST control plane; the Python
+worker claims and completes that work remotely. This is Continua's flagship path for
+durable AI-agent orchestration with Python tools and model calls.
+
+<Warning>
+  The durable engine and its `/v1/engine/*` REST control plane are still preview. Workflow
+  authoring remains Go-only; Python workers execute registered remote activities.
+</Warning>
+
+## Prerequisites
+
+- Postgres with `DATABASE_URL` set for both Continua runtimes.
+- `continua serve` running with `ENGINE_PUBLIC_API_ENABLED=true`.
+- A provisioned project and API key. See [Engine project provisioning](/guides/engine-project-provisioning).
+- Engine migrations applied with `continua-engine migrate up`.
+
+## 1. Define the Go workflow
+
+The workflow in
+[`engine/examples/remote-greeter/main.go`](https://github.com/aryanVijaywargia/Continua/blob/main/engine/examples/remote-greeter/main.go)
+marks the activity for remote execution and gives transient failures three attempts:
+
+```go
+func runRemoteGreeterWorkflow(ctx workflow.Context) error {
+	var input remoteGreeterInput
+	if err := ctx.Input(&input); err != nil {
+		return err
+	}
+	if input.Name == "" {
+		input.Name = "world"
+	}
+
+	var output remoteGreeterOutput
+	if err := ctx.ActivityWithOptions(
+		"compose-greeting",
+		composeGreetingActivityType,
+		input,
+		&output,
+		workflow.ActivityOptions{
+			ExecutionTarget: workflow.ActivityExecutionTargetRemote,
+			RetryPolicy: &workflow.RetryPolicy{
+				MaxAttempts:       3,
+				InitialBackoff:    500 * time.Millisecond,
+				MaxBackoff:        5 * time.Second,
+				BackoffMultiplier: 2.0,
+			},
+		},
+	); err != nil {
+		return err
+	}
+
+	return ctx.SetResult(output)
+}
+```
+
+There is deliberately no local handler for `examples.compose-greeting`; a Python worker
+will claim that activity.
+
+## 2. Run the Go worker
+
+From the `engine/` directory, point the worker at Postgres and optionally scope it to the
+provisioned project:
+
+```bash
+export DATABASE_URL="postgres://continua:continua@localhost:5432/continua?sslmode=disable"
+export ENGINE_PROJECT_ID="<project-id>"
+go run ./examples/remote-greeter
+```
+
+For an application-owned worker process, [embed the engine](/guides/embed-engine) and
+register the same definition.
+
+## 3. Run the Python activity worker
+
+Install the Python SDK, then configure the platform endpoint and project API key:
+
+```bash
+pip install continua-sdk
+export CONTINUA_ENDPOINT="http://localhost:8080"
+export CONTINUA_API_KEY="<project-api-key>"
+python sdks/python/examples/remote_greeting_worker.py
+```
+
+The runnable
+[`sdks/python/examples/remote_greeting_worker.py`](https://github.com/aryanVijaywargia/Continua/blob/main/sdks/python/examples/remote_greeting_worker.py)
+registers the same activity type used by the Go workflow:
+
+```python
+def compose_greeting(input: dict[str, object]) -> dict[str, str]:
+    """Compose the greeting returned to the Go workflow."""
+    name = input.get("name") or "world"
+    return {"greeting": f"hello, {name}"}
+
+
+def build_worker(*, api_key: str, endpoint: str) -> ActivityWorker:
+    """Build a worker registered for the remote greeter activity."""
+    worker = ActivityWorker(api_key=api_key, endpoint=endpoint)
+    worker.register("examples.compose-greeting", compose_greeting)
+    return worker
+```
+
+## 4. Start a run
+
+Create a unique instance and request key for the run:
+
+```bash
+continua-engine start \
+  --instance-key remote-greeter-ada \
+  --request-key remote-greeter-ada \
+  --definition examples.remote-greeter \
+  --version v1 \
+  --input '{"name":"Ada"}'
+```
+
+The preview `POST /v1/engine/runs` endpoint is the REST alternative for starting a run.
+
+## 5. Observe the result
+
+Open the debugger's [Engine runs console](/debugger/engine-runs) to inspect the run,
+pending remote activity, history, and final `{"greeting":"hello, Ada"}` result.
+
+The live
+[`sdks/python/tests/test_worker_e2e_integration.py`](https://github.com/aryanVijaywargia/Continua/blob/main/sdks/python/tests/test_worker_e2e_integration.py)
+suite is the CI-facing proof of the Go-engine-to-Python-worker path, including retries,
+lease loss, and non-retryable failures.
