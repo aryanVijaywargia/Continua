@@ -36,7 +36,8 @@
             "group": "Operate",
             "pages": [
               "guides/auth0-setup",
-              "guides/managing-projects"
+              "guides/managing-projects",
+              "guides/engine-metrics"
             ]
           },
           {

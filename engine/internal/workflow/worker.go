@@ -24,19 +24,23 @@ func NewWorker(engineStore *store.Store, definitions *Registry, runLeaseTTL time
 }
 
 func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
+	metrics := w.store.Metrics()
 	run, err := w.store.ClaimNextRun(ctx, workerID, w.runLeaseTTL)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			metrics.IncClaim("run", "empty")
 			return nil
 		}
 		return err
 	}
+	metrics.IncClaim("run", "claimed")
 	if err := applyTestClaimHook(ctx); err != nil {
 		return err
 	}
 
 	if err := w.activator.Activate(ctx, &run); err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
+			metrics.IncClaim("run", "stale")
 			log.Printf("workflow worker stale claim for run %s", run.ID)
 			return nil
 		}

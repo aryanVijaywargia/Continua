@@ -47,6 +47,26 @@ func (w *MaintenanceWorker) PollOnce(ctx context.Context, _ string) error {
 		}
 	}
 
-	_, err = w.store.ExpireRequestDedupe(ctx)
-	return err
+	if _, err = w.store.ExpireRequestDedupe(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+// PollMetricsOnce samples queue depths and projector lag independently from
+// timer maintenance.
+func (w *MaintenanceWorker) PollMetricsOnce(ctx context.Context, _ string) error {
+	metrics := w.store.Metrics()
+	if metrics == nil {
+		return nil
+	}
+	snapshot, err := w.store.SampleRuntimeMetrics(ctx)
+	if err != nil {
+		return err
+	}
+	metrics.SetQueueDepth("runs_ready", snapshot.RunsReady)
+	metrics.SetQueueDepth("activity_tasks_pending", snapshot.ActivityTasksPending)
+	metrics.SetQueueDepth("inbox_pending", snapshot.InboxPending)
+	metrics.SetProjectorLagRows(snapshot.ProjectorLagRows)
+	return nil
 }
