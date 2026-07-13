@@ -46,7 +46,7 @@ func TestWorkerRecordsRetryAndFailureAttempts(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 
-	worker := NewWorker(store, activityRegistry, time.Minute)
+	worker := NewWorker(store, activityRegistry, time.Minute, nil)
 	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() first attempt error = %v", err)
 	}

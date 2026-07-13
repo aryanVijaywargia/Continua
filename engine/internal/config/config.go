@@ -2,7 +2,10 @@ package config
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,12 +24,21 @@ const (
 	defaultRunLeaseTTL     = 30 * time.Second
 	defaultActivityLease   = 5 * time.Minute
 	defaultRequestDedupe   = time.Hour
+	defaultLogLevel        = slog.LevelInfo
+	defaultLogFormat       = "json"
 )
 
 // Config holds engine runtime configuration.
 type Config struct {
 	Database DatabaseConfig
 	Runtime  RuntimeConfig
+	Logging  LoggingConfig
+}
+
+// LoggingConfig holds the engine structured logging settings.
+type LoggingConfig struct {
+	Level  slog.Level
+	Format string
 }
 
 // DatabaseConfig holds the engine database settings.
@@ -72,6 +84,10 @@ func Defaults(databaseURL string) *Config {
 			RunLeaseTTL:             defaultRunLeaseTTL,
 			ActivityLeaseTTL:        defaultActivityLease,
 			RequestDedupeTTL:        defaultRequestDedupe,
+		},
+		Logging: LoggingConfig{
+			Level:  defaultLogLevel,
+			Format: defaultLogFormat,
 		},
 	}
 }
@@ -127,6 +143,14 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	logLevel, err := logLevelFromEnv("ENGINE_LOG_LEVEL", cfg.Logging.Level)
+	if err != nil {
+		return nil, err
+	}
+	logFormat, err := logFormatFromEnv("ENGINE_LOG_FORMAT", cfg.Logging.Format)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg.Runtime.WorkflowPollInterval = workflowPollInterval
 	cfg.Runtime.ActivityPollInterval = activityPollInterval
@@ -138,7 +162,22 @@ func Load() (*Config, error) {
 	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL
 	cfg.Runtime.ProjectIDFilter = projectIDFilter
 	cfg.Runtime.MetricsAddr = os.Getenv("ENGINE_METRICS_ADDR")
+	cfg.Logging.Level = logLevel
+	cfg.Logging.Format = logFormat
 	return cfg, nil
+}
+
+// NewLogger constructs an engine structured logger.
+func NewLogger(cfg LoggingConfig, w io.Writer) *slog.Logger {
+	if w == nil {
+		w = os.Stderr
+	}
+
+	options := &slog.HandlerOptions{Level: cfg.Level}
+	if cfg.Format == "text" {
+		return slog.New(slog.NewTextHandler(w, options))
+	}
+	return slog.New(slog.NewJSONHandler(w, options))
 }
 
 func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) {
@@ -152,6 +191,40 @@ func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) 
 		return 0, errors.New(key + " must be a valid duration: " + err.Error())
 	}
 	return parsed, nil
+}
+
+func logLevelFromEnv(key string, fallback slog.Level) (slog.Level, error) {
+	value := strings.ToLower(os.Getenv(key))
+	if value == "" {
+		return fallback, nil
+	}
+
+	switch value {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, errors.New(key + " must be one of debug, info, warn, error")
+	}
+}
+
+func logFormatFromEnv(key, fallback string) (string, error) {
+	value := strings.ToLower(os.Getenv(key))
+	if value == "" {
+		return fallback, nil
+	}
+
+	switch value {
+	case "json", "text":
+		return value, nil
+	default:
+		return "", errors.New(key + " must be one of json, text")
+	}
 }
 
 func runtimeProjectIDFromEnv() (*uuid.UUID, error) {

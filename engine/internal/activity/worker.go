@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,13 +22,18 @@ type Worker struct {
 	store            *store.Store
 	registry         *Registry
 	activityLeaseTTL time.Duration
+	logger           *slog.Logger
 }
 
-func NewWorker(engineStore *store.Store, registry *Registry, activityLeaseTTL time.Duration) *Worker {
+func NewWorker(engineStore *store.Store, registry *Registry, activityLeaseTTL time.Duration, logger *slog.Logger) *Worker {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Worker{
 		store:            engineStore,
 		registry:         registry,
 		activityLeaseTTL: activityLeaseTTL,
+		logger:           logger,
 	}
 }
 
@@ -70,7 +75,14 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
 			w.store.Metrics().IncClaim("activity_task", "stale")
-			log.Printf("activity worker stale completion for task %s", task.ID)
+			w.logger.Warn("activity worker stale completion",
+				"worker", "activity",
+				"worker_id", workerID,
+				"project_id", task.ProjectID,
+				"run_id", task.RunID,
+				"task_id", task.ID,
+				"event", "stale_completion",
+			)
 			return nil
 		}
 		return err
@@ -140,13 +152,28 @@ func (w *Worker) runHandlerWithHeartbeat(
 			heartbeatCancel()
 			if err != nil {
 				if errors.Is(err, store.ErrStaleClaim) || errors.Is(err, store.ErrNotFound) {
-					log.Printf("activity worker lost lease for task %s", task.ID)
+					w.logger.Warn("activity worker lost lease",
+						"worker", "activity",
+						"worker_id", workerID,
+						"project_id", task.ProjectID,
+						"run_id", task.RunID,
+						"task_id", task.ID,
+						"event", "lease_lost",
+					)
 					cancel()
 					ticker.Stop()
 					heartbeatC = nil
 					continue
 				}
-				log.Printf("activity worker heartbeat failed for task %s: %v", task.ID, err)
+				w.logger.Warn("activity worker heartbeat failed",
+					"worker", "activity",
+					"worker_id", workerID,
+					"project_id", task.ProjectID,
+					"run_id", task.RunID,
+					"task_id", task.ID,
+					"event", "heartbeat_failed",
+					"err", err,
+				)
 			}
 		}
 	}
@@ -182,7 +209,14 @@ func (w *Worker) retryTask(
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
 			w.store.Metrics().IncClaim("activity_task", "stale")
-			log.Printf("activity worker stale retry for task %s", task.ID)
+			w.logger.Warn("activity worker stale retry",
+				"worker", "activity",
+				"worker_id", workerID,
+				"project_id", task.ProjectID,
+				"run_id", task.RunID,
+				"task_id", task.ID,
+				"event", "stale_retry",
+			)
 			return nil
 		}
 		return err
@@ -286,7 +320,13 @@ func (w *Worker) failTask(
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
 			w.store.Metrics().IncClaim("activity_task", "stale")
-			log.Printf("activity worker stale failure for task %s", taskID)
+			w.logger.Warn("activity worker stale failure",
+				"worker", "activity",
+				"worker_id", workerID,
+				"run_id", runID,
+				"task_id", taskID,
+				"event", "stale_failure",
+			)
 			return nil
 		}
 		return err
