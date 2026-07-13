@@ -165,6 +165,7 @@ WHERE id = sqlc.arg(id)
 RETURNING *;
 
 -- name: CompleteRemoteActivityTask :one
+-- Completion-side fence only; grace never applies to claims; claimed_by + status = 'claimed' still guard re-claims.
 UPDATE engine.activity_tasks
 SET status = 'completed',
     output = sqlc.arg(output),
@@ -179,10 +180,11 @@ WHERE id = sqlc.arg(id)
   AND status = 'claimed'
   AND claimed_by = sqlc.arg(claimed_by)
   AND lease_expires_at IS NOT NULL
-  AND lease_expires_at > NOW()
+  AND lease_expires_at > NOW() - (sqlc.arg(completion_grace_ms)::bigint * INTERVAL '1 millisecond')
 RETURNING *;
 
 -- name: RetryRemoteActivityTask :one
+-- Completion-side fence only; grace never applies to claims; claimed_by + status = 'claimed' still guard re-claims.
 UPDATE engine.activity_tasks
 SET status = 'queued',
     available_at = NOW() + (sqlc.arg(retry_delay_ms)::bigint * INTERVAL '1 millisecond'),
@@ -198,10 +200,11 @@ WHERE id = sqlc.arg(id)
   AND status = 'claimed'
   AND claimed_by = sqlc.arg(claimed_by)
   AND lease_expires_at IS NOT NULL
-  AND lease_expires_at > NOW()
+  AND lease_expires_at > NOW() - (sqlc.arg(completion_grace_ms)::bigint * INTERVAL '1 millisecond')
 RETURNING *;
 
 -- name: FailRemoteActivityTask :one
+-- Completion-side fence only; grace never applies to claims; claimed_by + status = 'claimed' still guard re-claims.
 UPDATE engine.activity_tasks
 SET status = 'failed',
     last_error_code = sqlc.arg(last_error_code),
@@ -217,7 +220,7 @@ WHERE id = sqlc.arg(id)
   AND status = 'claimed'
   AND claimed_by = sqlc.arg(claimed_by)
   AND lease_expires_at IS NOT NULL
-  AND lease_expires_at > NOW()
+  AND lease_expires_at > NOW() - (sqlc.arg(completion_grace_ms)::bigint * INTERVAL '1 millisecond')
 RETURNING *;
 
 -- name: CompleteActivityTask :one

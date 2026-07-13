@@ -27,9 +27,10 @@ var (
 )
 
 type storeOps struct {
-	q             *enginedb.Queries
-	projectFilter *uuid.UUID
-	metrics       *enginemetrics.Metrics
+	q               *enginedb.Queries
+	projectFilter   *uuid.UUID
+	metrics         *enginemetrics.Metrics
+	completionGrace time.Duration
 }
 
 // Store provides engine database access backed by a dedicated pgx pool.
@@ -61,9 +62,10 @@ func (s *Store) WithMetrics(metrics *enginemetrics.Metrics) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
-			q:             s.q,
-			projectFilter: s.projectFilter,
-			metrics:       metrics,
+			q:               s.q,
+			projectFilter:   s.projectFilter,
+			metrics:         metrics,
+			completionGrace: s.completionGrace,
 		},
 	}
 }
@@ -76,9 +78,25 @@ func (s *Store) WithProjectFilter(projectID uuid.UUID) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
-			q:             s.q,
-			projectFilter: &filter,
-			metrics:       s.metrics,
+			q:               s.q,
+			projectFilter:   &filter,
+			metrics:         s.metrics,
+			completionGrace: s.completionGrace,
+		},
+	}
+}
+
+func (s *Store) WithLeaseCompletionGrace(d time.Duration) *Store {
+	if s == nil {
+		return nil
+	}
+	return &Store{
+		pool: s.pool,
+		storeOps: &storeOps{
+			q:               s.q,
+			projectFilter:   s.projectFilter,
+			metrics:         s.metrics,
+			completionGrace: d,
 		},
 	}
 }
@@ -155,9 +173,10 @@ func (s *Store) BeginTx(ctx context.Context, opts pgx.TxOptions) (*Tx, error) {
 	return &Tx{
 		tx: tx,
 		storeOps: &storeOps{
-			q:             s.q.WithTx(tx),
-			projectFilter: s.projectFilter,
-			metrics:       s.metrics,
+			q:               s.q.WithTx(tx),
+			projectFilter:   s.projectFilter,
+			metrics:         s.metrics,
+			completionGrace: s.completionGrace,
 		},
 	}, nil
 }

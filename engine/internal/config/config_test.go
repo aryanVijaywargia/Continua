@@ -85,3 +85,53 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 		t.Fatal("expected invalid duration error")
 	}
 }
+
+func TestLoadLeaseCompletionGrace(t *testing.T) {
+	t.Run("configured duration", func(t *testing.T) {
+		t.Setenv("ENGINE_DATABASE_URL", "")
+		t.Setenv("DATABASE_URL", "postgres://placeholder")
+		t.Setenv("ENGINE_LEASE_COMPLETION_GRACE", "15s")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Runtime.LeaseCompletionGrace != 15*time.Second {
+			t.Fatalf("LeaseCompletionGrace = %s, want 15s", cfg.Runtime.LeaseCompletionGrace)
+		}
+	})
+
+	t.Run("default is zero", func(t *testing.T) {
+		t.Setenv("ENGINE_DATABASE_URL", "")
+		t.Setenv("DATABASE_URL", "postgres://placeholder")
+		t.Setenv("ENGINE_LEASE_COMPLETION_GRACE", "")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Runtime.LeaseCompletionGrace != 0 {
+			t.Fatalf("LeaseCompletionGrace = %s, want 0", cfg.Runtime.LeaseCompletionGrace)
+		}
+	})
+
+	t.Run("negative duration rejected", func(t *testing.T) {
+		t.Setenv("ENGINE_DATABASE_URL", "")
+		t.Setenv("DATABASE_URL", "postgres://placeholder")
+		t.Setenv("ENGINE_LEASE_COMPLETION_GRACE", "-5s")
+
+		if _, err := Load(); err == nil {
+			t.Fatal("Load() error = nil, want negative completion grace error")
+		}
+	})
+
+	t.Run("invalid duration rejected", func(t *testing.T) {
+		t.Setenv("ENGINE_DATABASE_URL", "")
+		t.Setenv("DATABASE_URL", "postgres://placeholder")
+		t.Setenv("ENGINE_LEASE_COMPLETION_GRACE", "bogus")
+
+		if _, err := Load(); err == nil {
+			t.Fatal("Load() error = nil, want invalid completion grace error")
+		}
+	})
+}

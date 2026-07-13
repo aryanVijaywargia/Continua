@@ -45,6 +45,7 @@ func newConfiguredServer(
 	server.engineSharedControl = shared
 	if cfg != nil {
 		server.enginePublicAPIEnabled = cfg.Engine.PublicAPIEnabled
+		server.engineControl.completionGrace = cfg.Engine.LeaseCompletionGrace
 		server.auth0Config = cfg.Auth0
 		server.publicDemoConfig = cfg.PublicDemo
 	}

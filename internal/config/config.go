@@ -55,6 +55,7 @@ type EngineConfig struct {
 	PublicAPIEnabled         bool
 	ProjectionRetentionAfter time.Duration
 	HistoryRetentionAfter    time.Duration
+	LeaseCompletionGrace     time.Duration
 }
 
 // Auth0Config holds hosted operator authentication settings.
@@ -110,6 +111,10 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	engineHistoryRetentionAfter, err := loadOptionalDuration("ENGINE_HISTORY_RETENTION_AFTER")
+	if err != nil {
+		return nil, err
+	}
+	engineLeaseCompletionGrace, err := loadDuration("ENGINE_LEASE_COMPLETION_GRACE", 0)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +178,7 @@ func Load() (*Config, error) {
 			PublicAPIEnabled:         enginePublicAPIEnabled,
 			ProjectionRetentionAfter: engineProjectionRetentionAfter,
 			HistoryRetentionAfter:    engineHistoryRetentionAfter,
+			LeaseCompletionGrace:     engineLeaseCompletionGrace,
 		},
 		Jobs: JobsConfig{
 			IngestWorkers:      ingestWorkers,

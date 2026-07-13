@@ -46,6 +46,7 @@
               "guides/workflow-code-versioning",
               "guides/engine-project-provisioning",
               "guides/embed-engine",
+              "guides/remote-activity-fencing",
               "guides/testing-workflows",
               "guides/debugging-failures",
               "guides/comparing-sessions"

@@ -108,6 +108,7 @@ func serveCmd() *cobra.Command {
 				RunLeaseTTL:             cfg.Runtime.RunLeaseTTL,
 				ActivityLeaseTTL:        cfg.Runtime.ActivityLeaseTTL,
 				MetricsAddr:             cfg.Runtime.MetricsAddr,
+				LeaseCompletionGrace:    cfg.Runtime.LeaseCompletionGrace,
 			})
 			if err != nil {
 				return err
@@ -566,7 +567,7 @@ func withRuntime(
 	if err != nil {
 		return err
 	}
-	store := enginestore.New(pool)
+	store := enginestore.New(pool).WithLeaseCompletionGrace(cfg.Runtime.LeaseCompletionGrace)
 	if cfg.Runtime.ProjectIDFilter != nil {
 		store = store.WithProjectFilter(*cfg.Runtime.ProjectIDFilter)
 	}

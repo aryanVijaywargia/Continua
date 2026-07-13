@@ -56,6 +56,9 @@ type Options struct {
 	MetricsAddr string
 	// MetricsListener supplies a caller-owned listener for the Prometheus endpoint.
 	MetricsListener net.Listener
+	// LeaseCompletionGrace allows the current remote activity owner to complete,
+	// fail, or retry briefly after lease expiry. It does not extend claims or heartbeats.
+	LeaseCompletionGrace time.Duration
 }
 
 // Runtime is an embedded engine instance built from Options.
@@ -119,7 +122,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	store := enginestore.New(pool)
+	store := enginestore.New(pool).WithLeaseCompletionGrace(cfg.Runtime.LeaseCompletionGrace)
 	if recorder != nil {
 		store = store.WithMetrics(recorder)
 	}
@@ -312,6 +315,9 @@ func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	}
 	if opts.ActivityLeaseTTL != 0 {
 		cfg.Runtime.ActivityLeaseTTL = opts.ActivityLeaseTTL
+	}
+	if opts.LeaseCompletionGrace != 0 {
+		cfg.Runtime.LeaseCompletionGrace = opts.LeaseCompletionGrace
 	}
 	cfg.Runtime.ProjectIDFilter = opts.ProjectID
 	cfg.Runtime.MetricsAddr = opts.MetricsAddr
