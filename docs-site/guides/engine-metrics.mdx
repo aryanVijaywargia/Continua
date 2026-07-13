@@ -1,0 +1,96 @@
+---
+title: "Engine metrics"
+description: "Scrape Prometheus metrics from the preview durable engine and build starter dashboards and alerts."
+---
+
+The preview engine runtime can expose worker, claim, activity, queue, and
+projector metrics in Prometheus format. Set `ENGINE_METRICS_ADDR` when running
+`continua-engine serve`:
+
+```bash
+ENGINE_METRICS_ADDR=0.0.0.0:9464 continua-engine serve
+```
+
+The endpoint is available at `GET /metrics`. It has no authentication, so bind
+it to an internal interface or restrict access at the network layer.
+
+Embedded Go runtimes can set `runtime.Options.MetricsAddr`, provide a listener
+with `MetricsListener`, or register the collectors without serving an endpoint
+by providing `MetricsRegistry`. A supplied listener takes precedence over an
+address.
+
+## Metric reference
+
+| Metric | Type | Labels | Meaning |
+| --- | --- | --- | --- |
+| `continua_engine_worker_iteration_duration_seconds` | Histogram | `worker` | Time spent in each poll iteration for `workflow`, `activity`, `maintenance`, `catalog-heartbeat`, and `projector` workers. |
+| `continua_engine_worker_iteration_errors_total` | Counter | `worker` | Poll iterations that returned an error. |
+| `continua_engine_claims_total` | Counter | `resource`, `outcome` | Run and local activity-task claim outcomes. `resource` is `run` or `activity_task`; `outcome` is `claimed`, `empty`, or `stale`. |
+| `continua_engine_activity_attempts_total` | Counter | `result` | Activity attempts that completed, were scheduled for retry, or reached terminal failure. `result` is `completed`, `retried`, or `failed`. |
+| `continua_engine_projector_rows_projected_total` | Counter | none | History rows successfully projected into the debugger tables. |
+| `continua_engine_projector_lag_rows` | Gauge | none | Projectable history rows ahead of the current projection checkpoints. |
+| `continua_engine_queue_depth` | Gauge | `queue` | Currently ready runs, claimable local activity tasks, or due pending inbox items. `queue` is `runs_ready`, `activity_tasks_pending`, or `inbox_pending`. |
+| `continua_engine_dedupe_claims_total` | Counter | `outcome` | Start-request deduplication outcomes: `new`, `existing_in_progress`, or `existing_finalized`. Reclaimed expired requests count as `new`. |
+
+Queue depths and projector lag are sampled by the maintenance worker. Their
+freshness therefore follows `ENGINE_MAINTENANCE_POLL_INTERVAL`.
+
+## What to graph
+
+A useful starter dashboard includes:
+
+- Worker iteration latency by worker, using p50, p95, and p99 from
+  `continua_engine_worker_iteration_duration_seconds_bucket`.
+- Worker iteration error rate grouped by `worker`.
+- Claim rate grouped by `resource` and `outcome`, with claimed and empty rates
+  shown together.
+- Activity completion, retry, and failure rates.
+- All three `continua_engine_queue_depth` series on one panel.
+- Projector lag alongside the rate of projected rows.
+- Deduplication claim rate grouped by `outcome`.
+
+For example, a five-minute workflow-worker p95 query is:
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le) (
+    rate(continua_engine_worker_iteration_duration_seconds_bucket{worker="workflow"}[5m])
+  )
+)
+```
+
+## Starter alerts
+
+- **Projector lag growing:** alert when
+  `continua_engine_projector_lag_rows` increases across several maintenance
+  samples and the projected-row rate cannot keep up.
+- **Claim starvation:** alert when the claimed rate for `run` or
+  `activity_task` stays at zero while the corresponding `runs_ready` or
+  `activity_tasks_pending` queue depth remains above zero.
+- **Retry storm:** alert on a sustained spike in
+  `rate(continua_engine_activity_attempts_total{result="retried"}[5m])`, ideally
+  compared with the completed rate and a deployment-specific baseline.
+- **Worker iteration errors:** alert when
+  `increase(continua_engine_worker_iteration_errors_total[5m]) > 0`, grouped by
+  `worker` so the affected loop is immediately visible.
+
+Choose durations and thresholds that cover more than one configured poll
+interval to avoid alerts on a single transient sample.
+
+## Prometheus scrape configuration
+
+If `ENGINE_METRICS_ADDR=0.0.0.0:9464` and the engine is reachable as
+`continua-engine` from Prometheus, add:
+
+```yaml
+scrape_configs:
+  - job_name: continua-engine
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - continua-engine:9464
+```
+
+Keep the scrape interval shorter than the alert window. The queue and lag
+values still change only when the maintenance worker takes its next sample.
