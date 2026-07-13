@@ -107,18 +107,53 @@ def build_worker(*, api_key: str, endpoint: str) -> ActivityWorker:
 
 ## 4. Start a run
 
-Create a unique instance and request key for the run:
+Use the Python control client to start the runtime-published workflow in the provisioned
+project:
 
-```bash
-continua-engine start \
-  --instance-key remote-greeter-ada \
-  --request-key remote-greeter-ada \
-  --definition examples.remote-greeter \
-  --version v1 \
-  --input '{"name":"Ada"}'
+```python
+import os
+import uuid
+
+from continua import EngineControlClient
+
+run_key = f"remote-greeter-ada-{uuid.uuid4()}"
+client = EngineControlClient(
+    api_key=os.environ["CONTINUA_API_KEY"],
+    endpoint=os.environ["CONTINUA_ENDPOINT"],
+)
+try:
+    started = client.start(
+        {
+            "definition_name": "examples.remote-greeter",
+            "definition_version": "v1",
+            "instance_key": run_key,
+            "request_key": run_key,
+            "input": {"name": "Ada"},
+        }
+    )
+    print(started.run_id)
+finally:
+    client.close()
 ```
 
-The preview `POST /v1/engine/runs` endpoint is the REST alternative for starting a run.
+The equivalent raw preview API request is:
+
+```bash
+curl -X POST "${CONTINUA_ENDPOINT}/v1/engine/runs" \
+  -H "X-API-Key: ${CONTINUA_API_KEY}" \
+  -H "X-Continua-Engine-Preview: 1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "definition_name": "examples.remote-greeter",
+    "definition_version": "v1",
+    "instance_key": "remote-greeter-ada-curl",
+    "request_key": "remote-greeter-ada-curl",
+    "input": {"name": "Ada"}
+  }'
+```
+
+`continua-engine start` currently resolves only the built-in dark-launch definitions on
+its fixed demo project, so it cannot start this custom example.
 
 ## 5. Observe the result
 
