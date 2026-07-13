@@ -144,6 +144,7 @@ Engine surface (preview: see [Roadmap](/roadmap) for status):
 | --- | --- | --- |
 | `ENGINE_PUBLIC_API_ENABLED` | `false` | Expose `/v1/engine/*` endpoints. Requires `X-Continua-Engine-Preview` on requests |
 | `ENGINE_DATABASE_URL` | falls back to `DATABASE_URL` | Optional separate Postgres for the engine schema |
+| `ENGINE_LEASE_COMPLETION_GRACE` | `0` | Optional clock-skew grace for remote activity complete, fail, and retry fences only |
 | `ENGINE_PROJECTION_RETENTION_AFTER` | unset | How long to retain projection state after a run reaches terminal state |
 | `ENGINE_HISTORY_RETENTION_AFTER` | unset | Retention window for run history. Must be greater than `ENGINE_PROJECTION_RETENTION_AFTER` |
 

@@ -251,10 +251,11 @@ func (s *engineControlService) CompleteRemoteActivityTask(
 
 	engineTx := enginedb.New(tx.Tx())
 	task, err := engineTx.CompleteRemoteActivityTask(ctx, enginedb.CompleteRemoteActivityTaskParams{
-		ID:        taskID,
-		ProjectID: projectID,
-		ClaimedBy: &workerID,
-		Output:    output,
+		ID:                taskID,
+		ProjectID:         projectID,
+		ClaimedBy:         &workerID,
+		Output:            output,
+		CompletionGraceMs: s.completionGrace.Milliseconds(),
 	})
 	if err != nil {
 		return classifyRemoteActivityOwnershipMiss(ctx, engineTx, projectID, taskID, err)
@@ -286,12 +287,12 @@ func (s *engineControlService) FailRemoteActivityTask(
 	if err != nil {
 		return classifyRemoteActivityOwnershipMiss(ctx, engineTx, projectID, taskID, err)
 	}
-	if !remoteActivityTaskOwnedByWorker(&task, req.WorkerID, time.Now()) {
+	if !remoteActivityTaskOwnedByWorker(&task, req.WorkerID, time.Now(), s.completionGrace) {
 		return remoteActivityOwnershipConflict()
 	}
 
 	if !req.NonRetryable && task.AttemptCount < task.MaxAttempts {
-		retried, retryErr := retryRemoteActivityTask(ctx, engineTx, projectID, &task, req)
+		retried, retryErr := retryRemoteActivityTask(ctx, engineTx, projectID, &task, req, s.completionGrace)
 		if retryErr != nil {
 			return retryErr
 		}
@@ -321,11 +322,12 @@ func (s *engineControlService) FailRemoteActivityTask(
 	}
 
 	failed, err := engineTx.FailRemoteActivityTask(ctx, enginedb.FailRemoteActivityTaskParams{
-		ID:               task.ID,
-		ProjectID:        projectID,
-		ClaimedBy:        &req.WorkerID,
-		LastErrorCode:    &req.ErrorCode,
-		LastErrorMessage: &req.ErrorMessage,
+		ID:                task.ID,
+		ProjectID:         projectID,
+		ClaimedBy:         &req.WorkerID,
+		LastErrorCode:     &req.ErrorCode,
+		LastErrorMessage:  &req.ErrorMessage,
+		CompletionGraceMs: s.completionGrace.Milliseconds(),
 	})
 	if err != nil {
 		return classifyRemoteActivityOwnershipMiss(ctx, engineTx, projectID, taskID, err)
@@ -507,7 +509,12 @@ func truncateRunes(value string, maxLength int) string {
 	return string(runes[:maxLength])
 }
 
-func remoteActivityTaskOwnedByWorker(task *enginedb.EngineActivityTask, workerID string, now time.Time) bool {
+func remoteActivityTaskOwnedByWorker(
+	task *enginedb.EngineActivityTask,
+	workerID string,
+	now time.Time,
+	completionGrace time.Duration,
+) bool {
 	if task == nil || task.ExecutionTarget != publicworkflow.ActivityExecutionTargetRemote {
 		return false
 	}
@@ -517,7 +524,7 @@ func remoteActivityTaskOwnedByWorker(task *enginedb.EngineActivityTask, workerID
 	if task.ClaimedBy == nil || *task.ClaimedBy != workerID {
 		return false
 	}
-	return task.LeaseExpiresAt.Valid && task.LeaseExpiresAt.Time.After(now)
+	return task.LeaseExpiresAt.Valid && task.LeaseExpiresAt.Time.Add(completionGrace).After(now)
 }
 
 func retryRemoteActivityTask(
@@ -526,6 +533,7 @@ func retryRemoteActivityTask(
 	projectID uuid.UUID,
 	task *enginedb.EngineActivityTask,
 	req remoteActivityFailRequest,
+	completionGrace time.Duration,
 ) (enginedb.EngineActivityTask, error) {
 	if task == nil {
 		return enginedb.EngineActivityTask{}, errors.New("remote activity task is required")
@@ -541,12 +549,13 @@ func retryRemoteActivityTask(
 	}
 
 	retried, err := engineTx.RetryRemoteActivityTask(ctx, enginedb.RetryRemoteActivityTaskParams{
-		ID:               task.ID,
-		ProjectID:        projectID,
-		ClaimedBy:        &req.WorkerID,
-		RetryDelayMs:     retryDelayMS,
-		LastErrorCode:    &req.ErrorCode,
-		LastErrorMessage: &req.ErrorMessage,
+		ID:                task.ID,
+		ProjectID:         projectID,
+		ClaimedBy:         &req.WorkerID,
+		RetryDelayMs:      retryDelayMS,
+		LastErrorCode:     &req.ErrorCode,
+		LastErrorMessage:  &req.ErrorMessage,
+		CompletionGraceMs: completionGrace.Milliseconds(),
 	})
 	if err != nil {
 		return enginedb.EngineActivityTask{}, classifyRemoteActivityOwnershipMiss(ctx, engineTx, projectID, task.ID, err)
