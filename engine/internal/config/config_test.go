@@ -1,6 +1,11 @@
 package config
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -134,4 +139,162 @@ func TestLoadLeaseCompletionGrace(t *testing.T) {
 			t.Fatal("Load() error = nil, want invalid completion grace error")
 		}
 	})
+}
+
+func TestLoadLoggingDefaults(t *testing.T) {
+	t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
+	t.Setenv("ENGINE_LOG_LEVEL", "")
+	t.Setenv("ENGINE_LOG_FORMAT", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Logging.Level != slog.LevelInfo {
+		t.Errorf("Logging.Level = %v, want %v", cfg.Logging.Level, slog.LevelInfo)
+	}
+	if cfg.Logging.Format != "json" {
+		t.Errorf("Logging.Format = %q, want %q", cfg.Logging.Format, "json")
+	}
+}
+
+func TestLoadLogLevelOverrides(t *testing.T) {
+	tests := []struct {
+		input string
+		want  slog.Level
+	}{
+		{input: "debug", want: slog.LevelDebug},
+		{input: "DEBUG", want: slog.LevelDebug},
+		{input: "info", want: slog.LevelInfo},
+		{input: "Warn", want: slog.LevelWarn},
+		{input: "error", want: slog.LevelError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
+			t.Setenv("ENGINE_LOG_LEVEL", tt.input)
+			t.Setenv("ENGINE_LOG_FORMAT", "")
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.Logging.Level != tt.want {
+				t.Fatalf("Logging.Level = %v, want %v", cfg.Logging.Level, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidLogLevel(t *testing.T) {
+	t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
+	t.Setenv("ENGINE_LOG_LEVEL", "verbose")
+	t.Setenv("ENGINE_LOG_FORMAT", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want invalid log level error")
+	}
+}
+
+func TestLoadLogFormatOverrides(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "json", want: "json"},
+		{input: "text", want: "text"},
+		{input: "TEXT", want: "text"},
+		{input: "JSON", want: "json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
+			t.Setenv("ENGINE_LOG_LEVEL", "")
+			t.Setenv("ENGINE_LOG_FORMAT", tt.input)
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.Logging.Format != tt.want {
+				t.Fatalf("Logging.Format = %q, want %q", cfg.Logging.Format, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidLogFormat(t *testing.T) {
+	t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
+	t.Setenv("ENGINE_LOG_LEVEL", "")
+	t.Setenv("ENGINE_LOG_FORMAT", "xml")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want invalid log format error")
+	}
+}
+
+func TestNewLoggerJSONFormat(t *testing.T) {
+	var buffer bytes.Buffer
+	var output io.Writer = &buffer
+	logger := NewLogger(LoggingConfig{Level: slog.LevelInfo, Format: "json"}, output)
+
+	logger.Info("hello", "k", "v")
+
+	if !json.Valid(buffer.Bytes()) {
+		t.Fatalf("logger output is not valid JSON: %q", buffer.String())
+	}
+	var entry map[string]any
+	if err := json.Unmarshal(buffer.Bytes(), &entry); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if entry["msg"] != "hello" {
+		t.Errorf("msg = %v, want %q", entry["msg"], "hello")
+	}
+	if entry["level"] != "INFO" {
+		t.Errorf("level = %v, want %q", entry["level"], "INFO")
+	}
+	if entry["k"] != "v" {
+		t.Errorf("k = %v, want %q", entry["k"], "v")
+	}
+}
+
+func TestNewLoggerTextFormat(t *testing.T) {
+	var buffer bytes.Buffer
+	var output io.Writer = &buffer
+	logger := NewLogger(LoggingConfig{Level: slog.LevelInfo, Format: "text"}, output)
+
+	logger.Info("hello")
+
+	got := buffer.String()
+	if !strings.Contains(got, "level=INFO") {
+		t.Errorf("logger output %q does not contain %q", got, "level=INFO")
+	}
+	if !strings.Contains(got, "msg=hello") {
+		t.Errorf("logger output %q does not contain %q", got, "msg=hello")
+	}
+	if json.Valid(buffer.Bytes()) {
+		t.Errorf("text logger output is valid JSON: %q", got)
+	}
+}
+
+func TestNewLoggerRespectsLevelFilter(t *testing.T) {
+	var buffer bytes.Buffer
+	var output io.Writer = &buffer
+	logger := NewLogger(LoggingConfig{Level: slog.LevelWarn, Format: "json"}, output)
+
+	logger.Info("skip")
+	if buffer.Len() != 0 {
+		t.Fatalf("Info output at warn level = %q, want empty", buffer.String())
+	}
+
+	logger.Warn("kept")
+	if buffer.Len() == 0 {
+		t.Fatal("Warn output at warn level is empty")
+	}
+	if !strings.Contains(buffer.String(), "kept") {
+		t.Errorf("Warn output %q does not contain %q", buffer.String(), "kept")
+	}
 }
