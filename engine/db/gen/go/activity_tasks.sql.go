@@ -370,23 +370,26 @@ WHERE id = $2
   AND status = 'claimed'
   AND claimed_by = $4
   AND lease_expires_at IS NOT NULL
-  AND lease_expires_at > NOW()
+  AND lease_expires_at > NOW() - ($5::bigint * INTERVAL '1 millisecond')
 RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type CompleteRemoteActivityTaskParams struct {
-	Output    []byte    `json:"output"`
-	ID        uuid.UUID `json:"id"`
-	ProjectID uuid.UUID `json:"project_id"`
-	ClaimedBy *string   `json:"claimed_by"`
+	Output            []byte    `json:"output"`
+	ID                uuid.UUID `json:"id"`
+	ProjectID         uuid.UUID `json:"project_id"`
+	ClaimedBy         *string   `json:"claimed_by"`
+	CompletionGraceMs int64     `json:"completion_grace_ms"`
 }
 
+// Completion-side fence only; grace never applies to claims; claimed_by + status = 'claimed' still guard re-claims.
 func (q *Queries) CompleteRemoteActivityTask(ctx context.Context, arg CompleteRemoteActivityTaskParams) (EngineActivityTask, error) {
 	row := q.db.QueryRow(ctx, completeRemoteActivityTask,
 		arg.Output,
 		arg.ID,
 		arg.ProjectID,
 		arg.ClaimedBy,
+		arg.CompletionGraceMs,
 	)
 	var i EngineActivityTask
 	err := row.Scan(
@@ -596,18 +599,20 @@ WHERE id = $3
   AND status = 'claimed'
   AND claimed_by = $5
   AND lease_expires_at IS NOT NULL
-  AND lease_expires_at > NOW()
+  AND lease_expires_at > NOW() - ($6::bigint * INTERVAL '1 millisecond')
 RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type FailRemoteActivityTaskParams struct {
-	LastErrorCode    *string   `json:"last_error_code"`
-	LastErrorMessage *string   `json:"last_error_message"`
-	ID               uuid.UUID `json:"id"`
-	ProjectID        uuid.UUID `json:"project_id"`
-	ClaimedBy        *string   `json:"claimed_by"`
+	LastErrorCode     *string   `json:"last_error_code"`
+	LastErrorMessage  *string   `json:"last_error_message"`
+	ID                uuid.UUID `json:"id"`
+	ProjectID         uuid.UUID `json:"project_id"`
+	ClaimedBy         *string   `json:"claimed_by"`
+	CompletionGraceMs int64     `json:"completion_grace_ms"`
 }
 
+// Completion-side fence only; grace never applies to claims; claimed_by + status = 'claimed' still guard re-claims.
 func (q *Queries) FailRemoteActivityTask(ctx context.Context, arg FailRemoteActivityTaskParams) (EngineActivityTask, error) {
 	row := q.db.QueryRow(ctx, failRemoteActivityTask,
 		arg.LastErrorCode,
@@ -615,6 +620,7 @@ func (q *Queries) FailRemoteActivityTask(ctx context.Context, arg FailRemoteActi
 		arg.ID,
 		arg.ProjectID,
 		arg.ClaimedBy,
+		arg.CompletionGraceMs,
 	)
 	var i EngineActivityTask
 	err := row.Scan(
@@ -1162,19 +1168,21 @@ WHERE id = $4
   AND status = 'claimed'
   AND claimed_by = $6
   AND lease_expires_at IS NOT NULL
-  AND lease_expires_at > NOW()
+  AND lease_expires_at > NOW() - ($7::bigint * INTERVAL '1 millisecond')
 RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 `
 
 type RetryRemoteActivityTaskParams struct {
-	RetryDelayMs     int64     `json:"retry_delay_ms"`
-	LastErrorCode    *string   `json:"last_error_code"`
-	LastErrorMessage *string   `json:"last_error_message"`
-	ID               uuid.UUID `json:"id"`
-	ProjectID        uuid.UUID `json:"project_id"`
-	ClaimedBy        *string   `json:"claimed_by"`
+	RetryDelayMs      int64     `json:"retry_delay_ms"`
+	LastErrorCode     *string   `json:"last_error_code"`
+	LastErrorMessage  *string   `json:"last_error_message"`
+	ID                uuid.UUID `json:"id"`
+	ProjectID         uuid.UUID `json:"project_id"`
+	ClaimedBy         *string   `json:"claimed_by"`
+	CompletionGraceMs int64     `json:"completion_grace_ms"`
 }
 
+// Completion-side fence only; grace never applies to claims; claimed_by + status = 'claimed' still guard re-claims.
 func (q *Queries) RetryRemoteActivityTask(ctx context.Context, arg RetryRemoteActivityTaskParams) (EngineActivityTask, error) {
 	row := q.db.QueryRow(ctx, retryRemoteActivityTask,
 		arg.RetryDelayMs,
@@ -1183,6 +1191,7 @@ func (q *Queries) RetryRemoteActivityTask(ctx context.Context, arg RetryRemoteAc
 		arg.ID,
 		arg.ProjectID,
 		arg.ClaimedBy,
+		arg.CompletionGraceMs,
 	)
 	var i EngineActivityTask
 	err := row.Scan(

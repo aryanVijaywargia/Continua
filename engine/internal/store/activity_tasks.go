@@ -144,10 +144,11 @@ func (o *storeOps) CompleteRemoteActivityTask(
 	output []byte,
 ) (enginedb.EngineActivityTask, error) {
 	task, err := o.q.CompleteRemoteActivityTask(ctx, enginedb.CompleteRemoteActivityTaskParams{
-		ID:        id,
-		ProjectID: projectID,
-		ClaimedBy: nullableWorkerID(claimedBy),
-		Output:    output,
+		ID:                id,
+		ProjectID:         projectID,
+		ClaimedBy:         nullableWorkerID(claimedBy),
+		Output:            output,
+		CompletionGraceMs: o.completionGrace.Milliseconds(),
 	})
 	if err == nil {
 		return task, nil
@@ -184,12 +185,13 @@ func (o *storeOps) RetryRemoteActivityTask(
 	errorMessage *string,
 ) (enginedb.EngineActivityTask, error) {
 	task, err := o.q.RetryRemoteActivityTask(ctx, enginedb.RetryRemoteActivityTaskParams{
-		ID:               id,
-		ProjectID:        projectID,
-		ClaimedBy:        nullableWorkerID(claimedBy),
-		RetryDelayMs:     retryDelayMS,
-		LastErrorCode:    errorCode,
-		LastErrorMessage: errorMessage,
+		ID:                id,
+		ProjectID:         projectID,
+		ClaimedBy:         nullableWorkerID(claimedBy),
+		RetryDelayMs:      retryDelayMS,
+		LastErrorCode:     errorCode,
+		LastErrorMessage:  errorMessage,
+		CompletionGraceMs: o.completionGrace.Milliseconds(),
 	})
 	if err == nil {
 		return task, nil
@@ -206,11 +208,12 @@ func (o *storeOps) FailRemoteActivityTask(
 	errorMessage *string,
 ) (enginedb.EngineActivityTask, error) {
 	task, err := o.q.FailRemoteActivityTask(ctx, enginedb.FailRemoteActivityTaskParams{
-		ID:               id,
-		ProjectID:        projectID,
-		ClaimedBy:        nullableWorkerID(claimedBy),
-		LastErrorCode:    errorCode,
-		LastErrorMessage: errorMessage,
+		ID:                id,
+		ProjectID:         projectID,
+		ClaimedBy:         nullableWorkerID(claimedBy),
+		LastErrorCode:     errorCode,
+		LastErrorMessage:  errorMessage,
+		CompletionGraceMs: o.completionGrace.Milliseconds(),
 	})
 	if err == nil {
 		return task, nil

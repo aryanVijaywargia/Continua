@@ -45,6 +45,7 @@ type RuntimeConfig struct {
 	MaintenancePollInterval time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
+	LeaseCompletionGrace    time.Duration
 	RequestDedupeTTL        time.Duration
 	ProjectIDFilter         *uuid.UUID
 }
@@ -103,6 +104,13 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	leaseCompletionGrace, err := durationFromEnv("ENGINE_LEASE_COMPLETION_GRACE", cfg.Runtime.LeaseCompletionGrace)
+	if err != nil {
+		return nil, err
+	}
+	if leaseCompletionGrace < 0 {
+		return nil, errors.New("ENGINE_LEASE_COMPLETION_GRACE must be non-negative")
+	}
 	requestDedupeTTL, err := durationFromEnv("ENGINE_REQUEST_DEDUPE_TTL", cfg.Runtime.RequestDedupeTTL)
 	if err != nil {
 		return nil, err
@@ -117,6 +125,7 @@ func Load() (*Config, error) {
 	cfg.Runtime.MaintenancePollInterval = maintenancePollInterval
 	cfg.Runtime.RunLeaseTTL = runLeaseTTL
 	cfg.Runtime.ActivityLeaseTTL = activityLeaseTTL
+	cfg.Runtime.LeaseCompletionGrace = leaseCompletionGrace
 	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL
 	cfg.Runtime.ProjectIDFilter = projectIDFilter
 	return cfg, nil

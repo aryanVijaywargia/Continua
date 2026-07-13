@@ -74,6 +74,38 @@ func TestLoad_RejectsUnparseableRetentionDuration(t *testing.T) {
 	assert.Contains(t, err.Error(), "ENGINE_PROJECTION_RETENTION_AFTER")
 }
 
+func TestLoad_LeaseCompletionGrace(t *testing.T) {
+	t.Run("configured duration", func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "postgres://example")
+		t.Setenv("ENGINE_LEASE_COMPLETION_GRACE", "15s")
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		assert.Equal(t, 15*time.Second, cfg.Engine.LeaseCompletionGrace)
+	})
+
+	t.Run("default is zero", func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "postgres://example")
+		t.Setenv("ENGINE_LEASE_COMPLETION_GRACE", "")
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		assert.Zero(t, cfg.Engine.LeaseCompletionGrace)
+	})
+
+	t.Run("negative duration rejected", func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "postgres://example")
+		t.Setenv("ENGINE_LEASE_COMPLETION_GRACE", "-5s")
+
+		cfg, err := config.Load()
+		require.Error(t, err)
+		assert.Nil(t, cfg)
+		assert.Contains(t, err.Error(), "ENGINE_LEASE_COMPLETION_GRACE")
+	})
+}
+
 func TestLoad_RejectsPartialAuth0Configuration(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("AUTH0_DOMAIN", "continua.us.auth0.com")

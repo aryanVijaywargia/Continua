@@ -328,6 +328,55 @@ func TestRemoteActivityCompleteAndDuplicateConflict(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, missingCompleteRec.Code)
 }
 
+func TestCompleteRemoteActivityTaskHonorsCompletionGrace(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+
+	createExpiredClaim := func(activityKey string) remoteActivityTestTask {
+		t.Helper()
+		fixture := createRemoteActivityTestTask(t, ctx, platformStore, engineQueries, createRemoteActivityTestTaskParams{
+			ProjectID:       projectID,
+			ActivityKey:     activityKey,
+			ActivityType:    "email." + activityKey,
+			ExecutionTarget: "remote",
+			AvailableAt:     time.Now().Add(-time.Minute),
+			MaxAttempts:     1,
+			Waiting:         true,
+		})
+		claimRemoteActivityForTest(t, server, projectID, "worker-a", fixture.Task.ActivityType)
+		_, err := platformStore.Pool().Exec(ctx, `
+			UPDATE engine.activity_tasks
+			SET lease_expires_at = NOW() - INTERVAL '10 seconds'
+			WHERE id = $1
+		`, fixture.Task.ID)
+		require.NoError(t, err)
+		return fixture
+	}
+
+	withinGrace := createExpiredClaim("complete-with-grace")
+	server.engineControl.completionGrace = 30 * time.Second
+	graceRec := invokeCompleteRemoteActivityTask(t, server, projectID, withinGrace.Task.ID, EngineRemoteActivityCompleteRequest{
+		WorkerId: "worker-a",
+		Output:   map[string]any{"grace": true},
+	})
+	require.Equal(t, http.StatusNoContent, graceRec.Code)
+	completed, err := engineQueries.GetActivityTask(ctx, withinGrace.Task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineActivityTaskStatusCompleted, completed.Status)
+
+	zeroGrace := createExpiredClaim("complete-without-grace")
+	server.engineControl.completionGrace = 0
+	zeroGraceRec := invokeCompleteRemoteActivityTask(t, server, projectID, zeroGrace.Task.ID, EngineRemoteActivityCompleteRequest{
+		WorkerId: "worker-a",
+		Output:   map[string]any{"grace": false},
+	})
+	require.Equal(t, http.StatusConflict, zeroGraceRec.Code)
+	unchanged, err := engineQueries.GetActivityTask(ctx, zeroGrace.Task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, enginedb.EngineActivityTaskStatusClaimed, unchanged.Status)
+	require.NotNil(t, unchanged.ClaimedBy)
+	assert.Equal(t, "worker-a", *unchanged.ClaimedBy)
+}
+
 func TestRemoteActivityFailRetryAndNonRetryable(t *testing.T) {
 	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
 	retryFixture := createRemoteActivityTestTask(t, ctx, platformStore, engineQueries, createRemoteActivityTestTaskParams{

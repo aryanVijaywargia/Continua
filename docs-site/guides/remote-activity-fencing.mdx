@@ -1,0 +1,45 @@
+---
+title: "Remote activity fencing"
+description: "Implement remote activity workers safely with lease fencing and at-least-once execution."
+---
+
+Remote activities use leases to coordinate work across SDK workers. Their execution is
+**at least once**: a task can run again after its lease expires, including when the first
+worker is still running or its completion response is delayed.
+
+## Lease fences
+
+Each remote operation is fenced independently:
+
+| Operation | Required fence |
+| --- | --- |
+| Claim | The task is queued, or its existing lease has strictly expired. A claim records the worker as the owner and starts a new lease. |
+| Heartbeat | The task is still claimed by that worker and its lease has not expired. Completion grace never applies. |
+| Complete, fail, or retry | The task is still claimed by that worker and its lease is valid, optionally including the configured completion-grace window. |
+
+If a completion-side request loses its fence, the API returns
+`409 activity_task_conflict`. Continua discards the submitted result. The worker must
+assume the task has been or can be claimed again, so the activity may re-run.
+
+## Completion grace
+
+`ENGINE_LEASE_COMPLETION_GRACE` is an optional Go duration such as `5s`. Its default is
+`0`, which preserves strict lease-expiry behavior.
+
+Grace applies only to remote activity complete, fail, and retry fences. It does not
+extend claims or heartbeats. Only the original owner can use the grace window while the
+task remains in `claimed` status. If another worker re-claims the expired task first,
+the new `claimed_by` value wins and the stale owner's result is rejected.
+
+Use a small grace window only to tolerate expected clock skew or completion-request
+latency. It does not change the at-least-once execution model.
+
+## SDK worker guidance
+
+- Heartbeat more frequently than one third of the lease duration.
+- Treat `409 activity_task_conflict` from heartbeat, complete, or fail as a lost lease;
+  stop work when possible and discard the result locally.
+- Make activities idempotent. Use a stable activity or business-operation identifier
+  when calling external systems so a re-run does not duplicate side effects.
+- Do not rely on completion grace to keep a lease alive. Only successful heartbeats
+  extend the active lease.

@@ -43,6 +43,9 @@ type Options struct {
 	MaintenancePollInterval time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
+	// LeaseCompletionGrace allows the current remote activity owner to complete,
+	// fail, or retry briefly after lease expiry. It does not extend claims or heartbeats.
+	LeaseCompletionGrace time.Duration
 }
 
 // Runtime is an embedded engine instance built from Options.
@@ -96,7 +99,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	store := enginestore.New(pool)
+	store := enginestore.New(pool).WithLeaseCompletionGrace(cfg.Runtime.LeaseCompletionGrace)
 	defer func() {
 		store.Close()
 	}()
@@ -157,6 +160,9 @@ func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	}
 	if opts.ActivityLeaseTTL != 0 {
 		cfg.Runtime.ActivityLeaseTTL = opts.ActivityLeaseTTL
+	}
+	if opts.LeaseCompletionGrace != 0 {
+		cfg.Runtime.LeaseCompletionGrace = opts.LeaseCompletionGrace
 	}
 	cfg.Runtime.ProjectIDFilter = opts.ProjectID
 }
