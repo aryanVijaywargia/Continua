@@ -119,7 +119,7 @@ Alongside the platform server, the **`continua-engine` worker runtime** executes
 
 ![Continua ingest flow](./assets/diagrams/ingest-flow.svg)
 
-Stack: Go 1.24+ (Chi, Fx), PostgreSQL 16+ (sqlc), River for jobs, Vite/React/TypeScript with TanStack Query for the UI, OpenAPI 3 contracts driving generated Go/TS/Python types.
+Stack: Go 1.25+ (Chi, Fx), PostgreSQL 16+ (sqlc), River for jobs, Vite/React/TypeScript with TanStack Query for the UI, OpenAPI 3 contracts driving generated Go/TS/Python types.
 
 ![Continua data model](./assets/diagrams/data-model.svg)
 

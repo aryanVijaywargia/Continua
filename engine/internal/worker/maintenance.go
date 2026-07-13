@@ -50,7 +50,12 @@ func (w *MaintenanceWorker) PollOnce(ctx context.Context, _ string) error {
 	if _, err = w.store.ExpireRequestDedupe(ctx); err != nil {
 		return err
 	}
+	return nil
+}
 
+// PollMetricsOnce samples queue depths and projector lag independently from
+// timer maintenance.
+func (w *MaintenanceWorker) PollMetricsOnce(ctx context.Context, _ string) error {
 	metrics := w.store.Metrics()
 	if metrics == nil {
 		return nil

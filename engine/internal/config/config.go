@@ -17,6 +17,7 @@ const (
 	defaultWorkflowPoll    = time.Second
 	defaultActivityPoll    = time.Second
 	defaultMaintenancePoll = 10 * time.Second
+	defaultMetricsSample   = 30 * time.Second
 	defaultRunLeaseTTL     = 30 * time.Second
 	defaultActivityLease   = 5 * time.Minute
 	defaultRequestDedupe   = time.Hour
@@ -43,6 +44,7 @@ type RuntimeConfig struct {
 	WorkflowPollInterval    time.Duration
 	ActivityPollInterval    time.Duration
 	MaintenancePollInterval time.Duration
+	MetricsSampleInterval   time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
 	RequestDedupeTTL        time.Duration
@@ -65,6 +67,7 @@ func Defaults(databaseURL string) *Config {
 			WorkflowPollInterval:    defaultWorkflowPoll,
 			ActivityPollInterval:    defaultActivityPoll,
 			MaintenancePollInterval: defaultMaintenancePoll,
+			MetricsSampleInterval:   defaultMetricsSample,
 			RunLeaseTTL:             defaultRunLeaseTTL,
 			ActivityLeaseTTL:        defaultActivityLease,
 			RequestDedupeTTL:        defaultRequestDedupe,
@@ -96,6 +99,10 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	metricsSampleInterval, err := durationFromEnv("ENGINE_METRICS_SAMPLE_INTERVAL", cfg.Runtime.MetricsSampleInterval)
+	if err != nil {
+		return nil, err
+	}
 	runLeaseTTL, err := durationFromEnv("ENGINE_RUN_LEASE_TTL", cfg.Runtime.RunLeaseTTL)
 	if err != nil {
 		return nil, err
@@ -116,6 +123,7 @@ func Load() (*Config, error) {
 	cfg.Runtime.WorkflowPollInterval = workflowPollInterval
 	cfg.Runtime.ActivityPollInterval = activityPollInterval
 	cfg.Runtime.MaintenancePollInterval = maintenancePollInterval
+	cfg.Runtime.MetricsSampleInterval = metricsSampleInterval
 	cfg.Runtime.RunLeaseTTL = runLeaseTTL
 	cfg.Runtime.ActivityLeaseTTL = activityLeaseTTL
 	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL

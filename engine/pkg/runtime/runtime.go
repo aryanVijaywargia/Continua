@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,6 +47,7 @@ type Options struct {
 	WorkflowPollInterval    time.Duration
 	ActivityPollInterval    time.Duration
 	MaintenancePollInterval time.Duration
+	MetricsSampleInterval   time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
 	// MetricsRegistry receives engine Prometheus collectors when configured.
@@ -61,6 +63,8 @@ type Runtime struct {
 	options     Options
 	definitions *engineworkflow.Registry
 	activities  *activity.Registry
+	runMu       sync.Mutex
+	started     bool
 }
 
 // New validates the options and builds the workflow/activity registries.
@@ -90,14 +94,18 @@ func New(opts Options) (*Runtime, error) { //nolint:gocritic // Keep the public 
 	}, nil
 }
 
-// Run executes the engine workers until ctx is cancelled. It returns nil on
-// graceful shutdown.
+// Run executes the engine workers until ctx is cancelled. A Runtime is
+// single-use; subsequent calls return an error. Run returns nil on graceful
+// shutdown.
 func (r *Runtime) Run(ctx context.Context) error {
 	if r == nil {
 		return errors.New("runtime: nil runtime")
 	}
 	if ctx == nil {
 		return errors.New("runtime: context is required")
+	}
+	if err := r.beginRun(); err != nil {
+		return err
 	}
 
 	cfg := config.Defaults(r.options.DatabaseURL)
@@ -154,6 +162,16 @@ func (r *Runtime) Run(ctx context.Context) error {
 			observeIterations(recorder, "workflow", workflowWorker.PollOnce),
 		)
 	})
+	if recorder != nil {
+		group.Go(func() error {
+			return engineworker.RunLoop(
+				groupCtx,
+				cfg.Runtime.MetricsSampleInterval,
+				"metrics",
+				observeIterations(recorder, "metrics", maintenanceWorker.PollMetricsOnce),
+			)
+		})
+	}
 	group.Go(func() error {
 		return engineworker.RunLoop(
 			groupCtx,
@@ -192,6 +210,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 		metricsServer := &http.Server{
 			Handler:           metricsMux(metricsGatherer),
 			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		}
 		group.Go(func() error {
 			err := metricsServer.Serve(metricsListener)
@@ -212,6 +233,16 @@ func (r *Runtime) Run(ctx context.Context) error {
 	}
 
 	return group.Wait()
+}
+
+func (r *Runtime) beginRun() error {
+	r.runMu.Lock()
+	defer r.runMu.Unlock()
+	if r.started {
+		return errors.New("runtime: Run may only be called once")
+	}
+	r.started = true
+	return nil
 }
 
 func buildMetrics(opts *Options) (*enginemetrics.Metrics, prometheus.Gatherer, error) {
@@ -272,6 +303,9 @@ func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	}
 	if opts.MaintenancePollInterval != 0 {
 		cfg.Runtime.MaintenancePollInterval = opts.MaintenancePollInterval
+	}
+	if opts.MetricsSampleInterval != 0 {
+		cfg.Runtime.MetricsSampleInterval = opts.MetricsSampleInterval
 	}
 	if opts.RunLeaseTTL != 0 {
 		cfg.Runtime.RunLeaseTTL = opts.RunLeaseTTL

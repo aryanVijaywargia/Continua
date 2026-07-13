@@ -104,6 +104,7 @@ func serveCmd() *cobra.Command {
 				WorkflowPollInterval:    cfg.Runtime.WorkflowPollInterval,
 				ActivityPollInterval:    cfg.Runtime.ActivityPollInterval,
 				MaintenancePollInterval: cfg.Runtime.MaintenancePollInterval,
+				MetricsSampleInterval:   cfg.Runtime.MetricsSampleInterval,
 				RunLeaseTTL:             cfg.Runtime.RunLeaseTTL,
 				ActivityLeaseTTL:        cfg.Runtime.ActivityLeaseTTL,
 				MetricsAddr:             cfg.Runtime.MetricsAddr,

@@ -152,8 +152,10 @@ func (tx *Tx) ClaimStartRequestDedupe(
 func (tx *Tx) recordStartRequestDedupeClaim(state StartRequestDedupeClaimState) {
 	var outcome string
 	switch state {
-	case StartRequestDedupeClaimStateClaimedNew, StartRequestDedupeClaimStateClaimedReclaimed:
+	case StartRequestDedupeClaimStateClaimedNew:
 		outcome = "new"
+	case StartRequestDedupeClaimStateClaimedReclaimed:
+		outcome = "reclaimed"
 	case StartRequestDedupeClaimStateExistingFinalized:
 		outcome = "existing_finalized"
 	case StartRequestDedupeClaimStateExistingInProgress:

@@ -23,17 +23,18 @@ address.
 
 | Metric | Type | Labels | Meaning |
 | --- | --- | --- | --- |
-| `continua_engine_worker_iteration_duration_seconds` | Histogram | `worker` | Time spent in each poll iteration for `workflow`, `activity`, `maintenance`, `catalog-heartbeat`, and `projector` workers. |
+| `continua_engine_worker_iteration_duration_seconds` | Histogram | `worker` | Time spent in each poll iteration for `workflow`, `activity`, `maintenance`, `metrics`, `catalog-heartbeat`, and `projector` workers. |
 | `continua_engine_worker_iteration_errors_total` | Counter | `worker` | Poll iterations that returned an error. |
 | `continua_engine_claims_total` | Counter | `resource`, `outcome` | Run and local activity-task claim outcomes. `resource` is `run` or `activity_task`; `outcome` is `claimed`, `empty`, or `stale`. |
 | `continua_engine_activity_attempts_total` | Counter | `result` | Activity attempts that completed, were scheduled for retry, or reached terminal failure. `result` is `completed`, `retried`, or `failed`. |
 | `continua_engine_projector_rows_projected_total` | Counter | none | History rows successfully projected into the debugger tables. |
 | `continua_engine_projector_lag_rows` | Gauge | none | Projectable history rows ahead of the current projection checkpoints. |
 | `continua_engine_queue_depth` | Gauge | `queue` | Currently ready runs, claimable local activity tasks, or due pending inbox items. `queue` is `runs_ready`, `activity_tasks_pending`, or `inbox_pending`. |
-| `continua_engine_dedupe_claims_total` | Counter | `outcome` | Start-request deduplication outcomes: `new`, `existing_in_progress`, or `existing_finalized`. Reclaimed expired requests count as `new`. |
+| `continua_engine_dedupe_claims_total` | Counter | `outcome` | Start-request deduplication outcomes: `new`, `reclaimed`, `existing_in_progress`, or `existing_finalized`. |
 
-Queue depths and projector lag are sampled by the maintenance worker. Their
-freshness therefore follows `ENGINE_MAINTENANCE_POLL_INTERVAL`.
+Queue depths and projector lag are sampled by a dedicated metrics worker. Its
+cadence defaults to 30 seconds and can be configured with
+`ENGINE_METRICS_SAMPLE_INTERVAL` without changing timer maintenance frequency.
 
 ## What to graph
 
@@ -63,7 +64,7 @@ histogram_quantile(
 ## Starter alerts
 
 - **Projector lag growing:** alert when
-  `continua_engine_projector_lag_rows` increases across several maintenance
+  `continua_engine_projector_lag_rows` increases across several metrics
   samples and the projected-row rate cannot keep up.
 - **Claim starvation:** alert when the claimed rate for `run` or
   `activity_task` stays at zero while the corresponding `runs_ready` or
@@ -93,4 +94,4 @@ scrape_configs:
 ```
 
 Keep the scrape interval shorter than the alert window. The queue and lag
-values still change only when the maintenance worker takes its next sample.
+values still change only when the metrics worker takes its next sample.
