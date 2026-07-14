@@ -166,16 +166,21 @@ func (r *Runtime) Run(ctx context.Context) error {
 		tracker.Register("metrics", workerStaleAfter(cfg.Runtime.MetricsSampleInterval))
 	}
 	metricsListener := r.options.MetricsListener
+	metricsListenerOwned := false
 	if metricsListener == nil && r.options.MetricsAddr != "" {
 		metricsListener, err = net.Listen("tcp", r.options.MetricsAddr)
 		if err != nil {
 			return fmt.Errorf("runtime: listen for metrics: %w", err)
 		}
+		metricsListenerOwned = true
 	}
 	httpListener := r.options.HTTPListener
 	if httpListener == nil && r.options.HTTPAddr != "" {
 		httpListener, err = net.Listen("tcp", r.options.HTTPAddr)
 		if err != nil {
+			if metricsListenerOwned {
+				_ = metricsListener.Close()
+			}
 			return fmt.Errorf("runtime: listen for operational HTTP: %w", err)
 		}
 	}
