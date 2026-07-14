@@ -2,7 +2,10 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "queries/"
-    schema: "migrations/postgres/"
+    schema:
+      - "../../db/platform/migrations/postgres/000001_initial_schema.up.sql"
+      - "../../db/platform/migrations/postgres/000013_engine_trace_linkage.up.sql"
+      - "migrations/postgres/"
     gen:
       go:
         package: "engine"
@@ -11,6 +14,7 @@ sql:
         emit_json_tags: true
         emit_empty_slices: true
         emit_pointers_for_null_types: true
+        omit_unused_structs: true
         overrides:
           - db_type: "uuid"
             go_type: "github.com/google/uuid.UUID"

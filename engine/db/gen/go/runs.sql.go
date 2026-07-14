@@ -317,6 +317,32 @@ func (q *Queries) GetLatestRunByInstance(ctx context.Context, instanceID uuid.UU
 	return i, err
 }
 
+const getRetainableTerminalRunForUpdate = `-- name: GetRetainableTerminalRunForUpdate :one
+SELECT r.id
+FROM engine.runs AS r
+JOIN public.traces AS t ON t.engine_run_id = r.id
+WHERE r.id = $1
+  AND ($2::uuid IS NULL OR r.project_id = $2::uuid)
+  AND r.status IN ('completed', 'failed', 'cancelled', 'terminated')
+  AND t.engine_latest_history_id IS NOT NULL
+  AND t.engine_last_projected_history_id IS NOT NULL
+  AND t.engine_last_projected_history_id >= t.engine_latest_history_id
+  AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
+FOR UPDATE OF r, t
+`
+
+type GetRetainableTerminalRunForUpdateParams struct {
+	RunID         uuid.UUID   `json:"run_id"`
+	ProjectFilter pgtype.UUID `json:"project_filter"`
+}
+
+func (q *Queries) GetRetainableTerminalRunForUpdate(ctx context.Context, arg GetRetainableTerminalRunForUpdateParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getRetainableTerminalRunForUpdate, arg.RunID, arg.ProjectFilter)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getRun = `-- name: GetRun :one
 SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
@@ -485,6 +511,48 @@ func (q *Queries) GetRunForUpdate(ctx context.Context, id uuid.UUID) (EngineRun,
 		&i.ChildDepth,
 	)
 	return i, err
+}
+
+const listRetainableTerminalRunIDs = `-- name: ListRetainableTerminalRunIDs :many
+SELECT r.id
+FROM engine.runs AS r
+JOIN public.traces AS t ON t.engine_run_id = r.id
+WHERE ($1::uuid IS NULL OR r.project_id = $1::uuid)
+  AND r.status IN ('completed', 'failed', 'cancelled', 'terminated')
+  AND r.completed_at IS NOT NULL
+  AND r.completed_at < $2::timestamptz
+  AND t.engine_latest_history_id IS NOT NULL
+  AND t.engine_last_projected_history_id IS NOT NULL
+  AND t.engine_last_projected_history_id >= t.engine_latest_history_id
+  AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
+ORDER BY r.completed_at ASC
+LIMIT $3
+`
+
+type ListRetainableTerminalRunIDsParams struct {
+	ProjectFilter pgtype.UUID `json:"project_filter"`
+	Cutoff        time.Time   `json:"cutoff"`
+	BatchSize     int32       `json:"batch_size"`
+}
+
+func (q *Queries) ListRetainableTerminalRunIDs(ctx context.Context, arg ListRetainableTerminalRunIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listRetainableTerminalRunIDs, arg.ProjectFilter, arg.Cutoff, arg.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRunsByInstance = `-- name: ListRunsByInstance :many

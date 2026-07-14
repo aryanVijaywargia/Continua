@@ -44,38 +44,11 @@ func (s *Store) ListRetainableTerminalRunIDs(
 		projectFilter = pgtype.UUID{Bytes: *s.projectFilter, Valid: true}
 	}
 
-	rows, err := s.pool.Query(ctx, `
-		SELECT r.id
-		FROM engine.runs AS r
-		JOIN public.traces AS t ON t.engine_run_id = r.id
-		WHERE ($1::uuid IS NULL OR r.project_id = $1)
-		  AND r.status IN ('completed', 'failed', 'cancelled', 'terminated')
-		  AND r.completed_at IS NOT NULL
-		  AND r.completed_at < $2
-		  AND t.engine_latest_history_id IS NOT NULL
-		  AND t.engine_last_projected_history_id IS NOT NULL
-		  AND t.engine_last_projected_history_id >= t.engine_latest_history_id
-		  AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
-		ORDER BY r.completed_at ASC
-		LIMIT $3
-	`, projectFilter, cutoff, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	runIDs := make([]uuid.UUID, 0, limit)
-	for rows.Next() {
-		var runID uuid.UUID
-		if err := rows.Scan(&runID); err != nil {
-			return nil, err
-		}
-		runIDs = append(runIDs, runID)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return runIDs, nil
+	return s.q.ListRetainableTerminalRunIDs(ctx, enginedb.ListRetainableTerminalRunIDsParams{
+		ProjectFilter: projectFilter,
+		Cutoff:        cutoff,
+		BatchSize:     limit,
+	})
 }
 
 // ReapTerminalRunJournal deletes a terminal run's engine journal atomically
@@ -87,14 +60,14 @@ func (s *Store) ReapTerminalRunJournal(ctx context.Context, runID uuid.UUID) (Re
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	projectFilter := pgtype.UUID{}
 	if tx.projectFilter != nil {
-		_, err = tx.q.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
-			ProjectID: *tx.projectFilter,
-			ID:        runID,
-		})
-	} else {
-		_, err = tx.q.GetRunForUpdate(ctx, runID)
+		projectFilter = pgtype.UUID{Bytes: *tx.projectFilter, Valid: true}
 	}
+	_, err = tx.q.GetRetainableTerminalRunForUpdate(ctx, enginedb.GetRetainableTerminalRunForUpdateParams{
+		RunID:         runID,
+		ProjectFilter: projectFilter,
+	})
 	if err != nil {
 		return RetentionReapCounts{}, normalizeError(err)
 	}

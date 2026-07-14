@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -215,6 +216,46 @@ func TestReapTerminalRunJournal_ProjectFilterMismatchLeavesData(t *testing.T) {
 	}
 }
 
+func TestReapTerminalRunJournal_RejectsActiveRun(t *testing.T) {
+	ts := newTestStore(t)
+	projectID := uuidOrFatal(t)
+	fixture := seedRetentionJournal(t, ts, projectID, "active-run")
+	if _, err := ts.db.Pool.Exec(ts.ctx, `
+		UPDATE engine.runs
+		SET status = 'running', completed_at = NULL, updated_at = NOW()
+		WHERE id = $1
+	`, fixture.run.ID); err != nil {
+		t.Fatalf("mark run active: %v", err)
+	}
+
+	_, err := ts.store.ReapTerminalRunJournal(ts.ctx, fixture.run.ID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ReapTerminalRunJournal() error = %v, want ErrNotFound", err)
+	}
+	assertRetentionRunRows(t, ts, fixture.run.ID, 2, 1, 1)
+	assertRetentionTraceNotExpired(t, ts, fixture.traceID)
+}
+
+func TestReapTerminalRunJournal_RejectsIncompleteProjection(t *testing.T) {
+	ts := newTestStore(t)
+	projectID := uuidOrFatal(t)
+	fixture := seedRetentionJournal(t, ts, projectID, "incomplete-projection")
+	if _, err := ts.db.Pool.Exec(ts.ctx, `
+		UPDATE public.traces
+		SET engine_last_projected_history_id = engine_latest_history_id - 1
+		WHERE id = $1
+	`, fixture.traceID); err != nil {
+		t.Fatalf("mark trace projection incomplete: %v", err)
+	}
+
+	_, err := ts.store.ReapTerminalRunJournal(ts.ctx, fixture.run.ID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ReapTerminalRunJournal() error = %v, want ErrNotFound", err)
+	}
+	assertRetentionRunRows(t, ts, fixture.run.ID, 2, 1, 1)
+	assertRetentionTraceNotExpired(t, ts, fixture.traceID)
+}
+
 type retentionJournalFixture struct {
 	instance   enginedb.EngineInstance
 	run        enginedb.EngineRun
@@ -377,5 +418,20 @@ func assertRetentionRunRows(t *testing.T, ts *testStore, runID uuid.UUID, wantHi
 		if got != check.want {
 			t.Errorf("%s rows for run = %d, want %d", check.name, got, check.want)
 		}
+	}
+}
+
+func assertRetentionTraceNotExpired(t *testing.T, ts *testStore, traceID uuid.UUID) {
+	t.Helper()
+	var traceState string
+	if err := ts.db.Pool.QueryRow(ts.ctx, `
+		SELECT COALESCE(engine_projection_state, '')
+		FROM public.traces
+		WHERE id = $1
+	`, traceID).Scan(&traceState); err != nil {
+		t.Fatalf("query trace projection state: %v", err)
+	}
+	if traceState == "journal_expired" {
+		t.Fatal("ineligible run marked trace journal_expired; want journal data and projection state untouched")
 	}
 }

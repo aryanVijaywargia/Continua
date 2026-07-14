@@ -59,6 +59,34 @@ WHERE project_id = $1
   AND id = $2
 FOR UPDATE;
 
+-- name: ListRetainableTerminalRunIDs :many
+SELECT r.id
+FROM engine.runs AS r
+JOIN public.traces AS t ON t.engine_run_id = r.id
+WHERE (sqlc.narg(project_filter)::uuid IS NULL OR r.project_id = sqlc.narg(project_filter)::uuid)
+  AND r.status IN ('completed', 'failed', 'cancelled', 'terminated')
+  AND r.completed_at IS NOT NULL
+  AND r.completed_at < sqlc.arg(cutoff)::timestamptz
+  AND t.engine_latest_history_id IS NOT NULL
+  AND t.engine_last_projected_history_id IS NOT NULL
+  AND t.engine_last_projected_history_id >= t.engine_latest_history_id
+  AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
+ORDER BY r.completed_at ASC
+LIMIT sqlc.arg(batch_size);
+
+-- name: GetRetainableTerminalRunForUpdate :one
+SELECT r.id
+FROM engine.runs AS r
+JOIN public.traces AS t ON t.engine_run_id = r.id
+WHERE r.id = sqlc.arg(run_id)
+  AND (sqlc.narg(project_filter)::uuid IS NULL OR r.project_id = sqlc.narg(project_filter)::uuid)
+  AND r.status IN ('completed', 'failed', 'cancelled', 'terminated')
+  AND t.engine_latest_history_id IS NOT NULL
+  AND t.engine_last_projected_history_id IS NOT NULL
+  AND t.engine_last_projected_history_id >= t.engine_latest_history_id
+  AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
+FOR UPDATE OF r, t;
+
 -- name: ListRunsByInstance :many
 SELECT *
 FROM engine.runs

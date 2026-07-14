@@ -57,8 +57,8 @@ type Options struct {
 	// zero; negative values disable the corresponding retention class.
 	RetentionTerminalRuns time.Duration
 	RetentionDedupeGrace  time.Duration
-	// RetentionBatchSize is the maximum rows or runs reaped per pass; zero uses
-	// the engine default.
+	// RetentionBatchSize is the maximum rows or runs reaped per pass;
+	// non-positive values use the engine default.
 	RetentionBatchSize int32
 	// MetricsRegistry receives engine Prometheus collectors when configured.
 	MetricsRegistry prometheus.Registerer
@@ -351,7 +351,7 @@ func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	} else if opts.RetentionDedupeGrace != 0 {
 		cfg.Runtime.RetentionDedupeGrace = opts.RetentionDedupeGrace
 	}
-	if opts.RetentionBatchSize != 0 {
+	if opts.RetentionBatchSize > 0 {
 		cfg.Runtime.RetentionBatchSize = opts.RetentionBatchSize
 	}
 	if opts.LeaseCompletionGrace != 0 {
