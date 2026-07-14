@@ -24,6 +24,9 @@ const (
 	defaultRunLeaseTTL     = 30 * time.Second
 	defaultActivityLease   = 5 * time.Minute
 	defaultRequestDedupe   = time.Hour
+	defaultRetentionRuns   = 168 * time.Hour
+	defaultRetentionDedupe = 24 * time.Hour
+	defaultRetentionBatch  = int32(500)
 	defaultLogLevel        = slog.LevelInfo
 	defaultLogFormat       = "json"
 )
@@ -61,6 +64,9 @@ type RuntimeConfig struct {
 	ActivityLeaseTTL        time.Duration
 	LeaseCompletionGrace    time.Duration
 	RequestDedupeTTL        time.Duration
+	RetentionTerminalRuns   time.Duration
+	RetentionDedupeGrace    time.Duration
+	RetentionBatchSize      int32
 	ProjectIDFilter         *uuid.UUID
 	MetricsAddr             string
 }
@@ -84,6 +90,9 @@ func Defaults(databaseURL string) *Config {
 			RunLeaseTTL:             defaultRunLeaseTTL,
 			ActivityLeaseTTL:        defaultActivityLease,
 			RequestDedupeTTL:        defaultRequestDedupe,
+			RetentionTerminalRuns:   defaultRetentionRuns,
+			RetentionDedupeGrace:    defaultRetentionDedupe,
+			RetentionBatchSize:      defaultRetentionBatch,
 		},
 		Logging: LoggingConfig{
 			Level:  defaultLogLevel,

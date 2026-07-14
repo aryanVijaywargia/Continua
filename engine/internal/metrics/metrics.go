@@ -159,6 +159,9 @@ func (m *Metrics) IncDedupeClaim(outcome string) {
 	m.dedupeClaims.WithLabelValues(outcome).Inc()
 }
 
+// AddRetentionReaped is the retention metrics API scaffold.
+func (m *Metrics) AddRetentionReaped(string, float64) {}
+
 // Handler exposes metrics from gatherer using the Prometheus text format.
 func Handler(gatherer prometheus.Gatherer) http.Handler {
 	return promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{})

@@ -53,6 +53,9 @@ type Options struct {
 	MetricsSampleInterval   time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
+	RetentionTerminalRuns   time.Duration
+	RetentionDedupeGrace    time.Duration
+	RetentionBatchSize      int32
 	// MetricsRegistry receives engine Prometheus collectors when configured.
 	MetricsRegistry prometheus.Registerer
 	// MetricsAddr configures the Prometheus HTTP listen address when non-empty.
