@@ -163,6 +163,7 @@ func Load() (*Config, error) {
 	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL
 	cfg.Runtime.ProjectIDFilter = projectIDFilter
 	cfg.Runtime.MetricsAddr = os.Getenv("ENGINE_METRICS_ADDR")
+	cfg.Runtime.HTTPAddr = os.Getenv("ENGINE_HTTP_ADDR")
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
 	return cfg, nil

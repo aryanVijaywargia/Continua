@@ -109,6 +109,7 @@ func serveCmd() *cobra.Command {
 				RunLeaseTTL:             cfg.Runtime.RunLeaseTTL,
 				ActivityLeaseTTL:        cfg.Runtime.ActivityLeaseTTL,
 				MetricsAddr:             cfg.Runtime.MetricsAddr,
+				HTTPAddr:                cfg.Runtime.HTTPAddr,
 				LeaseCompletionGrace:    cfg.Runtime.LeaseCompletionGrace,
 			})
 			if err != nil {
