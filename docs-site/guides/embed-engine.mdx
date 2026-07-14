@@ -54,6 +54,21 @@ start. Create the project first and set `ENGINE_PROJECT_ID`; see
 
 See `engine/examples/greeter` for a minimal compilable program with signal handling.
 
+## Retention
+
+The runtime periodically bounds finalized engine journals and request-dedupe rows. The
+`ENGINE_RETENTION_TERMINAL_RUNS` / `runtime.Options.RetentionTerminalRuns` window
+defaults to `168h`, `ENGINE_RETENTION_DEDUPE_GRACE` /
+`runtime.Options.RetentionDedupeGrace` defaults to `24h`, and
+`ENGINE_RETENTION_BATCH_SIZE` / `runtime.Options.RetentionBatchSize` defaults to `500`.
+For environment configuration, a retention window of `0` disables that class. In Go
+options, leave a window at `0` to inherit its default or use a negative duration to
+disable it.
+
+After terminal-run retention, the projected trace and its root span remain available in
+the debugger, but the engine history journal, inbox rows, and activity tasks for the run
+are deleted.
+
 ## Start runs
 
 The embedded process executes runs for definitions it registered. Creating those runs is
