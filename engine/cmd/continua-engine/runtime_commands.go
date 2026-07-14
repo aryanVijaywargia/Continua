@@ -108,6 +108,9 @@ func serveCmd() *cobra.Command {
 				MetricsSampleInterval:   cfg.Runtime.MetricsSampleInterval,
 				RunLeaseTTL:             cfg.Runtime.RunLeaseTTL,
 				ActivityLeaseTTL:        cfg.Runtime.ActivityLeaseTTL,
+				RetentionTerminalRuns:   retentionWindowOption(cfg.Runtime.RetentionTerminalRuns),
+				RetentionDedupeGrace:    retentionWindowOption(cfg.Runtime.RetentionDedupeGrace),
+				RetentionBatchSize:      cfg.Runtime.RetentionBatchSize,
 				MetricsAddr:             cfg.Runtime.MetricsAddr,
 				LeaseCompletionGrace:    cfg.Runtime.LeaseCompletionGrace,
 			})
@@ -125,6 +128,13 @@ func serveCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func retentionWindowOption(configured time.Duration) time.Duration {
+	if configured == 0 {
+		return -1
+	}
+	return configured
 }
 
 func startCmd() *cobra.Command {

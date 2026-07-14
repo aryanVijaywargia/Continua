@@ -78,3 +78,14 @@ SET status = 'expired',
     updated_at = NOW()
 WHERE status = 'in_progress'
   AND expires_at < NOW();
+
+-- name: ReapRequestDedupe :execrows
+DELETE FROM engine.request_dedupe AS target
+WHERE target.id IN (
+    SELECT candidate.id
+    FROM engine.request_dedupe AS candidate
+    WHERE (sqlc.narg(project_filter)::uuid IS NULL OR candidate.project_id = sqlc.narg(project_filter)::uuid)
+      AND candidate.status IN ('completed', 'failed', 'expired')
+      AND candidate.expires_at < sqlc.arg(cutoff)
+    LIMIT sqlc.arg(batch_size)
+);

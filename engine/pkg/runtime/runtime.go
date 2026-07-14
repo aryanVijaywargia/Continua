@@ -53,6 +53,13 @@ type Options struct {
 	MetricsSampleInterval   time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
+	// RetentionTerminalRuns and RetentionDedupeGrace use engine defaults when
+	// zero; negative values disable the corresponding retention class.
+	RetentionTerminalRuns time.Duration
+	RetentionDedupeGrace  time.Duration
+	// RetentionBatchSize is the maximum rows or runs reaped per pass;
+	// non-positive values use the engine default.
+	RetentionBatchSize int32
 	// MetricsRegistry receives engine Prometheus collectors when configured.
 	MetricsRegistry prometheus.Registerer
 	// MetricsAddr configures the Prometheus HTTP listen address when non-empty.
@@ -150,6 +157,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 	workflowWorker := engineworkflow.NewWorker(store, r.definitions, cfg.Runtime.RunLeaseTTL, r.options.Logger)
 	activityWorker := activity.NewWorker(store, r.activities, cfg.Runtime.ActivityLeaseTTL, r.options.Logger)
 	maintenanceWorker := engineworker.NewMaintenanceWorker(store)
+	retentionWorker := engineworker.NewRetentionWorker(store, engineworker.RetentionConfig{
+		TerminalRuns: cfg.Runtime.RetentionTerminalRuns,
+		DedupeGrace:  cfg.Runtime.RetentionDedupeGrace,
+		BatchSize:    cfg.Runtime.RetentionBatchSize,
+	})
 	projectorWorker := engineprojector.New(store)
 	metricsListener := r.options.MetricsListener
 	if metricsListener == nil && r.options.MetricsAddr != "" {
@@ -186,6 +198,16 @@ func (r *Runtime) Run(ctx context.Context) error {
 			observeIterations(recorder, "activity", activityWorker.PollOnce),
 		)
 	})
+	if cfg.Runtime.RetentionTerminalRuns > 0 || cfg.Runtime.RetentionDedupeGrace > 0 {
+		group.Go(func() error {
+			return engineworker.RunLoop(
+				groupCtx,
+				cfg.Runtime.MaintenancePollInterval,
+				"retention",
+				observeIterations(recorder, "retention", retentionWorker.PollOnce),
+			)
+		})
+	}
 	group.Go(func() error {
 		return engineworker.RunLoop(
 			groupCtx,
@@ -318,6 +340,19 @@ func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	}
 	if opts.ActivityLeaseTTL != 0 {
 		cfg.Runtime.ActivityLeaseTTL = opts.ActivityLeaseTTL
+	}
+	if opts.RetentionTerminalRuns < 0 {
+		cfg.Runtime.RetentionTerminalRuns = 0
+	} else if opts.RetentionTerminalRuns != 0 {
+		cfg.Runtime.RetentionTerminalRuns = opts.RetentionTerminalRuns
+	}
+	if opts.RetentionDedupeGrace < 0 {
+		cfg.Runtime.RetentionDedupeGrace = 0
+	} else if opts.RetentionDedupeGrace != 0 {
+		cfg.Runtime.RetentionDedupeGrace = opts.RetentionDedupeGrace
+	}
+	if opts.RetentionBatchSize > 0 {
+		cfg.Runtime.RetentionBatchSize = opts.RetentionBatchSize
 	}
 	if opts.LeaseCompletionGrace != 0 {
 		cfg.Runtime.LeaseCompletionGrace = opts.LeaseCompletionGrace

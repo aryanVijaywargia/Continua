@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/continua-ai/continua/engine/internal/config"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
 )
 
@@ -136,5 +137,26 @@ func TestRuntimeRunRejectsNilContext(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "context is required") {
 		t.Fatalf("Run(nil) error = %q, want context required error", err.Error())
+	}
+}
+
+func TestApplyRuntimeOverridesRetentionBatchSize(t *testing.T) {
+	tests := []struct {
+		name     string
+		override int32
+		want     int32
+	}{
+		{name: "zero keeps default", override: 0, want: 500},
+		{name: "negative keeps default", override: -1, want: 500},
+		{name: "positive overrides default", override: 25, want: 25},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Defaults("postgres://example/db")
+			applyRuntimeOverrides(cfg, &Options{RetentionBatchSize: tt.override})
+			if cfg.Runtime.RetentionBatchSize != tt.want {
+				t.Fatalf("RetentionBatchSize = %d, want %d", cfg.Runtime.RetentionBatchSize, tt.want)
+			}
+		})
 	}
 }

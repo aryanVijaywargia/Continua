@@ -121,3 +121,7 @@ SET history_id = NULL,
     updated_at = NOW()
 WHERE run_id = $1
   AND history_id IS NOT NULL;
+
+-- name: DeleteInboxByRun :execrows
+DELETE FROM engine.inbox
+WHERE run_id = $1;

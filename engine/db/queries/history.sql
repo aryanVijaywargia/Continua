@@ -51,3 +51,7 @@ ORDER BY id ASC;
 -- name: DeleteHistoryByRun :exec
 DELETE FROM engine.history
 WHERE run_id = $1;
+
+-- name: DeleteHistoryByRunCounted :execrows
+DELETE FROM engine.history
+WHERE run_id = $1;

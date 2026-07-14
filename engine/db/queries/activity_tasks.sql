@@ -283,3 +283,7 @@ SET history_id = NULL,
     updated_at = NOW()
 WHERE run_id = $1
   AND history_id IS NOT NULL;
+
+-- name: DeleteActivityTasksByRun :execrows
+DELETE FROM engine.activity_tasks
+WHERE run_id = $1;

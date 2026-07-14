@@ -50,6 +50,10 @@ panels enabled:
 The span waterfall on the underlying trace shows the workflow's emitted spans, so engine
 runs benefit from the same failure-first navigation as any other trace.
 
+Run-history availability is bounded by `ENGINE_RETENTION_TERMINAL_RUNS`. Once retention
+deletes a terminal run's journal, the projected trace and root span remain and the
+debugger renders the run's expired-history state.
+
 ## Projection repair
 
 The Projection repair page at `/tools/engine-projections` is an operator tool for

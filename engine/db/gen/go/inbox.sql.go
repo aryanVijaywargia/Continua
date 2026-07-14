@@ -153,6 +153,19 @@ func (q *Queries) CreateInboxItem(ctx context.Context, arg CreateInboxItemParams
 	return i, err
 }
 
+const deleteInboxByRun = `-- name: DeleteInboxByRun :execrows
+DELETE FROM engine.inbox
+WHERE run_id = $1
+`
+
+func (q *Queries) DeleteInboxByRun(ctx context.Context, runID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteInboxByRun, runID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const discardOpenInboxItemsByRun = `-- name: DiscardOpenInboxItemsByRun :many
 UPDATE engine.inbox
 SET status = 'discarded',
