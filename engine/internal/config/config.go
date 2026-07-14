@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -148,6 +149,27 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	retentionTerminalRuns, err := durationFromEnv("ENGINE_RETENTION_TERMINAL_RUNS", cfg.Runtime.RetentionTerminalRuns)
+	if err != nil {
+		return nil, err
+	}
+	if retentionTerminalRuns < 0 {
+		return nil, errors.New("ENGINE_RETENTION_TERMINAL_RUNS must be non-negative")
+	}
+	retentionDedupeGrace, err := durationFromEnv("ENGINE_RETENTION_DEDUPE_GRACE", cfg.Runtime.RetentionDedupeGrace)
+	if err != nil {
+		return nil, err
+	}
+	if retentionDedupeGrace < 0 {
+		return nil, errors.New("ENGINE_RETENTION_DEDUPE_GRACE must be non-negative")
+	}
+	retentionBatchSize, err := int32FromEnv("ENGINE_RETENTION_BATCH_SIZE", cfg.Runtime.RetentionBatchSize)
+	if err != nil {
+		return nil, err
+	}
+	if retentionBatchSize < 1 {
+		return nil, errors.New("ENGINE_RETENTION_BATCH_SIZE must be at least 1")
+	}
 	projectIDFilter, err := runtimeProjectIDFromEnv()
 	if err != nil {
 		return nil, err
@@ -169,6 +191,9 @@ func Load() (*Config, error) {
 	cfg.Runtime.ActivityLeaseTTL = activityLeaseTTL
 	cfg.Runtime.LeaseCompletionGrace = leaseCompletionGrace
 	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL
+	cfg.Runtime.RetentionTerminalRuns = retentionTerminalRuns
+	cfg.Runtime.RetentionDedupeGrace = retentionDedupeGrace
+	cfg.Runtime.RetentionBatchSize = retentionBatchSize
 	cfg.Runtime.ProjectIDFilter = projectIDFilter
 	cfg.Runtime.MetricsAddr = os.Getenv("ENGINE_METRICS_ADDR")
 	cfg.Logging.Level = logLevel
@@ -200,6 +225,19 @@ func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) 
 		return 0, errors.New(key + " must be a valid duration: " + err.Error())
 	}
 	return parsed, nil
+}
+
+func int32FromEnv(key string, fallback int32) (int32, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return 0, errors.New(key + " must be a valid integer: " + err.Error())
+	}
+	return int32(parsed), nil
 }
 
 func logLevelFromEnv(key string, fallback slog.Level) (slog.Level, error) {

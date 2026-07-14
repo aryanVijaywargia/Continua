@@ -521,6 +521,19 @@ func (q *Queries) CreateActivityTask(ctx context.Context, arg CreateActivityTask
 	return i, err
 }
 
+const deleteActivityTasksByRun = `-- name: DeleteActivityTasksByRun :execrows
+DELETE FROM engine.activity_tasks
+WHERE run_id = $1
+`
+
+func (q *Queries) DeleteActivityTasksByRun(ctx context.Context, runID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteActivityTasksByRun, runID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const failActivityTask = `-- name: FailActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'failed',

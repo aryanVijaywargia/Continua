@@ -66,6 +66,19 @@ func (q *Queries) DeleteHistoryByRun(ctx context.Context, runID uuid.UUID) error
 	return err
 }
 
+const deleteHistoryByRunCounted = `-- name: DeleteHistoryByRunCounted :execrows
+DELETE FROM engine.history
+WHERE run_id = $1
+`
+
+func (q *Queries) DeleteHistoryByRunCounted(ctx context.Context, runID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteHistoryByRunCounted, runID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getHistoryByInstance = `-- name: GetHistoryByInstance :many
 SELECT id, project_id, instance_id, run_id, sequence_no, event_type, payload, created_at
 FROM engine.history

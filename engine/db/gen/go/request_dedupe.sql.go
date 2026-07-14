@@ -278,6 +278,32 @@ func (q *Queries) GetRequestDedupeByScopeAndKeyForUpdate(ctx context.Context, ar
 	return i, err
 }
 
+const reapRequestDedupe = `-- name: ReapRequestDedupe :execrows
+DELETE FROM engine.request_dedupe AS target
+WHERE target.id IN (
+    SELECT candidate.id
+    FROM engine.request_dedupe AS candidate
+    WHERE ($1::uuid IS NULL OR candidate.project_id = $1::uuid)
+      AND candidate.status IN ('completed', 'failed', 'expired')
+      AND candidate.expires_at < $2
+    LIMIT $3
+)
+`
+
+type ReapRequestDedupeParams struct {
+	ProjectFilter pgtype.UUID `json:"project_filter"`
+	Cutoff        time.Time   `json:"cutoff"`
+	BatchSize     int32       `json:"batch_size"`
+}
+
+func (q *Queries) ReapRequestDedupe(ctx context.Context, arg ReapRequestDedupeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, reapRequestDedupe, arg.ProjectFilter, arg.Cutoff, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const renewRequestDedupeClaim = `-- name: RenewRequestDedupeClaim :one
 UPDATE engine.request_dedupe
 SET status = 'in_progress',

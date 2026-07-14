@@ -19,6 +19,7 @@ type Metrics struct {
 	projectorLagRows        prometheus.Gauge
 	queueDepth              *prometheus.GaugeVec
 	dedupeClaims            *prometheus.CounterVec
+	retentionReapedRows     *prometheus.CounterVec
 }
 
 // New registers and returns the engine metrics recorder.
@@ -81,6 +82,12 @@ func New(registerer prometheus.Registerer) *Metrics {
 			Name:      "dedupe_claims_total",
 			Help:      "Total start-request deduplication claim outcomes.",
 		}, []string{"outcome"}),
+		retentionReapedRows: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "continua",
+			Subsystem: "engine",
+			Name:      "retention_reaped_rows_total",
+			Help:      "Total engine rows deleted by retention.",
+		}, []string{"table"}),
 	}
 	registerer.MustRegister(
 		metrics.workerIterationDuration,
@@ -91,6 +98,7 @@ func New(registerer prometheus.Registerer) *Metrics {
 		metrics.projectorLagRows,
 		metrics.queueDepth,
 		metrics.dedupeClaims,
+		metrics.retentionReapedRows,
 	)
 	return metrics
 }
@@ -159,8 +167,13 @@ func (m *Metrics) IncDedupeClaim(outcome string) {
 	m.dedupeClaims.WithLabelValues(outcome).Inc()
 }
 
-// AddRetentionReaped is the retention metrics API scaffold.
-func (m *Metrics) AddRetentionReaped(string, float64) {}
+// AddRetentionReaped records rows deleted by engine retention.
+func (m *Metrics) AddRetentionReaped(table string, rows float64) {
+	if m == nil || m.retentionReapedRows == nil {
+		return
+	}
+	m.retentionReapedRows.WithLabelValues(table).Add(rows)
+}
 
 // Handler exposes metrics from gatherer using the Prometheus text format.
 func Handler(gatherer prometheus.Gatherer) http.Handler {
