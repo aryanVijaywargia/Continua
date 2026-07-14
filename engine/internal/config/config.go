@@ -63,6 +63,7 @@ type RuntimeConfig struct {
 	RequestDedupeTTL        time.Duration
 	ProjectIDFilter         *uuid.UUID
 	MetricsAddr             string
+	HTTPAddr                string
 }
 
 // Defaults returns the engine runtime defaults for a database URL.

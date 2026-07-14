@@ -59,6 +59,10 @@ type Options struct {
 	MetricsAddr string
 	// MetricsListener supplies a caller-owned listener for the Prometheus endpoint.
 	MetricsListener net.Listener
+	// HTTPAddr configures the operational HTTP listen address when non-empty.
+	HTTPAddr string
+	// HTTPListener supplies a caller-owned listener for the operational HTTP endpoints.
+	HTTPListener net.Listener
 	// LeaseCompletionGrace allows the current remote activity owner to complete,
 	// fail, or retry briefly after lease expiry. It does not extend claims or heartbeats.
 	LeaseCompletionGrace time.Duration
