@@ -16,6 +16,7 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publichistory "github.com/continua-ai/continua/engine/pkg/history"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 	publicworkflow "github.com/continua-ai/continua/engine/pkg/workflow"
 	"github.com/continua-ai/continua/internal/store"
 )
@@ -570,11 +571,17 @@ func wakeAndSyncRemoteActivityRun(
 	runID uuid.UUID,
 ) error {
 	run, err := engineTx.WakeWaitingRun(ctx, runID)
+	wakeApplied := err == nil
 	if errors.Is(err, pgx.ErrNoRows) {
 		run, err = engineTx.GetRun(ctx, runID)
 	}
 	if err != nil {
 		return err
+	}
+	if wakeApplied {
+		if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelRuns); err != nil {
+			return err
+		}
 	}
 	return syncProjectedTraceSummary(ctx, tx, engineTx, &run)
 }
