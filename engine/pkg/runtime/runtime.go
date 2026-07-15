@@ -22,6 +22,7 @@ import (
 	"github.com/continua-ai/continua/engine/internal/activity"
 	"github.com/continua-ai/continua/engine/internal/catalog"
 	"github.com/continua-ai/continua/engine/internal/config"
+	"github.com/continua-ai/continua/engine/internal/health"
 	enginemetrics "github.com/continua-ai/continua/engine/internal/metrics"
 	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
@@ -66,6 +67,10 @@ type Options struct {
 	MetricsAddr string
 	// MetricsListener supplies a caller-owned listener for the Prometheus endpoint.
 	MetricsListener net.Listener
+	// HTTPAddr configures the operational HTTP listen address when non-empty.
+	HTTPAddr string
+	// HTTPListener supplies a caller-owned listener for the operational HTTP endpoints.
+	HTTPListener net.Listener
 	// LeaseCompletionGrace allows the current remote activity owner to complete,
 	// fail, or retry briefly after lease expiry. It does not extend claims or heartbeats.
 	LeaseCompletionGrace time.Duration
@@ -163,11 +168,32 @@ func (r *Runtime) Run(ctx context.Context) error {
 		BatchSize:    cfg.Runtime.RetentionBatchSize,
 	})
 	projectorWorker := engineprojector.New(store)
+	tracker := health.NewTracker()
+	tracker.Register("workflow", workerStaleAfter(cfg.Runtime.WorkflowPollInterval))
+	tracker.Register("activity", workerStaleAfter(cfg.Runtime.ActivityPollInterval))
+	tracker.Register("maintenance", workerStaleAfter(cfg.Runtime.MaintenancePollInterval))
+	tracker.Register("catalog-heartbeat", workerStaleAfter(cfg.Runtime.MaintenancePollInterval))
+	tracker.Register("projector", workerStaleAfter(cfg.Runtime.WorkflowPollInterval))
+	if recorder != nil {
+		tracker.Register("metrics", workerStaleAfter(cfg.Runtime.MetricsSampleInterval))
+	}
 	metricsListener := r.options.MetricsListener
+	metricsListenerOwned := false
 	if metricsListener == nil && r.options.MetricsAddr != "" {
 		metricsListener, err = net.Listen("tcp", r.options.MetricsAddr)
 		if err != nil {
 			return fmt.Errorf("runtime: listen for metrics: %w", err)
+		}
+		metricsListenerOwned = true
+	}
+	httpListener := r.options.HTTPListener
+	if httpListener == nil && r.options.HTTPAddr != "" {
+		httpListener, err = net.Listen("tcp", r.options.HTTPAddr)
+		if err != nil {
+			if metricsListenerOwned {
+				_ = metricsListener.Close()
+			}
+			return fmt.Errorf("runtime: listen for operational HTTP: %w", err)
 		}
 	}
 
@@ -177,7 +203,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			groupCtx,
 			cfg.Runtime.WorkflowPollInterval,
 			"workflow",
-			observeIterations(recorder, "workflow", workflowWorker.PollOnce),
+			trackIterations(tracker, "workflow", observeIterations(recorder, "workflow", workflowWorker.PollOnce)),
 		)
 	})
 	if recorder != nil {
@@ -186,7 +212,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 				groupCtx,
 				cfg.Runtime.MetricsSampleInterval,
 				"metrics",
-				observeIterations(recorder, "metrics", maintenanceWorker.PollMetricsOnce),
+				trackIterations(tracker, "metrics", observeIterations(recorder, "metrics", maintenanceWorker.PollMetricsOnce)),
 			)
 		})
 	}
@@ -195,7 +221,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			groupCtx,
 			cfg.Runtime.ActivityPollInterval,
 			"activity",
-			observeIterations(recorder, "activity", activityWorker.PollOnce),
+			trackIterations(tracker, "activity", observeIterations(recorder, "activity", activityWorker.PollOnce)),
 		)
 	})
 	if cfg.Runtime.RetentionTerminalRuns > 0 || cfg.Runtime.RetentionDedupeGrace > 0 {
@@ -213,7 +239,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			groupCtx,
 			cfg.Runtime.MaintenancePollInterval,
 			"maintenance",
-			observeIterations(recorder, "maintenance", maintenanceWorker.PollOnce),
+			trackIterations(tracker, "maintenance", observeIterations(recorder, "maintenance", maintenanceWorker.PollOnce)),
 		)
 	})
 	group.Go(func() error {
@@ -221,9 +247,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 			groupCtx,
 			cfg.Runtime.MaintenancePollInterval,
 			"catalog-heartbeat",
-			observeIterations(recorder, "catalog-heartbeat", func(ctx context.Context, _ string) error {
+			trackIterations(tracker, "catalog-heartbeat", observeIterations(recorder, "catalog-heartbeat", func(ctx context.Context, _ string) error {
 				return catalog.HeartbeatStoreDefinitions(ctx, store, r.definitions.List())
-			}),
+			})),
 		)
 	})
 	group.Go(func() error {
@@ -231,7 +257,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			groupCtx,
 			cfg.Runtime.WorkflowPollInterval,
 			"projector",
-			observeIterations(recorder, "projector", projectorWorker.PollOnce),
+			trackIterations(tracker, "projector", observeIterations(recorder, "projector", projectorWorker.PollOnce)),
 		)
 	})
 	if metricsListener != nil {
@@ -259,6 +285,31 @@ func (r *Runtime) Run(ctx context.Context) error {
 			return nil
 		})
 	}
+	if httpListener != nil {
+		httpServer := &http.Server{
+			Handler:           operationalMux(pool, tracker, metricsGatherer),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+		group.Go(func() error {
+			err := httpServer.Serve(httpListener)
+			if errors.Is(err, http.ErrServerClosed) || groupCtx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("runtime: serve operational HTTP: %w", err)
+		})
+		group.Go(func() error {
+			<-groupCtx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+				_ = httpServer.Close()
+			}
+			return nil
+		})
+	}
 
 	return group.Wait()
 }
@@ -274,7 +325,7 @@ func (r *Runtime) beginRun() error {
 }
 
 func buildMetrics(opts *Options) (*enginemetrics.Metrics, prometheus.Gatherer, error) {
-	serving := opts.MetricsListener != nil || opts.MetricsAddr != ""
+	serving := opts.MetricsListener != nil || opts.MetricsAddr != "" || opts.HTTPListener != nil || opts.HTTPAddr != ""
 	registerer := opts.MetricsRegistry
 	var gatherer prometheus.Gatherer
 	if registerer == nil && serving {
@@ -316,9 +367,35 @@ func observeIterations(
 	}
 }
 
+func trackIterations(tracker *health.Tracker, worker string, fn engineworker.IterationFunc) engineworker.IterationFunc {
+	return func(ctx context.Context, workerID string) error {
+		err := fn(ctx, workerID)
+		tracker.MarkIteration(worker)
+		return err
+	}
+}
+
+func workerStaleAfter(pollInterval time.Duration) time.Duration {
+	staleAfter := 10 * pollInterval
+	if staleAfter < 10*time.Second {
+		return 10 * time.Second
+	}
+	return staleAfter
+}
+
 func metricsMux(gatherer prometheus.Gatherer) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", enginemetrics.Handler(gatherer))
+	return mux
+}
+
+func operationalMux(pool health.Pinger, tracker *health.Tracker, gatherer prometheus.Gatherer) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/healthz", health.LivenessHandler())
+	mux.Handle("/readyz", health.ReadinessHandler(pool, tracker, 2*time.Second))
+	if gatherer != nil {
+		mux.Handle("/metrics", enginemetrics.Handler(gatherer))
+	}
 	return mux
 }
 
@@ -359,4 +436,5 @@ func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	}
 	cfg.Runtime.ProjectIDFilter = opts.ProjectID
 	cfg.Runtime.MetricsAddr = opts.MetricsAddr
+	cfg.Runtime.HTTPAddr = opts.HTTPAddr
 }

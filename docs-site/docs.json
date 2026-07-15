@@ -37,7 +37,8 @@
             "pages": [
               "guides/auth0-setup",
               "guides/managing-projects",
-              "guides/engine-metrics"
+              "guides/engine-metrics",
+              "guides/engine-health"
             ]
           },
           {

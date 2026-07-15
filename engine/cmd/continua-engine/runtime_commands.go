@@ -112,6 +112,7 @@ func serveCmd() *cobra.Command {
 				RetentionDedupeGrace:    retentionWindowOption(cfg.Runtime.RetentionDedupeGrace),
 				RetentionBatchSize:      cfg.Runtime.RetentionBatchSize,
 				MetricsAddr:             cfg.Runtime.MetricsAddr,
+				HTTPAddr:                cfg.Runtime.HTTPAddr,
 				LeaseCompletionGrace:    cfg.Runtime.LeaseCompletionGrace,
 			})
 			if err != nil {

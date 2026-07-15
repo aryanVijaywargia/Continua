@@ -1,0 +1,84 @@
+---
+title: "Engine health and readiness"
+description: "Expose and configure operational probes for the preview durable engine."
+---
+
+The preview engine runtime can expose liveness, readiness, and Prometheus
+metrics on one operational HTTP listener. Set `ENGINE_HTTP_ADDR` when running
+`continua-engine serve`:
+
+```bash
+ENGINE_HTTP_ADDR=0.0.0.0:9099 continua-engine serve
+```
+
+The listener is disabled when `ENGINE_HTTP_ADDR` is empty. Its endpoints have
+no authentication, so bind it to an internal interface or restrict access at
+the network layer. Embedded Go runtimes can set `runtime.Options.HTTPAddr` or
+provide a listener with `HTTPListener`; a supplied listener takes precedence.
+
+## Endpoint semantics
+
+- `GET /healthz` returns `200` while the process can serve HTTP. Use it for
+  liveness checks that decide whether to restart the process.
+- `GET /readyz` returns `200` only after every engine worker has completed an
+  iteration recently and the runtime can ping Postgres. It returns `503` and
+  names failed checks while the runtime is starting, Postgres is unavailable,
+  or a worker loop is stale. Use it to decide whether the instance should
+  receive work.
+- `GET /metrics` exposes the same Prometheus metrics described in
+  [Engine metrics](/guides/engine-metrics). It is mounted automatically on the
+  operational listener, even when `ENGINE_METRICS_ADDR` is unset.
+
+`ENGINE_METRICS_ADDR` continues to serve a dedicated metrics listener when
+configured. You can enable both listeners when metrics and health probes need
+different network policies.
+
+## Kubernetes probes
+
+Point both probes at the operational listener and allow readiness enough time
+for every worker's first database-backed iteration:
+
+```yaml
+containers:
+  - name: continua-engine
+    env:
+      - name: ENGINE_HTTP_ADDR
+        value: "0.0.0.0:9099"
+    ports:
+      - name: operations
+        containerPort: 9099
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: operations
+      periodSeconds: 10
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: operations
+      periodSeconds: 5
+      failureThreshold: 3
+```
+
+## systemd readiness check
+
+For a service that should not finish starting until the engine is ready, use
+an `ExecStartPost` loop. Keep `Restart=on-failure` for process failures; use an
+external monitor against `/healthz` if you also want HTTP-based restart
+decisions.
+
+```ini
+[Service]
+Environment=ENGINE_HTTP_ADDR=127.0.0.1:9099
+ExecStart=/usr/local/bin/continua-engine serve
+ExecStartPost=/bin/sh -c 'for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:9099/readyz && exit 0; sleep 1; done; exit 1'
+Restart=on-failure
+```
+
+For manual diagnosis, inspect both the status and JSON response:
+
+```bash
+curl --fail-with-body http://127.0.0.1:9099/healthz
+curl --fail-with-body http://127.0.0.1:9099/readyz
+```

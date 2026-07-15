@@ -70,6 +70,7 @@ type RuntimeConfig struct {
 	RetentionBatchSize      int32
 	ProjectIDFilter         *uuid.UUID
 	MetricsAddr             string
+	HTTPAddr                string
 }
 
 // Defaults returns the engine runtime defaults for a database URL.
@@ -196,6 +197,7 @@ func Load() (*Config, error) {
 	cfg.Runtime.RetentionBatchSize = retentionBatchSize
 	cfg.Runtime.ProjectIDFilter = projectIDFilter
 	cfg.Runtime.MetricsAddr = os.Getenv("ENGINE_METRICS_ADDR")
+	cfg.Runtime.HTTPAddr = os.Getenv("ENGINE_HTTP_ADDR")
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
 	return cfg, nil
