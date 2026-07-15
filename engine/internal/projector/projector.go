@@ -69,10 +69,13 @@ func New(store *enginestore.Store) *Projector {
 	if store != nil {
 		projectFilter = store.ProjectFilter()
 	}
-	return &Projector{store: store, projectFilter: projectFilter}
+	return &Projector{store: store, projectFilter: projectFilter, batchSize: defaultProjectorBatchSize}
 }
 
-func (p *Projector) WithBatchSize(_ int32) *Projector {
+func (p *Projector) WithBatchSize(batchSize int32) *Projector {
+	if batchSize > 0 {
+		p.batchSize = batchSize
+	}
 	return p
 }
 
@@ -81,7 +84,7 @@ func (p *Projector) BatchSize() int32 {
 }
 
 func (p *Projector) PollOnce(ctx context.Context, _ string) error {
-	for processed := 0; processed < int(defaultProjectorBatchSize); processed++ {
+	for processed := 0; processed < int(p.batchSize); processed++ {
 		more, err := p.pollSingleHistoryRow(ctx)
 		if err != nil {
 			return err

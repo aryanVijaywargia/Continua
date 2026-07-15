@@ -69,6 +69,24 @@ After terminal-run retention, the projected trace and its root span remain avail
 the debugger, but the engine history journal, inbox rows, and activity tasks for the run
 are deleted.
 
+## Pool and workflow limits
+
+The engine pool defaults to 10 maximum connections, 2 minimum connections, a `1h`
+maximum connection lifetime, a `30m` maximum idle time, and a `1m` health-check
+period. Configure them with `ENGINE_DB_MAX_CONNS` / `runtime.Options.DBMaxConns`,
+`ENGINE_DB_MIN_CONNS` / `runtime.Options.DBMinConns`,
+`ENGINE_DB_MAX_CONN_LIFETIME` / `runtime.Options.DBMaxConnLifetime`,
+`ENGINE_DB_MAX_CONN_IDLE_TIME` / `runtime.Options.DBMaxConnIdleTime`, and
+`ENGINE_DB_HEALTHCHECK_PERIOD` / `runtime.Options.DBHealthCheckPeriod`.
+
+The projector processes up to 1000 rows per poll by default; use
+`ENGINE_PROJECTOR_BATCH_SIZE` / `runtime.Options.ProjectorBatchSize` to change it.
+Child workflow nesting and continue-as-new following both default to 32 levels. Use
+`ENGINE_MAX_CHILD_DEPTH` / `runtime.Options.MaxChildDepth` and
+`ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH` /
+`runtime.Options.MaxContinuationFollowDepth` to configure those limits. Positive Go
+option values override the defaults.
+
 ## Start runs
 
 The embedded process executes runs for definitions it registered. Creating those runs is

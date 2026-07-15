@@ -47,21 +47,27 @@ type Options struct {
 	Logger *slog.Logger
 	// ProjectID optionally scopes all polling to a single project.
 	ProjectID *uuid.UUID
-	// Poll intervals and lease TTLs; zero values use the engine defaults.
-	DBMaxConns                 int32
-	DBMinConns                 int32
-	DBMaxConnLifetime          time.Duration
-	DBMaxConnIdleTime          time.Duration
-	DBHealthCheckPeriod        time.Duration
-	ProjectorBatchSize         int32
+	// DBMaxConns and DBMinConns configure the Postgres pool; non-positive values use the engine defaults.
+	DBMaxConns int32
+	DBMinConns int32
+	// DBMaxConnLifetime, DBMaxConnIdleTime, and DBHealthCheckPeriod configure the Postgres pool;
+	// non-positive values use the engine defaults.
+	DBMaxConnLifetime   time.Duration
+	DBMaxConnIdleTime   time.Duration
+	DBHealthCheckPeriod time.Duration
+	// ProjectorBatchSize bounds rows projected per poll; non-positive values use the engine default.
+	ProjectorBatchSize int32
+	// MaxChildDepth and MaxContinuationFollowDepth bound child workflow traversal;
+	// non-positive values use the engine defaults.
 	MaxChildDepth              int32
 	MaxContinuationFollowDepth int32
-	WorkflowPollInterval       time.Duration
-	ActivityPollInterval       time.Duration
-	MaintenancePollInterval    time.Duration
-	MetricsSampleInterval      time.Duration
-	RunLeaseTTL                time.Duration
-	ActivityLeaseTTL           time.Duration
+	// Poll intervals and lease TTLs; zero values use the engine defaults.
+	WorkflowPollInterval    time.Duration
+	ActivityPollInterval    time.Duration
+	MaintenancePollInterval time.Duration
+	MetricsSampleInterval   time.Duration
+	RunLeaseTTL             time.Duration
+	ActivityLeaseTTL        time.Duration
 	// RetentionTerminalRuns and RetentionDedupeGrace use engine defaults when
 	// zero; negative values disable the corresponding retention class.
 	RetentionTerminalRuns time.Duration
@@ -167,7 +173,10 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 
-	workflowWorker := engineworkflow.NewWorker(store, r.definitions, cfg.Runtime.RunLeaseTTL, r.options.Logger)
+	workflowWorker := engineworkflow.NewWorker(store, r.definitions, cfg.Runtime.RunLeaseTTL, r.options.Logger).WithDepthLimits(engineworkflow.DepthLimits{
+		MaxChildDepth:              cfg.Runtime.MaxChildDepth,
+		MaxContinuationFollowDepth: cfg.Runtime.MaxContinuationFollowDepth,
+	})
 	activityWorker := activity.NewWorker(store, r.activities, cfg.Runtime.ActivityLeaseTTL, r.options.Logger)
 	maintenanceWorker := engineworker.NewMaintenanceWorker(store)
 	retentionWorker := engineworker.NewRetentionWorker(store, engineworker.RetentionConfig{
@@ -175,7 +184,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		DedupeGrace:  cfg.Runtime.RetentionDedupeGrace,
 		BatchSize:    cfg.Runtime.RetentionBatchSize,
 	})
-	projectorWorker := engineprojector.New(store)
+	projectorWorker := engineprojector.New(store).WithBatchSize(cfg.Runtime.ProjectorBatchSize)
 	tracker := health.NewTracker()
 	tracker.Register("workflow", workerStaleAfter(cfg.Runtime.WorkflowPollInterval))
 	tracker.Register("activity", workerStaleAfter(cfg.Runtime.ActivityPollInterval))
@@ -408,6 +417,30 @@ func operationalMux(pool health.Pinger, tracker *health.Tracker, gatherer promet
 }
 
 func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
+	if opts.DBMaxConns > 0 {
+		cfg.Database.MaxConns = opts.DBMaxConns
+	}
+	if opts.DBMinConns > 0 {
+		cfg.Database.MinConns = opts.DBMinConns
+	}
+	if opts.DBMaxConnLifetime > 0 {
+		cfg.Database.MaxConnLifetime = opts.DBMaxConnLifetime
+	}
+	if opts.DBMaxConnIdleTime > 0 {
+		cfg.Database.MaxConnIdleTime = opts.DBMaxConnIdleTime
+	}
+	if opts.DBHealthCheckPeriod > 0 {
+		cfg.Database.HealthCheckPeriod = opts.DBHealthCheckPeriod
+	}
+	if opts.ProjectorBatchSize > 0 {
+		cfg.Runtime.ProjectorBatchSize = opts.ProjectorBatchSize
+	}
+	if opts.MaxChildDepth > 0 {
+		cfg.Runtime.MaxChildDepth = opts.MaxChildDepth
+	}
+	if opts.MaxContinuationFollowDepth > 0 {
+		cfg.Runtime.MaxContinuationFollowDepth = opts.MaxContinuationFollowDepth
+	}
 	if opts.WorkflowPollInterval != 0 {
 		cfg.Runtime.WorkflowPollInterval = opts.WorkflowPollInterval
 	}

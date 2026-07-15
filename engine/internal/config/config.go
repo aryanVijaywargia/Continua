@@ -32,6 +32,12 @@ const (
 	defaultLogFormat       = "json"
 )
 
+const (
+	defaultProjectorBatchSize         = int32(1000)
+	defaultMaxChildDepth              = int32(32)
+	defaultMaxContinuationFollowDepth = int32(32)
+)
+
 // Config holds engine runtime configuration.
 type Config struct {
 	Database DatabaseConfig
@@ -88,16 +94,19 @@ func Defaults(databaseURL string) *Config {
 			HealthCheckPeriod: defaultHealthCheck,
 		},
 		Runtime: RuntimeConfig{
-			WorkflowPollInterval:    defaultWorkflowPoll,
-			ActivityPollInterval:    defaultActivityPoll,
-			MaintenancePollInterval: defaultMaintenancePoll,
-			MetricsSampleInterval:   defaultMetricsSample,
-			RunLeaseTTL:             defaultRunLeaseTTL,
-			ActivityLeaseTTL:        defaultActivityLease,
-			RequestDedupeTTL:        defaultRequestDedupe,
-			RetentionTerminalRuns:   defaultRetentionRuns,
-			RetentionDedupeGrace:    defaultRetentionDedupe,
-			RetentionBatchSize:      defaultRetentionBatch,
+			WorkflowPollInterval:       defaultWorkflowPoll,
+			ActivityPollInterval:       defaultActivityPoll,
+			MaintenancePollInterval:    defaultMaintenancePoll,
+			MetricsSampleInterval:      defaultMetricsSample,
+			RunLeaseTTL:                defaultRunLeaseTTL,
+			ActivityLeaseTTL:           defaultActivityLease,
+			RequestDedupeTTL:           defaultRequestDedupe,
+			RetentionTerminalRuns:      defaultRetentionRuns,
+			RetentionDedupeGrace:       defaultRetentionDedupe,
+			RetentionBatchSize:         defaultRetentionBatch,
+			ProjectorBatchSize:         defaultProjectorBatchSize,
+			MaxChildDepth:              defaultMaxChildDepth,
+			MaxContinuationFollowDepth: defaultMaxContinuationFollowDepth,
 		},
 		Logging: LoggingConfig{
 			Level:  defaultLogLevel,
@@ -118,6 +127,44 @@ func Load() (*Config, error) {
 
 	cfg := Defaults(databaseURL)
 
+	dbMaxConns, err := int32FromEnv("ENGINE_DB_MAX_CONNS", cfg.Database.MaxConns)
+	if err != nil {
+		return nil, err
+	}
+	if dbMaxConns < 1 {
+		return nil, errors.New("ENGINE_DB_MAX_CONNS must be at least 1")
+	}
+	dbMinConns, err := int32FromEnv("ENGINE_DB_MIN_CONNS", cfg.Database.MinConns)
+	if err != nil {
+		return nil, err
+	}
+	if dbMinConns < 0 {
+		return nil, errors.New("ENGINE_DB_MIN_CONNS must be non-negative")
+	}
+	if dbMinConns > dbMaxConns {
+		return nil, errors.New("ENGINE_DB_MIN_CONNS must not exceed ENGINE_DB_MAX_CONNS")
+	}
+	dbMaxConnLifetime, err := durationFromEnv("ENGINE_DB_MAX_CONN_LIFETIME", cfg.Database.MaxConnLifetime)
+	if err != nil {
+		return nil, err
+	}
+	if dbMaxConnLifetime <= 0 {
+		return nil, errors.New("ENGINE_DB_MAX_CONN_LIFETIME must be positive")
+	}
+	dbMaxConnIdleTime, err := durationFromEnv("ENGINE_DB_MAX_CONN_IDLE_TIME", cfg.Database.MaxConnIdleTime)
+	if err != nil {
+		return nil, err
+	}
+	if dbMaxConnIdleTime <= 0 {
+		return nil, errors.New("ENGINE_DB_MAX_CONN_IDLE_TIME must be positive")
+	}
+	dbHealthCheckPeriod, err := durationFromEnv("ENGINE_DB_HEALTHCHECK_PERIOD", cfg.Database.HealthCheckPeriod)
+	if err != nil {
+		return nil, err
+	}
+	if dbHealthCheckPeriod <= 0 {
+		return nil, errors.New("ENGINE_DB_HEALTHCHECK_PERIOD must be positive")
+	}
 	workflowPollInterval, err := durationFromEnv("ENGINE_WORKFLOW_POLL_INTERVAL", cfg.Runtime.WorkflowPollInterval)
 	if err != nil {
 		return nil, err
@@ -174,6 +221,27 @@ func Load() (*Config, error) {
 	if retentionBatchSize < 1 {
 		return nil, errors.New("ENGINE_RETENTION_BATCH_SIZE must be at least 1")
 	}
+	projectorBatchSize, err := int32FromEnv("ENGINE_PROJECTOR_BATCH_SIZE", cfg.Runtime.ProjectorBatchSize)
+	if err != nil {
+		return nil, err
+	}
+	if projectorBatchSize < 1 {
+		return nil, errors.New("ENGINE_PROJECTOR_BATCH_SIZE must be at least 1")
+	}
+	maxChildDepth, err := int32FromEnv("ENGINE_MAX_CHILD_DEPTH", cfg.Runtime.MaxChildDepth)
+	if err != nil {
+		return nil, err
+	}
+	if maxChildDepth < 1 {
+		return nil, errors.New("ENGINE_MAX_CHILD_DEPTH must be at least 1")
+	}
+	maxContinuationFollowDepth, err := int32FromEnv("ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH", cfg.Runtime.MaxContinuationFollowDepth)
+	if err != nil {
+		return nil, err
+	}
+	if maxContinuationFollowDepth < 1 {
+		return nil, errors.New("ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH must be at least 1")
+	}
 	projectIDFilter, err := runtimeProjectIDFromEnv()
 	if err != nil {
 		return nil, err
@@ -187,6 +255,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	cfg.Database.MaxConns = dbMaxConns
+	cfg.Database.MinConns = dbMinConns
+	cfg.Database.MaxConnLifetime = dbMaxConnLifetime
+	cfg.Database.MaxConnIdleTime = dbMaxConnIdleTime
+	cfg.Database.HealthCheckPeriod = dbHealthCheckPeriod
 	cfg.Runtime.WorkflowPollInterval = workflowPollInterval
 	cfg.Runtime.ActivityPollInterval = activityPollInterval
 	cfg.Runtime.MaintenancePollInterval = maintenancePollInterval
@@ -198,6 +271,9 @@ func Load() (*Config, error) {
 	cfg.Runtime.RetentionTerminalRuns = retentionTerminalRuns
 	cfg.Runtime.RetentionDedupeGrace = retentionDedupeGrace
 	cfg.Runtime.RetentionBatchSize = retentionBatchSize
+	cfg.Runtime.ProjectorBatchSize = projectorBatchSize
+	cfg.Runtime.MaxChildDepth = maxChildDepth
+	cfg.Runtime.MaxContinuationFollowDepth = maxContinuationFollowDepth
 	cfg.Runtime.ProjectIDFilter = projectIDFilter
 	cfg.Runtime.MetricsAddr = os.Getenv("ENGINE_METRICS_ADDR")
 	cfg.Runtime.HTTPAddr = os.Getenv("ENGINE_HTTP_ADDR")

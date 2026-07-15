@@ -28,6 +28,11 @@ func NewWorker(engineStore *store.Store, definitions *Registry, runLeaseTTL time
 	}
 }
 
+func (w *Worker) WithDepthLimits(limits DepthLimits) *Worker {
+	w.activator.withDepthLimits(limits)
+	return w
+}
+
 func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 	metrics := w.store.Metrics()
 	run, err := w.store.ClaimNextRun(ctx, workerID, w.runLeaseTTL)

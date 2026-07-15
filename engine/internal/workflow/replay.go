@@ -156,23 +156,25 @@ func (e codedWorkflowError) Error() string {
 }
 
 type workflowRunner struct {
-	input             json.RawMessage
-	projectID         uuid.UUID
-	runID             uuid.UUID
-	rootRunID         uuid.UUID
-	childDepth        int32
-	validateNewChild  func(enginehistory.ChildWorkflowScheduledPayload) error
-	replayEvents      []decodedEvent
-	cursor            int
-	nextSequence      int32
-	customStatus      json.RawMessage
-	result            json.RawMessage
-	cancelRequested   bool
-	pendingActivities map[string]activityOutcome
-	pendingChildren   map[string]childWorkflowOutcome
-	pendingSignals    map[string][]pendingSignal
-	pendingTimers     map[string]pendingTimer
-	pendingFrontier   []pendingInboxItem
+	input                      json.RawMessage
+	projectID                  uuid.UUID
+	runID                      uuid.UUID
+	rootRunID                  uuid.UUID
+	childDepth                 int32
+	maxChildDepth              int32
+	maxContinuationFollowDepth int32
+	validateNewChild           func(enginehistory.ChildWorkflowScheduledPayload) error
+	replayEvents               []decodedEvent
+	cursor                     int
+	nextSequence               int32
+	customStatus               json.RawMessage
+	result                     json.RawMessage
+	cancelRequested            bool
+	pendingActivities          map[string]activityOutcome
+	pendingChildren            map[string]childWorkflowOutcome
+	pendingSignals             map[string][]pendingSignal
+	pendingTimers              map[string]pendingTimer
+	pendingFrontier            []pendingInboxItem
 
 	queuedEvents      []queuedHistoryEvent
 	waitingFor        json.RawMessage
@@ -225,9 +227,18 @@ func replayDefinitionForRunWithDepthLimits(
 	activityTasks []enginedb.EngineActivityTask,
 	childWorkflows []enginedb.ListChildWorkflowOutcomesByParentRunRow,
 	inboxRows []enginedb.EngineInbox,
-	_ DepthLimits,
+	limits DepthLimits,
 ) (activationDecision, error) {
-	return replayDefinitionForRun(definition, run, historyRows, activityTasks, childWorkflows, inboxRows)
+	return replayDefinitionForRunWithOptions(
+		definition,
+		run,
+		historyRows,
+		activityTasks,
+		childWorkflows,
+		inboxRows,
+		nil,
+		limits,
+	)
 }
 
 func replayDefinitionForRunWithValidator(
@@ -239,9 +250,37 @@ func replayDefinitionForRunWithValidator(
 	inboxRows []enginedb.EngineInbox,
 	validateNewChild func(enginehistory.ChildWorkflowScheduledPayload) error,
 ) (activationDecision, error) {
+	return replayDefinitionForRunWithOptions(
+		definition,
+		run,
+		historyRows,
+		activityTasks,
+		childWorkflows,
+		inboxRows,
+		validateNewChild,
+		DepthLimits{},
+	)
+}
+
+func replayDefinitionForRunWithOptions(
+	definition publicworkflow.Definition,
+	run *enginedb.EngineRun,
+	historyRows []enginedb.EngineHistory,
+	activityTasks []enginedb.EngineActivityTask,
+	childWorkflows []enginedb.ListChildWorkflowOutcomesByParentRunRow,
+	inboxRows []enginedb.EngineInbox,
+	validateNewChild func(enginehistory.ChildWorkflowScheduledPayload) error,
+	limits DepthLimits,
+) (activationDecision, error) {
 	runner, err := newWorkflowRunner(run, historyRows, activityTasks, childWorkflows, inboxRows, validateNewChild)
 	if err != nil {
 		return activationDecision{}, err
+	}
+	if limits.MaxChildDepth > 0 {
+		runner.maxChildDepth = limits.MaxChildDepth
+	}
+	if limits.MaxContinuationFollowDepth > 0 {
+		runner.maxContinuationFollowDepth = limits.MaxContinuationFollowDepth
 	}
 
 	return runner.execute(definition)
@@ -268,13 +307,15 @@ func newWorkflowRunner(
 	}
 
 	runner := &workflowRunner{
-		input:             cloneRaw(startedPayload.Input),
-		nextSequence:      historyRows[len(historyRows)-1].SequenceNo + 1,
-		pendingActivities: make(map[string]activityOutcome),
-		pendingChildren:   make(map[string]childWorkflowOutcome),
-		pendingSignals:    make(map[string][]pendingSignal),
-		pendingTimers:     make(map[string]pendingTimer),
-		validateNewChild:  validateNewChild,
+		input:                      cloneRaw(startedPayload.Input),
+		nextSequence:               historyRows[len(historyRows)-1].SequenceNo + 1,
+		maxChildDepth:              maxChildDepth,
+		maxContinuationFollowDepth: maxContinuationFollowDepth,
+		pendingActivities:          make(map[string]activityOutcome),
+		pendingChildren:            make(map[string]childWorkflowOutcome),
+		pendingSignals:             make(map[string][]pendingSignal),
+		pendingTimers:              make(map[string]pendingTimer),
+		validateNewChild:           validateNewChild,
 	}
 	if run != nil {
 		runner.projectID = run.ProjectID
@@ -694,7 +735,7 @@ func (r *workflowRunner) ChildWorkflowWithOptions(
 					message: "child workflow definition binding does not match recorded child key",
 				}
 			}
-			consumesPendingOutcome := childWorkflowIsTerminal(outcome.status) || childWorkflowWaitFailed(&outcome)
+			consumesPendingOutcome := childWorkflowIsTerminal(outcome.status) || r.childWorkflowWaitFailed(&outcome)
 			if consumesPendingOutcome {
 				delete(r.pendingChildren, childKey)
 			}
@@ -718,7 +759,7 @@ func (r *workflowRunner) ChildWorkflowWithOptions(
 	}
 
 	r.advanceState()
-	if r.childDepth >= maxChildDepth {
+	if r.childDepth >= r.maxChildDepth {
 		return codedWorkflowError{
 			code:    "max_child_depth_exceeded",
 			message: "child workflow depth limit exceeded",
@@ -1329,7 +1370,7 @@ func (r *workflowRunner) consumeRecordedChildWorkflowOutcome(
 }
 
 func (r *workflowRunner) applyPendingChildWorkflowOutcome(outcome *childWorkflowOutcome, out any) error {
-	if childWorkflowWaitFailed(outcome) {
+	if r.childWorkflowWaitFailed(outcome) {
 		code, message := normalizedChildWaitFailure(outcome.parentWaitErrorCode, outcome.parentWaitErrorMessage)
 		payload := enginehistory.ChildWorkflowWaitFailedPayload{
 			ChildKey:          outcome.childKey,
@@ -1406,8 +1447,8 @@ func childWorkflowIsTerminal(status enginedb.EngineChildWorkflowStatus) bool {
 	}
 }
 
-func childWorkflowWaitFailed(outcome *childWorkflowOutcome) bool {
-	return outcome.parentWaitFailed || outcome.continuationCount >= maxContinuationFollowDepth
+func (r *workflowRunner) childWorkflowWaitFailed(outcome *childWorkflowOutcome) bool {
+	return outcome.parentWaitFailed || outcome.continuationCount >= r.maxContinuationFollowDepth
 }
 
 func normalizedChildWaitFailure(code, message string) (normalizedCode, normalizedMessage string) {
