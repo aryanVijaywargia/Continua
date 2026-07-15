@@ -419,6 +419,126 @@ describe('TraceDetailPage', () => {
     expect(screen.queryAllByText('Closing')).toHaveLength(0);
   });
 
+  it('renders expired engine history in the Engine history tab', async () => {
+    const user = userEvent.setup();
+    const detail = createEngineTraceDetail();
+    const runId = detail.engine!.run_id;
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(detail),
+        engineHistory: () =>
+          jsonResponse({ events: [], has_more: false, expired: true }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    await user.click(screen.getByRole('button', { name: 'Engine history 0' }));
+
+    expect(
+      await screen.findByText(
+        'History expired. Retained history for this run has been purged.'
+      )
+    ).toBeInTheDocument();
+    const historyRequests = getRequests(fetchMock, `/v1/engine/runs/${runId}/history`);
+    expect(historyRequests).toHaveLength(1);
+    expect(historyRequests[0].searchParams.get('limit')).toBe('50');
+  });
+
+  it('renders the completed result payload in the Result tab', async () => {
+    const user = userEvent.setup();
+    const base = createEngineTraceDetail();
+    const detail = createEngineTraceDetail({
+      status: 'COMPLETED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      engine: {
+        ...base.engine!,
+        status: 'COMPLETED',
+        completed_at: '2026-03-14T10:00:10.000Z',
+      },
+    });
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(detail),
+        engineResult: () =>
+          jsonResponse({
+            run_id: detail.engine!.run_id,
+            status: 'COMPLETED',
+            result: { output: 42 },
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    await user.click(screen.getByRole('button', { name: 'Result 1' }));
+
+    expect(await screen.findByText('Completed result')).toBeInTheDocument();
+    expect(screen.getByText('"output"')).toBeInTheDocument();
+    expect(screen.getByText('42')).toBeInTheDocument();
+  });
+
+  it('renders the failure shell for failed runs', async () => {
+    const user = userEvent.setup();
+    const base = createEngineTraceDetail();
+    const detail = createEngineTraceDetail({
+      status: 'FAILED',
+      ended_at: '2026-03-14T10:00:10.000Z',
+      engine: {
+        ...base.engine!,
+        status: 'FAILED',
+        completed_at: '2026-03-14T10:00:10.000Z',
+      },
+    });
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(detail),
+        engineResult: () =>
+          jsonResponse({
+            run_id: detail.engine!.run_id,
+            status: 'FAILED',
+            result: null,
+            failure: { error_code: 'boom', error_message: 'exploded' },
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    await user.click(screen.getByRole('button', { name: 'Result 1' }));
+
+    expect(await screen.findByText('FAILED result shell')).toBeInTheDocument();
+    expect(screen.getByText('boom')).toBeInTheDocument();
+    expect(screen.getByText('exploded')).toBeInTheDocument();
+  });
+
+  it('keeps the result unavailable for non-terminal runs', async () => {
+    const user = userEvent.setup();
+    const detail = createEngineTraceDetail();
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(detail),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    await user.click(screen.getByRole('button', { name: 'Result 0' }));
+
+    expect(
+      screen.getByText(
+        'Result is not available until the run reaches a terminal state.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      getRequests(fetchMock, `/v1/engine/runs/${detail.engine!.run_id}/result`)
+    ).toHaveLength(0);
+  });
+
   it('shows pending engine work in the mobile summary workspace', async () => {
     setMatchMediaMatches(false);
     fetchMock.mockImplementation(

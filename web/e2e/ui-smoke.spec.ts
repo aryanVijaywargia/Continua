@@ -17,9 +17,44 @@ const E2E_OPERATOR_TOKEN = 'e2e-operator-token';
 const PRIMARY_PROJECT_ID = '11111111-1111-1111-1111-111111111111';
 const SECONDARY_PROJECT_ID = '22222222-2222-2222-2222-222222222222';
 const RUN_LOCALLY_DOCS_URL = 'https://www.continua.in/docs/guides/installation';
+const ENGINE_RUN_ID = '123e4567-e89b-12d3-a456-426614174100';
+const ENGINE_TRACE_ID = 'engine-trace-1';
+const STARTED_ENGINE_TRACE_ID = 'engine-trace-new';
+
+const ENGINE_TRACE = {
+  ...TRACE_ONE,
+  id: ENGINE_TRACE_ID,
+  name: 'Checkout workflow',
+  status: 'COMPLETED',
+  error_count: 0,
+  engine: {
+    run_id: ENGINE_RUN_ID,
+    definition_name: 'checkout',
+    definition_version: 'v1',
+    projection_state: 'up_to_date',
+    instance_key: 'checkout-42',
+    status: 'COMPLETED',
+    pending_work: {
+      pending_activity_tasks: 0,
+      pending_inbox_items: 0,
+    },
+    created_at: '2026-03-14T10:00:00.000Z',
+    updated_at: '2026-03-14T10:00:03.000Z',
+    completed_at: '2026-03-14T10:00:03.000Z',
+  },
+};
+
+const ENGINE_TRACE_DETAIL = {
+  ...TRACE_DETAIL,
+  ...ENGINE_TRACE,
+  trace_id: 'engine-checkout-42',
+  output: { approved: true },
+};
 
 const TRACE_DETAILS = new Map([
   [TRACE_ONE.id, TRACE_DETAIL],
+  [ENGINE_TRACE_ID, ENGINE_TRACE_DETAIL],
+  [STARTED_ENGINE_TRACE_ID, { ...ENGINE_TRACE_DETAIL, id: STARTED_ENGINE_TRACE_ID }],
   [
     TRACE_TWO.id,
     {
@@ -260,6 +295,9 @@ async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'ope
     }
 
     if (url.pathname === '/api/traces') {
+      if (url.searchParams.get('engine_only') === 'true') {
+        return fulfillJson(route, { traces: [ENGINE_TRACE], total: 1 });
+      }
       return fulfillJson(route, filterTraces(url));
     }
 
@@ -304,6 +342,86 @@ async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'ope
         return fulfillJson(route, SESSION_TWO);
       }
       return fulfillJson(route, { code: 'not_found', message: 'Resource not found' }, 404);
+    }
+
+    return fulfillJson(route, { code: 'not_found', message: 'Resource not found' }, 404);
+  });
+}
+
+async function mockEngineRoutes(page: Page) {
+  await page.route('**/v1/engine/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    expectOperatorAuthHeader(route);
+
+    if (/^\/v1\/engine\/instances\/[^/]+$/.test(url.pathname)) {
+      return fulfillJson(route, { code: 'not_found', message: 'Instance not found' }, 404);
+    }
+
+    if (url.pathname === '/v1/engine/runs' && request.method() === 'POST') {
+      expect(request.headers()['x-continua-engine-preview']).toBe('1');
+      expect(request.postDataJSON()).toMatchObject({
+        instance_key: 'checkout-42',
+        definition_name: 'checkout',
+        definition_version: 'v1',
+      });
+      return fulfillJson(route, {
+        run_id: ENGINE_RUN_ID,
+        instance_key: 'checkout-42',
+        trace_id: STARTED_ENGINE_TRACE_ID,
+      });
+    }
+
+    if (url.pathname === `/v1/engine/runs/${ENGINE_RUN_ID}/pending-work`) {
+      return fulfillJson(route, {
+        run_id: ENGINE_RUN_ID,
+        current_wait: null,
+        activities: [],
+        timers: [],
+        signals: [],
+        pending_activity_tasks: 0,
+        pending_inbox_items: 0,
+      });
+    }
+
+    if (url.pathname === `/v1/engine/runs/${ENGINE_RUN_ID}/history`) {
+      return fulfillJson(route, { events: [], has_more: false, expired: false });
+    }
+
+    if (url.pathname === `/v1/engine/runs/${ENGINE_RUN_ID}/result`) {
+      return fulfillJson(route, {
+        run_id: ENGINE_RUN_ID,
+        status: 'COMPLETED',
+        result: { approved: true },
+      });
+    }
+
+    if (
+      url.pathname === '/v1/engine/projections/backfill' &&
+      request.method() === 'POST'
+    ) {
+      expect(request.headers()['x-continua-engine-preview']).toBe('1');
+      expect(request.postDataJSON()).toEqual({
+        dry_run: true,
+        limit: 50,
+        engine_projection_state: 'summary_only',
+      });
+      return fulfillJson(route, {
+        dry_run: true,
+        limit: 50,
+        eligible_count: 1,
+        repair_requested_count: 0,
+        skipped_count: 0,
+        results: [
+          {
+            run_id: ENGINE_RUN_ID,
+            trace_id: ENGINE_TRACE_ID,
+            projection_state: 'summary_only',
+            action: 'would_repair',
+            reason: 'repair_requested',
+          },
+        ],
+      });
     }
 
     return fulfillJson(route, { code: 'not_found', message: 'Resource not found' }, 404);
@@ -435,6 +553,88 @@ test('captures trace, session, and compare workspaces', async ({ page }, testInf
     () => expect(page.getByRole('heading', { name: 'Span Diff' })).toBeVisible(),
     `${prefix}-session-compare`
   );
+});
+
+test('covers the engine runs console smoke flows', async ({ page }, testInfo) => {
+  const isMobile = testInfo.project.name === 'mobile-chromium';
+  await bootstrapOperatorSession(page);
+  await mockApiRoutes(page, 'operator');
+  await mockEngineRoutes(page);
+  await page.goto(`/traces?project_id=${PRIMARY_PROJECT_ID}`);
+
+  if (isMobile) {
+    await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  }
+  const navigation = page.getByRole('navigation', {
+    name: isMobile ? 'Mobile primary' : 'Primary',
+    exact: true,
+  });
+  expect((await navigation.getByRole('link').allTextContents()).map((text) => text.trim()))
+    .toEqual(['Overview', 'Traces', 'Engine Runs', 'Sessions', 'Projects', 'Settings']);
+
+  const engineRunsRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === '/api/traces' && url.searchParams.get('engine_only') === 'true';
+  });
+  await navigation.getByRole('link', { name: 'Engine Runs', exact: true }).click();
+  expect(new URL((await engineRunsRequest).url()).searchParams.get('engine_only')).toBe('true');
+  await expect(page).toHaveURL(
+    `/engine/runs?project_id=${PRIMARY_PROJECT_ID}`
+  );
+  const engineRunRow = page.getByRole('row').filter({ hasText: 'checkout · v1' });
+  await expect(engineRunRow.getByText('checkout · v1', { exact: true })).toBeVisible();
+  await expect(engineRunRow.getByText('Completed', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Start run', exact: true }).click();
+  const startForm = page
+    .getByRole('heading', { name: 'Start run', exact: true })
+    .locator('xpath=ancestor::form');
+  await startForm.getByLabel(/^Instance key/).fill('checkout-42');
+  await startForm.getByLabel(/^Definition name/).fill('checkout');
+  await startForm.getByLabel(/^Definition version/).fill('v1');
+  const startRequest = page.waitForRequest(
+    (request) =>
+      new URL(request.url()).pathname === '/v1/engine/runs' &&
+      request.method() === 'POST'
+  );
+  await startForm.getByRole('button', { name: 'Start run', exact: true }).click();
+  await startRequest;
+  await expect(page).toHaveURL(
+    new RegExp(String.raw`/traces/${STARTED_ENGINE_TRACE_ID}\?project_id=${PRIMARY_PROJECT_ID}`)
+  );
+
+  await page.getByRole('button', { name: 'Engine state', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Overview \d+$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Pending \d+$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Engine history \d+$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Result \d+$/ })).toBeVisible();
+
+  await page.goto(`/settings?project_id=${PRIMARY_PROJECT_ID}`);
+  const operationsSection = page
+    .getByRole('heading', { name: 'Operations', exact: true })
+    .locator('xpath=ancestor::section[1]');
+  await expect(operationsSection).toBeVisible();
+  await operationsSection
+    .getByRole('link', { name: /^Engine projection repair/ })
+    .click();
+  await expect(page).toHaveURL(
+    `/tools/engine-projections?project_id=${PRIMARY_PROJECT_ID}`
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Engine projection repair', exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Apply repair', exact: true })
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'Run dry run', exact: true }).click();
+  await expect(page.getByText(ENGINE_RUN_ID, { exact: true })).toBeVisible();
+  await expect(page.getByText('Dry run', { exact: true })).toBeVisible();
+
+  const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled' });
+  await testInfo.attach(`${testInfo.project.name}-engine-projection-dry-run`, {
+    body: screenshot,
+    contentType: 'image/png',
+  });
 });
 
 test('walks the public demo flow from landing through debugger reads', async ({ page }, testInfo) => {
