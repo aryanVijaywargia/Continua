@@ -18,6 +18,7 @@ const (
 	defaultMaxConnLifetime = time.Hour
 	defaultMaxConnIdleTime = 30 * time.Minute
 	defaultHealthCheck     = time.Minute
+	defaultNotifyFallback  = 5 * time.Second
 	defaultWorkflowPoll    = time.Second
 	defaultActivityPoll    = time.Second
 	defaultMaintenancePoll = 10 * time.Second
@@ -98,6 +99,8 @@ func Defaults(databaseURL string) *Config {
 			HealthCheckPeriod: defaultHealthCheck,
 		},
 		Runtime: RuntimeConfig{
+			NotifyEnabled:              true,
+			NotifyFallbackInterval:     defaultNotifyFallback,
 			WorkflowPollInterval:       defaultWorkflowPoll,
 			ActivityPollInterval:       defaultActivityPoll,
 			MaintenancePollInterval:    defaultMaintenancePoll,
@@ -169,6 +172,17 @@ func Load() (*Config, error) {
 	}
 	if dbHealthCheckPeriod <= 0 {
 		return nil, errors.New("ENGINE_DB_HEALTHCHECK_PERIOD must be positive")
+	}
+	notifyEnabled, err := boolFromEnv("ENGINE_NOTIFY_ENABLED", cfg.Runtime.NotifyEnabled)
+	if err != nil {
+		return nil, err
+	}
+	notifyFallbackInterval, err := durationFromEnv("ENGINE_NOTIFY_FALLBACK_INTERVAL", cfg.Runtime.NotifyFallbackInterval)
+	if err != nil {
+		return nil, err
+	}
+	if notifyFallbackInterval <= 0 {
+		return nil, errors.New("ENGINE_NOTIFY_FALLBACK_INTERVAL must be positive")
 	}
 	workflowPollInterval, err := durationFromEnv("ENGINE_WORKFLOW_POLL_INTERVAL", cfg.Runtime.WorkflowPollInterval)
 	if err != nil {
@@ -272,6 +286,8 @@ func Load() (*Config, error) {
 	cfg.Database.MaxConnLifetime = dbMaxConnLifetime
 	cfg.Database.MaxConnIdleTime = dbMaxConnIdleTime
 	cfg.Database.HealthCheckPeriod = dbHealthCheckPeriod
+	cfg.Runtime.NotifyEnabled = notifyEnabled
+	cfg.Runtime.NotifyFallbackInterval = notifyFallbackInterval
 	cfg.Runtime.WorkflowPollInterval = workflowPollInterval
 	cfg.Runtime.ActivityPollInterval = activityPollInterval
 	cfg.Runtime.MaintenancePollInterval = maintenancePollInterval
@@ -332,6 +348,19 @@ func int32FromEnv(key string, fallback int32) (int32, error) {
 		return 0, errors.New(key + " must be a valid integer: " + err.Error())
 	}
 	return int32(parsed), nil
+}
+
+func boolFromEnv(key string, fallback bool) (bool, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, errors.New(key + " must be a valid boolean: " + err.Error())
+	}
+	return parsed, nil
 }
 
 func logLevelFromEnv(key string, fallback slog.Level) (slog.Level, error) {

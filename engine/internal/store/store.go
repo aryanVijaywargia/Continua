@@ -27,10 +27,12 @@ var (
 )
 
 type storeOps struct {
+	db              enginedb.DBTX
 	q               *enginedb.Queries
 	projectFilter   *uuid.UUID
 	metrics         *enginemetrics.Metrics
 	completionGrace time.Duration
+	notifyEnabled   bool
 }
 
 // Store provides engine database access backed by a dedicated pgx pool.
@@ -50,7 +52,7 @@ type Tx struct {
 func New(pool *pgxpool.Pool) *Store {
 	return &Store{
 		pool:     pool,
-		storeOps: &storeOps{q: enginedb.New(pool)},
+		storeOps: &storeOps{db: pool, q: enginedb.New(pool), notifyEnabled: true},
 	}
 }
 
@@ -62,10 +64,12 @@ func (s *Store) WithMetrics(metrics *enginemetrics.Metrics) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
+			db:              s.db,
 			q:               s.q,
 			projectFilter:   s.projectFilter,
 			metrics:         metrics,
 			completionGrace: s.completionGrace,
+			notifyEnabled:   s.notifyEnabled,
 		},
 	}
 }
@@ -78,10 +82,12 @@ func (s *Store) WithProjectFilter(projectID uuid.UUID) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
+			db:              s.db,
 			q:               s.q,
 			projectFilter:   &filter,
 			metrics:         s.metrics,
 			completionGrace: s.completionGrace,
+			notifyEnabled:   s.notifyEnabled,
 		},
 	}
 }
@@ -93,17 +99,29 @@ func (s *Store) WithLeaseCompletionGrace(d time.Duration) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
+			db:              s.db,
 			q:               s.q,
 			projectFilter:   s.projectFilter,
 			metrics:         s.metrics,
 			completionGrace: d,
+			notifyEnabled:   s.notifyEnabled,
 		},
 	}
 }
 
-// WithNotifyDisabled is a compile-only scaffold for notification acceptance tests.
+// WithNotifyDisabled returns a store copy that does not emit work notifications.
 func (s *Store) WithNotifyDisabled() *Store {
-	return s
+	return &Store{
+		pool: s.pool,
+		storeOps: &storeOps{
+			db:              s.db,
+			q:               s.q,
+			projectFilter:   s.projectFilter,
+			metrics:         s.metrics,
+			completionGrace: s.completionGrace,
+			notifyEnabled:   false,
+		},
+	}
 }
 
 // Metrics returns the metrics recorder attached to the store.
@@ -178,10 +196,12 @@ func (s *Store) BeginTx(ctx context.Context, opts pgx.TxOptions) (*Tx, error) {
 	return &Tx{
 		tx: tx,
 		storeOps: &storeOps{
+			db:              tx,
 			q:               s.q.WithTx(tx),
 			projectFilter:   s.projectFilter,
 			metrics:         s.metrics,
 			completionGrace: s.completionGrace,
+			notifyEnabled:   s.notifyEnabled,
 		},
 	}, nil
 }

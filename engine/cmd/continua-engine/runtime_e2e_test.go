@@ -461,6 +461,7 @@ func TestEngineRuntimeTimerAndSignalPersistenceAcrossRestart(t *testing.T) {
 func TestEngineRuntimeActivityPickupAfterRestart(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	configureRuntimeEnv(t, db.DatabaseURL)
+	t.Setenv("ENGINE_NOTIFY_ENABLED", "false")
 	t.Setenv("ENGINE_ACTIVITY_POLL_INTERVAL", "5s")
 
 	serve := startServe(t)

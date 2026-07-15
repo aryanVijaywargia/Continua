@@ -23,6 +23,13 @@ type Worker struct {
 	registry         *Registry
 	activityLeaseTTL time.Duration
 	logger           *slog.Logger
+	retryWaker       func(time.Duration)
+}
+
+// WithRetryWaker schedules an activity poll when a local retry becomes available.
+func (w *Worker) WithRetryWaker(waker func(time.Duration)) *Worker {
+	w.retryWaker = waker
+	return w
 }
 
 func NewWorker(engineStore *store.Store, registry *Registry, activityLeaseTTL time.Duration, logger *slog.Logger) *Worker {
@@ -256,6 +263,9 @@ func (w *Worker) retryTask(
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
+	}
+	if w.retryWaker != nil {
+		w.retryWaker(time.Duration(retryDelayMS) * time.Millisecond)
 	}
 	w.store.Metrics().IncActivityAttempt("retried")
 	return nil

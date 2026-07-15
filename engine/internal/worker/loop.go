@@ -33,15 +33,35 @@ func RunLoop(ctx context.Context, pollInterval time.Duration, workerID string, f
 	}
 }
 
-// RunLoopWithWake is a compile-only scaffold for notification acceptance tests.
 func RunLoopWithWake(
 	ctx context.Context,
 	baseInterval time.Duration,
-	_ time.Duration,
-	_ func() bool,
-	_ <-chan struct{},
+	fallbackInterval time.Duration,
+	healthy func() bool,
+	wake <-chan struct{},
 	workerID string,
 	fn IterationFunc,
 ) error {
-	return RunLoop(ctx, baseInterval, workerID, fn)
+	for {
+		if err := fn(ctx, workerID); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+
+		interval := baseInterval
+		if healthy() {
+			interval = fallbackInterval
+		}
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		case <-wake:
+			timer.Stop()
+		}
+	}
 }

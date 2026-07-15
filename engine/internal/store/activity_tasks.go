@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 )
 
 //nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
@@ -16,7 +17,14 @@ func (o *storeOps) CreateActivityTask(
 	ctx context.Context,
 	arg enginedb.CreateActivityTaskParams,
 ) (enginedb.EngineActivityTask, error) {
-	return mapResult(o.q.CreateActivityTask(ctx, arg))
+	task, err := mapResult(o.q.CreateActivityTask(ctx, arg))
+	if err != nil {
+		return enginedb.EngineActivityTask{}, err
+	}
+	if err := o.emitNotify(ctx, publicnotify.ChannelActivity); err != nil {
+		return enginedb.EngineActivityTask{}, err
+	}
+	return task, nil
 }
 
 func (o *storeOps) GetActivityTask(ctx context.Context, id uuid.UUID) (enginedb.EngineActivityTask, error) {
@@ -201,6 +209,9 @@ func (o *storeOps) RetryRemoteActivityTask(
 		CompletionGraceMs: o.completionGrace.Milliseconds(),
 	})
 	if err == nil {
+		if err := o.emitNotify(ctx, publicnotify.ChannelActivity); err != nil {
+			return enginedb.EngineActivityTask{}, err
+		}
 		return task, nil
 	}
 	return enginedb.EngineActivityTask{}, o.classifyRemoteActivityTaskCASMiss(ctx, projectID, id, err)
@@ -240,6 +251,9 @@ func (o *storeOps) RetryActivityTask(
 		RetryDelayMs: retryDelayMS,
 	})
 	if err == nil {
+		if err := o.emitNotify(ctx, publicnotify.ChannelActivity); err != nil {
+			return enginedb.EngineActivityTask{}, err
+		}
 		return task, nil
 	}
 	return enginedb.EngineActivityTask{}, o.classifyActivityTaskCASMiss(ctx, id, err)
