@@ -64,6 +64,8 @@ type DatabaseConfig struct {
 
 // RuntimeConfig holds polling, lease, and dedupe settings for the engine runtime.
 type RuntimeConfig struct {
+	NotifyEnabled              bool
+	NotifyFallbackInterval     time.Duration
 	WorkflowPollInterval       time.Duration
 	ActivityPollInterval       time.Duration
 	MaintenancePollInterval    time.Duration

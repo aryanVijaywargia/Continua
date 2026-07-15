@@ -37,6 +37,9 @@ type ActivityHandler func(context.Context, json.RawMessage) (json.RawMessage, er
 
 // Options configures an embedded engine runtime.
 type Options struct {
+	// DisableNotify and NotifyFallbackInterval are compile-only scaffolding for notification acceptance tests.
+	DisableNotify          bool
+	NotifyFallbackInterval time.Duration
 	// DatabaseURL is the Postgres connection string. Required.
 	DatabaseURL string
 	// Workflows are the workflow definitions this runtime can execute.

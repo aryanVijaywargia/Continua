@@ -101,6 +101,11 @@ func (s *Store) WithLeaseCompletionGrace(d time.Duration) *Store {
 	}
 }
 
+// WithNotifyDisabled is a compile-only scaffold for notification acceptance tests.
+func (s *Store) WithNotifyDisabled() *Store {
+	return s
+}
+
 // Metrics returns the metrics recorder attached to the store.
 func (o *storeOps) Metrics() *enginemetrics.Metrics {
 	if o == nil {
