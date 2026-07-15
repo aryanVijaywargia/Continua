@@ -3,6 +3,8 @@ package runtime_test
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,6 +17,7 @@ import (
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
+	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	engineruntime "github.com/continua-ai/continua/engine/pkg/runtime"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
@@ -225,7 +228,8 @@ func TestRuntimeDrainReleasesLeasesAtGraceExpiry(t *testing.T) {
 		t.Fatalf("ListActivityTasksByRun() returned %d tasks, want 1", len(tasks))
 	}
 	task := tasks[0]
-	if task.Status != enginedb.EngineActivityTaskStatusQueued || task.ClaimedBy != nil || task.LeaseExpiresAt.Valid {
+	if task.Status != enginedb.EngineActivityTaskStatusQueued ||
+		task.ClaimedBy != nil || task.ClaimedAt.Valid || task.LeaseExpiresAt.Valid {
 		t.Fatalf("activity task was not released at grace expiry: %+v", task)
 	}
 
@@ -239,6 +243,79 @@ func TestRuntimeDrainReleasesLeasesAtGraceExpiry(t *testing.T) {
 	}
 	if reclaimed.ID != task.ID {
 		t.Fatalf("ClaimNextActivityTask(post-drain-worker) ID = %s, want released task %s", reclaimed.ID, task.ID)
+	}
+}
+
+func TestRuntimeDrainReleasesWorkflowLeaseAtGraceExpiry(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	projectID := uuid.New()
+	enginetest.EnsurePlatformProject(t, db.Pool, projectID)
+
+	tempDir := t.TempDir()
+	claimMarker := filepath.Join(tempDir, "workflow-claim.marker")
+	claimRelease := filepath.Join(tempDir, "workflow-claim.release")
+	t.Setenv(engineworkflow.TestWorkflowClaimMarkerEnv, claimMarker)
+	t.Setenv(engineworkflow.TestWorkflowClaimReleaseEnv, claimRelease)
+
+	store, _, run := seedDrainRun(t, db, projectID, "drain-releases-workflow-at-expiry")
+	rt, err := engineruntime.New(engineruntime.Options{
+		DatabaseURL:             db.DatabaseURL,
+		Workflows:               []workflow.Definition{drainWorkflowDefinition()},
+		ProjectID:               &projectID,
+		WorkflowPollInterval:    25 * time.Millisecond,
+		ActivityPollInterval:    25 * time.Millisecond,
+		MaintenancePollInterval: 100 * time.Millisecond,
+		ShutdownGrace:           200 * time.Millisecond,
+		RunLeaseTTL:             time.Minute,
+		ActivityLeaseTTL:        5 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("runtime.New() error = %v", err)
+	}
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- rt.Run(runCtx) }()
+	stopped := false
+	defer func() {
+		if stopped {
+			return
+		}
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("runtime did not stop within 5s during test cleanup")
+		}
+	}()
+
+	waitForDrainFile(t, claimMarker)
+	cancel()
+	select {
+	case err := <-done:
+		stopped = true
+		if err != nil {
+			t.Fatalf("Runtime.Run() after workflow grace expiry error = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Runtime.Run() did not return within 5s after workflow grace expiry")
+	}
+
+	released, err := store.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetRun() error = %v", err)
+	}
+	if released.Status != enginedb.EngineRunLifecycleStatusQueued ||
+		released.ClaimedBy != nil || released.ClaimedAt.Valid || released.LeaseExpiresAt.Valid {
+		t.Fatalf("workflow run was not released at grace expiry: %+v", released)
+	}
+
+	reclaimed, err := store.ClaimNextRun(context.Background(), "post-drain-workflow-worker", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimNextRun(post-drain-workflow-worker) error = %v", err)
+	}
+	if reclaimed.ID != run.ID {
+		t.Fatalf("ClaimNextRun(post-drain-workflow-worker) ID = %s, want released run %s", reclaimed.ID, run.ID)
 	}
 }
 
@@ -338,6 +415,21 @@ func waitForDrainActivityStart(t *testing.T, started <-chan struct{}) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("activity handler did not start within 10s")
 	}
+}
+
+func waitForDrainFile(t *testing.T, path string) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat drain marker %q: %v", path, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("drain marker %q did not appear within 10s", path)
 }
 
 func waitForDrainCompletedRun(

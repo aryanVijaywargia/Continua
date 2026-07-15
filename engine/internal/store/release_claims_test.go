@@ -184,7 +184,7 @@ func TestReleaseActivityTasksByClaimantReleasesOnlyOwnClaimedTasks(t *testing.T)
 		t.Fatalf("ReleaseActivityTasksByClaimant() task ID = %s, want %s", released[0].ID, task1.ID)
 	}
 	if released[0].Status != enginedb.EngineActivityTaskStatusQueued ||
-		released[0].ClaimedBy != nil || released[0].LeaseExpiresAt.Valid {
+		released[0].ClaimedBy != nil || released[0].ClaimedAt.Valid || released[0].LeaseExpiresAt.Valid {
 		t.Fatalf("released task has stale claim state: %+v", released[0])
 	}
 	if released[0].AttemptCount != 1 {
@@ -196,7 +196,8 @@ func TestReleaseActivityTasksByClaimantReleasesOnlyOwnClaimedTasks(t *testing.T)
 		t.Fatalf("GetActivityTask(task 1) error = %v", err)
 	}
 	if refetched1.Status != enginedb.EngineActivityTaskStatusQueued ||
-		refetched1.ClaimedBy != nil || refetched1.LeaseExpiresAt.Valid || refetched1.AttemptCount != 1 {
+		refetched1.ClaimedBy != nil || refetched1.ClaimedAt.Valid ||
+		refetched1.LeaseExpiresAt.Valid || refetched1.AttemptCount != 1 {
 		t.Fatalf("persisted task 1 has wrong released state: %+v", refetched1)
 	}
 
