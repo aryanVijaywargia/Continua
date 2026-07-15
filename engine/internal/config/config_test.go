@@ -82,6 +82,137 @@ func TestLoadRuntimeOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadPoolAndLimitDefaults(t *testing.T) {
+	t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
+	setPoolAndLimitEnv(t, map[string]string{})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Database.MaxConns != 10 {
+		t.Errorf("Database.MaxConns = %d, want 10", cfg.Database.MaxConns)
+	}
+	if cfg.Database.MinConns != 2 {
+		t.Errorf("Database.MinConns = %d, want 2", cfg.Database.MinConns)
+	}
+	if cfg.Database.MaxConnLifetime != time.Hour {
+		t.Errorf("Database.MaxConnLifetime = %s, want 1h", cfg.Database.MaxConnLifetime)
+	}
+	if cfg.Database.MaxConnIdleTime != 30*time.Minute {
+		t.Errorf("Database.MaxConnIdleTime = %s, want 30m", cfg.Database.MaxConnIdleTime)
+	}
+	if cfg.Database.HealthCheckPeriod != time.Minute {
+		t.Errorf("Database.HealthCheckPeriod = %s, want 1m", cfg.Database.HealthCheckPeriod)
+	}
+	if cfg.Runtime.ProjectorBatchSize != 1000 {
+		t.Errorf("Runtime.ProjectorBatchSize = %d, want 1000", cfg.Runtime.ProjectorBatchSize)
+	}
+	if cfg.Runtime.MaxChildDepth != 32 {
+		t.Errorf("Runtime.MaxChildDepth = %d, want 32", cfg.Runtime.MaxChildDepth)
+	}
+	if cfg.Runtime.MaxContinuationFollowDepth != 32 {
+		t.Errorf("Runtime.MaxContinuationFollowDepth = %d, want 32", cfg.Runtime.MaxContinuationFollowDepth)
+	}
+}
+
+func TestLoadPoolAndLimitOverrides(t *testing.T) {
+	t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
+	setPoolAndLimitEnv(t, map[string]string{
+		"ENGINE_DB_MAX_CONNS":                  "25",
+		"ENGINE_DB_MIN_CONNS":                  "5",
+		"ENGINE_DB_MAX_CONN_LIFETIME":          "2h",
+		"ENGINE_DB_MAX_CONN_IDLE_TIME":         "45m",
+		"ENGINE_DB_HEALTHCHECK_PERIOD":         "90s",
+		"ENGINE_PROJECTOR_BATCH_SIZE":          "250",
+		"ENGINE_MAX_CHILD_DEPTH":               "8",
+		"ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH": "4",
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Database.MaxConns != 25 {
+		t.Errorf("Database.MaxConns = %d, want 25", cfg.Database.MaxConns)
+	}
+	if cfg.Database.MinConns != 5 {
+		t.Errorf("Database.MinConns = %d, want 5", cfg.Database.MinConns)
+	}
+	if cfg.Database.MaxConnLifetime != 2*time.Hour {
+		t.Errorf("Database.MaxConnLifetime = %s, want 2h", cfg.Database.MaxConnLifetime)
+	}
+	if cfg.Database.MaxConnIdleTime != 45*time.Minute {
+		t.Errorf("Database.MaxConnIdleTime = %s, want 45m", cfg.Database.MaxConnIdleTime)
+	}
+	if cfg.Database.HealthCheckPeriod != 90*time.Second {
+		t.Errorf("Database.HealthCheckPeriod = %s, want 90s", cfg.Database.HealthCheckPeriod)
+	}
+	if cfg.Runtime.ProjectorBatchSize != 250 {
+		t.Errorf("Runtime.ProjectorBatchSize = %d, want 250", cfg.Runtime.ProjectorBatchSize)
+	}
+	if cfg.Runtime.MaxChildDepth != 8 {
+		t.Errorf("Runtime.MaxChildDepth = %d, want 8", cfg.Runtime.MaxChildDepth)
+	}
+	if cfg.Runtime.MaxContinuationFollowDepth != 4 {
+		t.Errorf("Runtime.MaxContinuationFollowDepth = %d, want 4", cfg.Runtime.MaxContinuationFollowDepth)
+	}
+}
+
+func TestLoadRejectsInvalidPoolAndLimitValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		values  map[string]string
+		wantEnv string
+	}{
+		{name: "max connections is not an integer", values: map[string]string{"ENGINE_DB_MAX_CONNS": "abc"}, wantEnv: "ENGINE_DB_MAX_CONNS"},
+		{name: "max connections is zero", values: map[string]string{"ENGINE_DB_MAX_CONNS": "0"}, wantEnv: "ENGINE_DB_MAX_CONNS"},
+		{name: "min connections is negative", values: map[string]string{"ENGINE_DB_MIN_CONNS": "-1"}, wantEnv: "ENGINE_DB_MIN_CONNS"},
+		{name: "min connections exceeds max", values: map[string]string{"ENGINE_DB_MIN_CONNS": "20", "ENGINE_DB_MAX_CONNS": "10"}, wantEnv: "ENGINE_DB_MIN_CONNS"},
+		{name: "max lifetime is invalid", values: map[string]string{"ENGINE_DB_MAX_CONN_LIFETIME": "nope"}, wantEnv: "ENGINE_DB_MAX_CONN_LIFETIME"},
+		{name: "max lifetime is zero", values: map[string]string{"ENGINE_DB_MAX_CONN_LIFETIME": "0s"}, wantEnv: "ENGINE_DB_MAX_CONN_LIFETIME"},
+		{name: "max idle time is negative", values: map[string]string{"ENGINE_DB_MAX_CONN_IDLE_TIME": "-5m"}, wantEnv: "ENGINE_DB_MAX_CONN_IDLE_TIME"},
+		{name: "healthcheck period is zero", values: map[string]string{"ENGINE_DB_HEALTHCHECK_PERIOD": "0s"}, wantEnv: "ENGINE_DB_HEALTHCHECK_PERIOD"},
+		{name: "projector batch size is zero", values: map[string]string{"ENGINE_PROJECTOR_BATCH_SIZE": "0"}, wantEnv: "ENGINE_PROJECTOR_BATCH_SIZE"},
+		{name: "projector batch size is not an integer", values: map[string]string{"ENGINE_PROJECTOR_BATCH_SIZE": "x"}, wantEnv: "ENGINE_PROJECTOR_BATCH_SIZE"},
+		{name: "max child depth is zero", values: map[string]string{"ENGINE_MAX_CHILD_DEPTH": "0"}, wantEnv: "ENGINE_MAX_CHILD_DEPTH"},
+		{name: "max continuation follow depth is negative", values: map[string]string{"ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH": "-3"}, wantEnv: "ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
+			setPoolAndLimitEnv(t, tt.values)
+
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("Load() error = nil, want error containing %q", tt.wantEnv)
+			}
+			if !strings.Contains(err.Error(), tt.wantEnv) {
+				t.Fatalf("Load() error = %q, want env var %q", err.Error(), tt.wantEnv)
+			}
+		})
+	}
+}
+
+func setPoolAndLimitEnv(t *testing.T, values map[string]string) {
+	t.Helper()
+	for _, key := range []string{
+		"ENGINE_DB_MAX_CONNS",
+		"ENGINE_DB_MIN_CONNS",
+		"ENGINE_DB_MAX_CONN_LIFETIME",
+		"ENGINE_DB_MAX_CONN_IDLE_TIME",
+		"ENGINE_DB_HEALTHCHECK_PERIOD",
+		"ENGINE_PROJECTOR_BATCH_SIZE",
+		"ENGINE_MAX_CHILD_DEPTH",
+		"ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH",
+	} {
+		t.Setenv(key, values[key])
+	}
+}
+
 func TestLoadRejectsInvalidDuration(t *testing.T) {
 	t.Setenv("ENGINE_DATABASE_URL", "postgres://engine")
 	t.Setenv("ENGINE_WORKFLOW_POLL_INTERVAL", "definitely-not-a-duration")

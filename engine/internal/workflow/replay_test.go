@@ -371,6 +371,74 @@ func TestReplayDefinitionRejectsChildWorkflowAtMaxDepth(t *testing.T) {
 	}
 }
 
+func TestChildDepthLimitConfigurable(t *testing.T) {
+	projectID := uuid.New()
+	runID := uuid.New()
+	input := mustRawJSON(t, map[string]string{"order_id": "ord-configurable-depth"})
+	historyRows := []enginedb.EngineHistory{
+		historyRow(t, 1, enginehistory.EventWorkflowStarted, enginehistory.WorkflowStartedPayload{
+			DefinitionName:    "checkout",
+			DefinitionVersion: "v1",
+			InstanceKey:       "instance-configurable-depth",
+			Input:             input,
+		}),
+	}
+	definition := publicworkflow.Definition{
+		Name:    "checkout",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			var workflowInput map[string]string
+			if err := ctx.Input(&workflowInput); err != nil {
+				return err
+			}
+			var childResult map[string]string
+			return ctx.ChildWorkflow("too-deep", "billing", "v1", workflowInput, &childResult)
+		},
+	}
+	run := &enginedb.EngineRun{
+		ID:         runID,
+		ProjectID:  projectID,
+		RootRunID:  runID,
+		ChildDepth: 3,
+	}
+
+	limitedDecision, err := replayDefinitionForRunWithDepthLimits(
+		definition,
+		run,
+		historyRows,
+		nil,
+		nil,
+		nil,
+		DepthLimits{MaxChildDepth: 3, MaxContinuationFollowDepth: 32},
+	)
+	if err != nil {
+		t.Fatalf("replayDefinitionForRunWithDepthLimits() error = %v", err)
+	}
+	if limitedDecision.Kind != decisionFailed {
+		t.Errorf("configured-limit decision kind = %q, want %q", limitedDecision.Kind, decisionFailed)
+	}
+	if limitedDecision.FailureCode != "max_child_depth_exceeded" {
+		t.Errorf("configured-limit failure code = %q, want max_child_depth_exceeded", limitedDecision.FailureCode)
+	}
+	if len(limitedDecision.Events) != 1 || limitedDecision.Events[0].EventType != enginehistory.EventWorkflowFailed {
+		t.Errorf("configured-limit events = %+v, want one workflow.failed event", limitedDecision.Events)
+	}
+
+	defaultDecision, err := replayDefinitionForRun(definition, run, historyRows, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("replayDefinitionForRun() error = %v", err)
+	}
+	if defaultDecision.Kind != decisionWaiting {
+		t.Errorf("default-limit decision kind = %q, want %q", defaultDecision.Kind, decisionWaiting)
+	}
+	if defaultDecision.NewChildWorkflow == nil {
+		t.Error("default-limit decision did not schedule a child workflow")
+	}
+	if len(defaultDecision.Events) != 1 || defaultDecision.Events[0].EventType != enginehistory.EventChildWorkflowScheduled {
+		t.Errorf("default-limit events = %+v, want one child_workflow.scheduled event", defaultDecision.Events)
+	}
+}
+
 func TestReplayDefinitionFailsDeterministicallyWhenNewChildValidatorRejectsBinding(t *testing.T) {
 	projectID := uuid.New()
 	runID := uuid.New()

@@ -22,8 +22,10 @@ import (
 type continuationTraceSeed = publicprojection.TraceShellSeed
 
 type Activator struct {
-	store       *store.Store
-	definitions *Registry
+	store                      *store.Store
+	definitions                *Registry
+	maxChildDepth              int32
+	maxContinuationFollowDepth int32
 }
 
 type childWorkflowBindingState struct {
@@ -33,9 +35,21 @@ type childWorkflowBindingState struct {
 
 func NewActivator(engineStore *store.Store, definitions *Registry) *Activator {
 	return &Activator{
-		store:       engineStore,
-		definitions: definitions,
+		store:                      engineStore,
+		definitions:                definitions,
+		maxChildDepth:              maxChildDepth,
+		maxContinuationFollowDepth: maxContinuationFollowDepth,
 	}
+}
+
+func (a *Activator) withDepthLimits(limits DepthLimits) *Activator {
+	if limits.MaxChildDepth > 0 {
+		a.maxChildDepth = limits.MaxChildDepth
+	}
+	if limits.MaxContinuationFollowDepth > 0 {
+		a.maxContinuationFollowDepth = limits.MaxContinuationFollowDepth
+	}
+	return a
 }
 
 func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun) error {
@@ -99,7 +113,7 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 		return tx.Commit(ctx)
 	}
 
-	decision, err := replayDefinitionForRunWithValidator(
+	decision, err := replayDefinitionForRunWithOptions(
 		definition,
 		&run,
 		historyRows,
@@ -108,6 +122,10 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 		inboxRows,
 		func(scheduled enginehistory.ChildWorkflowScheduledPayload) error {
 			return a.validateChildWorkflowScheduling(ctx, tx, &run, &scheduled)
+		},
+		DepthLimits{
+			MaxChildDepth:              a.maxChildDepth,
+			MaxContinuationFollowDepth: a.maxContinuationFollowDepth,
 		},
 	)
 	if err != nil {
@@ -429,7 +447,7 @@ func (a *Activator) commitContinuationDecision(
 		if err != nil {
 			return err
 		}
-		if childWorkflow.ContinuationCount >= maxContinuationFollowDepth && !childWorkflow.ParentWaitFailedAt.Valid {
+		if childWorkflow.ContinuationCount >= a.maxContinuationFollowDepth && !childWorkflow.ParentWaitFailedAt.Valid {
 			if _, err := tx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
 				ID:       childWorkflow.ParentRunID,
 				ChildKey: childWorkflow.ChildKey,

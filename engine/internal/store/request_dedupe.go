@@ -86,6 +86,7 @@ func (tx *Tx) ClaimStartRequestDedupe(
 		RequestKey:   arg.RequestKey,
 	}
 
+	// This is a bounded two-phase claim (insert, then lock re-check), not a tunable retry policy.
 	for attempts := 0; attempts < 2; attempts++ {
 		row, err := tx.q.CreateStartRequestDedupeClaim(ctx, createArg)
 		if err == nil {

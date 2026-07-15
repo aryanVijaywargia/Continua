@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/continua-ai/continua/engine/internal/config"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
@@ -159,4 +160,84 @@ func TestApplyRuntimeOverridesRetentionBatchSize(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestApplyRuntimeOverridesPoolAndLimits(t *testing.T) {
+	t.Run("positive values override engine defaults", func(t *testing.T) {
+		cfg := config.Defaults("postgres://example/db")
+		applyRuntimeOverrides(cfg, &Options{
+			DBMaxConns:                 25,
+			DBMinConns:                 5,
+			DBMaxConnLifetime:          2 * time.Hour,
+			DBMaxConnIdleTime:          45 * time.Minute,
+			DBHealthCheckPeriod:        90 * time.Second,
+			ProjectorBatchSize:         250,
+			MaxChildDepth:              8,
+			MaxContinuationFollowDepth: 4,
+		})
+
+		if cfg.Database.MaxConns != 25 {
+			t.Errorf("Database.MaxConns = %d, want 25", cfg.Database.MaxConns)
+		}
+		if cfg.Database.MinConns != 5 {
+			t.Errorf("Database.MinConns = %d, want 5", cfg.Database.MinConns)
+		}
+		if cfg.Database.MaxConnLifetime != 2*time.Hour {
+			t.Errorf("Database.MaxConnLifetime = %s, want 2h", cfg.Database.MaxConnLifetime)
+		}
+		if cfg.Database.MaxConnIdleTime != 45*time.Minute {
+			t.Errorf("Database.MaxConnIdleTime = %s, want 45m", cfg.Database.MaxConnIdleTime)
+		}
+		if cfg.Database.HealthCheckPeriod != 90*time.Second {
+			t.Errorf("Database.HealthCheckPeriod = %s, want 90s", cfg.Database.HealthCheckPeriod)
+		}
+		if cfg.Runtime.ProjectorBatchSize != 250 {
+			t.Errorf("Runtime.ProjectorBatchSize = %d, want 250", cfg.Runtime.ProjectorBatchSize)
+		}
+		if cfg.Runtime.MaxChildDepth != 8 {
+			t.Errorf("Runtime.MaxChildDepth = %d, want 8", cfg.Runtime.MaxChildDepth)
+		}
+		if cfg.Runtime.MaxContinuationFollowDepth != 4 {
+			t.Errorf("Runtime.MaxContinuationFollowDepth = %d, want 4", cfg.Runtime.MaxContinuationFollowDepth)
+		}
+	})
+
+	t.Run("omitted values preserve engine defaults", func(t *testing.T) {
+		cfg := config.Defaults("postgres://example/db")
+		applyRuntimeOverrides(cfg, &Options{})
+
+		if cfg.Database.MaxConns != 10 {
+			t.Errorf("Database.MaxConns = %d, want 10", cfg.Database.MaxConns)
+		}
+		if cfg.Database.MinConns != 2 {
+			t.Errorf("Database.MinConns = %d, want 2", cfg.Database.MinConns)
+		}
+		if cfg.Database.MaxConnLifetime != time.Hour {
+			t.Errorf("Database.MaxConnLifetime = %s, want 1h", cfg.Database.MaxConnLifetime)
+		}
+		if cfg.Database.MaxConnIdleTime != 30*time.Minute {
+			t.Errorf("Database.MaxConnIdleTime = %s, want 30m", cfg.Database.MaxConnIdleTime)
+		}
+		if cfg.Database.HealthCheckPeriod != time.Minute {
+			t.Errorf("Database.HealthCheckPeriod = %s, want 1m", cfg.Database.HealthCheckPeriod)
+		}
+		if cfg.Runtime.ProjectorBatchSize != 1000 {
+			t.Errorf("Runtime.ProjectorBatchSize = %d, want 1000", cfg.Runtime.ProjectorBatchSize)
+		}
+		if cfg.Runtime.MaxChildDepth != 32 {
+			t.Errorf("Runtime.MaxChildDepth = %d, want 32", cfg.Runtime.MaxChildDepth)
+		}
+		if cfg.Runtime.MaxContinuationFollowDepth != 32 {
+			t.Errorf("Runtime.MaxContinuationFollowDepth = %d, want 32", cfg.Runtime.MaxContinuationFollowDepth)
+		}
+	})
+
+	t.Run("explicit zero minimum connections overrides engine default", func(t *testing.T) {
+		cfg := config.Defaults("postgres://example/db")
+		applyRuntimeOverrides(cfg, &Options{DBMinConns: 0, DBMinConnsSet: true})
+
+		if cfg.Database.MinConns != 0 {
+			t.Errorf("Database.MinConns = %d, want 0", cfg.Database.MinConns)
+		}
+	})
 }
