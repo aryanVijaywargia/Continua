@@ -72,6 +72,8 @@ type Options struct {
 	MetricsSampleInterval   time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
+	// ShutdownGrace is the maximum time allowed for in-flight work to finish during shutdown.
+	ShutdownGrace time.Duration
 	// RetentionTerminalRuns and RetentionDedupeGrace use engine defaults when
 	// zero; negative values disable the corresponding retention class.
 	RetentionTerminalRuns time.Duration

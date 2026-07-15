@@ -69,6 +69,13 @@ func (o *storeOps) ClaimNextActivityTask(
 	}))
 }
 
+func (o *storeOps) ReleaseActivityTasksByClaimant(
+	ctx context.Context,
+	claimant string,
+) ([]enginedb.EngineActivityTask, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (o *storeOps) ClaimRemoteActivityTasks(
 	ctx context.Context,
 	projectID uuid.UUID,

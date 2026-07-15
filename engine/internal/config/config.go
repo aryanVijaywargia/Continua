@@ -69,6 +69,7 @@ type RuntimeConfig struct {
 	MetricsSampleInterval      time.Duration
 	RunLeaseTTL                time.Duration
 	ActivityLeaseTTL           time.Duration
+	ShutdownGrace              time.Duration
 	LeaseCompletionGrace       time.Duration
 	RequestDedupeTTL           time.Duration
 	RetentionTerminalRuns      time.Duration

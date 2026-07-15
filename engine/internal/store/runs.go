@@ -190,6 +190,13 @@ func (o *storeOps) ClaimNextRun(
 	}))
 }
 
+func (o *storeOps) ReleaseRunsByClaimant(
+	ctx context.Context,
+	claimant string,
+) ([]enginedb.EngineRun, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (o *storeOps) classifyRunCASMiss(ctx context.Context, id uuid.UUID, err error) error {
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return normalizeError(err)
