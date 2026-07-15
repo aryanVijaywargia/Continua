@@ -559,14 +559,22 @@ func workerStaleAfter(pollInterval time.Duration) time.Duration {
 }
 
 func mergeWakeChannels(ctx context.Context, first, second <-chan struct{}) <-chan struct{} {
-	merged := make(chan struct{}, 64)
+	merged := make(chan struct{}, 1)
 	go func() {
-		for {
+		for first != nil || second != nil {
 			select {
 			case <-ctx.Done():
 				return
-			case <-first:
-			case <-second:
+			case _, ok := <-first:
+				if !ok {
+					first = nil
+					continue
+				}
+			case _, ok := <-second:
+				if !ok {
+					second = nil
+					continue
+				}
 			}
 			select {
 			case merged <- struct{}{}:

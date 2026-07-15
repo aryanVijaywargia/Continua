@@ -93,6 +93,37 @@ func TestRunLoopWithWakeNilWakeStillPolls(t *testing.T) {
 	assertLoopStopsNil(t, done)
 }
 
+func TestRunLoopWithWakeClosedChannelFallsBackToTimer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	wake := make(chan struct{})
+	close(wake)
+	var iterations atomic.Int64
+	done := make(chan error, 1)
+	go func() {
+		done <- RunLoopWithWake(ctx, time.Second, time.Second, func() bool { return true }, wake, "closed-wake-test", func(context.Context, string) error {
+			iterations.Add(1)
+			return nil
+		})
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for iterations.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := iterations.Load(); got != 2 {
+		cancel()
+		t.Fatalf("iterations after closed wake = %d, want 2 before timer fallback", got)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := iterations.Load(); got != 2 {
+		cancel()
+		t.Fatalf("iterations after closed wake = %d, want no busy loop", got)
+	}
+
+	cancel()
+	assertLoopStopsNil(t, done)
+}
+
 func assertLoopStopsNil(t *testing.T, done <-chan error) {
 	t.Helper()
 	select {

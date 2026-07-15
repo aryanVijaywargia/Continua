@@ -60,8 +60,11 @@ func RunLoopWithWake(
 			timer.Stop()
 			return nil
 		case <-timer.C:
-		case <-wake:
+		case _, ok := <-wake:
 			timer.Stop()
+			if !ok {
+				wake = nil
+			}
 		}
 	}
 }

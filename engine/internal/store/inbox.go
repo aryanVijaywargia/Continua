@@ -13,14 +13,13 @@ import (
 
 //nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
 func (o *storeOps) CreateInboxItem(ctx context.Context, arg enginedb.CreateInboxItemParams) (enginedb.EngineInbox, error) {
-	inbox, err := mapResult(o.q.CreateInboxItem(ctx, arg))
-	if err != nil {
-		return enginedb.EngineInbox{}, err
-	}
-	if err := o.emitNotify(ctx, publicnotify.ChannelInbox); err != nil {
-		return enginedb.EngineInbox{}, err
-	}
-	return inbox, nil
+	var inbox enginedb.EngineInbox
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelInbox, func(q *enginedb.Queries) error {
+		var err error
+		inbox, err = q.CreateInboxItem(ctx, arg)
+		return err
+	})
+	return mapResult(inbox, err)
 }
 
 func (o *storeOps) ClaimNextInboxItem(

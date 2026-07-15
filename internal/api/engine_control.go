@@ -1125,10 +1125,8 @@ func (s *engineControlService) ResumeRun(
 		}
 		return engineRunSummary{}, err
 	}
-	if run.Status == enginedb.EngineRunLifecycleStatusQuarantined {
-		if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelRuns); err != nil {
-			return engineRunSummary{}, err
-		}
+	if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelRuns); err != nil {
+		return engineRunSummary{}, err
 	}
 
 	payload, err := publichistory.MarshalPayload(publichistory.WorkflowResumedPayload{})

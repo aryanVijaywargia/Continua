@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -100,6 +101,43 @@ func TestWithNotifyDisabledSuppressesEmission(t *testing.T) {
 		t.Fatalf("Commit() error = %v", err)
 	}
 	assertStoreNotificationsQuiet(t, listener, 500*time.Millisecond)
+}
+
+func TestWithNotifyDisabledPreservesNilReceiver(t *testing.T) {
+	var store *Store
+	if disabled := store.WithNotifyDisabled(); disabled != nil {
+		t.Fatalf("WithNotifyDisabled() = %#v, want nil", disabled)
+	}
+}
+
+func TestDirectStoreNotifyFailureRollsBackMutation(t *testing.T) {
+	ts := newTestStore(t)
+	projectID := uuidOrFatal(t)
+	instanceKey := "notify-failure-rollback"
+	ctx, cancel := context.WithCancel(ts.ctx)
+
+	err := ts.store.mutateAndNotify(ctx, publicnotify.ChannelRuns, func(q *enginedb.Queries) error {
+		_, err := q.CreateInstance(ctx, enginedb.CreateInstanceParams{
+			ProjectID:      projectID,
+			InstanceKey:    instanceKey,
+			DefinitionName: "notify.workflow",
+		})
+		if err == nil {
+			cancel()
+		}
+		return err
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("mutateAndNotify() error = %v, want context.Canceled", err)
+	}
+
+	_, err = ts.store.GetInstanceByProjectAndKey(ts.ctx, enginedb.GetInstanceByProjectAndKeyParams{
+		ProjectID:   projectID,
+		InstanceKey: instanceKey,
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetInstanceByProjectAndKey() error = %v, want ErrNotFound after rollback", err)
+	}
 }
 
 func createNotifiableWork(

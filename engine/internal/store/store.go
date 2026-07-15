@@ -14,6 +14,7 @@ import (
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/config"
 	enginemetrics "github.com/continua-ai/continua/engine/internal/metrics"
+	enginenotify "github.com/continua-ai/continua/engine/internal/notify"
 )
 
 const uniqueViolationSQLState = "23505"
@@ -111,6 +112,9 @@ func (s *Store) WithLeaseCompletionGrace(d time.Duration) *Store {
 
 // WithNotifyDisabled returns a store copy that does not emit work notifications.
 func (s *Store) WithNotifyDisabled() *Store {
+	if s == nil {
+		return nil
+	}
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
@@ -204,6 +208,40 @@ func (s *Store) BeginTx(ctx context.Context, opts pgx.TxOptions) (*Tx, error) {
 			notifyEnabled:   s.notifyEnabled,
 		},
 	}, nil
+}
+
+func (o *storeOps) mutateAndNotify(
+	ctx context.Context,
+	channel string,
+	mutate func(*enginedb.Queries) error,
+) error {
+	if !o.notifyEnabled {
+		return mutate(o.q)
+	}
+
+	pool, directStoreWrite := o.db.(*pgxpool.Pool)
+	if !directStoreWrite {
+		if err := mutate(o.q); err != nil {
+			return err
+		}
+		return enginenotify.Emit(ctx, o.db, channel)
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback(context.WithoutCancel(ctx))
+	}()
+
+	if err := mutate(o.q.WithTx(tx)); err != nil {
+		return err
+	}
+	if err := enginenotify.Emit(ctx, tx, channel); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Commit commits the transaction.
