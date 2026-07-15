@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
@@ -11,6 +12,15 @@ import (
 
 	"github.com/jackc/pgx/v5"
 )
+
+func TestShutdownGraceOption(t *testing.T) {
+	if got := shutdownGraceOption(0); got >= 0 {
+		t.Fatalf("shutdownGraceOption(0) = %s, want negative sentinel", got)
+	}
+	if got := shutdownGraceOption(2 * time.Second); got != 2*time.Second {
+		t.Fatalf("shutdownGraceOption(2s) = %s, want 2s", got)
+	}
+}
 
 func TestResolveStartDefinitionVersionOmittedUsesLatestRegisteredVersion(t *testing.T) {
 	run := func(publicworkflow.Context) error { return nil }
