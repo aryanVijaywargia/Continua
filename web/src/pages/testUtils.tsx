@@ -80,7 +80,9 @@ export function buildFetchHandler({
   sessionNarrative,
   spans,
   timeline,
+  engineHistory,
   enginePendingWork,
+  engineResult,
   engineAction,
 }: {
   list?: JsonHandler;
@@ -91,7 +93,9 @@ export function buildFetchHandler({
   sessionNarrative?: JsonHandler;
   spans?: JsonHandler;
   timeline?: JsonHandler;
+  engineHistory?: JsonHandler;
   enginePendingWork?: JsonHandler;
+  engineResult?: JsonHandler;
   engineAction?: JsonHandler;
 } = {}) {
   return async (input: RequestInput, init?: RequestInit) => {
@@ -216,6 +220,22 @@ export function buildFetchHandler({
         pending_activity_tasks: 0,
         pending_inbox_items: 0,
       });
+    }
+
+    if (/^\/v1\/engine\/runs\/[^/]+\/history$/.test(url.pathname)) {
+      return (
+        engineHistory?.(url, init) ??
+        jsonResponse({ events: [], has_more: false, expired: false })
+      );
+    }
+
+    if (/^\/v1\/engine\/runs\/[^/]+\/result$/.test(url.pathname)) {
+      if (engineResult) {
+        return engineResult(url, init);
+      }
+
+      const runId = url.pathname.split('/').at(-2);
+      return jsonResponse({ run_id: runId, status: 'COMPLETED', result: null });
     }
 
     if (

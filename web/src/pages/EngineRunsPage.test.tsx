@@ -1,16 +1,56 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
-import { clearApiKey, setApiKey } from '../api/client';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+} from 'react-router-dom';
+import { clearApiKey, setApiKey, type Trace } from '../api/client';
 import { TRACE_ONE } from '../test/traceFixtures';
 import { ThemeProvider } from '../hooks/ThemeProvider';
+import { DEFAULT_PAGE_SIZE } from '../utils/pagination';
 import { jsonResponse, readRequestUrl, type RequestInput } from './testUtils';
 import { EngineRunsPage } from './EngineRunsPage';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-function renderEngineRunsPage() {
+const ENGINE_TRACE: Trace = {
+  ...TRACE_ONE,
+  id: 'engine-trace-1',
+  name: 'Darklaunch run',
+  error_count: 0,
+  engine: {
+    run_id: '123e4567-e89b-12d3-a456-426614174100',
+    definition_name: 'darklaunch.demo',
+    definition_version: 'v1',
+    projection_state: 'up_to_date',
+    instance_key: 'darklaunch-1',
+    status: 'QUEUED',
+    pending_work: {
+      pending_activity_tasks: 0,
+      pending_inbox_items: 0,
+    },
+    updated_at: '2026-03-14T10:00:03.000Z',
+  },
+};
+
+function LocationProbe() {
+  const location = useLocation();
+  const state = location.state as { returnTo?: string } | null;
+
+  return (
+    <>
+      <div data-testid="probe-pathname">{location.pathname}</div>
+      <div data-testid="probe-search">{location.search}</div>
+      <div data-testid="probe-return-to">{state?.returnTo}</div>
+    </>
+  );
+}
+
+function renderEngineRunsPage(initialEntry = '/engine/runs') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -23,12 +63,47 @@ function renderEngineRunsPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <MemoryRouter initialEntries={['/engine/runs']}>
-          <EngineRunsPage />
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <Routes>
+            <Route path="/engine/runs" element={<EngineRunsPage />} />
+            <Route path="/traces/:traceId" element={<LocationProbe />} />
+          </Routes>
         </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>
   );
+}
+
+function mockEngineRequests({
+  traces = [ENGINE_TRACE],
+  instance,
+  start,
+}: {
+  traces?: Trace[];
+  instance?: (url: URL, init?: RequestInit) => Promise<Response> | Response;
+  start?: (url: URL, init?: RequestInit) => Promise<Response> | Response;
+} = {}) {
+  fetchMock.mockImplementation((input: RequestInput, init?: RequestInit) => {
+    const url = new URL(readRequestUrl(input), 'http://localhost');
+
+    if (url.pathname === '/api/traces') {
+      return jsonResponse({ traces, total: traces.length });
+    }
+    if (/^\/v1\/engine\/instances\/[^/]+$/.test(url.pathname) && instance) {
+      return instance(url, init);
+    }
+    if (url.pathname === '/v1/engine/runs' && init?.method === 'POST' && start) {
+      return start(url, init);
+    }
+
+    throw new Error(`Unhandled request: ${init?.method ?? 'GET'} ${url.pathname}`);
+  });
+}
+
+async function openStartDialog(user: ReturnType<typeof userEvent.setup>) {
+  await screen.findByRole('table');
+  await user.click(screen.getByRole('button', { name: 'Start run' }));
+  return screen.findByRole('heading', { name: 'Start run' });
 }
 
 beforeEach(() => {
@@ -46,37 +121,7 @@ afterEach(() => {
 
 describe('EngineRunsPage', () => {
   it('requests engine-only traces and renders engine status labels', async () => {
-    fetchMock.mockImplementation((input: RequestInput) => {
-      const url = new URL(readRequestUrl(input), 'http://localhost');
-      if (url.pathname !== '/api/traces') {
-        throw new Error(`Unhandled request: ${url.pathname}`);
-      }
-
-      return jsonResponse({
-        traces: [
-          {
-            ...TRACE_ONE,
-            id: 'engine-trace-1',
-            name: 'Darklaunch run',
-            error_count: 0,
-            engine: {
-              run_id: '123e4567-e89b-12d3-a456-426614174100',
-              definition_name: 'darklaunch.demo',
-              definition_version: 'v1',
-              projection_state: 'up_to_date',
-              instance_key: 'darklaunch-1',
-              status: 'QUEUED',
-              pending_work: {
-                pending_activity_tasks: 0,
-                pending_inbox_items: 0,
-              },
-              updated_at: '2026-03-14T10:00:03.000Z',
-            },
-          },
-        ],
-        total: 1,
-      });
-    });
+    mockEngineRequests();
 
     renderEngineRunsPage();
 
@@ -92,5 +137,254 @@ describe('EngineRunsPage', () => {
       expect(requestUrl.pathname).toBe('/api/traces');
       expect(requestUrl.searchParams.get('engine_only')).toBe('true');
     });
+  });
+
+  it('sends engine_only with pagination params and renders the locked column order', async () => {
+    mockEngineRequests();
+
+    renderEngineRunsPage();
+
+    expect(await screen.findByText('darklaunch.demo · v1')).toBeInTheDocument();
+    const requestUrl = new URL(
+      readRequestUrl(fetchMock.mock.calls[0]?.[0] as RequestInput),
+      'http://localhost'
+    );
+    expect(requestUrl.searchParams.get('engine_only')).toBe('true');
+    expect(requestUrl.searchParams.get('limit')).toBe(String(DEFAULT_PAGE_SIZE));
+    expect(requestUrl.searchParams.get('offset')).toBeNull();
+    expect(
+      screen.getAllByRole('columnheader').map((header) => header.textContent?.trim())
+    ).toEqual([
+      'Status',
+      'Definition',
+      'Instance key',
+      'Wait',
+      'Pending',
+      'Projection',
+      'Updated',
+      '→',
+    ]);
+  });
+
+  it('navigates rows through project-scoped links carrying returnTo state', async () => {
+    const user = userEvent.setup();
+    const projectId = '123e4567-e89b-12d3-a456-426614174999';
+    mockEngineRequests();
+
+    renderEngineRunsPage(`/engine/runs?project_id=${projectId}`);
+
+    const rowLink = await screen.findByRole('link', { name: `Open ${ENGINE_TRACE.id}` });
+    expect(rowLink).toHaveAttribute(
+      'href',
+      `/traces/${ENGINE_TRACE.id}?project_id=${projectId}`
+    );
+
+    await user.click(rowLink);
+
+    expect(screen.getByTestId('probe-pathname')).toHaveTextContent(
+      `/traces/${ENGINE_TRACE.id}`
+    );
+    expect(screen.getByTestId('probe-search')).toHaveTextContent(`project_id=${projectId}`);
+    expect(screen.getByTestId('probe-return-to')).toHaveTextContent(
+      `/engine/runs?project_id=${projectId}`
+    );
+  });
+
+  it('shows the empty state and opens the start dialog from it', async () => {
+    const user = userEvent.setup();
+    mockEngineRequests({ traces: [] });
+
+    renderEngineRunsPage();
+
+    const emptyHeading = await screen.findByRole('heading', { name: 'No engine runs yet' });
+    const emptyState = emptyHeading.closest('.app-empty-state');
+    expect(emptyState).not.toBeNull();
+    await user.click(within(emptyState as HTMLElement).getByRole('button', { name: 'Start run' }));
+
+    expect(await screen.findByRole('heading', { name: 'Start run' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Instance key/)).toBeInTheDocument();
+  });
+});
+
+describe('StartEngineRunDialog', () => {
+  it('generates an editable UUID idempotency key', async () => {
+    const user = userEvent.setup();
+    mockEngineRequests();
+    renderEngineRunsPage();
+
+    await openStartDialog(user);
+    const requestKey = screen.getByLabelText(/^Idempotency key/) as HTMLInputElement;
+    expect(requestKey.value).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    );
+
+    await user.clear(requestKey);
+    await user.type(requestKey, 'custom-request-key');
+    expect(requestKey).toHaveValue('custom-request-key');
+  });
+
+  it('treats instance preflight 404 as available', async () => {
+    const user = userEvent.setup();
+    mockEngineRequests({
+      instance: () =>
+        jsonResponse({ code: 'not_found', message: 'Instance not found' }, 404),
+    });
+    renderEngineRunsPage();
+
+    await openStartDialog(user);
+    await user.type(screen.getByLabelText(/^Instance key/), 'available-key');
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+
+    expect(await screen.findByText('Instance key is available.')).toBeInTheDocument();
+  });
+
+  it('warns when preflight finds an active instance', async () => {
+    const user = userEvent.setup();
+    mockEngineRequests({
+      instance: () =>
+        jsonResponse({
+          instance_id: 'instance-id-1',
+          instance_key: 'active-key',
+          definition_name: 'checkout',
+          status: 'active',
+          current_run: {
+            run_id: '123e4567-e89b-12d3-a456-426614174101',
+            instance_key: 'active-key',
+            definition_name: 'checkout',
+            definition_version: 'v1',
+            projection_state: 'up_to_date',
+            status: 'RUNNING',
+            created_at: '2026-03-14T10:00:00.000Z',
+            updated_at: '2026-03-14T10:00:03.000Z',
+            pending_work: {
+              pending_activity_tasks: 0,
+              pending_inbox_items: 0,
+            },
+          },
+        }),
+    });
+    renderEngineRunsPage();
+
+    await openStartDialog(user);
+    await user.type(screen.getByLabelText(/^Instance key/), 'active-key');
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+
+    expect(
+      await screen.findByText('Active instance exists for checkout (RUNNING).')
+    ).toBeInTheDocument();
+  });
+
+  it('keeps submit enabled when preflight fails', async () => {
+    const user = userEvent.setup();
+    mockEngineRequests({
+      instance: () => jsonResponse({ code: 'server_error', message: 'Unavailable' }, 500),
+    });
+    renderEngineRunsPage();
+
+    const dialogHeading = await openStartDialog(user);
+    await user.type(screen.getByLabelText(/^Instance key/), 'unknown-key');
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+
+    expect(
+      await screen.findByText(/^Preflight unavailable\. Submit remains enabled\./)
+    ).toBeInTheDocument();
+    const form = dialogHeading.closest('form');
+    expect(form).not.toBeNull();
+    expect(
+      within(form as HTMLFormElement).getByRole('button', { name: 'Start run' })
+    ).not.toBeDisabled();
+  });
+
+  it('scopes version suggestions to the selected definition and resets version on name change', async () => {
+    const user = userEvent.setup();
+    const traces: Trace[] = [
+      {
+        ...ENGINE_TRACE,
+        id: 'trace-def-a-v1',
+        engine: { ...ENGINE_TRACE.engine!, definition_name: 'defA', definition_version: 'v1' },
+      },
+      {
+        ...ENGINE_TRACE,
+        id: 'trace-def-a-v2',
+        engine: { ...ENGINE_TRACE.engine!, definition_name: 'defA', definition_version: 'v2' },
+      },
+      {
+        ...ENGINE_TRACE,
+        id: 'trace-def-b-v9',
+        engine: { ...ENGINE_TRACE.engine!, definition_name: 'defB', definition_version: 'v9' },
+      },
+    ];
+    mockEngineRequests({ traces });
+    renderEngineRunsPage();
+
+    await openStartDialog(user);
+    const definitionName = screen.getByLabelText(/^Definition name/);
+    const definitionVersion = screen.getByLabelText(/^Definition version/);
+    await user.type(definitionName, 'defA');
+
+    expect(
+      Array.from(document.querySelectorAll('#engine-definition-versions option')).map(
+        (option) => (option as HTMLOptionElement).value
+      )
+    ).toEqual(expect.arrayContaining(['v1', 'v2']));
+    expect(document.querySelectorAll('#engine-definition-versions option')).toHaveLength(2);
+
+    await user.type(definitionVersion, 'v1');
+    await user.clear(definitionName);
+    await user.type(definitionName, 'defB');
+
+    expect(definitionVersion).toHaveValue('');
+    expect(
+      Array.from(document.querySelectorAll('#engine-definition-versions option')).map(
+        (option) => (option as HTMLOptionElement).value
+      )
+    ).toEqual(['v9']);
+  });
+
+  it('submits the start request and navigates to the projected trace', async () => {
+    const user = userEvent.setup();
+    mockEngineRequests({
+      instance: () =>
+        jsonResponse({ code: 'not_found', message: 'Instance not found' }, 404),
+      start: () =>
+        jsonResponse({
+          run_id: '123e4567-e89b-12d3-a456-426614174102',
+          instance_key: 'checkout-42',
+          trace_id: 'trace-new-1',
+        }),
+    });
+    renderEngineRunsPage();
+
+    const dialogHeading = await openStartDialog(user);
+    const form = dialogHeading.closest('form');
+    expect(form).not.toBeNull();
+    const dialog = within(form as HTMLFormElement);
+    const requestKey = (dialog.getByLabelText(/^Idempotency key/) as HTMLInputElement).value;
+    await user.type(dialog.getByLabelText(/^Instance key/), 'checkout-42');
+    await user.type(dialog.getByLabelText(/^Definition name/), 'checkout');
+    await user.type(dialog.getByLabelText(/^Definition version/), 'v3');
+    await user.click(dialog.getByRole('button', { name: 'Start run' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('probe-pathname')).toHaveTextContent('/traces/trace-new-1');
+    });
+    const postCall = fetchMock.mock.calls.find(([input, init]) => {
+      const url = new URL(readRequestUrl(input as RequestInput), 'http://localhost');
+      return url.pathname === '/v1/engine/runs' && (init as RequestInit | undefined)?.method === 'POST';
+    });
+    expect(postCall).toBeDefined();
+    const [postInput, postInit] = postCall as [RequestInput, RequestInit];
+    expect((postInit.method ?? 'GET').toUpperCase()).toBe('POST');
+    expect(new URL(readRequestUrl(postInput), 'http://localhost').pathname).toBe(
+      '/v1/engine/runs'
+    );
+    expect(new Headers(postInit.headers).get('X-Continua-Engine-Preview')).not.toBeNull();
+    expect(JSON.parse(postInit.body as string)).toEqual({
+      instance_key: 'checkout-42',
+      definition_name: 'checkout',
+      definition_version: 'v3',
+      request_key: requestKey,
+    });
+    expect(screen.getByTestId('probe-return-to')).toHaveTextContent('/engine/runs');
   });
 });
