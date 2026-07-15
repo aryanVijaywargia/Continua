@@ -162,6 +162,27 @@ func TestApplyRuntimeOverridesRetentionBatchSize(t *testing.T) {
 	}
 }
 
+func TestApplyRuntimeOverridesShutdownGrace(t *testing.T) {
+	tests := []struct {
+		name     string
+		override time.Duration
+		want     time.Duration
+	}{
+		{name: "zero keeps default", want: 30 * time.Second},
+		{name: "negative disables grace", override: -1, want: 0},
+		{name: "positive overrides default", override: 5 * time.Second, want: 5 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Defaults("postgres://example/db")
+			applyRuntimeOverrides(cfg, &Options{ShutdownGrace: tt.override})
+			if cfg.Runtime.ShutdownGrace != tt.want {
+				t.Fatalf("ShutdownGrace = %s, want %s", cfg.Runtime.ShutdownGrace, tt.want)
+			}
+		})
+	}
+}
+
 func TestApplyRuntimeOverridesPoolAndLimits(t *testing.T) {
 	t.Run("positive values override engine defaults", func(t *testing.T) {
 		cfg := config.Defaults("postgres://example/db")

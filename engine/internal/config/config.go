@@ -24,6 +24,7 @@ const (
 	defaultMetricsSample   = 30 * time.Second
 	defaultRunLeaseTTL     = 30 * time.Second
 	defaultActivityLease   = 5 * time.Minute
+	defaultShutdownGrace   = 30 * time.Second
 	defaultRequestDedupe   = time.Hour
 	defaultRetentionRuns   = 168 * time.Hour
 	defaultRetentionDedupe = 24 * time.Hour
@@ -69,6 +70,7 @@ type RuntimeConfig struct {
 	MetricsSampleInterval      time.Duration
 	RunLeaseTTL                time.Duration
 	ActivityLeaseTTL           time.Duration
+	ShutdownGrace              time.Duration
 	LeaseCompletionGrace       time.Duration
 	RequestDedupeTTL           time.Duration
 	RetentionTerminalRuns      time.Duration
@@ -100,6 +102,7 @@ func Defaults(databaseURL string) *Config {
 			MetricsSampleInterval:      defaultMetricsSample,
 			RunLeaseTTL:                defaultRunLeaseTTL,
 			ActivityLeaseTTL:           defaultActivityLease,
+			ShutdownGrace:              defaultShutdownGrace,
 			RequestDedupeTTL:           defaultRequestDedupe,
 			RetentionTerminalRuns:      defaultRetentionRuns,
 			RetentionDedupeGrace:       defaultRetentionDedupe,
@@ -189,6 +192,13 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	shutdownGrace, err := durationFromEnv("ENGINE_SHUTDOWN_GRACE", cfg.Runtime.ShutdownGrace)
+	if err != nil {
+		return nil, err
+	}
+	if shutdownGrace < 0 {
+		return nil, errors.New("ENGINE_SHUTDOWN_GRACE must be non-negative")
+	}
 	leaseCompletionGrace, err := durationFromEnv("ENGINE_LEASE_COMPLETION_GRACE", cfg.Runtime.LeaseCompletionGrace)
 	if err != nil {
 		return nil, err
@@ -266,6 +276,7 @@ func Load() (*Config, error) {
 	cfg.Runtime.MetricsSampleInterval = metricsSampleInterval
 	cfg.Runtime.RunLeaseTTL = runLeaseTTL
 	cfg.Runtime.ActivityLeaseTTL = activityLeaseTTL
+	cfg.Runtime.ShutdownGrace = shutdownGrace
 	cfg.Runtime.LeaseCompletionGrace = leaseCompletionGrace
 	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL
 	cfg.Runtime.RetentionTerminalRuns = retentionTerminalRuns

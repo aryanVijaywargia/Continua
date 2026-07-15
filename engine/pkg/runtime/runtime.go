@@ -72,6 +72,8 @@ type Options struct {
 	MetricsSampleInterval   time.Duration
 	RunLeaseTTL             time.Duration
 	ActivityLeaseTTL        time.Duration
+	// ShutdownGrace is the maximum time allowed for in-flight work to finish during shutdown.
+	ShutdownGrace time.Duration
 	// RetentionTerminalRuns and RetentionDedupeGrace use engine defaults when
 	// zero; negative values disable the corresponding retention class.
 	RetentionTerminalRuns time.Duration
@@ -218,13 +220,36 @@ func (r *Runtime) Run(ctx context.Context) error {
 		}
 	}
 
-	group, groupCtx := errgroup.WithContext(ctx)
+	logger := r.options.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	runtimeID := uuid.NewString()
+	workflowWorkerID := "workflow:" + runtimeID
+	activityWorkerID := "activity:" + runtimeID
+
+	workersCtx, cancelWorkers := context.WithCancel(ctx)
+	defer cancelWorkers()
+	group, groupCtx := errgroup.WithContext(workersCtx)
+	workCtx, cancelWork := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelWork()
+	go func() {
+		<-groupCtx.Done()
+		timer := time.NewTimer(cfg.Runtime.ShutdownGrace)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			cancelWork()
+		case <-workCtx.Done():
+		}
+	}()
+
 	group.Go(func() error {
 		return engineworker.RunLoop(
 			groupCtx,
 			cfg.Runtime.WorkflowPollInterval,
-			"workflow",
-			trackIterations(tracker, "workflow", observeIterations(recorder, "workflow", workflowWorker.PollOnce)),
+			workflowWorkerID,
+			withIterationContext(workCtx, trackIterations(tracker, "workflow", observeIterations(recorder, "workflow", workflowWorker.PollOnce))),
 		)
 	})
 	if recorder != nil {
@@ -232,7 +257,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			return engineworker.RunLoop(
 				groupCtx,
 				cfg.Runtime.MetricsSampleInterval,
-				"metrics",
+				"metrics:"+runtimeID,
 				trackIterations(tracker, "metrics", observeIterations(recorder, "metrics", maintenanceWorker.PollMetricsOnce)),
 			)
 		})
@@ -241,8 +266,8 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return engineworker.RunLoop(
 			groupCtx,
 			cfg.Runtime.ActivityPollInterval,
-			"activity",
-			trackIterations(tracker, "activity", observeIterations(recorder, "activity", activityWorker.PollOnce)),
+			activityWorkerID,
+			withIterationContext(workCtx, trackIterations(tracker, "activity", observeIterations(recorder, "activity", activityWorker.PollOnce))),
 		)
 	})
 	if cfg.Runtime.RetentionTerminalRuns > 0 || cfg.Runtime.RetentionDedupeGrace > 0 {
@@ -250,7 +275,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			return engineworker.RunLoop(
 				groupCtx,
 				cfg.Runtime.MaintenancePollInterval,
-				"retention",
+				"retention:"+runtimeID,
 				observeIterations(recorder, "retention", retentionWorker.PollOnce),
 			)
 		})
@@ -259,7 +284,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return engineworker.RunLoop(
 			groupCtx,
 			cfg.Runtime.MaintenancePollInterval,
-			"maintenance",
+			"maintenance:"+runtimeID,
 			trackIterations(tracker, "maintenance", observeIterations(recorder, "maintenance", maintenanceWorker.PollOnce)),
 		)
 	})
@@ -267,7 +292,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return engineworker.RunLoop(
 			groupCtx,
 			cfg.Runtime.MaintenancePollInterval,
-			"catalog-heartbeat",
+			"catalog-heartbeat:"+runtimeID,
 			trackIterations(tracker, "catalog-heartbeat", observeIterations(recorder, "catalog-heartbeat", func(ctx context.Context, _ string) error {
 				return catalog.HeartbeatStoreDefinitions(ctx, store, r.definitions.List())
 			})),
@@ -277,62 +302,85 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return engineworker.RunLoop(
 			groupCtx,
 			cfg.Runtime.WorkflowPollInterval,
-			"projector",
+			"projector:"+runtimeID,
 			trackIterations(tracker, "projector", observeIterations(recorder, "projector", projectorWorker.PollOnce)),
 		)
 	})
+	var serverGroup errgroup.Group
+	serverCount := 0
+	var metricsServer *http.Server
 	if metricsListener != nil {
-		metricsServer := &http.Server{
+		metricsServer = &http.Server{
 			Handler:           metricsMux(metricsGatherer),
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       10 * time.Second,
 			WriteTimeout:      10 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		}
-		group.Go(func() error {
+		serverGroup.Go(func() error {
 			err := metricsServer.Serve(metricsListener)
-			if errors.Is(err, http.ErrServerClosed) || groupCtx.Err() != nil {
+			if errors.Is(err, http.ErrServerClosed) {
 				return nil
 			}
 			return fmt.Errorf("runtime: serve metrics: %w", err)
 		})
-		group.Go(func() error {
-			<-groupCtx.Done()
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-				_ = metricsServer.Close()
-			}
-			return nil
-		})
+		serverCount++
 	}
+	var httpServer *http.Server
 	if httpListener != nil {
-		httpServer := &http.Server{
+		httpServer = &http.Server{
 			Handler:           operationalMux(pool, tracker, metricsGatherer),
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       10 * time.Second,
 			WriteTimeout:      10 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		}
-		group.Go(func() error {
+		serverGroup.Go(func() error {
 			err := httpServer.Serve(httpListener)
-			if errors.Is(err, http.ErrServerClosed) || groupCtx.Err() != nil {
+			if errors.Is(err, http.ErrServerClosed) {
 				return nil
 			}
 			return fmt.Errorf("runtime: serve operational HTTP: %w", err)
 		})
-		group.Go(func() error {
-			<-groupCtx.Done()
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := httpServer.Shutdown(shutdownCtx); err != nil {
-				_ = httpServer.Close()
-			}
-			return nil
-		})
+		serverCount++
 	}
 
-	return group.Wait()
+	workerDone := make(chan error, 1)
+	go func() { workerDone <- group.Wait() }()
+	var serverDone <-chan error
+	if serverCount > 0 {
+		done := make(chan error, 1)
+		serverDone = done
+		go func() { done <- serverGroup.Wait() }()
+	}
+
+	var workerErr, serverErr error
+	if serverDone == nil {
+		workerErr = <-workerDone
+	} else {
+		select {
+		case workerErr = <-workerDone:
+		case serverErr = <-serverDone:
+			serverDone = nil
+			cancelWorkers()
+			workerErr = <-workerDone
+		}
+	}
+
+	releaseWorkerClaims(ctx, store, logger, activityWorkerID, workflowWorkerID)
+	shutdownRuntimeServer(ctx, metricsServer)
+	shutdownRuntimeServer(ctx, httpServer)
+	if serverDone != nil {
+		serverErr = <-serverDone
+	}
+
+	if workerErr != nil {
+		return workerErr
+	}
+	if ctx.Err() == nil {
+		return serverErr
+	}
+	return nil
 }
 
 func (r *Runtime) beginRun() error {
@@ -393,6 +441,48 @@ func trackIterations(tracker *health.Tracker, worker string, fn engineworker.Ite
 		err := fn(ctx, workerID)
 		tracker.MarkIteration(worker)
 		return err
+	}
+}
+
+func withIterationContext(ctx context.Context, fn engineworker.IterationFunc) engineworker.IterationFunc {
+	return func(_ context.Context, workerID string) error {
+		return fn(ctx, workerID)
+	}
+}
+
+func releaseWorkerClaims(
+	ctx context.Context,
+	store *enginestore.Store,
+	logger *slog.Logger,
+	activityWorkerID string,
+	workflowWorkerID string,
+) {
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+
+	tasks, err := store.ReleaseActivityTasksByClaimant(releaseCtx, activityWorkerID)
+	if err != nil {
+		logger.Error("failed to release activity worker claims", "event", "shutdown_claim_release_failed", "worker", "activity", "worker_id", activityWorkerID, "err", err)
+	} else {
+		logger.Info("released activity worker claims", "event", "shutdown_claims_released", "worker", "activity", "worker_id", activityWorkerID, "released_count", len(tasks))
+	}
+
+	runs, err := store.ReleaseRunsByClaimant(releaseCtx, workflowWorkerID)
+	if err != nil {
+		logger.Error("failed to release workflow worker claims", "event", "shutdown_claim_release_failed", "worker", "workflow", "worker_id", workflowWorkerID, "err", err)
+	} else {
+		logger.Info("released workflow worker claims", "event", "shutdown_claims_released", "worker", "workflow", "worker_id", workflowWorkerID, "released_count", len(runs))
+	}
+}
+
+func shutdownRuntimeServer(ctx context.Context, server *http.Server) {
+	if server == nil {
+		return
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		_ = server.Close()
 	}
 }
 
@@ -462,6 +552,11 @@ func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	}
 	if opts.ActivityLeaseTTL != 0 {
 		cfg.Runtime.ActivityLeaseTTL = opts.ActivityLeaseTTL
+	}
+	if opts.ShutdownGrace < 0 {
+		cfg.Runtime.ShutdownGrace = 0
+	} else if opts.ShutdownGrace != 0 {
+		cfg.Runtime.ShutdownGrace = opts.ShutdownGrace
 	}
 	if opts.RetentionTerminalRuns < 0 {
 		cfg.Runtime.RetentionTerminalRuns = 0

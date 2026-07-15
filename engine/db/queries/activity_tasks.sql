@@ -97,6 +97,17 @@ WHERE id = (
 )
 RETURNING *;
 
+-- name: ReleaseActivityTasksByClaimant :many
+UPDATE engine.activity_tasks
+SET status = 'queued',
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE claimed_by = $1
+  AND status = 'claimed'
+RETURNING *;
+
 -- name: ClaimRemoteActivityTasks :many
 WITH candidates AS (
     SELECT candidate.id

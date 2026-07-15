@@ -615,6 +615,64 @@ func (q *Queries) ListRunsByInstance(ctx context.Context, arg ListRunsByInstance
 	return items, nil
 }
 
+const releaseRunsByClaimant = `-- name: ReleaseRunsByClaimant :many
+UPDATE engine.runs
+SET status = 'queued',
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE claimed_by = $1
+  AND status = 'running'
+RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
+`
+
+func (q *Queries) ReleaseRunsByClaimant(ctx context.Context, claimedBy *string) ([]EngineRun, error) {
+	rows, err := q.db.Query(ctx, releaseRunsByClaimant, claimedBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineRun{}
+	for rows.Next() {
+		var i EngineRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunNumber,
+			&i.DefinitionVersion,
+			&i.Status,
+			&i.ReadyAt,
+			&i.AttemptCount,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Result,
+			&i.CustomStatus,
+			&i.WaitingFor,
+			&i.CompletedAt,
+			&i.ContinuedFromRunID,
+			&i.ContinuedToRunID,
+			&i.ParentRunID,
+			&i.RootRunID,
+			&i.ChildKey,
+			&i.ChildDepth,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transitionRunToCancelled = `-- name: TransitionRunToCancelled :one
 UPDATE engine.runs
 SET status = 'cancelled',

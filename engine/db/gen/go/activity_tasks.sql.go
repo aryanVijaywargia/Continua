@@ -1111,6 +1111,65 @@ func (q *Queries) ListOpenActivityTasksByRun(ctx context.Context, runID uuid.UUI
 	return items, nil
 }
 
+const releaseActivityTasksByClaimant = `-- name: ReleaseActivityTasksByClaimant :many
+UPDATE engine.activity_tasks
+SET status = 'queued',
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE claimed_by = $1
+  AND status = 'claimed'
+RETURNING id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
+`
+
+func (q *Queries) ReleaseActivityTasksByClaimant(ctx context.Context, claimedBy *string) ([]EngineActivityTask, error) {
+	rows, err := q.db.Query(ctx, releaseActivityTasksByClaimant, claimedBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineActivityTask{}
+	for rows.Next() {
+		var i EngineActivityTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.ActivityKey,
+			&i.ActivityType,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.AvailableAt,
+			&i.AttemptCount,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MaxAttempts,
+			&i.InitialBackoffMs,
+			&i.MaxBackoffMs,
+			&i.BackoffMultiplier,
+			&i.ExecutionTarget,
+			&i.LeaseDurationMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const retryActivityTask = `-- name: RetryActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'queued',
