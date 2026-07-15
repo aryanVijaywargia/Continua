@@ -20,6 +20,11 @@ import (
 
 type decisionKind string
 
+type DepthLimits struct {
+	MaxChildDepth              int32
+	MaxContinuationFollowDepth int32
+}
+
 const (
 	maxChildDepth                      int32 = 32
 	maxContinuationFollowDepth         int32 = 32
@@ -211,6 +216,18 @@ func replayDefinitionForRun(
 		inboxRows,
 		nil,
 	)
+}
+
+func replayDefinitionForRunWithDepthLimits(
+	definition publicworkflow.Definition,
+	run *enginedb.EngineRun,
+	historyRows []enginedb.EngineHistory,
+	activityTasks []enginedb.EngineActivityTask,
+	childWorkflows []enginedb.ListChildWorkflowOutcomesByParentRunRow,
+	inboxRows []enginedb.EngineInbox,
+	_ DepthLimits,
+) (activationDecision, error) {
+	return replayDefinitionForRun(definition, run, historyRows, activityTasks, childWorkflows, inboxRows)
 }
 
 func replayDefinitionForRunWithValidator(

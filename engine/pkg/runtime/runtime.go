@@ -48,12 +48,20 @@ type Options struct {
 	// ProjectID optionally scopes all polling to a single project.
 	ProjectID *uuid.UUID
 	// Poll intervals and lease TTLs; zero values use the engine defaults.
-	WorkflowPollInterval    time.Duration
-	ActivityPollInterval    time.Duration
-	MaintenancePollInterval time.Duration
-	MetricsSampleInterval   time.Duration
-	RunLeaseTTL             time.Duration
-	ActivityLeaseTTL        time.Duration
+	DBMaxConns                 int32
+	DBMinConns                 int32
+	DBMaxConnLifetime          time.Duration
+	DBMaxConnIdleTime          time.Duration
+	DBHealthCheckPeriod        time.Duration
+	ProjectorBatchSize         int32
+	MaxChildDepth              int32
+	MaxContinuationFollowDepth int32
+	WorkflowPollInterval       time.Duration
+	ActivityPollInterval       time.Duration
+	MaintenancePollInterval    time.Duration
+	MetricsSampleInterval      time.Duration
+	RunLeaseTTL                time.Duration
+	ActivityLeaseTTL           time.Duration
 	// RetentionTerminalRuns and RetentionDedupeGrace use engine defaults when
 	// zero; negative values disable the corresponding retention class.
 	RetentionTerminalRuns time.Duration

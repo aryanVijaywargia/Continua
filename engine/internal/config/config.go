@@ -57,20 +57,23 @@ type DatabaseConfig struct {
 
 // RuntimeConfig holds polling, lease, and dedupe settings for the engine runtime.
 type RuntimeConfig struct {
-	WorkflowPollInterval    time.Duration
-	ActivityPollInterval    time.Duration
-	MaintenancePollInterval time.Duration
-	MetricsSampleInterval   time.Duration
-	RunLeaseTTL             time.Duration
-	ActivityLeaseTTL        time.Duration
-	LeaseCompletionGrace    time.Duration
-	RequestDedupeTTL        time.Duration
-	RetentionTerminalRuns   time.Duration
-	RetentionDedupeGrace    time.Duration
-	RetentionBatchSize      int32
-	ProjectIDFilter         *uuid.UUID
-	MetricsAddr             string
-	HTTPAddr                string
+	WorkflowPollInterval       time.Duration
+	ActivityPollInterval       time.Duration
+	MaintenancePollInterval    time.Duration
+	MetricsSampleInterval      time.Duration
+	RunLeaseTTL                time.Duration
+	ActivityLeaseTTL           time.Duration
+	LeaseCompletionGrace       time.Duration
+	RequestDedupeTTL           time.Duration
+	RetentionTerminalRuns      time.Duration
+	RetentionDedupeGrace       time.Duration
+	RetentionBatchSize         int32
+	ProjectorBatchSize         int32
+	MaxChildDepth              int32
+	MaxContinuationFollowDepth int32
+	ProjectIDFilter            *uuid.UUID
+	MetricsAddr                string
+	HTTPAddr                   string
 }
 
 // Defaults returns the engine runtime defaults for a database URL.

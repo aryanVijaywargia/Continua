@@ -33,6 +33,7 @@ const (
 type Projector struct {
 	store         *enginestore.Store
 	projectFilter *uuid.UUID
+	batchSize     int32
 }
 
 type projectionTarget struct {
@@ -69,6 +70,14 @@ func New(store *enginestore.Store) *Projector {
 		projectFilter = store.ProjectFilter()
 	}
 	return &Projector{store: store, projectFilter: projectFilter}
+}
+
+func (p *Projector) WithBatchSize(_ int32) *Projector {
+	return p
+}
+
+func (p *Projector) BatchSize() int32 {
+	return p.batchSize
 }
 
 func (p *Projector) PollOnce(ctx context.Context, _ string) error {
