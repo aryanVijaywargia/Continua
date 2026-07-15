@@ -229,7 +229,7 @@ func TestRuntimeDrainReleasesLeasesAtGraceExpiry(t *testing.T) {
 	}
 	task := tasks[0]
 	if task.Status != enginedb.EngineActivityTaskStatusQueued ||
-		task.ClaimedBy != nil || task.ClaimedAt.Valid || task.LeaseExpiresAt.Valid {
+		task.ClaimedBy != nil || task.ClaimedAt.Valid || task.LeaseExpiresAt.Valid || task.AttemptCount != 1 {
 		t.Fatalf("activity task was not released at grace expiry: %+v", task)
 	}
 
@@ -306,7 +306,8 @@ func TestRuntimeDrainReleasesWorkflowLeaseAtGraceExpiry(t *testing.T) {
 		t.Fatalf("GetRun() error = %v", err)
 	}
 	if released.Status != enginedb.EngineRunLifecycleStatusQueued ||
-		released.ClaimedBy != nil || released.ClaimedAt.Valid || released.LeaseExpiresAt.Valid {
+		released.ClaimedBy != nil || released.ClaimedAt.Valid ||
+		released.LeaseExpiresAt.Valid || released.AttemptCount != 1 {
 		t.Fatalf("workflow run was not released at grace expiry: %+v", released)
 	}
 
