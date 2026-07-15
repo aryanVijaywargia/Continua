@@ -21,8 +21,8 @@ func TestListenerFansOutPerChannel(t *testing.T) {
 	done := runListener(t, listener)
 
 	waitForListenerHealthy(t, listener, done, 5*time.Second)
-	drainWakes(runsWake, 300*time.Millisecond)
-	drainWakes(activityWake, 300*time.Millisecond)
+	drainWakes(runsWake)
+	drainWakes(activityWake)
 
 	if _, err := db.Pool.Exec(context.Background(), "SELECT pg_notify($1, '')", publicnotify.ChannelRuns); err != nil {
 		t.Fatalf("pg_notify(%s) error = %v", publicnotify.ChannelRuns, err)
@@ -42,7 +42,7 @@ func TestListenerReconnectsAfterBackendKill(t *testing.T) {
 	done := runListener(t, listener)
 
 	waitForListenerHealthy(t, listener, done, 5*time.Second)
-	drainWakes(runsWake, 300*time.Millisecond)
+	drainWakes(runsWake)
 
 	var killed bool
 	if err := db.Pool.QueryRow(context.Background(), `
@@ -111,11 +111,11 @@ func waitForListenerHealthy(t *testing.T, listener *enginenotify.Listener, done 
 	}
 }
 
-func drainWakes(wake <-chan struct{}, quiet time.Duration) {
+func drainWakes(wake <-chan struct{}) {
 	for {
 		select {
 		case <-wake:
-		case <-time.After(quiet):
+		case <-time.After(300 * time.Millisecond):
 			return
 		}
 	}

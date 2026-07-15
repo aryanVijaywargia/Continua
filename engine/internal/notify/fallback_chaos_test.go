@@ -35,9 +35,9 @@ func TestPollFallbackProgressesWhenNotificationsSuppressed(t *testing.T) {
 	activityWake := listener.Subscribe(publicnotify.ChannelActivity)
 	listenerDone := runListener(t, listener)
 	waitForListenerHealthy(t, listener, listenerDone, 5*time.Second)
-	drainWakes(runsWake, 300*time.Millisecond)
-	drainWakes(inboxWake, 300*time.Millisecond)
-	drainWakes(activityWake, 300*time.Millisecond)
+	drainWakes(runsWake)
+	drainWakes(inboxWake)
+	drainWakes(activityWake)
 
 	projectID := uuid.New()
 	enginetest.EnsurePlatformProject(t, db.Pool, projectID)
@@ -201,7 +201,6 @@ func seedFallbackRun(
 func mergeWakeChannels(ctx context.Context, inputs ...<-chan struct{}) <-chan struct{} {
 	out := make(chan struct{}, 64)
 	for _, input := range inputs {
-		input := input
 		go func() {
 			for {
 				select {

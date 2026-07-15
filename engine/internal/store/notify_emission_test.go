@@ -21,7 +21,7 @@ func TestWorkCreatingWritesEmitNotify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	instance, run := createNotifiableWork(t, ts.ctx, tx, uuidOrFatal(t), "notify-work")
+	instance, run := createNotifiableWork(ts.ctx, t, tx, uuidOrFatal(t), "notify-work")
 	if err := tx.Commit(ts.ctx); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -95,7 +95,7 @@ func TestWithNotifyDisabledSuppressesEmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	createNotifiableWork(t, ts.ctx, tx, uuidOrFatal(t), "notify-disabled")
+	createNotifiableWork(ts.ctx, t, tx, uuidOrFatal(t), "notify-disabled")
 	if err := tx.Commit(ts.ctx); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -103,8 +103,8 @@ func TestWithNotifyDisabledSuppressesEmission(t *testing.T) {
 }
 
 func createNotifiableWork(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	tx *Tx,
 	projectID uuid.UUID,
 	instanceKey string,
