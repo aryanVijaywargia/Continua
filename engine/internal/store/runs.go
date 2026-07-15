@@ -194,7 +194,7 @@ func (o *storeOps) ReleaseRunsByClaimant(
 	ctx context.Context,
 	claimant string,
 ) ([]enginedb.EngineRun, error) {
-	return nil, errors.New("not implemented")
+	return o.q.ReleaseRunsByClaimant(ctx, &claimant)
 }
 
 func (o *storeOps) classifyRunCASMiss(ctx context.Context, id uuid.UUID, err error) error {

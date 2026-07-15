@@ -73,7 +73,7 @@ func (o *storeOps) ReleaseActivityTasksByClaimant(
 	ctx context.Context,
 	claimant string,
 ) ([]enginedb.EngineActivityTask, error) {
-	return nil, errors.New("not implemented")
+	return o.q.ReleaseActivityTasksByClaimant(ctx, &claimant)
 }
 
 func (o *storeOps) ClaimRemoteActivityTasks(

@@ -337,3 +337,14 @@ WHERE id = (
     FOR UPDATE SKIP LOCKED
 )
 RETURNING *;
+
+-- name: ReleaseRunsByClaimant :many
+UPDATE engine.runs
+SET status = 'queued',
+    claimed_by = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE claimed_by = $1
+  AND status = 'running'
+RETURNING *;
