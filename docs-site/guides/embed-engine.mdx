@@ -85,7 +85,9 @@ Child workflow nesting and continue-as-new following both default to 32 levels. 
 `ENGINE_MAX_CHILD_DEPTH` / `runtime.Options.MaxChildDepth` and
 `ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH` /
 `runtime.Options.MaxContinuationFollowDepth` to configure those limits. Positive Go
-option values override the defaults.
+option values override environment-derived values and defaults. To configure zero
+minimum pool connections from Go, set both `runtime.Options.DBMinConns` to `0` and
+`runtime.Options.DBMinConnsSet` to `true`.
 
 ## Start runs
 

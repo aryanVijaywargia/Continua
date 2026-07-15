@@ -202,7 +202,7 @@ func TestApplyRuntimeOverridesPoolAndLimits(t *testing.T) {
 		}
 	})
 
-	t.Run("zero values preserve engine defaults", func(t *testing.T) {
+	t.Run("omitted values preserve engine defaults", func(t *testing.T) {
 		cfg := config.Defaults("postgres://example/db")
 		applyRuntimeOverrides(cfg, &Options{})
 
@@ -229,6 +229,15 @@ func TestApplyRuntimeOverridesPoolAndLimits(t *testing.T) {
 		}
 		if cfg.Runtime.MaxContinuationFollowDepth != 32 {
 			t.Errorf("Runtime.MaxContinuationFollowDepth = %d, want 32", cfg.Runtime.MaxContinuationFollowDepth)
+		}
+	})
+
+	t.Run("explicit zero minimum connections overrides engine default", func(t *testing.T) {
+		cfg := config.Defaults("postgres://example/db")
+		applyRuntimeOverrides(cfg, &Options{DBMinConns: 0, DBMinConnsSet: true})
+
+		if cfg.Database.MinConns != 0 {
+			t.Errorf("Database.MinConns = %d, want 0", cfg.Database.MinConns)
 		}
 	})
 }

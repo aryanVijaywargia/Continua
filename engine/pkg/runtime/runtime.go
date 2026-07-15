@@ -47,9 +47,13 @@ type Options struct {
 	Logger *slog.Logger
 	// ProjectID optionally scopes all polling to a single project.
 	ProjectID *uuid.UUID
-	// DBMaxConns and DBMinConns configure the Postgres pool; non-positive values use the engine defaults.
+	// DBMaxConns configures the Postgres pool maximum; non-positive values use the engine default.
 	DBMaxConns int32
+	// DBMinConns configures the Postgres pool minimum. Positive values override the engine default;
+	// set DBMinConnsSet to apply an explicit zero.
 	DBMinConns int32
+	// DBMinConnsSet distinguishes an explicit zero DBMinConns from an omitted value.
+	DBMinConnsSet bool
 	// DBMaxConnLifetime, DBMaxConnIdleTime, and DBHealthCheckPeriod configure the Postgres pool;
 	// non-positive values use the engine defaults.
 	DBMaxConnLifetime   time.Duration
@@ -420,7 +424,7 @@ func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
 	if opts.DBMaxConns > 0 {
 		cfg.Database.MaxConns = opts.DBMaxConns
 	}
-	if opts.DBMinConns > 0 {
+	if opts.DBMinConns > 0 || (opts.DBMinConnsSet && opts.DBMinConns == 0) {
 		cfg.Database.MinConns = opts.DBMinConns
 	}
 	if opts.DBMaxConnLifetime > 0 {

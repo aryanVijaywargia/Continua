@@ -100,6 +100,7 @@ func serveCmd() *cobra.Command {
 				DatabaseURL:                cfg.Database.URL,
 				DBMaxConns:                 cfg.Database.MaxConns,
 				DBMinConns:                 cfg.Database.MinConns,
+				DBMinConnsSet:              true,
 				DBMaxConnLifetime:          cfg.Database.MaxConnLifetime,
 				DBMaxConnIdleTime:          cfg.Database.MaxConnIdleTime,
 				DBHealthCheckPeriod:        cfg.Database.HealthCheckPeriod,
