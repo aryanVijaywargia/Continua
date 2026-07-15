@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/enginecontrol"
 	"github.com/continua-ai/continua/internal/ingest"
@@ -43,6 +44,11 @@ func writeEngineError(w http.ResponseWriter, err error, fallbackMessage string) 
 	}
 
 	writeError(w, http.StatusInternalServerError, "internal_error", fallbackMessage)
+}
+
+func notifyEngineChannel(ctx context.Context, db enginedb.DBTX, channel string) error {
+	_, err := db.Exec(ctx, "SELECT pg_notify($1, '')", channel)
+	return err
 }
 
 func decodeJSONRequest(w http.ResponseWriter, r *http.Request, dest any) bool {

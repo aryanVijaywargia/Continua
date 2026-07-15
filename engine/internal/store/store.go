@@ -14,6 +14,7 @@ import (
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/config"
 	enginemetrics "github.com/continua-ai/continua/engine/internal/metrics"
+	enginenotify "github.com/continua-ai/continua/engine/internal/notify"
 )
 
 const uniqueViolationSQLState = "23505"
@@ -27,10 +28,12 @@ var (
 )
 
 type storeOps struct {
+	db              enginedb.DBTX
 	q               *enginedb.Queries
 	projectFilter   *uuid.UUID
 	metrics         *enginemetrics.Metrics
 	completionGrace time.Duration
+	notifyEnabled   bool
 }
 
 // Store provides engine database access backed by a dedicated pgx pool.
@@ -50,7 +53,7 @@ type Tx struct {
 func New(pool *pgxpool.Pool) *Store {
 	return &Store{
 		pool:     pool,
-		storeOps: &storeOps{q: enginedb.New(pool)},
+		storeOps: &storeOps{db: pool, q: enginedb.New(pool), notifyEnabled: true},
 	}
 }
 
@@ -62,10 +65,12 @@ func (s *Store) WithMetrics(metrics *enginemetrics.Metrics) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
+			db:              s.db,
 			q:               s.q,
 			projectFilter:   s.projectFilter,
 			metrics:         metrics,
 			completionGrace: s.completionGrace,
+			notifyEnabled:   s.notifyEnabled,
 		},
 	}
 }
@@ -78,10 +83,12 @@ func (s *Store) WithProjectFilter(projectID uuid.UUID) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
+			db:              s.db,
 			q:               s.q,
 			projectFilter:   &filter,
 			metrics:         s.metrics,
 			completionGrace: s.completionGrace,
+			notifyEnabled:   s.notifyEnabled,
 		},
 	}
 }
@@ -93,10 +100,30 @@ func (s *Store) WithLeaseCompletionGrace(d time.Duration) *Store {
 	return &Store{
 		pool: s.pool,
 		storeOps: &storeOps{
+			db:              s.db,
 			q:               s.q,
 			projectFilter:   s.projectFilter,
 			metrics:         s.metrics,
 			completionGrace: d,
+			notifyEnabled:   s.notifyEnabled,
+		},
+	}
+}
+
+// WithNotifyDisabled returns a store copy that does not emit work notifications.
+func (s *Store) WithNotifyDisabled() *Store {
+	if s == nil {
+		return nil
+	}
+	return &Store{
+		pool: s.pool,
+		storeOps: &storeOps{
+			db:              s.db,
+			q:               s.q,
+			projectFilter:   s.projectFilter,
+			metrics:         s.metrics,
+			completionGrace: s.completionGrace,
+			notifyEnabled:   false,
 		},
 	}
 }
@@ -173,12 +200,48 @@ func (s *Store) BeginTx(ctx context.Context, opts pgx.TxOptions) (*Tx, error) {
 	return &Tx{
 		tx: tx,
 		storeOps: &storeOps{
+			db:              tx,
 			q:               s.q.WithTx(tx),
 			projectFilter:   s.projectFilter,
 			metrics:         s.metrics,
 			completionGrace: s.completionGrace,
+			notifyEnabled:   s.notifyEnabled,
 		},
 	}, nil
+}
+
+func (o *storeOps) mutateAndNotify(
+	ctx context.Context,
+	channel string,
+	mutate func(*enginedb.Queries) error,
+) error {
+	if !o.notifyEnabled {
+		return mutate(o.q)
+	}
+
+	pool, directStoreWrite := o.db.(*pgxpool.Pool)
+	if !directStoreWrite {
+		if err := mutate(o.q); err != nil {
+			return err
+		}
+		return enginenotify.Emit(ctx, o.db, channel)
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback(context.WithoutCancel(ctx))
+	}()
+
+	if err := mutate(o.q.WithTx(tx)); err != nil {
+		return err
+	}
+	if err := enginenotify.Emit(ctx, tx, channel); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Commit commits the transaction.

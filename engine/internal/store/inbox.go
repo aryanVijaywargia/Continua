@@ -8,11 +8,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 )
 
 //nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
 func (o *storeOps) CreateInboxItem(ctx context.Context, arg enginedb.CreateInboxItemParams) (enginedb.EngineInbox, error) {
-	return mapResult(o.q.CreateInboxItem(ctx, arg))
+	var inbox enginedb.EngineInbox
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelInbox, func(q *enginedb.Queries) error {
+		var err error
+		inbox, err = q.CreateInboxItem(ctx, arg)
+		return err
+	})
+	return mapResult(inbox, err)
 }
 
 func (o *storeOps) ClaimNextInboxItem(

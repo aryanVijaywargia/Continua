@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 )
 
 type WakeWaitingRunResult struct {
@@ -19,12 +20,24 @@ type WakeWaitingRunResult struct {
 
 //nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
 func (o *storeOps) CreateRun(ctx context.Context, arg enginedb.CreateRunParams) (enginedb.EngineRun, error) {
-	return mapResult(o.q.CreateRun(ctx, arg))
+	var run enginedb.EngineRun
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelRuns, func(q *enginedb.Queries) error {
+		var err error
+		run, err = q.CreateRun(ctx, arg)
+		return err
+	})
+	return mapResult(run, err)
 }
 
 //nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
 func (o *storeOps) CreateChildRun(ctx context.Context, arg enginedb.CreateChildRunParams) (enginedb.EngineRun, error) {
-	return mapResult(o.q.CreateChildRun(ctx, arg))
+	var run enginedb.EngineRun
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelRuns, func(q *enginedb.Queries) error {
+		var err error
+		run, err = q.CreateChildRun(ctx, arg)
+		return err
+	})
+	return mapResult(run, err)
 }
 
 func (o *storeOps) GetRun(ctx context.Context, id uuid.UUID) (enginedb.EngineRun, error) {
@@ -130,7 +143,12 @@ func (o *storeOps) TransitionRunToQueuedFromQuarantined(
 	ctx context.Context,
 	id uuid.UUID,
 ) (enginedb.EngineRun, error) {
-	run, err := o.q.TransitionRunToQueuedFromQuarantined(ctx, id)
+	var run enginedb.EngineRun
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelRuns, func(q *enginedb.Queries) error {
+		var err error
+		run, err = q.TransitionRunToQueuedFromQuarantined(ctx, id)
+		return err
+	})
 	if err == nil {
 		return run, nil
 	}
@@ -138,7 +156,12 @@ func (o *storeOps) TransitionRunToQueuedFromQuarantined(
 }
 
 func (o *storeOps) WakeWaitingRun(ctx context.Context, id uuid.UUID) (WakeWaitingRunResult, error) {
-	run, err := o.q.WakeWaitingRun(ctx, id)
+	var run enginedb.EngineRun
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelRuns, func(q *enginedb.Queries) error {
+		var err error
+		run, err = q.WakeWaitingRun(ctx, id)
+		return err
+	})
 	if err == nil {
 		return WakeWaitingRunResult{Run: run, Applied: true}, nil
 	}
@@ -157,7 +180,12 @@ func (o *storeOps) WakeWaitingChildWorkflowRun(
 	ctx context.Context,
 	arg enginedb.WakeWaitingChildWorkflowRunParams,
 ) (WakeWaitingRunResult, error) {
-	run, err := o.q.WakeWaitingChildWorkflowRun(ctx, arg)
+	var run enginedb.EngineRun
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelRuns, func(q *enginedb.Queries) error {
+		var err error
+		run, err = q.WakeWaitingChildWorkflowRun(ctx, arg)
+		return err
+	})
 	if err == nil {
 		return WakeWaitingRunResult{Run: run, Applied: true}, nil
 	}

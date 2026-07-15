@@ -117,6 +117,8 @@ func serveCmd() *cobra.Command {
 				MetricsSampleInterval:      cfg.Runtime.MetricsSampleInterval,
 				RunLeaseTTL:                cfg.Runtime.RunLeaseTTL,
 				ActivityLeaseTTL:           cfg.Runtime.ActivityLeaseTTL,
+				DisableNotify:              !cfg.Runtime.NotifyEnabled,
+				NotifyFallbackInterval:     cfg.Runtime.NotifyFallbackInterval,
 				ShutdownGrace:              shutdownGraceOption(cfg.Runtime.ShutdownGrace),
 				RetentionTerminalRuns:      retentionWindowOption(cfg.Runtime.RetentionTerminalRuns),
 				RetentionDedupeGrace:       retentionWindowOption(cfg.Runtime.RetentionDedupeGrace),

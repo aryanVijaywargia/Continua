@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 )
 
 //nolint:gocritic // Mirror sqlc's generated value-based params in thin store wrappers.
@@ -16,7 +17,13 @@ func (o *storeOps) CreateActivityTask(
 	ctx context.Context,
 	arg enginedb.CreateActivityTaskParams,
 ) (enginedb.EngineActivityTask, error) {
-	return mapResult(o.q.CreateActivityTask(ctx, arg))
+	var task enginedb.EngineActivityTask
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelActivity, func(q *enginedb.Queries) error {
+		var err error
+		task, err = q.CreateActivityTask(ctx, arg)
+		return err
+	})
+	return mapResult(task, err)
 }
 
 func (o *storeOps) GetActivityTask(ctx context.Context, id uuid.UUID) (enginedb.EngineActivityTask, error) {
@@ -191,14 +198,19 @@ func (o *storeOps) RetryRemoteActivityTask(
 	errorCode *string,
 	errorMessage *string,
 ) (enginedb.EngineActivityTask, error) {
-	task, err := o.q.RetryRemoteActivityTask(ctx, enginedb.RetryRemoteActivityTaskParams{
-		ID:                id,
-		ProjectID:         projectID,
-		ClaimedBy:         nullableWorkerID(claimedBy),
-		RetryDelayMs:      retryDelayMS,
-		LastErrorCode:     errorCode,
-		LastErrorMessage:  errorMessage,
-		CompletionGraceMs: o.completionGrace.Milliseconds(),
+	var task enginedb.EngineActivityTask
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelActivity, func(q *enginedb.Queries) error {
+		var err error
+		task, err = q.RetryRemoteActivityTask(ctx, enginedb.RetryRemoteActivityTaskParams{
+			ID:                id,
+			ProjectID:         projectID,
+			ClaimedBy:         nullableWorkerID(claimedBy),
+			RetryDelayMs:      retryDelayMS,
+			LastErrorCode:     errorCode,
+			LastErrorMessage:  errorMessage,
+			CompletionGraceMs: o.completionGrace.Milliseconds(),
+		})
+		return err
 	})
 	if err == nil {
 		return task, nil
@@ -234,10 +246,15 @@ func (o *storeOps) RetryActivityTask(
 	claimedBy string,
 	retryDelayMS int64,
 ) (enginedb.EngineActivityTask, error) {
-	task, err := o.q.RetryActivityTask(ctx, enginedb.RetryActivityTaskParams{
-		ID:           id,
-		ClaimedBy:    nullableWorkerID(claimedBy),
-		RetryDelayMs: retryDelayMS,
+	var task enginedb.EngineActivityTask
+	err := o.mutateAndNotify(ctx, publicnotify.ChannelActivity, func(q *enginedb.Queries) error {
+		var err error
+		task, err = q.RetryActivityTask(ctx, enginedb.RetryActivityTaskParams{
+			ID:           id,
+			ClaimedBy:    nullableWorkerID(claimedBy),
+			RetryDelayMs: retryDelayMS,
+		})
+		return err
 	})
 	if err == nil {
 		return task, nil

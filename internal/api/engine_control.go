@@ -14,6 +14,7 @@ import (
 	platformdb "github.com/continua-ai/continua/db/gen/go/platform"
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publichistory "github.com/continua-ai/continua/engine/pkg/history"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	"github.com/continua-ai/continua/internal/store"
 )
@@ -364,6 +365,9 @@ func (s *engineControlService) StartRun(
 		ReadyAt:           now,
 	})
 	if err != nil {
+		return engineStartRunResult{}, err
+	}
+	if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelRuns); err != nil {
 		return engineStartRunResult{}, err
 	}
 
@@ -790,10 +794,18 @@ func (s *engineControlService) SignalRun(
 	}); err != nil {
 		return engineControlResult{}, err
 	}
+	if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelInbox); err != nil {
+		return engineControlResult{}, err
+	}
 
 	currentRun, wakeApplied, err := wakeRunIfWaiting(ctx, engineTx, &run)
 	if err != nil {
 		return engineControlResult{}, err
+	}
+	if wakeApplied {
+		if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelRuns); err != nil {
+			return engineControlResult{}, err
+		}
 	}
 	if err := syncProjectedTraceSummary(ctx, tx, engineTx, &currentRun); err != nil {
 		return engineControlResult{}, err
@@ -1113,6 +1125,9 @@ func (s *engineControlService) ResumeRun(
 		}
 		return engineRunSummary{}, err
 	}
+	if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelRuns); err != nil {
+		return engineRunSummary{}, err
+	}
 
 	payload, err := publichistory.MarshalPayload(publichistory.WorkflowResumedPayload{})
 	if err != nil {
@@ -1204,13 +1219,23 @@ func (s *engineControlService) CancelRun(
 		if !isUniqueViolation(err) {
 			return engineControlResult{}, err
 		}
-	} else if _, err := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT cancel_enqueue"); err != nil {
-		return engineControlResult{}, err
+	} else {
+		if _, err := tx.Tx().Exec(ctx, "RELEASE SAVEPOINT cancel_enqueue"); err != nil {
+			return engineControlResult{}, err
+		}
+		if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelInbox); err != nil {
+			return engineControlResult{}, err
+		}
 	}
 
 	currentRun, wakeApplied, err := wakeRunIfWaiting(ctx, engineTx, &run)
 	if err != nil {
 		return engineControlResult{}, err
+	}
+	if wakeApplied {
+		if err := notifyEngineChannel(ctx, tx.Tx(), publicnotify.ChannelRuns); err != nil {
+			return engineControlResult{}, err
+		}
 	}
 	if err := syncProjectedTraceSummary(ctx, tx, engineTx, &currentRun); err != nil {
 		return engineControlResult{}, err

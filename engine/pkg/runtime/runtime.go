@@ -24,10 +24,12 @@ import (
 	"github.com/continua-ai/continua/engine/internal/config"
 	"github.com/continua-ai/continua/engine/internal/health"
 	enginemetrics "github.com/continua-ai/continua/engine/internal/metrics"
+	enginenotify "github.com/continua-ai/continua/engine/internal/notify"
 	engineprojector "github.com/continua-ai/continua/engine/internal/projector"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	engineworker "github.com/continua-ai/continua/engine/internal/worker"
 	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
 )
 
@@ -37,6 +39,10 @@ type ActivityHandler func(context.Context, json.RawMessage) (json.RawMessage, er
 
 // Options configures an embedded engine runtime.
 type Options struct {
+	// DisableNotify forces poll-only worker loops. NotifyFallbackInterval is the
+	// maximum interval between polls while the notification listener is healthy.
+	DisableNotify          bool
+	NotifyFallbackInterval time.Duration
 	// DatabaseURL is the Postgres connection string. Required.
 	DatabaseURL string
 	// Workflows are the workflow definitions this runtime can execute.
@@ -158,6 +164,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 	store := enginestore.New(pool).WithLeaseCompletionGrace(cfg.Runtime.LeaseCompletionGrace)
+	if !cfg.Runtime.NotifyEnabled {
+		store = store.WithNotifyDisabled()
+	}
 	if recorder != nil {
 		store = store.WithMetrics(recorder)
 	}
@@ -191,9 +200,15 @@ func (r *Runtime) Run(ctx context.Context) error {
 		BatchSize:    cfg.Runtime.RetentionBatchSize,
 	})
 	projectorWorker := engineprojector.New(store).WithBatchSize(cfg.Runtime.ProjectorBatchSize)
+	workflowHealthInterval := cfg.Runtime.WorkflowPollInterval
+	activityHealthInterval := cfg.Runtime.ActivityPollInterval
+	if cfg.Runtime.NotifyEnabled {
+		workflowHealthInterval = max(workflowHealthInterval, cfg.Runtime.NotifyFallbackInterval)
+		activityHealthInterval = max(activityHealthInterval, cfg.Runtime.NotifyFallbackInterval)
+	}
 	tracker := health.NewTracker()
-	tracker.Register("workflow", workerStaleAfter(cfg.Runtime.WorkflowPollInterval))
-	tracker.Register("activity", workerStaleAfter(cfg.Runtime.ActivityPollInterval))
+	tracker.Register("workflow", workerStaleAfter(workflowHealthInterval))
+	tracker.Register("activity", workerStaleAfter(activityHealthInterval))
 	tracker.Register("maintenance", workerStaleAfter(cfg.Runtime.MaintenancePollInterval))
 	tracker.Register("catalog-heartbeat", workerStaleAfter(cfg.Runtime.MaintenancePollInterval))
 	tracker.Register("projector", workerStaleAfter(cfg.Runtime.WorkflowPollInterval))
@@ -244,14 +259,71 @@ func (r *Runtime) Run(ctx context.Context) error {
 		}
 	}()
 
-	group.Go(func() error {
-		return engineworker.RunLoop(
+	workflowIteration := withIterationContext(workCtx, trackIterations(tracker, "workflow", observeIterations(recorder, "workflow", workflowWorker.PollOnce)))
+	activityIteration := withIterationContext(workCtx, trackIterations(tracker, "activity", observeIterations(recorder, "activity", activityWorker.PollOnce)))
+	if cfg.Runtime.NotifyEnabled {
+		listener := enginenotify.NewListener(pool, logger)
+		workflowWake := mergeWakeChannels(
 			groupCtx,
-			cfg.Runtime.WorkflowPollInterval,
-			workflowWorkerID,
-			withIterationContext(workCtx, trackIterations(tracker, "workflow", observeIterations(recorder, "workflow", workflowWorker.PollOnce))),
+			listener.Subscribe(publicnotify.ChannelRuns),
+			listener.Subscribe(publicnotify.ChannelInbox),
 		)
-	})
+		activityRetryWake := make(chan struct{}, 64)
+		activityWake := mergeWakeChannels(
+			groupCtx,
+			listener.Subscribe(publicnotify.ChannelActivity),
+			activityRetryWake,
+		)
+		activityWorker.WithRetryWaker(func(delay time.Duration) {
+			time.AfterFunc(delay, func() {
+				select {
+				case <-groupCtx.Done():
+				case activityRetryWake <- struct{}{}:
+				default:
+				}
+			})
+		})
+		group.Go(func() error { return listener.Run(groupCtx) })
+		group.Go(func() error {
+			return engineworker.RunLoopWithWake(
+				groupCtx,
+				cfg.Runtime.WorkflowPollInterval,
+				cfg.Runtime.NotifyFallbackInterval,
+				listener.Healthy,
+				workflowWake,
+				workflowWorkerID,
+				workflowIteration,
+			)
+		})
+		group.Go(func() error {
+			return engineworker.RunLoopWithWake(
+				groupCtx,
+				cfg.Runtime.ActivityPollInterval,
+				cfg.Runtime.NotifyFallbackInterval,
+				listener.Healthy,
+				activityWake,
+				activityWorkerID,
+				activityIteration,
+			)
+		})
+	} else {
+		group.Go(func() error {
+			return engineworker.RunLoop(
+				groupCtx,
+				cfg.Runtime.WorkflowPollInterval,
+				workflowWorkerID,
+				workflowIteration,
+			)
+		})
+		group.Go(func() error {
+			return engineworker.RunLoop(
+				groupCtx,
+				cfg.Runtime.ActivityPollInterval,
+				activityWorkerID,
+				activityIteration,
+			)
+		})
+	}
 	if recorder != nil {
 		group.Go(func() error {
 			return engineworker.RunLoop(
@@ -262,14 +334,6 @@ func (r *Runtime) Run(ctx context.Context) error {
 			)
 		})
 	}
-	group.Go(func() error {
-		return engineworker.RunLoop(
-			groupCtx,
-			cfg.Runtime.ActivityPollInterval,
-			activityWorkerID,
-			withIterationContext(workCtx, trackIterations(tracker, "activity", observeIterations(recorder, "activity", activityWorker.PollOnce))),
-		)
-	})
 	if cfg.Runtime.RetentionTerminalRuns > 0 || cfg.Runtime.RetentionDedupeGrace > 0 {
 		group.Go(func() error {
 			return engineworker.RunLoop(
@@ -494,6 +558,33 @@ func workerStaleAfter(pollInterval time.Duration) time.Duration {
 	return staleAfter
 }
 
+func mergeWakeChannels(ctx context.Context, first, second <-chan struct{}) <-chan struct{} {
+	merged := make(chan struct{}, 1)
+	go func() {
+		for first != nil || second != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-first:
+				if !ok {
+					first = nil
+					continue
+				}
+			case _, ok := <-second:
+				if !ok {
+					second = nil
+					continue
+				}
+			}
+			select {
+			case merged <- struct{}{}:
+			default:
+			}
+		}
+	}()
+	return merged
+}
+
 func metricsMux(gatherer prometheus.Gatherer) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", enginemetrics.Handler(gatherer))
@@ -511,6 +602,10 @@ func operationalMux(pool health.Pinger, tracker *health.Tracker, gatherer promet
 }
 
 func applyRuntimeOverrides(cfg *config.Config, opts *Options) {
+	cfg.Runtime.NotifyEnabled = !opts.DisableNotify
+	if opts.NotifyFallbackInterval != 0 {
+		cfg.Runtime.NotifyFallbackInterval = opts.NotifyFallbackInterval
+	}
 	if opts.DBMaxConns > 0 {
 		cfg.Database.MaxConns = opts.DBMaxConns
 	}
