@@ -671,7 +671,12 @@ test('covers the engine runs console smoke flows', async ({ page }, testInfo) =>
     .locator('xpath=ancestor::section[1]');
   await expect(quarantineBanner.getByText('replay_mismatch', { exact: true })).toBeVisible();
   await expect(quarantineBanner.getByText(QUARANTINE_ERROR_MESSAGE)).toBeVisible();
-  await expect(quarantineBanner.getByText(/activity_scheduled.*timer_started/)).toBeVisible();
+  await expect(
+    quarantineBanner.getByText(
+      'expected activity_scheduled · charge-card, got timer_started · timeout',
+      { exact: true }
+    )
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeEnabled();
 
   const quarantineScreenshot = await page.screenshot({
