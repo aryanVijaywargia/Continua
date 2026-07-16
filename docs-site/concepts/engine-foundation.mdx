@@ -12,9 +12,10 @@ store, control endpoints, and runs console UI around it are real too.
 This page draws the line between what runs today and what's still preview-limited.
 
 <Warning>
-  The engine is preview. Endpoints require `X-Continua-Engine-Preview` and
-  `ENGINE_PUBLIC_API_ENABLED=true` on the server. Don't depend on engine workflow
-  execution for production work yet. See [Roadmap](/roadmap).
+  The engine is preview. Mutating (POST) endpoints require
+  `X-Continua-Engine-Preview: 1`; all `/v1/engine/*` endpoints require
+  `ENGINE_PUBLIC_API_ENABLED=true` on the server, while reads need only the env flag. Don't
+  depend on engine workflow execution for production work yet. See [Roadmap](/roadmap).
 </Warning>
 
 ## What's implemented
@@ -111,10 +112,9 @@ the control bar. Polling-based.
 
 ## What's still limited in preview
 
-- **Go-only authoring.** Workflows and activities are written as Go functions registered
-  with the runtime. There is no TypeScript/Python SDK for *authoring* workflows yet (the
-  Python SDK's `ActivityWorker` / `@activity` / `EngineControlClient` target this surface
-  but aren't a full authoring runtime).
+- **Go-only authoring.** Workflow logic and authoring remain Go-only; the Python SDK's
+  `ActivityWorker` / `@activity` and `EngineControlClient` support remote activity
+  execution and run control only.
 - **No production definition loading.** The runtime today registers definitions from the
   Go process that starts workers; the bundled dark-launch CLI is still only a demo
   consumer. There's no supported path yet to dynamically register and version arbitrary
@@ -122,9 +122,9 @@ the control bar. Polling-based.
 - **Explicit project provisioning.** Scoped workers must point at an existing platform
   project with `ENGINE_PROJECT_ID` or `runtime.Options.ProjectID`; missing projects fail
   startup. See [Engine project provisioning](/guides/engine-project-provisioning).
-- **Preview-gated REST control plane.** The `/v1/engine/*` endpoints require
-  `X-Continua-Engine-Preview` + `ENGINE_PUBLIC_API_ENABLED`, and shapes may change
-  before GA.
+- **Preview-gated REST control plane.** Mutating (POST) endpoints require
+  `X-Continua-Engine-Preview: 1`; all `/v1/engine/*` endpoints require
+  `ENGINE_PUBLIC_API_ENABLED=true`, and shapes may change before GA.
 
 ## When to use the engine today
 

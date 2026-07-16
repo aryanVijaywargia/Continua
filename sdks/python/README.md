@@ -3,6 +3,8 @@
 Python SDK for Continua — the self-hosted durable execution engine with built-in
 observability for AI agents. Sends traces, spans, sessions, events, and engine-control
 requests to a Continua server.
+The SDK's engine surface covers remote activity execution (`ActivityWorker`/`@activity`)
+and run control (`EngineControlClient`) only; workflow authoring remains in Go.
 
 ## Installation
 

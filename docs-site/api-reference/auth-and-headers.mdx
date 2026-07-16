@@ -52,7 +52,7 @@ Some endpoints are behind preview flags and require an explicit opt-in header:
 | Header | Required by | Notes |
 | --- | --- | --- |
 | `X-Continua-Async-Version: 2` | `POST /v1/ingest` for true-async durable ingest | Without it, the server may run sync or fall back to legacy async behaviour |
-| `X-Continua-Engine-Preview: 1` | All `/v1/engine/*` endpoints | Also requires `ENGINE_PUBLIC_API_ENABLED=true` server-side |
+| `X-Continua-Engine-Preview: 1` | Mutating (POST) `/v1/engine/*` endpoints | GET reads need only `ENGINE_PUBLIC_API_ENABLED=true` server-side |
 
 Preview headers exist so we can ship surfaces under iteration without breaking
 non-preview clients. They will be relaxed or removed as those surfaces stabilise.

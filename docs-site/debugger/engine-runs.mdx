@@ -8,11 +8,12 @@ Use it to inspect run state, see what work is still pending, and (in operator wo
 repair projection state.
 
 <Warning>
-  The engine surface is in preview. Endpoints require `X-Continua-Engine-Preview` and
-  `ENGINE_PUBLIC_API_ENABLED=true` on the server. Workflow execution works (Go-defined
-  workflows), but it's preview, not production-hardened, so don't put it on a
-  production-critical path yet. See [Engine foundation](/concepts/engine-foundation) and
-  [Roadmap](/roadmap).
+  The engine surface is in preview. Mutating (POST) endpoints require
+  `X-Continua-Engine-Preview: 1`; all `/v1/engine/*` endpoints require
+  `ENGINE_PUBLIC_API_ENABLED=true` on the server, while reads need only the env flag. Workflow
+  execution works (Go-defined workflows), but it's preview, not production-hardened, so don't
+  put it on a production-critical path yet. See [Engine foundation](/concepts/engine-foundation)
+  and [Roadmap](/roadmap).
 </Warning>
 
 ## Runs list
