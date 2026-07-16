@@ -117,6 +117,12 @@ const (
 	EngineRunStatusWAITING        EngineRunStatus = "WAITING"
 )
 
+// Defines values for EngineWorkerHealthStatus.
+const (
+	Active EngineWorkerHealthStatus = "active"
+	Stale  EngineWorkerHealthStatus = "stale"
+)
+
 // Defines values for IngestEventLevel.
 const (
 	IngestEventLevelDebug   IngestEventLevel = "debug"
@@ -487,6 +493,25 @@ type EngineFailureSummary struct {
 	Status       string `json:"status"`
 }
 
+// EngineHealthResponse defines model for EngineHealthResponse.
+type EngineHealthResponse struct {
+	GeneratedAt time.Time `json:"generated_at"`
+	Projector   struct {
+		LagRows        int64 `json:"lag_rows"`
+		RunsCatchingUp int64 `json:"runs_catching_up"`
+	} `json:"projector"`
+	Queues struct {
+		ActivityTasksPending int64 `json:"activity_tasks_pending"`
+		InboxPending         int64 `json:"inbox_pending"`
+		RunsReady            int64 `json:"runs_ready"`
+	} `json:"queues"`
+	Retention struct {
+		JournalExpiredRuns int64 `json:"journal_expired_runs"`
+		SummaryOnlyRuns    int64 `json:"summary_only_runs"`
+	} `json:"retention"`
+	Workers []EngineWorkerHealth `json:"workers"`
+}
+
 // EngineHistoryEvent defines model for EngineHistoryEvent.
 type EngineHistoryEvent struct {
 	CreatedAt  time.Time               `json:"created_at"`
@@ -827,6 +852,18 @@ type EngineWaitState struct {
 	TimerKey             *string                `json:"timer_key,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
+
+// EngineWorkerHealth defines model for EngineWorkerHealth.
+type EngineWorkerHealth struct {
+	ActiveLeases  int                      `json:"active_leases"`
+	ExpiredLeases int                      `json:"expired_leases"`
+	Id            string                   `json:"id"`
+	LastClaimAt   time.Time                `json:"last_claim_at"`
+	Status        EngineWorkerHealthStatus `json:"status"`
+}
+
+// EngineWorkerHealthStatus defines model for EngineWorkerHealth.Status.
+type EngineWorkerHealthStatus string
 
 // Error defines model for Error.
 type Error struct {
@@ -1800,6 +1837,9 @@ type ServerInterface interface {
 	// List registered engine workflow definitions
 	// (GET /v1/engine/definitions)
 	ListEngineDefinitions(w http.ResponseWriter, r *http.Request)
+	// Get engine health metrics
+	// (GET /v1/engine/health)
+	GetEngineHealth(w http.ResponseWriter, r *http.Request)
 	// Get an engine instance and current run
 	// (GET /v1/engine/instances/{instance_key})
 	GetEngineInstance(w http.ResponseWriter, r *http.Request, instanceKey string)
@@ -1965,6 +2005,12 @@ func (_ Unimplemented) HeartbeatRemoteActivityTask(w http.ResponseWriter, r *htt
 // List registered engine workflow definitions
 // (GET /v1/engine/definitions)
 func (_ Unimplemented) ListEngineDefinitions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get engine health metrics
+// (GET /v1/engine/health)
+func (_ Unimplemented) GetEngineHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3075,6 +3121,28 @@ func (siw *ServerInterfaceWrapper) ListEngineDefinitions(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetEngineHealth operation middleware
+func (siw *ServerInterfaceWrapper) GetEngineHealth(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEngineHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetEngineInstance operation middleware
 func (siw *ServerInterfaceWrapper) GetEngineInstance(w http.ResponseWriter, r *http.Request) {
 
@@ -4008,6 +4076,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/engine/definitions", wrapper.ListEngineDefinitions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/engine/health", wrapper.GetEngineHealth)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/engine/instances/{instance_key}", wrapper.GetEngineInstance)

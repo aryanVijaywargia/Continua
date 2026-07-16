@@ -47,6 +47,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/engine/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get engine health metrics */
+        get: operations["getEngineHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/engine/definitions": {
         parameters: {
             query?: never;
@@ -958,6 +975,40 @@ export interface components {
         EngineDefinitionListResponse: {
             definitions: components["schemas"]["EngineDefinition"][];
         };
+        EngineWorkerHealth: {
+            id: string;
+            /** Format: date-time */
+            last_claim_at: string;
+            active_leases: number;
+            expired_leases: number;
+            /** @enum {string} */
+            status: "active" | "stale";
+        };
+        EngineHealthResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            projector: {
+                /** Format: int64 */
+                lag_rows: number;
+                /** Format: int64 */
+                runs_catching_up: number;
+            };
+            queues: {
+                /** Format: int64 */
+                runs_ready: number;
+                /** Format: int64 */
+                activity_tasks_pending: number;
+                /** Format: int64 */
+                inbox_pending: number;
+            };
+            workers: components["schemas"]["EngineWorkerHealth"][];
+            retention: {
+                /** Format: int64 */
+                summary_only_runs: number;
+                /** Format: int64 */
+                journal_expired_runs: number;
+            };
+        };
         EngineInstanceResponse: {
             /** Format: uuid */
             instance_id: string;
@@ -1613,6 +1664,44 @@ export interface operations {
                 };
             };
             /** @description Batch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEngineHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Engine health metrics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineHealthResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Engine API disabled */
             404: {
                 headers: {
                     [name: string]: unknown;
