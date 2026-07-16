@@ -296,6 +296,12 @@ async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'ope
 
     if (url.pathname === '/api/traces') {
       if (url.searchParams.get('engine_only') === 'true') {
+        if (url.searchParams.get('engine_run_id') === ENGINE_RUN_ID) {
+          return fulfillJson(route, {
+            traces: [{ ...ENGINE_TRACE, id: STARTED_ENGINE_TRACE_ID }],
+            total: 1,
+          });
+        }
         return fulfillJson(route, { traces: [ENGINE_TRACE], total: 1 });
       }
       return fulfillJson(route, filterTraces(url));

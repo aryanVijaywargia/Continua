@@ -370,8 +370,20 @@ function StartEngineRunDialog({
         request_key: requestKey.trim(),
         ...(input !== undefined ? { input } : {}),
       });
+      const projectedTraces = await fetchTraces({
+        engine_only: true,
+        engine_run_id: response.run_id,
+        limit: 1,
+        ...(projectId ? { project_id: projectId } : {}),
+      });
+      const projectedTrace = projectedTraces.traces.find(
+        (trace) => trace.engine?.run_id === response.run_id
+      );
+      if (!projectedTrace) {
+        throw new Error('Run started, but its projected trace could not be resolved.');
+      }
       await queryClient.invalidateQueries({ queryKey: ['engine-runs', projectId ?? null] });
-      onSuccess(response.trace_id);
+      onSuccess(projectedTrace.id);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409 && error.code === 'instance_conflict') {
         setSubmitError('Instance conflict. Recheck the durable workflow identity and run preflight again.');

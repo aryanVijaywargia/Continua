@@ -343,12 +343,23 @@ describe('StartEngineRunDialog', () => {
 
   it('submits the start request and navigates to the projected trace', async () => {
     const user = userEvent.setup();
+    const startedRunId = '123e4567-e89b-12d3-a456-426614174102';
+    const startedTrace: Trace = {
+      ...ENGINE_TRACE,
+      id: 'trace-uuid-new-1',
+      engine: {
+        ...ENGINE_TRACE.engine!,
+        run_id: startedRunId,
+        instance_key: 'checkout-42',
+      },
+    };
     mockEngineRequests({
+      traces: [ENGINE_TRACE, startedTrace],
       instance: () =>
         jsonResponse({ code: 'not_found', message: 'Instance not found' }, 404),
       start: () =>
         jsonResponse({
-          run_id: '123e4567-e89b-12d3-a456-426614174102',
+          run_id: startedRunId,
           instance_key: 'checkout-42',
           trace_id: 'trace-new-1',
         }),
@@ -366,7 +377,9 @@ describe('StartEngineRunDialog', () => {
     await user.click(dialog.getByRole('button', { name: 'Start run' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('probe-pathname')).toHaveTextContent('/traces/trace-new-1');
+      expect(screen.getByTestId('probe-pathname')).toHaveTextContent(
+        '/traces/trace-uuid-new-1'
+      );
     });
     const postCall = fetchMock.mock.calls.find(([input, init]) => {
       const url = new URL(readRequestUrl(input as RequestInput), 'http://localhost');
@@ -385,6 +398,11 @@ describe('StartEngineRunDialog', () => {
       definition_version: 'v3',
       request_key: requestKey,
     });
+    const resolutionCall = fetchMock.mock.calls.find(([input]) => {
+      const url = new URL(readRequestUrl(input as RequestInput), 'http://localhost');
+      return url.searchParams.get('engine_run_id') === startedRunId;
+    });
+    expect(resolutionCall).toBeDefined();
     expect(screen.getByTestId('probe-return-to')).toHaveTextContent('/engine/runs');
   });
 });
