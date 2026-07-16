@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Generate Python types from OpenAPI spec."""
 
+import ast
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -89,22 +91,43 @@ def apply_enum_default_fixes(output_path: Path) -> None:
     those defaults at runtime, but strict mypy correctly flags them.
     """
 
-    replacements = {
-        '    status: Status5 | None = "running"': "    status: Status5 | None = Status5.running",
-        '    type: Type1 | None = "default"': "    type: Type1 | None = Type1.default",
-        '    level: Level | None = "default"': "    level: Level | None = Level.default",
-        '    event_type: IngestEventType | None = "log"': (
-            "    event_type: IngestEventType | None = IngestEventType.log"
-        ),
-        '    level: IngestEventLevel | None = "info"': (
-            "    level: IngestEventLevel | None = IngestEventLevel.info"
-        ),
-    }
+    lines = output_path.read_text().splitlines()
+    enum_members: dict[str, dict[str, str]] = {}
+    current_enum: str | None = None
 
-    text = output_path.read_text()
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-    output_path.write_text(text)
+    for line in lines:
+        class_match = re.fullmatch(r"class (\w+)\(Enum\):", line)
+        if class_match:
+            current_enum = class_match.group(1)
+            enum_members[current_enum] = {}
+            continue
+        if current_enum and line and not line.startswith(" "):
+            current_enum = None
+        if current_enum:
+            member_match = re.fullmatch(r"    (\w+) = (.+)", line)
+            if member_match:
+                value = ast.literal_eval(member_match.group(2))
+                if isinstance(value, str):
+                    enum_members[current_enum][value] = member_match.group(1)
+
+    field_pattern = re.compile(
+        r'^(    \w+: )(\w+)( \| None = )("(?:[^"\\]|\\.)*")$'
+    )
+    patched_lines: list[str] = []
+    for line in lines:
+        field_match = field_pattern.fullmatch(line)
+        if field_match:
+            enum_type = field_match.group(2)
+            default = ast.literal_eval(field_match.group(4))
+            member = enum_members.get(enum_type, {}).get(default)
+            if member:
+                line = (
+                    f"{field_match.group(1)}{enum_type}{field_match.group(3)}"
+                    f"{enum_type}.{member}"
+                )
+        patched_lines.append(line)
+
+    output_path.write_text("\n".join(patched_lines) + "\n")
 
 
 def apply_ruff_header(output_path: Path) -> None:

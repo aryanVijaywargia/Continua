@@ -112,6 +112,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/engine/health:
+    get:
+      operationId: getEngineHealth
+      summary: Get engine health metrics
+      tags:
+        - Engine
+      responses:
+        '200':
+          description: Engine health metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EngineHealthResponse'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Engine API disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/engine/definitions:
     get:
       operationId: listEngineDefinitions
@@ -2410,6 +2435,85 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EngineDefinition'
+    EngineWorkerHealth:
+      type: object
+      required:
+        - id
+        - last_claim_at
+        - active_leases
+        - expired_leases
+        - status
+      properties:
+        id:
+          type: string
+        last_claim_at:
+          type: string
+          format: date-time
+        active_leases:
+          type: integer
+        expired_leases:
+          type: integer
+        status:
+          type: string
+          enum:
+            - active
+            - stale
+    EngineHealthResponse:
+      type: object
+      required:
+        - generated_at
+        - projector
+        - queues
+        - workers
+        - retention
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        projector:
+          type: object
+          required:
+            - lag_rows
+            - runs_catching_up
+          properties:
+            lag_rows:
+              type: integer
+              format: int64
+            runs_catching_up:
+              type: integer
+              format: int64
+        queues:
+          type: object
+          required:
+            - runs_ready
+            - activity_tasks_pending
+            - inbox_pending
+          properties:
+            runs_ready:
+              type: integer
+              format: int64
+            activity_tasks_pending:
+              type: integer
+              format: int64
+            inbox_pending:
+              type: integer
+              format: int64
+        workers:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineWorkerHealth'
+        retention:
+          type: object
+          required:
+            - summary_only_runs
+            - journal_expired_runs
+          properties:
+            summary_only_runs:
+              type: integer
+              format: int64
+            journal_expired_runs:
+              type: integer
+              format: int64
     EngineInstanceResponse:
       type: object
       required:

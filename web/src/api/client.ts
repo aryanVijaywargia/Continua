@@ -383,6 +383,32 @@ export interface EngineDefinitionListResponse {
   definitions: EngineDefinition[];
 }
 
+export interface EngineWorkerHealth {
+  id: string;
+  last_claim_at: string;
+  active_leases: number;
+  expired_leases: number;
+  status: 'active' | 'stale';
+}
+
+export interface EngineHealthResponse {
+  generated_at: string;
+  projector: {
+    lag_rows: number;
+    runs_catching_up: number;
+  };
+  queues: {
+    runs_ready: number;
+    activity_tasks_pending: number;
+    inbox_pending: number;
+  };
+  workers: EngineWorkerHealth[];
+  retention: {
+    summary_only_runs: number;
+    journal_expired_runs: number;
+  };
+}
+
 export interface EngineTraceInfo {
   run_id: string;
   definition_name: string;
@@ -1157,6 +1183,10 @@ export async function fetchEngineInstance(
 
 export async function listEngineDefinitions(): Promise<EngineDefinitionListResponse> {
   return fetchAPI<EngineDefinitionListResponse>('/v1/engine/definitions');
+}
+
+export async function fetchEngineHealth(): Promise<EngineHealthResponse> {
+  return fetchAPI<EngineHealthResponse>('/v1/engine/health');
 }
 
 export async function startEngineRun(

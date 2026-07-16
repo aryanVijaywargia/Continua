@@ -322,6 +322,43 @@ class EngineDefinitionListResponse(BaseModel):
     definitions: list[EngineDefinition]
 
 
+class Status1(Enum):
+    active = "active"
+    stale = "stale"
+
+
+class EngineWorkerHealth(BaseModel):
+    id: str
+    last_claim_at: AwareDatetime
+    active_leases: int
+    expired_leases: int
+    status: Status1
+
+
+class Projector(BaseModel):
+    lag_rows: int
+    runs_catching_up: int
+
+
+class Queues(BaseModel):
+    runs_ready: int
+    activity_tasks_pending: int
+    inbox_pending: int
+
+
+class Retention(BaseModel):
+    summary_only_runs: int
+    journal_expired_runs: int
+
+
+class EngineHealthResponse(BaseModel):
+    generated_at: AwareDatetime
+    projector: Projector
+    queues: Queues
+    workers: list[EngineWorkerHealth]
+    retention: Retention
+
+
 class EngineRunResultResponse(BaseModel):
     run_id: UUID
     continued_from_run_id: UUID | None = None
@@ -395,7 +432,7 @@ class Kind(Enum):
     CUSTOM = "CUSTOM"
 
 
-class Status1(Enum):
+class Status2(Enum):
     SCHEDULED = "SCHEDULED"
     STARTED = "STARTED"
     COMPLETED = "COMPLETED"
@@ -414,7 +451,7 @@ class Span(BaseModel):
     )
     name: str
     kind: Kind
-    status: Status1
+    status: Status2
     started_at: AwareDatetime
     ended_at: AwareDatetime | None = None
     tokens_in: int | None = None
@@ -493,7 +530,7 @@ class SessionNarrativeSummary(BaseModel):
     )
 
 
-class Status2(Enum):
+class Status3(Enum):
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
@@ -568,7 +605,7 @@ class CompareSemanticEventType(Enum):
     wait = "wait"
 
 
-class Status4(Enum):
+class Status5(Enum):
     SCHEDULED = "SCHEDULED"
     STARTED = "STARTED"
     COMPLETED = "COMPLETED"
@@ -581,7 +618,7 @@ class CompareSpanSummary(BaseModel):
     parent_span_id: str | None = None
     name: str
     kind: Kind
-    status: Status4
+    status: Status5
     started_at: AwareDatetime
     ended_at: AwareDatetime | None = None
     tokens_in: int | None = None
@@ -602,7 +639,7 @@ class CompareSemanticSummary(BaseModel):
     payload: dict[str, Any] | None = None
 
 
-class Status5(Enum):
+class Status6(Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
@@ -626,7 +663,7 @@ class IngestTraceInput(BaseModel):
     output: Any | None = Field(
         None, description="Trace output data (any JSON-serializable value)"
     )
-    status: Status5 | None = Status5.running
+    status: Status6 | None = Status6.running
     start_time: AwareDatetime | None = None
     end_time: AwareDatetime | None = None
 
@@ -657,7 +694,7 @@ class IngestSpanInput(BaseModel):
     )
     name: str
     type: Type1 | None = Type1.default
-    status: Status5 | None = Status5.running
+    status: Status6 | None = Status6.running
     status_message: str | None = None
     level: Level | None = Level.default
     start_time: AwareDatetime
@@ -799,7 +836,7 @@ class TimelineResponse(BaseModel):
     engine: Engine | None = None
 
 
-class Status7(Enum):
+class Status8(Enum):
     """
     Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.
     """
@@ -811,7 +848,7 @@ class Status7(Enum):
 
 
 class IngestResponse(BaseModel):
-    status: Status7 = Field(
+    status: Status8 = Field(
         ...,
         description='Processing status. "accepted" for async mode, "duplicate" indicates the batch was already processed.',
     )
@@ -828,7 +865,7 @@ class IngestResponse(BaseModel):
     errors: list[str] | None = None
 
 
-class Status8(Enum):
+class Status9(Enum):
     accepted = "accepted"
     processing = "processing"
     completed = "completed"
@@ -838,7 +875,7 @@ class Status8(Enum):
 class BatchStatusResponse(BaseModel):
     batch_id: UUID
     batch_key: str
-    status: Status8
+    status: Status9
     attempt_count: int
     server_received_at: AwareDatetime
     processing_started_at: AwareDatetime | None = None
@@ -948,7 +985,7 @@ class SessionNarrativeTrace(BaseModel):
         ..., description="External trace identifier for the narrative trace."
     )
     name: str
-    status: Status2
+    status: Status3
     user_id: str | None = None
     started_at: AwareDatetime
     ended_at: AwareDatetime | None = None
@@ -975,7 +1012,7 @@ class CompareTraceHeader(BaseModel):
     id: UUID
     trace_id: str
     name: str
-    status: Status2
+    status: Status3
     user_id: str | None = None
     started_at: AwareDatetime
     ended_at: AwareDatetime | None = None

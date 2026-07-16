@@ -1,5 +1,6 @@
 import type {
   ButtonHTMLAttributes,
+  HTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
 } from 'react';
@@ -372,13 +373,13 @@ export function Tr({
   children,
   className = '',
   selected = false,
-}: {
-  children: ReactNode;
-  className?: string;
+  ...props
+}: HTMLAttributes<HTMLTableRowElement> & {
   selected?: boolean;
 }) {
   return (
     <tr
+      {...props}
       className={`${selected ? 'bg-[var(--c-row-selected-bg)]' : ''} ${className}`}
     >
       {children}

@@ -774,6 +774,9 @@ function buildBreadcrumbs(pathname: string): string[] {
   if (segments[0] === 'tools' && segments[1] === 'engine-projections') {
     return ['Settings', 'Engine projection repair'];
   }
+  if (segments[0] === 'tools' && segments[1] === 'engine-health') {
+    return ['Engine Runs', 'Engine health'];
+  }
   if (segments[0] === 'sessions') {
     if (segments[2] === 'compare') {
       return ['Sessions', segments[1] ?? 'Session', 'Compare'];

@@ -8,6 +8,7 @@ import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionComparePage } from './pages/SessionComparePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { EngineProjectionRepairPage } from './pages/EngineProjectionRepairPage';
+import { EngineHealthPage } from './pages/EngineHealthPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AppShell } from './components/AppShell';
@@ -43,6 +44,7 @@ export function App() {
                   <Route path="/projects" element={<ProjectsPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/tools/engine-projections" element={<EngineProjectionRepairPage />} />
+                  <Route path="/tools/engine-health" element={<EngineHealthPage />} />
                 </Route>
               </Route>
             </Routes>
