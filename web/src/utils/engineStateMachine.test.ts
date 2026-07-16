@@ -26,7 +26,12 @@ describe('buildEngineStateMachine', () => {
   it('flags waiting, suspended, and quarantined runs as a warned waiting step', () => {
     for (const status of ['WAITING', 'SUSPENDED', 'QUARANTINED'] as const) {
       const steps = buildEngineStateMachine(status as EngineRunStatus);
-      expect(steps[2]).toMatchObject({ current: true, warn: true, done: true });
+      expect(steps[2]).toMatchObject({
+        label: status === 'QUARANTINED' ? 'Quarantined' : 'Waiting',
+        current: true,
+        warn: true,
+        done: true,
+      });
     }
   });
 

@@ -19,7 +19,11 @@ const SECONDARY_PROJECT_ID = '22222222-2222-2222-2222-222222222222';
 const RUN_LOCALLY_DOCS_URL = 'https://www.continua.in/docs/guides/installation';
 const ENGINE_RUN_ID = '123e4567-e89b-12d3-a456-426614174100';
 const ENGINE_TRACE_ID = 'engine-trace-1';
+const QUARANTINED_ENGINE_RUN_ID = '123e4567-e89b-12d3-a456-426614174101';
+const QUARANTINED_ENGINE_TRACE_ID = 'engine-trace-quarantined';
 const STARTED_ENGINE_TRACE_ID = 'engine-trace-new';
+const QUARANTINE_ERROR_MESSAGE =
+  'expected activity_scheduled charge-card but history has timer_started timeout';
 
 const ENGINE_TRACE = {
   ...TRACE_ONE,
@@ -51,9 +55,42 @@ const ENGINE_TRACE_DETAIL = {
   output: { approved: true },
 };
 
+const QUARANTINED_ENGINE_TRACE = {
+  ...ENGINE_TRACE,
+  id: QUARANTINED_ENGINE_TRACE_ID,
+  name: 'Quarantined checkout workflow',
+  engine: {
+    ...ENGINE_TRACE.engine,
+    run_id: QUARANTINED_ENGINE_RUN_ID,
+    instance_key: 'checkout-quarantined',
+    status: 'QUARANTINED',
+    completed_at: undefined,
+    failure: {
+      error_code: 'replay_mismatch',
+      error_message: QUARANTINE_ERROR_MESSAGE,
+      status: 'QUARANTINED',
+    },
+    wait_state: {
+      kind: 'replay_mismatch',
+      expected_type: 'activity_scheduled',
+      expected_key: 'charge-card',
+      actual_type: 'timer_started',
+      actual_key: 'timeout',
+      detail: 'replay produced a different next event',
+    },
+  },
+};
+
+const QUARANTINED_ENGINE_TRACE_DETAIL = {
+  ...ENGINE_TRACE_DETAIL,
+  ...QUARANTINED_ENGINE_TRACE,
+  trace_id: 'engine-checkout-quarantined',
+};
+
 const TRACE_DETAILS = new Map([
   [TRACE_ONE.id, TRACE_DETAIL],
   [ENGINE_TRACE_ID, ENGINE_TRACE_DETAIL],
+  [QUARANTINED_ENGINE_TRACE_ID, QUARANTINED_ENGINE_TRACE_DETAIL],
   [STARTED_ENGINE_TRACE_ID, { ...ENGINE_TRACE_DETAIL, id: STARTED_ENGINE_TRACE_ID }],
   [
     TRACE_TWO.id,
@@ -302,7 +339,11 @@ async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'ope
             total: 1,
           });
         }
-        return fulfillJson(route, { traces: [ENGINE_TRACE], total: 1 });
+        const status = url.searchParams.get('engine_run_status');
+        const traces = [ENGINE_TRACE, QUARANTINED_ENGINE_TRACE].filter(
+          (trace) => !status || trace.engine.status.toLowerCase() === status
+        );
+        return fulfillJson(route, { traces, total: traces.length });
       }
       return fulfillJson(route, filterTraces(url));
     }
@@ -405,6 +446,18 @@ async function mockEngineRoutes(page: Page) {
       return fulfillJson(route, {
         run_id: ENGINE_RUN_ID,
         current_wait: null,
+        activities: [],
+        timers: [],
+        signals: [],
+        pending_activity_tasks: 0,
+        pending_inbox_items: 0,
+      });
+    }
+
+    if (url.pathname === `/v1/engine/runs/${QUARANTINED_ENGINE_RUN_ID}/pending-work`) {
+      return fulfillJson(route, {
+        run_id: QUARANTINED_ENGINE_RUN_ID,
+        current_wait: QUARANTINED_ENGINE_TRACE.engine.wait_state,
         activities: [],
         timers: [],
         signals: [],
@@ -611,8 +664,55 @@ test('covers the engine runs console smoke flows', async ({ page }, testInfo) =>
     `/engine/runs?project_id=${PRIMARY_PROJECT_ID}`
   );
   const engineRunRow = page.getByRole('row').filter({ hasText: 'checkout · v1' });
-  await expect(engineRunRow.getByText('checkout · v1', { exact: true })).toBeVisible();
   await expect(engineRunRow.getByText('Completed', { exact: true })).toBeVisible();
+  const quarantinedRow = page
+    .getByRole('row')
+    .filter({ hasText: 'checkout-quarantined' });
+  await expect(quarantinedRow.getByText('Quarantined', { exact: true })).toBeVisible();
+  await expect(quarantinedRow.getByText(/Replay mismatch/)).toBeVisible();
+
+  const statusFilter = page.getByRole('combobox', { name: 'Engine run status' });
+  const quarantinedRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === '/api/traces' &&
+      url.searchParams.get('engine_run_status') === 'quarantined'
+    );
+  });
+  await statusFilter.selectOption('quarantined');
+  expect(
+    new URL((await quarantinedRequest).url()).searchParams.get('engine_run_status')
+  ).toBe('quarantined');
+  await expect(page).toHaveURL(/engine_run_status=quarantined/);
+
+  await quarantinedRow
+    .getByRole('link', { name: `Open ${QUARANTINED_ENGINE_TRACE_ID}` })
+    .click();
+  await page.getByRole('button', { name: 'Engine state', exact: true }).click();
+  const quarantineBanner = page
+    .getByRole('heading', { name: 'Run quarantined' })
+    .locator('xpath=ancestor::section[1]');
+  await expect(quarantineBanner.getByText('replay_mismatch', { exact: true })).toBeVisible();
+  await expect(quarantineBanner.getByText(QUARANTINE_ERROR_MESSAGE)).toBeVisible();
+  await expect(
+    quarantineBanner.getByText(
+      'expected activity_scheduled · charge-card, got timer_started · timeout',
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeEnabled();
+
+  const quarantineScreenshot = await page.screenshot({
+    fullPage: true,
+    animations: 'disabled',
+  });
+  await testInfo.attach(`${testInfo.project.name}-engine-quarantine`, {
+    body: quarantineScreenshot,
+    contentType: 'image/png',
+  });
+
+  await page.goto(`/engine/runs?project_id=${PRIMARY_PROJECT_ID}`);
+  await expect(page.getByRole('heading', { name: 'Engine Runs' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Start run', exact: true }).click();
   const startForm = page

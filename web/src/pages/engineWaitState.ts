@@ -38,6 +38,33 @@ export function describeEngineWaitState(
         heading: 'Waiting on child workflow',
         detail: waitState.child_key ?? 'Child workflow completion',
       };
+    case 'replay_mismatch': {
+      const expectedType =
+        typeof waitState.expected_type === 'string' ? waitState.expected_type : null;
+      const expectedKey =
+        typeof waitState.expected_key === 'string' ? waitState.expected_key : null;
+      const actualType =
+        typeof waitState.actual_type === 'string' ? waitState.actual_type : null;
+      const actualKey =
+        typeof waitState.actual_key === 'string' ? waitState.actual_key : null;
+      const detail = typeof waitState.detail === 'string' ? waitState.detail : null;
+
+      return {
+        heading: 'Replay mismatch',
+        detail:
+          expectedType && expectedKey && actualType && actualKey
+            ? `expected ${expectedType} · ${expectedKey}, got ${actualType} · ${actualKey}`
+            : (detail ?? 'Replay produced a different event'),
+      };
+    }
+    case 'engine_invariant':
+      return {
+        heading: 'Engine invariant',
+        detail:
+          typeof waitState.detail === 'string'
+            ? waitState.detail
+            : 'Engine state invariant failed',
+      };
     default:
       return {
         heading: 'Waiting on engine state',

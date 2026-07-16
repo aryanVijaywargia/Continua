@@ -394,6 +394,58 @@ describe('TraceDetailPage', () => {
     expect(screen.getAllByRole('button', { name: 'Signal' })).toHaveLength(1);
   });
 
+  it('explains a quarantined engine run and enables resume from the engine section', async () => {
+    const user = userEvent.setup();
+    const base = createEngineTraceDetail();
+    const errorMessage =
+      'expected activity_scheduled charge-card but history has timer_started timeout';
+    const detail = createEngineTraceDetail({
+      engine: {
+        ...base.engine!,
+        status: 'QUARANTINED',
+        failure: {
+          error_code: 'replay_mismatch',
+          error_message: errorMessage,
+          status: 'QUARANTINED',
+        },
+        wait_state: {
+          kind: 'replay_mismatch',
+          expected_type: 'activity_scheduled',
+          expected_key: 'charge-card',
+          actual_type: 'timer_started',
+          actual_key: 'timeout',
+          detail: 'replay produced a different next event',
+        },
+      },
+    });
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(detail),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+
+    const bannerHeading = screen.getByRole('heading', { name: 'Run quarantined' });
+    const quarantineBanner = bannerHeading.closest('section, [role="alert"]');
+    expect(quarantineBanner).not.toBeNull();
+    expect(
+      within(quarantineBanner as HTMLElement).getByText(/replay_mismatch/)
+    ).toBeInTheDocument();
+    expect(
+      within(quarantineBanner as HTMLElement).getByText(new RegExp(errorMessage))
+    ).toBeInTheDocument();
+    expect(
+      within(quarantineBanner as HTMLElement).getByText(
+        /rolling back the workflow code/i
+      )
+    ).toHaveTextContent(/Resume/i);
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeDisabled();
+  });
+
   it('counts continued-as-new engine result panes and marks the state closed', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(

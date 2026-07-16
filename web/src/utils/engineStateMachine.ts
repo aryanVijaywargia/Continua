@@ -24,7 +24,7 @@ export function buildEngineStateMachine(status: EngineRunStatus): StateMachineSt
     },
     {
       id: 'waiting',
-      label: 'Waiting',
+      label: status === 'QUARANTINED' ? 'Quarantined' : 'Waiting',
       done: isClosed || isWaiting,
       current: isWaiting,
       warn: isWaiting,

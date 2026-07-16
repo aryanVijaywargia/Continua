@@ -13,6 +13,7 @@ import {
 } from '../../api/client';
 import { Btn, Chip } from '../../components/DebuggerKit';
 import { EngineProjectionBanner } from '../../components/EngineProjectionBanner';
+import { EngineQuarantineBanner } from '../../components/EngineQuarantineBanner';
 import {
   buildEngineStateMachine,
   isTerminalEngineStatus,
@@ -142,6 +143,9 @@ export function TraceEngineSection() {
 
         <div className="mt-4 space-y-3">
           <EngineControlBar engine={engine} traceId={traceId} />
+          {engine.status === 'QUARANTINED' ? (
+            <EngineQuarantineBanner failure={engine.failure} waitState={waitState} />
+          ) : null}
           <EngineProjectionBanner projectionState={engine.projection_state} />
         </div>
 
