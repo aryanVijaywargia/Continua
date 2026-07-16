@@ -563,6 +563,7 @@ function EngineHistoryPane({ runId }: { runId: string }) {
               <div className="font-mono text-xs font-semibold text-[var(--c-text-primary)]">
                 {event.event_type}
               </div>
+              {renderVersionMarkerSummary(event)}
               {event.payload ? (
                 <div className="mt-2 rounded border border-[var(--c-border-subtle)] bg-[var(--c-app-bg)] p-2">
                   <CompactPayloadInspector value={event.payload} />
@@ -582,6 +583,22 @@ function EngineHistoryPane({ runId }: { runId: string }) {
           {historyQuery.isFetching ? 'Loading…' : 'Load more'}
         </Btn>
       ) : null}
+    </div>
+  );
+}
+
+function renderVersionMarkerSummary(event: EngineHistoryEvent): ReactNode {
+  if (
+    event.event_type !== 'workflow.version_marker' ||
+    typeof event.payload?.change_id !== 'string' ||
+    typeof event.payload.version !== 'number'
+  ) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 text-xs text-[var(--c-text-secondary)]">
+      Version marker: {event.payload.change_id} → v{event.payload.version}
     </div>
   );
 }

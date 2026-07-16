@@ -446,10 +446,21 @@ async function mockEngineRoutes(page: Page) {
       return fulfillJson(route, {
         run_id: ENGINE_RUN_ID,
         current_wait: null,
-        activities: [],
+        activities: [
+          {
+            task_id: 'activity-task-1',
+            activity_key: 'charge-card',
+            activity_type: 'payments.charge',
+            status: 'claimed',
+            available_at: '2026-03-14T10:00:01.000Z',
+            attempt_count: 1,
+            execution_target: 'remote',
+            claimed_by: 'worker-py-1',
+          },
+        ],
         timers: [],
         signals: [],
-        pending_activity_tasks: 0,
+        pending_activity_tasks: 1,
         pending_inbox_items: 0,
       });
     }
@@ -467,7 +478,19 @@ async function mockEngineRoutes(page: Page) {
     }
 
     if (url.pathname === `/v1/engine/runs/${ENGINE_RUN_ID}/history`) {
-      return fulfillJson(route, { events: [], has_more: false, expired: false });
+      return fulfillJson(route, {
+        events: [
+          {
+            id: 1,
+            sequence_no: 1,
+            event_type: 'workflow.version_marker',
+            payload: { change_id: 'new-pricing', version: 2 },
+            created_at: '2026-03-14T10:00:01.000Z',
+          },
+        ],
+        has_more: false,
+        expired: false,
+      });
     }
 
     if (url.pathname === `/v1/engine/runs/${ENGINE_RUN_ID}/result`) {
@@ -738,6 +761,28 @@ test('covers the engine runs console smoke flows', async ({ page }, testInfo) =>
   await expect(page.getByRole('button', { name: /^Pending \d+$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Engine history \d+$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Result \d+$/ })).toBeVisible();
+
+  await page.getByRole('button', { name: /^Pending \d+$/ }).click();
+  const pendingActivity = page
+    .getByText('payments.charge · charge-card')
+    .locator('xpath=ancestor::article[1]');
+  await expect(pendingActivity.getByText('remote', { exact: true })).toBeVisible();
+  await expect(pendingActivity.getByText('worker-py-1', { exact: true })).toBeVisible();
+  await testInfo.attach(`${testInfo.project.name}-engine-pending-target`, {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
+
+  await page.getByRole('button', { name: /^Engine history \d+$/ }).click();
+  const versionMarkerRow = page
+    .getByText('Version marker: new-pricing → v2')
+    .locator('xpath=ancestor::div[contains(@class, "grid")][1]');
+  await expect(versionMarkerRow).toBeVisible();
+  await expect(versionMarkerRow.getByRole('button', { name: 'Collapse payload' })).toBeVisible();
+  await testInfo.attach(`${testInfo.project.name}-engine-version-marker`, {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
 
   await page.goto(`/settings?project_id=${PRIMARY_PROJECT_ID}`);
   const operationsSection = page

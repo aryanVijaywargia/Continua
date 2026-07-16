@@ -749,6 +749,9 @@ export interface components {
             available_at: string;
             /** Format: int32 */
             attempt_count: number;
+            /** @enum {string} */
+            execution_target: "local" | "remote";
+            claimed_by?: string;
         };
         EngineRemoteActivityClaimRequest: {
             worker_id: string;

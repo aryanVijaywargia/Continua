@@ -422,6 +422,8 @@ export interface EnginePendingActivityItem {
   status: string;
   available_at: string;
   attempt_count: number;
+  execution_target: 'local' | 'remote';
+  claimed_by?: string | null;
 }
 
 export interface EnginePendingTimerItem {

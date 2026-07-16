@@ -1864,7 +1864,7 @@ components:
 
     EnginePendingActivityItem:
       type: object
-      required: [task_id, activity_key, activity_type, status, available_at, attempt_count]
+      required: [task_id, activity_key, activity_type, status, available_at, attempt_count, execution_target]
       properties:
         task_id:
           type: string
@@ -1881,6 +1881,11 @@ components:
         attempt_count:
           type: integer
           format: int32
+        execution_target:
+          type: string
+          enum: [local, remote]
+        claimed_by:
+          type: string
 
     EngineRemoteActivityClaimRequest:
       type: object
