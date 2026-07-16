@@ -497,12 +497,23 @@ describe('StartEngineRunDialog definition picker', () => {
 
   it('builds the start payload from the picker selection', async () => {
     const user = userEvent.setup();
+    const startedRunId = '123e4567-e89b-12d3-a456-426614174102';
+    const startedTrace: Trace = {
+      ...ENGINE_TRACE,
+      id: 'trace-picker-1',
+      engine: {
+        ...ENGINE_TRACE.engine!,
+        run_id: startedRunId,
+        instance_key: 'picker-instance',
+      },
+    };
     mockEngineRequests({
+      traces: [ENGINE_TRACE, startedTrace],
       instance: () =>
         jsonResponse({ code: 'not_found', message: 'Instance not found' }, 404),
       start: () =>
         jsonResponse({
-          run_id: '123e4567-e89b-12d3-a456-426614174102',
+          run_id: startedRunId,
           instance_key: 'picker-instance',
           trace_id: 'trace-picker-1',
         }),
@@ -584,12 +595,23 @@ describe('StartEngineRunDialog definition picker', () => {
 
   it('manual entry fallback still allows free-text definitions', async () => {
     const user = userEvent.setup();
+    const startedRunId = '123e4567-e89b-12d3-a456-426614174103';
+    const startedTrace: Trace = {
+      ...ENGINE_TRACE,
+      id: 'trace-manual-1',
+      engine: {
+        ...ENGINE_TRACE.engine!,
+        run_id: startedRunId,
+        instance_key: 'manual-instance',
+      },
+    };
     mockEngineRequests({
+      traces: [ENGINE_TRACE, startedTrace],
       instance: () =>
         jsonResponse({ code: 'not_found', message: 'Instance not found' }, 404),
       start: () =>
         jsonResponse({
-          run_id: '123e4567-e89b-12d3-a456-426614174103',
+          run_id: startedRunId,
           instance_key: 'manual-instance',
           trace_id: 'trace-manual-1',
         }),
