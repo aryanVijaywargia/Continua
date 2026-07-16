@@ -354,6 +354,29 @@ async function mockEngineRoutes(page: Page) {
     const url = new URL(request.url());
     expectOperatorAuthHeader(route);
 
+    if (url.pathname === '/v1/engine/definitions' && request.method() === 'GET') {
+      return fulfillJson(route, {
+        definitions: [
+          {
+            definition_name: 'checkout',
+            definition_version: 'v1',
+            enabled: true,
+            live: true,
+            runtime_published_at: '2026-03-14T09:00:00.000Z',
+            published_at: '2026-03-14T08:00:00.000Z',
+          },
+          {
+            definition_name: 'legacy-checkout',
+            definition_version: 'v0',
+            enabled: true,
+            live: false,
+            runtime_published_at: '2026-03-01T09:00:00.000Z',
+            published_at: '2026-03-01T08:00:00.000Z',
+          },
+        ],
+      });
+    }
+
     if (/^\/v1\/engine\/instances\/[^/]+$/.test(url.pathname)) {
       return fulfillJson(route, { code: 'not_found', message: 'Instance not found' }, 404);
     }
@@ -589,6 +612,7 @@ test('covers the engine runs console smoke flows', async ({ page }, testInfo) =>
   const startForm = page
     .getByRole('heading', { name: 'Start run', exact: true })
     .locator('xpath=ancestor::form');
+  await startForm.getByRole('button', { name: 'Enter manually', exact: true }).click();
   await startForm.getByLabel(/^Instance key/).fill('checkout-42');
   await startForm.getByLabel(/^Definition name/).fill('checkout');
   await startForm.getByLabel(/^Definition version/).fill('v1');
@@ -635,6 +659,47 @@ test('covers the engine runs console smoke flows', async ({ page }, testInfo) =>
     body: screenshot,
     contentType: 'image/png',
   });
+});
+
+test('starts an engine run from the live definition picker', async ({ page }, testInfo) => {
+  await bootstrapOperatorSession(page);
+  await mockApiRoutes(page, 'operator');
+  await mockEngineRoutes(page);
+  await page.goto(`/engine/runs?project_id=${PRIMARY_PROJECT_ID}`);
+
+  await page.getByRole('button', { name: 'Start run', exact: true }).click();
+  const startForm = page
+    .getByRole('heading', { name: 'Start run', exact: true })
+    .locator('xpath=ancestor::form');
+  await startForm.getByLabel(/^Instance key/).fill('checkout-42');
+  await startForm.getByRole('button', { name: 'Check', exact: true }).click();
+  await expect(startForm.getByText('Instance key is available.')).toBeVisible();
+  await startForm.getByLabel(/^Definition name/).selectOption('checkout');
+  await startForm.getByLabel(/^Definition version/).selectOption('v1');
+  await expect(
+    startForm.getByRole('option', { name: /legacy-checkout.*not live/i })
+  ).toHaveJSProperty('disabled', true);
+
+  const screenshot = await page.screenshot({ fullPage: true, animations: 'disabled' });
+  await testInfo.attach(`${testInfo.project.name}-engine-definition-picker`, {
+    body: screenshot,
+    contentType: 'image/png',
+  });
+
+  const startRequest = page.waitForRequest(
+    (request) =>
+      new URL(request.url()).pathname === '/v1/engine/runs' &&
+      request.method() === 'POST'
+  );
+  await startForm.getByRole('button', { name: 'Start run', exact: true }).click();
+  expect((await startRequest).postDataJSON()).toMatchObject({
+    instance_key: 'checkout-42',
+    definition_name: 'checkout',
+    definition_version: 'v1',
+  });
+  await expect(page).toHaveURL(
+    new RegExp(String.raw`/traces/${STARTED_ENGINE_TRACE_ID}\?project_id=${PRIMARY_PROJECT_ID}`)
+  );
 });
 
 test('walks the public demo flow from landing through debugger reads', async ({ page }, testInfo) => {
