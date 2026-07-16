@@ -12,10 +12,10 @@ store, control endpoints, and runs console UI around it are real too.
 This page draws the line between what runs today and what's still preview-limited.
 
 <Warning>
-  The engine is preview. Mutating (POST) endpoints require
-  `X-Continua-Engine-Preview: 1`; all `/v1/engine/*` endpoints require
-  `ENGINE_PUBLIC_API_ENABLED=true` on the server, while reads need only the env flag. Don't
-  depend on engine workflow execution for production work yet. See [Roadmap](/roadmap).
+  The engine is preview. `X-Continua-Engine-Preview: 1` is optional and deprecated for
+  mutating (POST) endpoints during the sunset window. All `/v1/engine/*` endpoints still
+  require `ENGINE_PUBLIC_API_ENABLED=true` on the server. Don't depend on engine workflow
+  execution for production work yet. See [Roadmap](/roadmap).
 </Warning>
 
 ## What's implemented
@@ -122,9 +122,25 @@ the control bar. Polling-based.
 - **Explicit project provisioning.** Scoped workers must point at an existing platform
   project with `ENGINE_PROJECT_ID` or `runtime.Options.ProjectID`; missing projects fail
   startup. See [Engine project provisioning](/guides/engine-project-provisioning).
-- **Preview-gated REST control plane.** Mutating (POST) endpoints require
-  `X-Continua-Engine-Preview: 1`; all `/v1/engine/*` endpoints require
-  `ENGINE_PUBLIC_API_ENABLED=true`, and shapes may change before GA.
+- **Preview REST control plane.** `X-Continua-Engine-Preview: 1` is optional and
+  deprecated for mutating (POST) endpoints during the sunset window. All
+  `/v1/engine/*` endpoints still require `ENGINE_PUBLIC_API_ENABLED=true`.
+
+## Path to GA for `/v1/engine/*`
+
+The control plane graduates when these gates are complete:
+
+1. **Prerequisites.** The run/timer/signal correctness spine (#152–#155), library
+   entrypoint (#161), Prometheus metrics (#168), and retention/GC (#172) are all merged.
+2. **Contract freeze.** The `/v1/engine/*` shapes and error-code taxonomy in
+   `contracts/openapi/openapi.yaml` are frozen. Further changes must be additive and pass
+   explicit contract review.
+3. **Header sunset.** This release accepts mutating requests without
+   `X-Continua-Engine-Preview` and logs a deprecation warning. A following release removes
+   the header parameter from the contract, and SDKs stop sending it.
+4. **Deployment opt-in.** `ENGINE_PUBLIC_API_ENABLED` remains default-off through the
+   sunset window. After the header is removed, the default flips to enabled and
+   `ENGINE_PUBLIC_API_ENABLED=false` remains the documented off-switch.
 
 ## When to use the engine today
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -33,9 +34,8 @@ func enginePreviewHeaderMiddleware() func(http.Handler) http.Handler {
 				return
 			}
 
-			if r.Method == http.MethodPost && r.Header.Get(enginePreviewHeader) != "1" {
-				writeError(w, http.StatusBadRequest, "preview_header_required", "X-Continua-Engine-Preview: 1 header is required")
-				return
+			if r.Method == http.MethodPost && len(r.Header.Values(enginePreviewHeader)) == 0 {
+				slog.Warn(enginePreviewHeader+" requirement is deprecated and removed during the sunset window", "path", r.URL.Path)
 			}
 
 			next.ServeHTTP(w, r)

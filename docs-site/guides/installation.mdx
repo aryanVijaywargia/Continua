@@ -142,7 +142,7 @@ Engine surface (preview: see [Roadmap](/roadmap) for status):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ENGINE_PUBLIC_API_ENABLED` | `false` | Expose `/v1/engine/*` endpoints. Mutating (POST) requests also require `X-Continua-Engine-Preview: 1` |
+| `ENGINE_PUBLIC_API_ENABLED` | `false` | Expose `/v1/engine/*` endpoints. `X-Continua-Engine-Preview: 1` is optional and deprecated for mutating (POST) requests during the sunset window |
 | `ENGINE_DATABASE_URL` | falls back to `DATABASE_URL` | Optional separate Postgres for the engine schema |
 | `ENGINE_LEASE_COMPLETION_GRACE` | `0` | Optional clock-skew grace for remote activity complete, fail, and retry fences only |
 | `ENGINE_PROJECTION_RETENTION_AFTER` | unset | How long to retain projection state after a run reaches terminal state |

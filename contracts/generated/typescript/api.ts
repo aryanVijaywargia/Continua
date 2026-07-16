@@ -1664,9 +1664,12 @@ export interface operations {
     startEngineRun: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path?: never;
             cookie?: never;
@@ -1686,7 +1689,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineStartRunResponse"];
                 };
             };
-            /** @description Invalid request or missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1727,9 +1730,12 @@ export interface operations {
     claimRemoteActivityTasks: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path?: never;
             cookie?: never;
@@ -1749,7 +1755,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineRemoteActivityClaimResponse"];
                 };
             };
-            /** @description Invalid request or missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1772,9 +1778,12 @@ export interface operations {
     heartbeatRemoteActivityTask: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 id: string;
@@ -1796,7 +1805,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineRemoteActivityHeartbeatResponse"];
                 };
             };
-            /** @description Invalid request or missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1837,9 +1846,12 @@ export interface operations {
     completeRemoteActivityTask: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 id: string;
@@ -1859,7 +1871,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid request or missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1900,9 +1912,12 @@ export interface operations {
     failRemoteActivityTask: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 id: string;
@@ -1922,7 +1937,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid request or missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2175,9 +2190,12 @@ export interface operations {
     purgeEngineRun: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 run_id: string;
@@ -2199,7 +2217,7 @@ export interface operations {
                     "application/json": components["schemas"]["EnginePurgeResponse"];
                 };
             };
-            /** @description Invalid request body or missing preview header */
+            /** @description Invalid request body */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2240,9 +2258,12 @@ export interface operations {
     repairEngineRun: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 run_id: string;
@@ -2260,7 +2281,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineRepairResponse"];
                 };
             };
-            /** @description Missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2292,9 +2313,12 @@ export interface operations {
     backfillEngineProjections: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path?: never;
             cookie?: never;
@@ -2314,7 +2338,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineProjectionBackfillResponse"];
                 };
             };
-            /** @description Invalid request body, limit above 100, or missing preview header */
+            /** @description Invalid request body or limit above 100 */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2346,9 +2370,12 @@ export interface operations {
     signalEngineRun: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 run_id: string;
@@ -2370,7 +2397,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineControlResponse"];
                 };
             };
-            /** @description Invalid request or missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2411,9 +2438,12 @@ export interface operations {
     suspendEngineRun: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 run_id: string;
@@ -2431,7 +2461,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineRunResponse"];
                 };
             };
-            /** @description Missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2472,9 +2502,12 @@ export interface operations {
     resumeEngineRun: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 run_id: string;
@@ -2492,7 +2525,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineRunResponse"];
                 };
             };
-            /** @description Missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2533,9 +2566,12 @@ export interface operations {
     cancelEngineRun: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 run_id: string;
@@ -2553,7 +2589,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineControlResponse"];
                 };
             };
-            /** @description Missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2594,9 +2630,12 @@ export interface operations {
     terminateEngineRun: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Required preview header for mutating engine routes. */
-                "X-Continua-Engine-Preview": string;
+            header?: {
+                /**
+                 * @deprecated
+                 * @description Deprecated and no longer required; this header will be removed at GA.
+                 */
+                "X-Continua-Engine-Preview"?: string;
             };
             path: {
                 run_id: string;
@@ -2614,7 +2653,7 @@ export interface operations {
                     "application/json": components["schemas"]["EngineRunResultResponse"];
                 };
             };
-            /** @description Missing preview header */
+            /** @description Invalid request */
             400: {
                 headers: {
                     [name: string]: unknown;

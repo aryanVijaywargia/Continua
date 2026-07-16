@@ -57,16 +57,14 @@ func TestEnginePreviewHeaderMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	t.Run("preview header is required on mutating routes", func(t *testing.T) {
+	t.Run("mutating routes pass through without preview header", func(t *testing.T) {
 		handler := enginePreviewHeaderMiddleware()(next)
 		req := httptest.NewRequest(http.MethodPost, "/v1/engine/runs", bytes.NewReader([]byte(`{}`)))
 		rec := httptest.NewRecorder()
 
 		handler.ServeHTTP(rec, req)
 
-		require.Equal(t, http.StatusBadRequest, rec.Code)
-		resp := decodeJSONBody[Error](t, rec)
-		assert.Equal(t, "preview_header_required", resp.Code)
+		require.Equal(t, http.StatusNoContent, rec.Code)
 	})
 
 	t.Run("get routes pass through without preview header", func(t *testing.T) {
@@ -1189,7 +1187,7 @@ func TestTerminateEngineRun_ProjectorEventuallyProjectsTerminalCleanup(t *testin
 	assert.Len(t, waitState, 0)
 }
 
-func TestTerminateEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testing.T) {
+func TestTerminateEngineRun_RouterAcceptsHeaderlessAndEnforcesAvailability(t *testing.T) {
 	ctx := context.Background()
 	platformStore := store.New(testutil.TestDB(t))
 	engineQueries := enginedb.New(platformStore.Pool())
@@ -1220,8 +1218,7 @@ func TestTerminateEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testin
 
 	router.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Equal(t, "preview_header_required", decodeJSONBody[Error](t, rec).Code)
+	require.Equal(t, http.StatusOK, rec.Code)
 
 	server.enginePublicAPIEnabled = false
 	router = newAuthenticatedRouter(t, server, platformStore)
@@ -1540,7 +1537,7 @@ func TestEngineRunTerminateQuarantinedRun(t *testing.T) {
 	assert.Len(t, run.WaitingFor, 0)
 }
 
-func TestSuspendResumeEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *testing.T) {
+func TestSuspendResumeEngineRun_RouterAcceptsHeaderlessAndEnforcesAvailability(t *testing.T) {
 	ctx := context.Background()
 	platformStore := store.New(testutil.TestDB(t))
 	engineQueries := enginedb.New(platformStore.Pool())
@@ -1569,8 +1566,7 @@ func TestSuspendResumeEngineRun_RouterEnforcesPreviewHeaderAndAvailability(t *te
 	req.Header.Set("X-API-Key", apiKey)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Equal(t, "preview_header_required", decodeJSONBody[Error](t, rec).Code)
+	require.Equal(t, http.StatusOK, rec.Code)
 
 	server.enginePublicAPIEnabled = false
 	router = newAuthenticatedRouter(t, server, platformStore)
@@ -3429,7 +3425,7 @@ func invokeStartEngineRun(t *testing.T, server *Server, projectID uuid.UUID, req
 	httpReq = httpReq.WithContext(context.WithValue(httpReq.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.StartEngineRun(rec, httpReq, StartEngineRunParams{XContinuaEnginePreview: "1"})
+	server.StartEngineRun(rec, httpReq, StartEngineRunParams{})
 	return rec
 }
 
@@ -3533,7 +3529,7 @@ func invokePurgeEngineRun(
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.PurgeEngineRun(rec, req, runID, PurgeEngineRunParams{XContinuaEnginePreview: "1"})
+	server.PurgeEngineRun(rec, req, runID, PurgeEngineRunParams{})
 	return rec
 }
 
@@ -3545,7 +3541,7 @@ func invokeRepairEngineRun(t *testing.T, server *Server, projectID, runID uuid.U
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.RepairEngineRun(rec, req, runID, RepairEngineRunParams{XContinuaEnginePreview: "1"})
+	server.RepairEngineRun(rec, req, runID, RepairEngineRunParams{})
 	return rec
 }
 
@@ -3586,7 +3582,7 @@ func invokeBackfillEngineProjectionsWithAuthMode(
 	}
 	rec := httptest.NewRecorder()
 
-	server.BackfillEngineProjections(rec, req, BackfillEngineProjectionsParams{XContinuaEnginePreview: "1"})
+	server.BackfillEngineProjections(rec, req, BackfillEngineProjectionsParams{})
 	return rec
 }
 
@@ -3606,7 +3602,7 @@ func invokeSignalEngineRun(
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.SignalEngineRun(rec, req, runID, SignalEngineRunParams{XContinuaEnginePreview: "1"})
+	server.SignalEngineRun(rec, req, runID, SignalEngineRunParams{})
 	return rec
 }
 
@@ -3618,7 +3614,7 @@ func invokeCancelEngineRun(t *testing.T, server *Server, projectID, runID uuid.U
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.CancelEngineRun(rec, req, runID, CancelEngineRunParams{XContinuaEnginePreview: "1"})
+	server.CancelEngineRun(rec, req, runID, CancelEngineRunParams{})
 	return rec
 }
 
@@ -3641,7 +3637,7 @@ func invokeTerminateEngineRun(t *testing.T, server *Server, projectID, runID uui
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.TerminateEngineRun(rec, req, runID, TerminateEngineRunParams{XContinuaEnginePreview: "1"})
+	server.TerminateEngineRun(rec, req, runID, TerminateEngineRunParams{})
 	return rec
 }
 
@@ -3653,7 +3649,7 @@ func invokeSuspendEngineRun(t *testing.T, server *Server, projectID, runID uuid.
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.SuspendEngineRun(rec, req, runID, SuspendEngineRunParams{XContinuaEnginePreview: "1"})
+	server.SuspendEngineRun(rec, req, runID, SuspendEngineRunParams{})
 	return rec
 }
 
@@ -3665,7 +3661,7 @@ func invokeResumeEngineRun(t *testing.T, server *Server, projectID, runID uuid.U
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.ResumeEngineRun(rec, req, runID, ResumeEngineRunParams{XContinuaEnginePreview: "1"})
+	server.ResumeEngineRun(rec, req, runID, ResumeEngineRunParams{})
 	return rec
 }
 

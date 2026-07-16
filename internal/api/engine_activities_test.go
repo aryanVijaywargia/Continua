@@ -245,15 +245,15 @@ func TestRemoteActivityRoutesRequireAuthAndPreview(t *testing.T) {
 		assert.Equal(t, "missing_api_key", decodeJSONBody[map[string]string](t, rec)["code"])
 	})
 
-	t.Run("preview header is required", func(t *testing.T) {
+	t.Run("authenticated request without preview header reaches claim handler", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/engine/activities/claim", bytes.NewReader(body))
 		req.Header.Set("X-API-Key", apiKey)
 		rec := httptest.NewRecorder()
 
 		handler.ServeHTTP(rec, req)
 
-		require.Equal(t, http.StatusBadRequest, rec.Code)
-		assert.Equal(t, "preview_header_required", decodeJSONBody[Error](t, rec).Code)
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.Empty(t, decodeJSONBody[EngineRemoteActivityClaimResponse](t, rec).Tasks)
 	})
 
 	t.Run("authenticated preview request reaches claim handler", func(t *testing.T) {
@@ -615,7 +615,7 @@ func invokeClaimRemoteActivityTasks(
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.ClaimRemoteActivityTasks(rec, req, ClaimRemoteActivityTasksParams{XContinuaEnginePreview: "1"})
+	server.ClaimRemoteActivityTasks(rec, req, ClaimRemoteActivityTasksParams{})
 	return rec
 }
 
@@ -635,7 +635,7 @@ func invokeHeartbeatRemoteActivityTask(
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.HeartbeatRemoteActivityTask(rec, req, taskID, HeartbeatRemoteActivityTaskParams{XContinuaEnginePreview: "1"})
+	server.HeartbeatRemoteActivityTask(rec, req, taskID, HeartbeatRemoteActivityTaskParams{})
 	return rec
 }
 
@@ -655,7 +655,7 @@ func invokeCompleteRemoteActivityTask(
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.CompleteRemoteActivityTask(rec, req, taskID, CompleteRemoteActivityTaskParams{XContinuaEnginePreview: "1"})
+	server.CompleteRemoteActivityTask(rec, req, taskID, CompleteRemoteActivityTaskParams{})
 	return rec
 }
 
@@ -675,6 +675,6 @@ func invokeFailRemoteActivityTask(
 	req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
 	rec := httptest.NewRecorder()
 
-	server.FailRemoteActivityTask(rec, req, taskID, FailRemoteActivityTaskParams{XContinuaEnginePreview: "1"})
+	server.FailRemoteActivityTask(rec, req, taskID, FailRemoteActivityTaskParams{})
 	return rec
 }

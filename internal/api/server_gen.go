@@ -1457,44 +1457,44 @@ type ListSpansByTraceParams struct {
 
 // ClaimRemoteActivityTasksParams defines parameters for ClaimRemoteActivityTasks.
 type ClaimRemoteActivityTasksParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // CompleteRemoteActivityTaskParams defines parameters for CompleteRemoteActivityTask.
 type CompleteRemoteActivityTaskParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // FailRemoteActivityTaskParams defines parameters for FailRemoteActivityTask.
 type FailRemoteActivityTaskParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // HeartbeatRemoteActivityTaskParams defines parameters for HeartbeatRemoteActivityTask.
 type HeartbeatRemoteActivityTaskParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // BackfillEngineProjectionsParams defines parameters for BackfillEngineProjections.
 type BackfillEngineProjectionsParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // StartEngineRunParams defines parameters for StartEngineRun.
 type StartEngineRunParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // CancelEngineRunParams defines parameters for CancelEngineRun.
 type CancelEngineRunParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // GetEngineRunHistoryParams defines parameters for GetEngineRunHistory.
@@ -1505,38 +1505,38 @@ type GetEngineRunHistoryParams struct {
 
 // PurgeEngineRunParams defines parameters for PurgeEngineRun.
 type PurgeEngineRunParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // RepairEngineRunParams defines parameters for RepairEngineRun.
 type RepairEngineRunParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // ResumeEngineRunParams defines parameters for ResumeEngineRun.
 type ResumeEngineRunParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // SignalEngineRunParams defines parameters for SignalEngineRun.
 type SignalEngineRunParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // SuspendEngineRunParams defines parameters for SuspendEngineRun.
 type SuspendEngineRunParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // TerminateEngineRunParams defines parameters for TerminateEngineRun.
 type TerminateEngineRunParams struct {
-	// XContinuaEnginePreview Required preview header for mutating engine routes.
-	XContinuaEnginePreview string `json:"X-Continua-Engine-Preview"`
+	// XContinuaEnginePreview Deprecated and no longer required; this header will be removed at GA.
+	XContinuaEnginePreview *string `json:"X-Continua-Engine-Preview,omitempty"`
 }
 
 // IngestParams defines parameters for Ingest.
@@ -2858,7 +2858,7 @@ func (siw *ServerInterfaceWrapper) ClaimRemoteActivityTasks(w http.ResponseWrite
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -2867,18 +2867,14 @@ func (siw *ServerInterfaceWrapper) ClaimRemoteActivityTasks(w http.ResponseWrite
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2917,7 +2913,7 @@ func (siw *ServerInterfaceWrapper) CompleteRemoteActivityTask(w http.ResponseWri
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -2926,18 +2922,14 @@ func (siw *ServerInterfaceWrapper) CompleteRemoteActivityTask(w http.ResponseWri
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2976,7 +2968,7 @@ func (siw *ServerInterfaceWrapper) FailRemoteActivityTask(w http.ResponseWriter,
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -2985,18 +2977,14 @@ func (siw *ServerInterfaceWrapper) FailRemoteActivityTask(w http.ResponseWriter,
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3035,7 +3023,7 @@ func (siw *ServerInterfaceWrapper) HeartbeatRemoteActivityTask(w http.ResponseWr
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3044,18 +3032,14 @@ func (siw *ServerInterfaceWrapper) HeartbeatRemoteActivityTask(w http.ResponseWr
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3142,7 +3126,7 @@ func (siw *ServerInterfaceWrapper) BackfillEngineProjections(w http.ResponseWrit
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3151,18 +3135,14 @@ func (siw *ServerInterfaceWrapper) BackfillEngineProjections(w http.ResponseWrit
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3194,7 +3174,7 @@ func (siw *ServerInterfaceWrapper) StartEngineRun(w http.ResponseWriter, r *http
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3203,18 +3183,14 @@ func (siw *ServerInterfaceWrapper) StartEngineRun(w http.ResponseWriter, r *http
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3288,7 +3264,7 @@ func (siw *ServerInterfaceWrapper) CancelEngineRun(w http.ResponseWriter, r *htt
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3297,18 +3273,14 @@ func (siw *ServerInterfaceWrapper) CancelEngineRun(w http.ResponseWriter, r *htt
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3434,7 +3406,7 @@ func (siw *ServerInterfaceWrapper) PurgeEngineRun(w http.ResponseWriter, r *http
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3443,18 +3415,14 @@ func (siw *ServerInterfaceWrapper) PurgeEngineRun(w http.ResponseWriter, r *http
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3495,7 +3463,7 @@ func (siw *ServerInterfaceWrapper) RepairEngineRun(w http.ResponseWriter, r *htt
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3504,18 +3472,14 @@ func (siw *ServerInterfaceWrapper) RepairEngineRun(w http.ResponseWriter, r *htt
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3589,7 +3553,7 @@ func (siw *ServerInterfaceWrapper) ResumeEngineRun(w http.ResponseWriter, r *htt
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3598,18 +3562,14 @@ func (siw *ServerInterfaceWrapper) ResumeEngineRun(w http.ResponseWriter, r *htt
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3650,7 +3610,7 @@ func (siw *ServerInterfaceWrapper) SignalEngineRun(w http.ResponseWriter, r *htt
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3659,18 +3619,14 @@ func (siw *ServerInterfaceWrapper) SignalEngineRun(w http.ResponseWriter, r *htt
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3711,7 +3667,7 @@ func (siw *ServerInterfaceWrapper) SuspendEngineRun(w http.ResponseWriter, r *ht
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3720,18 +3676,14 @@ func (siw *ServerInterfaceWrapper) SuspendEngineRun(w http.ResponseWriter, r *ht
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3772,7 +3724,7 @@ func (siw *ServerInterfaceWrapper) TerminateEngineRun(w http.ResponseWriter, r *
 
 	headers := r.Header
 
-	// ------------- Required header parameter "X-Continua-Engine-Preview" -------------
+	// ------------- Optional header parameter "X-Continua-Engine-Preview" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-Continua-Engine-Preview")]; found {
 		var XContinuaEnginePreview string
 		n := len(valueList)
@@ -3781,18 +3733,14 @@ func (siw *ServerInterfaceWrapper) TerminateEngineRun(w http.ResponseWriter, r *
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Continua-Engine-Preview", valueList[0], &XContinuaEnginePreview, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Continua-Engine-Preview", Err: err})
 			return
 		}
 
-		params.XContinuaEnginePreview = XContinuaEnginePreview
+		params.XContinuaEnginePreview = &XContinuaEnginePreview
 
-	} else {
-		err := fmt.Errorf("Header parameter X-Continua-Engine-Preview is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Continua-Engine-Preview", Err: err})
-		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
