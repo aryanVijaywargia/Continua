@@ -75,22 +75,42 @@ func TestEngineReadPolicy_OperatorUnboundedAcrossProjects(t *testing.T) {
 func TestEngineReadPolicy_OperatorProjectIDActsAsFilter(t *testing.T) {
 	fixture := seedEngineBoundaryRun(t)
 
-	for _, read := range []engineBoundaryRead{engineBoundaryRun, engineBoundaryInstance} {
+	for _, read := range []engineBoundaryRead{
+		engineBoundaryRun,
+		engineBoundaryHistory,
+		engineBoundaryResult,
+		engineBoundaryPendingWork,
+		engineBoundaryInstance,
+	} {
 		t.Run(string(read), func(t *testing.T) {
 			mismatch := invokeEngineBoundaryReadAsOperator(t, fixture.server, read, fixture.runID, fixture.instanceKey, &fixture.projectAID)
 			require.Equal(t, http.StatusNotFound, mismatch.Code, mismatch.Body.String())
 
 			selected := invokeEngineBoundaryReadAsOperator(t, fixture.server, read, fixture.runID, fixture.instanceKey, &fixture.projectBID)
-			require.Equal(t, http.StatusOK, selected.Code, selected.Body.String())
-			if read == engineBoundaryRun {
+			switch read {
+			case engineBoundaryRun:
+				require.Equal(t, http.StatusOK, selected.Code, selected.Body.String())
 				response := decodeJSONBody[EngineRunResponse](t, selected)
 				assert.Equal(t, fixture.runID, response.RunId)
 				assert.Equal(t, fixture.instanceKey, response.InstanceKey)
-				return
+			case engineBoundaryHistory:
+				require.Equal(t, http.StatusOK, selected.Code, selected.Body.String())
+				response := decodeJSONBody[EngineRunHistoryResponse](t, selected)
+				require.Len(t, response.Events, 1)
+				assert.Equal(t, publichistory.EventWorkflowStarted, response.Events[0].EventType)
+			case engineBoundaryResult:
+				require.Equal(t, http.StatusConflict, selected.Code, selected.Body.String())
+				assert.Equal(t, "run_not_terminal", decodeJSONBody[Error](t, selected).Code)
+			case engineBoundaryPendingWork:
+				require.Equal(t, http.StatusOK, selected.Code, selected.Body.String())
+				response := decodeJSONBody[EnginePendingWorkResponse](t, selected)
+				assert.Equal(t, fixture.runID, response.RunId)
+			case engineBoundaryInstance:
+				require.Equal(t, http.StatusOK, selected.Code, selected.Body.String())
+				response := decodeJSONBody[EngineInstanceResponse](t, selected)
+				assert.Equal(t, fixture.instanceKey, response.InstanceKey)
+				assert.Equal(t, fixture.runID, response.CurrentRun.RunId)
 			}
-			response := decodeJSONBody[EngineInstanceResponse](t, selected)
-			assert.Equal(t, fixture.instanceKey, response.InstanceKey)
-			assert.Equal(t, fixture.runID, response.CurrentRun.RunId)
 		})
 	}
 }
