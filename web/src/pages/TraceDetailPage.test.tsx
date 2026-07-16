@@ -414,12 +414,15 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     await user.click(await screen.findByRole('button', { name: 'Engine state' }));
-    const versionField = screen
+    const runHeader = screen
       .getAllByText('Version')
-      .map((label) => label.parentElement)
-      .find((field) => field && within(field).queryByText('v3'));
-    expect(versionField).toBeDefined();
-    expect(within(versionField as HTMLElement).getByText('v3')).toBeInTheDocument();
+      .map((label) => label.closest('.rounded-lg'))
+      .find(
+        (card) =>
+          card && within(card as HTMLElement).queryByText(base.engine!.run_id)
+      );
+    expect(runHeader).toBeDefined();
+    expect(within(runHeader as HTMLElement).getByText('v3')).toBeInTheDocument();
   });
 
   it('renders workflow.version_marker history events legibly', async () => {
