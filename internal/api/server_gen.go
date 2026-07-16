@@ -73,6 +73,12 @@ const (
 	CompareTraceHeaderStatusRUNNING   CompareTraceHeaderStatus = "RUNNING"
 )
 
+// Defines values for EnginePendingActivityItemExecutionTarget.
+const (
+	Local  EnginePendingActivityItemExecutionTarget = "local"
+	Remote EnginePendingActivityItemExecutionTarget = "remote"
+)
+
 // Defines values for EngineProjectionBackfillAction.
 const (
 	EngineProjectionBackfillActionRepairRequested EngineProjectionBackfillAction = "repair_requested"
@@ -507,13 +513,18 @@ type EngineInstanceResponse struct {
 
 // EnginePendingActivityItem defines model for EnginePendingActivityItem.
 type EnginePendingActivityItem struct {
-	ActivityKey  string             `json:"activity_key"`
-	ActivityType string             `json:"activity_type"`
-	AttemptCount int32              `json:"attempt_count"`
-	AvailableAt  time.Time          `json:"available_at"`
-	Status       string             `json:"status"`
-	TaskId       openapi_types.UUID `json:"task_id"`
+	ActivityKey     string                                   `json:"activity_key"`
+	ActivityType    string                                   `json:"activity_type"`
+	AttemptCount    int32                                    `json:"attempt_count"`
+	AvailableAt     time.Time                                `json:"available_at"`
+	ClaimedBy       *string                                  `json:"claimed_by,omitempty"`
+	ExecutionTarget EnginePendingActivityItemExecutionTarget `json:"execution_target"`
+	Status          string                                   `json:"status"`
+	TaskId          openapi_types.UUID                       `json:"task_id"`
 }
+
+// EnginePendingActivityItemExecutionTarget defines model for EnginePendingActivityItem.ExecutionTarget.
+type EnginePendingActivityItemExecutionTarget string
 
 // EnginePendingSignalItem defines model for EnginePendingSignalItem.
 type EnginePendingSignalItem struct {

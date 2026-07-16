@@ -141,6 +141,11 @@ class EnginePendingWork(BaseModel):
     pending_inbox_items: int
 
 
+class ExecutionTarget(Enum):
+    local = "local"
+    remote = "remote"
+
+
 class EnginePendingActivityItem(BaseModel):
     task_id: UUID
     activity_key: str
@@ -148,6 +153,8 @@ class EnginePendingActivityItem(BaseModel):
     status: str
     available_at: AwareDatetime
     attempt_count: int
+    execution_target: ExecutionTarget
+    claimed_by: str | None = None
 
 
 class ActivityType(RootModel[str]):

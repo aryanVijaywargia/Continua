@@ -394,6 +394,83 @@ describe('TraceDetailPage', () => {
     expect(screen.getAllByRole('button', { name: 'Signal' })).toHaveLength(1);
   });
 
+  it('shows the pinned definition version in the engine run header', async () => {
+    const user = userEvent.setup();
+    const base = createEngineTraceDetail();
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(
+            createEngineTraceDetail({
+              engine: {
+                ...base.engine!,
+                definition_version: 'v3',
+              },
+            })
+          ),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    const versionField = screen
+      .getAllByText('Version')
+      .map((label) => label.parentElement)
+      .find((field) => field && within(field).queryByText('v3'));
+    expect(versionField).toBeDefined();
+    expect(within(versionField as HTMLElement).getByText('v3')).toBeInTheDocument();
+  });
+
+  it('renders workflow.version_marker history events legibly', async () => {
+    const user = userEvent.setup();
+    const detail = createEngineTraceDetail();
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(detail),
+        engineHistory: () =>
+          jsonResponse({
+            events: [
+              {
+                id: 1,
+                sequence_no: 1,
+                event_type: 'workflow.version_marker',
+                payload: { change_id: 'new-pricing', version: 2 },
+                created_at: '2026-03-14T10:00:01.000Z',
+              },
+            ],
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    await user.click(screen.getByRole('button', { name: 'Engine history 0' }));
+
+    const eventType = await screen.findByText('workflow.version_marker');
+    const historyRow = eventType.closest('.grid');
+    expect(historyRow).not.toBeNull();
+    const payloadInspector = within(historyRow as HTMLElement)
+      .getByRole('button', { name: 'Collapse payload' })
+      .closest('.mt-2');
+    expect(payloadInspector).not.toBeNull();
+
+    const changeMatches = within(historyRow as HTMLElement).getAllByText(/new-pricing/i);
+    expect(
+      changeMatches.some((element) =>
+        !(payloadInspector as HTMLElement).contains(element)
+      )
+    ).toBe(true);
+    const versionMatches = within(historyRow as HTMLElement).getAllByText(/version\s*2|v2/i);
+    expect(
+      versionMatches.some((element) =>
+        !(payloadInspector as HTMLElement).contains(element)
+      )
+    ).toBe(true);
+  });
+
   it('explains a quarantined engine run and enables resume from the engine section', async () => {
     const user = userEvent.setup();
     const base = createEngineTraceDetail();
