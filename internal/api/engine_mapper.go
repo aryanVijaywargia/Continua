@@ -227,12 +227,14 @@ func enginePendingWorkResponseToAPI(result *enginePendingWorkResult) EnginePendi
 	for i := range result.Activities {
 		item := result.Activities[i]
 		response.Activities = append(response.Activities, EnginePendingActivityItem{
-			ActivityKey:  item.ActivityKey,
-			ActivityType: item.ActivityType,
-			AttemptCount: item.AttemptCount,
-			AvailableAt:  item.AvailableAt,
-			Status:       item.Status,
-			TaskId:       item.TaskID,
+			ActivityKey:     item.ActivityKey,
+			ActivityType:    item.ActivityType,
+			AttemptCount:    item.AttemptCount,
+			AvailableAt:     item.AvailableAt,
+			ClaimedBy:       item.ClaimedBy,
+			ExecutionTarget: EnginePendingActivityItemExecutionTarget(item.ExecutionTarget),
+			Status:          item.Status,
+			TaskId:          item.TaskID,
 		})
 	}
 

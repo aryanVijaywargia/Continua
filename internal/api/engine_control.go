@@ -128,12 +128,14 @@ type enginePendingWorkResult struct {
 }
 
 type enginePendingActivityItem struct {
-	TaskID       uuid.UUID
-	ActivityKey  string
-	ActivityType string
-	Status       string
-	AvailableAt  time.Time
-	AttemptCount int32
+	TaskID          uuid.UUID
+	ActivityKey     string
+	ActivityType    string
+	Status          string
+	AvailableAt     time.Time
+	AttemptCount    int32
+	ExecutionTarget string
+	ClaimedBy       *string
 }
 
 type enginePendingTimerItem struct {
@@ -636,12 +638,14 @@ func (s *engineControlService) GetRunPendingWork(
 	for i := range activities {
 		task := activities[i]
 		result.Activities = append(result.Activities, enginePendingActivityItem{
-			TaskID:       task.ID,
-			ActivityKey:  task.ActivityKey,
-			ActivityType: task.ActivityType,
-			Status:       string(task.Status),
-			AvailableAt:  task.AvailableAt,
-			AttemptCount: task.AttemptCount,
+			TaskID:          task.ID,
+			ActivityKey:     task.ActivityKey,
+			ActivityType:    task.ActivityType,
+			Status:          string(task.Status),
+			AvailableAt:     task.AvailableAt,
+			AttemptCount:    task.AttemptCount,
+			ExecutionTarget: task.ExecutionTarget,
+			ClaimedBy:       task.ClaimedBy,
 		})
 	}
 
