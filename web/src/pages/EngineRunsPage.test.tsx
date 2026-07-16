@@ -37,6 +37,23 @@ const ENGINE_TRACE: Trace = {
   },
 };
 
+const QUARANTINED_ENGINE_TRACE: Trace = {
+  ...ENGINE_TRACE,
+  id: 'engine-trace-quarantined',
+  engine: {
+    ...ENGINE_TRACE.engine!,
+    status: 'QUARANTINED',
+    wait_state: {
+      kind: 'replay_mismatch',
+      expected_type: 'activity_scheduled',
+      expected_key: 'charge-card',
+      actual_type: 'timer_started',
+      actual_key: 'timeout',
+      detail: 'replay produced a different next event',
+    },
+  },
+};
+
 function LocationProbe() {
   const location = useLocation();
   const state = location.state as { returnTo?: string } | null;
@@ -65,7 +82,15 @@ function renderEngineRunsPage(initialEntry = '/engine/runs') {
       <ThemeProvider>
         <MemoryRouter initialEntries={[initialEntry]}>
           <Routes>
-            <Route path="/engine/runs" element={<EngineRunsPage />} />
+            <Route
+              path="/engine/runs"
+              element={
+                <>
+                  <EngineRunsPage />
+                  <LocationProbe />
+                </>
+              }
+            />
             <Route path="/traces/:traceId" element={<LocationProbe />} />
           </Routes>
         </MemoryRouter>
@@ -76,10 +101,12 @@ function renderEngineRunsPage(initialEntry = '/engine/runs') {
 
 function mockEngineRequests({
   traces = [ENGINE_TRACE],
+  total = traces.length,
   instance,
   start,
 }: {
   traces?: Trace[];
+  total?: number;
   instance?: (url: URL, init?: RequestInit) => Promise<Response> | Response;
   start?: (url: URL, init?: RequestInit) => Promise<Response> | Response;
 } = {}) {
@@ -87,7 +114,7 @@ function mockEngineRequests({
     const url = new URL(readRequestUrl(input), 'http://localhost');
 
     if (url.pathname === '/api/traces') {
-      return jsonResponse({ traces, total: traces.length });
+      return jsonResponse({ traces, total });
     }
     if (/^\/v1\/engine\/instances\/[^/]+$/.test(url.pathname) && instance) {
       return instance(url, init);
@@ -136,6 +163,81 @@ describe('EngineRunsPage', () => {
       );
       expect(requestUrl.pathname).toBe('/api/traces');
       expect(requestUrl.searchParams.get('engine_only')).toBe('true');
+    });
+  });
+
+  it('renders quarantined runs with a quarantined status label and mismatch wait summary', async () => {
+    mockEngineRequests({ traces: [QUARANTINED_ENGINE_TRACE] });
+
+    renderEngineRunsPage();
+
+    const table = await screen.findByRole('table');
+    const status = await within(table).findByText('Quarantined');
+    const row = status.closest('tr');
+    expect(row).not.toBeNull();
+    expect(
+      within(row as HTMLTableRowElement).getByText(/Replay mismatch/)
+    ).toBeInTheDocument();
+    expect(
+      within(row as HTMLTableRowElement).queryByText(/Waiting on engine state/)
+    ).not.toBeInTheDocument();
+  });
+
+  it('filters runs by engine status through the URL-driven quarantined filter', async () => {
+    const user = userEvent.setup();
+    mockEngineRequests({ total: DEFAULT_PAGE_SIZE + 1 });
+
+    const firstRender = renderEngineRunsPage();
+
+    await screen.findByText('darklaunch.demo · v1');
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input]) => {
+          const url = new URL(readRequestUrl(input as RequestInput), 'http://localhost');
+          return (
+            url.pathname === '/api/traces' &&
+            url.searchParams.get('offset') === String(DEFAULT_PAGE_SIZE)
+          );
+        })
+      ).toBe(true);
+    });
+
+    const statusFilter = screen.getByRole('combobox', { name: /status/i });
+    expect(statusFilter).toHaveDisplayValue('All statuses');
+    expect(
+      within(statusFilter).getByRole('option', { name: 'Quarantined' })
+    ).toHaveValue('quarantined');
+
+    await user.selectOptions(statusFilter, 'quarantined');
+
+    await waitFor(() => {
+      const filteredRequest = fetchMock.mock.calls
+        .map(
+          ([input]) =>
+            new URL(readRequestUrl(input as RequestInput), 'http://localhost')
+        )
+        .find((url) => url.searchParams.get('engine_run_status') === 'quarantined');
+      expect(filteredRequest).toBeDefined();
+      expect(['0', null]).toContain(filteredRequest?.searchParams.get('offset'));
+    });
+    expect(
+      new URLSearchParams(
+        screen.getByTestId('probe-search').textContent ?? ''
+      ).get('engine_run_status')
+    ).toBe('quarantined');
+
+    firstRender.unmount();
+    fetchMock.mockClear();
+
+    renderEngineRunsPage('/engine/runs?engine_run_status=quarantined');
+
+    await waitFor(() => {
+      const firstRequest = new URL(
+        readRequestUrl(fetchMock.mock.calls[0]?.[0] as RequestInput),
+        'http://localhost'
+      );
+      expect(firstRequest.searchParams.get('engine_run_status')).toBe('quarantined');
     });
   });
 
