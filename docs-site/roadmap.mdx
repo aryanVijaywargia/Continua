@@ -48,7 +48,7 @@ Preview caveats:
 - **Go-only authoring**: no TypeScript/Python SDK for authoring workflows yet.
 - **No production definition loading**: definitions register through the Go runtime that
   starts workers; there's no multi-tenant register-and-version path yet.
-- **Preview-gated REST**: mutating (POST) endpoints require `X-Continua-Engine-Preview: 1`; all `/v1/engine/*` endpoints require `ENGINE_PUBLIC_API_ENABLED=true`, and shapes may change before GA.
+- **Preview REST sunset**: `X-Continua-Engine-Preview: 1` is optional and deprecated for mutating (POST) endpoints; all `/v1/engine/*` endpoints still require `ENGINE_PUBLIC_API_ENABLED=true`. See the [documented GA path](/concepts/engine-foundation#path-to-ga-for-v1engine).
 
 See [Engine foundation](/concepts/engine-foundation) for the full picture.
 
@@ -94,7 +94,7 @@ Rough ordering, subject to change as feedback comes in:
 
 1. Finish the TypeScript SDK to parity with Python for trace / span / session instrumentation.
 2. WebSocket runtime so the trace detail page can drop polling.
-3. Graduate the durable engine from preview: multi-tenant workflow definition loading, non-Go (TypeScript/Python) workflow authoring, and a GA `/v1/engine/*` control plane.
+3. Graduate the durable engine from preview: multi-tenant workflow definition loading, non-Go (TypeScript/Python) workflow authoring, and the [documented GA path for `/v1/engine/*`](/concepts/engine-foundation#path-to-ga-for-v1engine).
 4. Proxy capture for zero-code instrumentation.
 5. Replay execution as a layer on top of durable engine workflows.
 

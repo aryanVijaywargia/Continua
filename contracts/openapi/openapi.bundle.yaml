@@ -146,8 +146,9 @@ paths:
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       requestBody:
@@ -164,7 +165,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineStartRunResponse'
         '400':
-          description: Invalid request or missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -198,8 +199,9 @@ paths:
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       requestBody:
@@ -216,7 +218,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineRemoteActivityClaimResponse'
         '400':
-          description: Invalid request or missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -244,8 +246,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       requestBody:
@@ -262,7 +265,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineRemoteActivityHeartbeatResponse'
         '400':
-          description: Invalid request or missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -302,8 +305,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       requestBody:
@@ -316,7 +320,7 @@ paths:
         '204':
           description: Activity task completed
         '400':
-          description: Invalid request or missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -356,8 +360,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       requestBody:
@@ -370,7 +375,7 @@ paths:
         '204':
           description: Activity task failed or requeued
         '400':
-          description: Invalid request or missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -594,8 +599,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       requestBody:
@@ -612,7 +618,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EnginePurgeResponse'
         '400':
-          description: Invalid request body or missing preview header
+          description: Invalid request body
           content:
             application/json:
               schema:
@@ -654,8 +660,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       responses:
@@ -666,7 +673,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineRepairResponse'
         '400':
-          description: Missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -699,8 +706,9 @@ paths:
       parameters:
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       requestBody:
@@ -717,7 +725,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineProjectionBackfillResponse'
         '400':
-          description: Invalid request body, limit above 100, or missing preview header
+          description: Invalid request body or limit above 100
           content:
             application/json:
               schema:
@@ -749,8 +757,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       requestBody:
@@ -767,7 +776,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineControlResponse'
         '400':
-          description: Invalid request or missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -805,8 +814,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       responses:
@@ -817,7 +827,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineRunResponse'
         '400':
-          description: Missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -855,8 +865,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       responses:
@@ -867,7 +878,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineRunResponse'
         '400':
-          description: Missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -909,8 +920,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       responses:
@@ -921,7 +933,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineControlResponse'
         '400':
-          description: Missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -959,8 +971,9 @@ paths:
             format: uuid
         - name: X-Continua-Engine-Preview
           in: header
-          required: true
-          description: Required preview header for mutating engine routes.
+          required: false
+          deprecated: true
+          description: Deprecated and no longer required; this header will be removed at GA.
           schema:
             type: string
       responses:
@@ -971,7 +984,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EngineRunResultResponse'
         '400':
-          description: Missing preview header
+          description: Invalid request
           content:
             application/json:
               schema:
