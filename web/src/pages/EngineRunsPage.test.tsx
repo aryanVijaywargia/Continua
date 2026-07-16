@@ -55,6 +55,14 @@ const DEFINITIONS = [
     published_at: '2026-03-11T09:00:00.000Z',
   },
   {
+    definition_name: 'defA',
+    definition_version: 'v0',
+    enabled: true,
+    live: false,
+    runtime_published_at: '2026-03-09T10:00:00.000Z',
+    published_at: '2026-03-09T09:00:00.000Z',
+  },
+  {
     definition_name: 'defB',
     definition_version: 'v9',
     enabled: true,
@@ -464,6 +472,22 @@ describe('StartEngineRunDialog definition picker', () => {
     expect(picker.getByRole('option', { name: /legacy.*not live/i })).toBeDisabled();
   });
 
+  it('disables picker submission while definitions are loading', async () => {
+    const user = userEvent.setup();
+    mockEngineRequests({
+      definitions: () => new Promise<Response>(() => undefined),
+    });
+    renderEngineRunsPage();
+
+    const dialogHeading = await openStartDialog(user);
+    const form = dialogHeading.closest('form');
+    expect(form).not.toBeNull();
+    const dialog = within(form as HTMLFormElement);
+
+    expect(dialog.getByText('Loading registered definitions…')).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Start run' })).toBeDisabled();
+  });
+
   it('scopes the version dropdown to the selected definition and resets it on change', async () => {
     const user = userEvent.setup();
     mockEngineRequests();
@@ -475,12 +499,17 @@ describe('StartEngineRunDialog definition picker', () => {
     await user.selectOptions(definitionName, 'defA');
 
     const definitionVersion = screen.getByLabelText(/^Definition version/);
+    const defAVersionOptions = within(definitionVersion).getAllByRole('option');
     expect(
-      within(definitionVersion)
-        .getAllByRole('option')
+      defAVersionOptions
         .map((option) => (option as HTMLOptionElement).value)
         .filter(Boolean)
-    ).toEqual(['v1', 'v2']);
+    ).toEqual(['v1', 'v2', 'v0']);
+    expect(
+      defAVersionOptions.find(
+        (option) => (option as HTMLOptionElement).value === 'v0'
+      )
+    ).toBeDisabled();
 
     await user.selectOptions(definitionVersion, 'v2');
     expect(definitionVersion).toHaveValue('v2');
@@ -534,24 +563,27 @@ describe('StartEngineRunDialog definition picker', () => {
       .value;
     await user.click(dialog.getByRole('button', { name: 'Start run' }));
 
+    let postCall: ReturnType<typeof fetchMock>['mock']['calls'][number] | undefined;
     await waitFor(() => {
-      expect(screen.getByTestId('probe-pathname')).toHaveTextContent(
-        '/traces/trace-picker-1'
-      );
+      postCall = fetchMock.mock.calls.find(([input, init]) => {
+        const url = new URL(readRequestUrl(input as RequestInput), 'http://localhost');
+        return (
+          url.pathname === '/v1/engine/runs' &&
+          (init as RequestInit | undefined)?.method === 'POST'
+        );
+      });
+      expect(postCall).toBeDefined();
     });
-    const postCall = fetchMock.mock.calls.find(([input, init]) => {
-      const url = new URL(readRequestUrl(input as RequestInput), 'http://localhost');
-      return (
-        url.pathname === '/v1/engine/runs' &&
-        (init as RequestInit | undefined)?.method === 'POST'
-      );
-    });
-    expect(postCall).toBeDefined();
     expect(JSON.parse((postCall?.[1] as RequestInit).body as string)).toEqual({
       instance_key: 'picker-instance',
       definition_name: 'defA',
       definition_version: 'v2',
       request_key: requestKey,
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('probe-pathname')).toHaveTextContent(
+        '/traces/trace-picker-1'
+      );
     });
     expect(screen.getByTestId('probe-return-to')).toHaveTextContent('/engine/runs');
   });
@@ -634,33 +666,43 @@ describe('StartEngineRunDialog definition picker', () => {
       .value;
     await user.click(dialog.getByRole('button', { name: 'Start run' }));
 
+    let postCall: ReturnType<typeof fetchMock>['mock']['calls'][number] | undefined;
     await waitFor(() => {
-      expect(screen.getByTestId('probe-pathname')).toHaveTextContent(
-        '/traces/trace-manual-1'
-      );
+      postCall = fetchMock.mock.calls.find(([input, init]) => {
+        const url = new URL(readRequestUrl(input as RequestInput), 'http://localhost');
+        return (
+          url.pathname === '/v1/engine/runs' &&
+          (init as RequestInit | undefined)?.method === 'POST'
+        );
+      });
+      expect(postCall).toBeDefined();
     });
-    const postCall = fetchMock.mock.calls.find(([input, init]) => {
-      const url = new URL(readRequestUrl(input as RequestInput), 'http://localhost');
-      return (
-        url.pathname === '/v1/engine/runs' &&
-        (init as RequestInit | undefined)?.method === 'POST'
-      );
-    });
-    expect(postCall).toBeDefined();
     expect(JSON.parse((postCall?.[1] as RequestInit).body as string)).toEqual({
       instance_key: 'manual-instance',
       definition_name: 'custom-def',
       definition_version: 'v42',
       request_key: requestKey,
     });
+    await waitFor(() => {
+      expect(screen.getByTestId('probe-pathname')).toHaveTextContent(
+        '/traces/trace-manual-1'
+      );
+    });
   });
 
-  it('falls back to manual entry when the definitions endpoint fails', async () => {
-    const user = userEvent.setup();
-    mockEngineRequests({
+  it.each([
+    {
+      scenario: 'the definitions endpoint fails',
       definitions: () =>
         jsonResponse({ code: 'server_error', message: 'boom' }, 500),
-    });
+    },
+    {
+      scenario: 'the definitions catalog is empty',
+      definitions: () => jsonResponse({ definitions: [] }),
+    },
+  ])('falls back to manual entry when $scenario', async ({ definitions }) => {
+    const user = userEvent.setup();
+    mockEngineRequests({ definitions });
     renderEngineRunsPage();
 
     await openStartDialog(user);

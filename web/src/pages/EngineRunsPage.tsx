@@ -309,7 +309,10 @@ function StartEngineRunDialog({
   const versionSuggestions = definitionName
     ? Array.from(definitionVersions.get(definitionName) ?? [])
     : [];
-  const manualOnly = definitionsQuery.isError || definitionsQuery.data?.definitions.length === 0;
+  const definitionsLoading = definitionsQuery.isPending;
+  const manualOnly =
+    !definitionsLoading &&
+    (definitionsQuery.isError || definitionsQuery.data?.definitions.length === 0);
   const manualMode = definitionMode === 'manual' || manualOnly;
   const staleDefinitions = definitions.filter((definition) => !definition.live);
 
@@ -457,7 +460,11 @@ function StartEngineRunDialog({
             <PreflightNotice state={preflight} />
           </FormField>
 
-          {manualOnly ? (
+          {definitionsLoading ? (
+            <div className="text-sm text-[var(--c-text-secondary)]">
+              Loading registered definitions…
+            </div>
+          ) : manualOnly ? (
             <div className="app-alert-warning">
               Definitions unavailable. Enter the definition and version manually.
             </div>
@@ -556,7 +563,7 @@ function StartEngineRunDialog({
                   key={`${definition.definition_name}:${definition.definition_version}`}
                   className="text-xs text-[var(--c-text-muted)]"
                 >
-                  {definition.definition_name} — last published{' '}
+                  {definition.definition_name} · {definition.definition_version} — last published{' '}
                   {formatTimestamp(definition.runtime_published_at)}
                 </p>
               ))}
@@ -588,7 +595,7 @@ function StartEngineRunDialog({
           <Btn kind="secondary" type="button" onClick={onClose}>
             Cancel
           </Btn>
-          <Btn kind="primary" type="submit" disabled={submitting}>
+          <Btn kind="primary" type="submit" disabled={submitting || definitionsLoading}>
             {submitting ? 'Starting…' : 'Start run'}
           </Btn>
         </div>
