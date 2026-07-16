@@ -4,8 +4,8 @@ description: "How projects, API keys, Auth0 operator login, and demo mode fit to
 ---
 
 A **project** is the unit of multi-tenancy in Continua. Every trace, span, session, and
-ingest batch is scoped to exactly one project. Every authenticated request must resolve
-to a project.
+ingest batch is scoped to exactly one project. Authentication determines whether a read
+is bound to one project or available across projects to an instance operator.
 
 ## The three ways a request gets authenticated
 
@@ -37,13 +37,29 @@ See the [Managing projects guide](/guides/managing-projects) for end-to-end how-
 
 ## Project scoping on reads
 
-Every read endpoint applies a `WHERE project_id = ?` filter derived from the request
-context. There is no cross-project query API today. If you operate multiple projects, do
-the cross-project aggregation outside Continua (or in your data warehouse after export).
+API-key and public-demo requests are always **Bound** to their project. Every read,
+including all `/v1/engine/*` reads, is filtered to that project. Requesting an id that
+belongs to another project returns `404`.
 
-For Auth0 operators, the UI passes `selected_project_id` so an operator can move between
-projects without re-authenticating. The selected project is persisted in URL query
-params, so links remain shareable.
+Auth0 operators are instance administrators. Detail and run-scoped reads are
+**Unbounded** when an operator provides no `project_id`: the operator can read across all
+projects. This applies to platform trace and session detail, plus these engine surfaces:
+
+- `/v1/engine/runs/{id}`
+- `/v1/engine/runs/{id}/history`
+- `/v1/engine/runs/{id}/result`
+- `/v1/engine/runs/{id}/pending-work`
+- `/v1/engine/instances/{key}`
+
+This unbounded access is intentional operator convenience, not an authorization gap. On
+operator requests, `project_id` (or `selected_project_id`) is a selection filter rather
+than an authorization boundary: a mismatched project returns `404`. List endpoints still
+require a project id and return `400` without one. The UI persists the selected project
+in URL query params, so links remain shareable and operators can switch projects without
+re-authenticating.
+
+The `/v1/engine/activities/*` worker surface is API-key-bound only. Operator bearer
+tokens are rejected as unauthenticated.
 
 ## Demo mode in detail
 
