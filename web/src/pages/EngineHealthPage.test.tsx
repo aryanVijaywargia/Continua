@@ -52,7 +52,7 @@ const HEALTH_RESPONSE: EngineHealthResponse = {
   },
 };
 
-function renderEngineHealthPage() {
+function renderEngineHealthPage(initialEntry = '/') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -62,15 +62,17 @@ function renderEngineHealthPage() {
     },
   });
 
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[initialEntry]}>
           <EngineHealthPage />
         </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>
   );
+
+  return { ...rendered, queryClient };
 }
 
 function healthResponse(overrides: Partial<EngineHealthResponse> = {}): EngineHealthResponse {
@@ -111,6 +113,18 @@ describe('EngineHealthPage', () => {
     expect(screen.getByText('5')).toBeInTheDocument();
     expect(screen.getByText('worker-a')).toBeInTheDocument();
     expect(screen.getByText('worker-b')).toBeInTheDocument();
+  });
+
+  it('scopes cached health data to the URL project', async () => {
+    const projectId = '11111111-1111-4111-8111-111111111111';
+    const { queryClient } = renderEngineHealthPage(
+      `/tools/engine-health?project_id=${projectId}`
+    );
+
+    expect(await screen.findByText('Projector lag')).toBeInTheDocument();
+    expect(queryClient.getQueryData(['engine-health', projectId])).toEqual(
+      HEALTH_RESPONSE
+    );
   });
 
   it('marks high projector lag as degraded', async () => {

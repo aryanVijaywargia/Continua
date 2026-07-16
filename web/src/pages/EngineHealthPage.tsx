@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { fetchEngineHealth } from '../api/client';
 import {
   Chip,
@@ -6,8 +7,10 @@ import {
   PageHeader,
   Td,
   Th,
+  Tr,
 } from '../components/DebuggerKit';
 import { formatTimestamp } from '../utils/format';
+import { getProjectIdFromSearchParams } from '../utils/projectSearchParams';
 
 function StatTile({
   label,
@@ -38,8 +41,10 @@ function StatTile({
 }
 
 export function EngineHealthPage() {
+  const location = useLocation();
+  const projectId = getProjectIdFromSearchParams(new URLSearchParams(location.search));
   const healthQuery = useQuery({
-    queryKey: ['engine-health'],
+    queryKey: ['engine-health', projectId ?? null],
     queryFn: fetchEngineHealth,
     refetchInterval: 5000,
   });
@@ -104,7 +109,7 @@ export function EngineHealthPage() {
                   </thead>
                   <tbody>
                     {health.workers.map((worker) => (
-                      <tr
+                      <Tr
                         key={worker.id}
                         data-state={worker.status}
                         className={
@@ -123,7 +128,7 @@ export function EngineHealthPage() {
                             {worker.status}
                           </Chip>
                         </Td>
-                      </tr>
+                      </Tr>
                     ))}
                   </tbody>
                 </DataTable>
