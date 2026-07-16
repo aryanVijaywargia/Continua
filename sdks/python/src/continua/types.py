@@ -656,7 +656,7 @@ class IngestTraceInput(BaseModel):
     output: Any | None = Field(
         None, description="Trace output data (any JSON-serializable value)"
     )
-    status: Status6 | None = "running"
+    status: Status6 | None = Status6.running
     start_time: AwareDatetime | None = None
     end_time: AwareDatetime | None = None
 
@@ -687,7 +687,7 @@ class IngestSpanInput(BaseModel):
     )
     name: str
     type: Type1 | None = Type1.default
-    status: Status6 | None = "running"
+    status: Status6 | None = Status6.running
     status_message: str | None = None
     level: Level | None = Level.default
     start_time: AwareDatetime

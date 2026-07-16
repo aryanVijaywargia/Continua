@@ -47,15 +47,15 @@ func TestGetEngineHealth_EmptyStateReturnsZeros(t *testing.T) {
 
 func TestGetEngineHealth_ReportsQueueDepthsAndProjectorLag(t *testing.T) {
 	ctx, pool, handler, apiKey, projectID := setupEngineHealthTest(t, true)
-	instanceID := seedHealthInstance(t, ctx, pool, projectID, "queue-depth")
+	instanceID := seedHealthInstance(ctx, t, pool, projectID, "queue-depth")
 	past := time.Now().UTC().Add(-time.Minute)
-	queuedRunID := seedHealthRun(t, ctx, pool, projectID, instanceID, 1, "queued", past, nil, nil, nil)
+	queuedRunID := seedHealthRun(ctx, t, pool, projectID, instanceID, 1, "queued", past, nil, nil, nil)
 	expiredWorker := "expired-run-worker"
 	claimedAt := past.Add(-time.Minute)
-	seedHealthRun(t, ctx, pool, projectID, instanceID, 2, "running", past, &expiredWorker, &claimedAt, &past)
-	seedHealthActivityTask(t, ctx, pool, projectID, instanceID, queuedRunID, "queued-local", "queued", past, nil, nil, nil)
-	seedHealthInbox(t, ctx, pool, projectID, instanceID, queuedRunID, past)
-	seedHealthTrace(t, ctx, pool, projectID, queuedRunID, "catching_up", 5, 2)
+	seedHealthRun(ctx, t, pool, projectID, instanceID, 2, "running", past, &expiredWorker, &claimedAt, &past)
+	seedHealthActivityTask(ctx, t, pool, projectID, instanceID, queuedRunID, "queued-local", "queued", past, nil, nil, nil)
+	seedHealthInbox(ctx, t, pool, projectID, instanceID, queuedRunID, past)
+	seedHealthTrace(ctx, t, pool, projectID, queuedRunID, "catching_up", 5, 2)
 
 	rec := invokeEngineHealth(t, handler, apiKey)
 
@@ -70,15 +70,15 @@ func TestGetEngineHealth_ReportsQueueDepthsAndProjectorLag(t *testing.T) {
 
 func TestGetEngineHealth_WorkerLivenessFromLeases(t *testing.T) {
 	ctx, pool, handler, apiKey, projectID := setupEngineHealthTest(t, true)
-	instanceID := seedHealthInstance(t, ctx, pool, projectID, "worker-liveness")
+	instanceID := seedHealthInstance(ctx, t, pool, projectID, "worker-liveness")
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	activeClaimedAt := now.Add(-2 * time.Minute)
 	activeLeaseExpiry := now.Add(5 * time.Minute)
 	activeWorker := "worker-a"
-	activityRunID := seedHealthRun(t, ctx, pool, projectID, instanceID, 1, "queued", now.Add(time.Hour), nil, nil, nil)
+	activityRunID := seedHealthRun(ctx, t, pool, projectID, instanceID, 1, "queued", now.Add(time.Hour), nil, nil, nil)
 	seedHealthActivityTask(
-		t,
 		ctx,
+		t,
 		pool,
 		projectID,
 		instanceID,
@@ -95,8 +95,8 @@ func TestGetEngineHealth_WorkerLivenessFromLeases(t *testing.T) {
 	staleClaimedAt := now.Add(-10 * time.Minute)
 	staleLeaseExpiry := now.Add(-5 * time.Minute)
 	seedHealthRun(
-		t,
 		ctx,
+		t,
 		pool,
 		projectID,
 		instanceID,
@@ -129,19 +129,19 @@ func TestGetEngineHealth_ScopedToProject(t *testing.T) {
 	projectBID := testutil.CreateTestProject(t, ctx, platformStore.Queries())
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
-	projectAInstance := seedHealthInstance(t, ctx, pool, projectAID, "scoped-a")
-	projectARun := seedHealthRun(t, ctx, pool, projectAID, projectAInstance, 1, "queued", now.Add(-time.Minute), nil, nil, nil)
+	projectAInstance := seedHealthInstance(ctx, t, pool, projectAID, "scoped-a")
+	projectARun := seedHealthRun(ctx, t, pool, projectAID, projectAInstance, 1, "queued", now.Add(-time.Minute), nil, nil, nil)
 	projectAWorker := "project-a-worker"
 	projectAClaimedAt := now.Add(-2 * time.Minute)
 	projectALeaseExpiry := now.Add(5 * time.Minute)
-	seedHealthActivityTask(t, ctx, pool, projectAID, projectAInstance, projectARun, "scoped-a", "claimed", now, &projectAWorker, &projectAClaimedAt, &projectALeaseExpiry)
+	seedHealthActivityTask(ctx, t, pool, projectAID, projectAInstance, projectARun, "scoped-a", "claimed", now, &projectAWorker, &projectAClaimedAt, &projectALeaseExpiry)
 
-	projectBInstance := seedHealthInstance(t, ctx, pool, projectBID, "scoped-b")
-	projectBRun := seedHealthRun(t, ctx, pool, projectBID, projectBInstance, 1, "queued", now.Add(-time.Minute), nil, nil, nil)
+	projectBInstance := seedHealthInstance(ctx, t, pool, projectBID, "scoped-b")
+	projectBRun := seedHealthRun(ctx, t, pool, projectBID, projectBInstance, 1, "queued", now.Add(-time.Minute), nil, nil, nil)
 	projectBWorker := "project-b-worker"
 	projectBClaimedAt := now.Add(-2 * time.Minute)
 	projectBLeaseExpiry := now.Add(5 * time.Minute)
-	seedHealthActivityTask(t, ctx, pool, projectBID, projectBInstance, projectBRun, "scoped-b", "claimed", now, &projectBWorker, &projectBClaimedAt, &projectBLeaseExpiry)
+	seedHealthActivityTask(ctx, t, pool, projectBID, projectBInstance, projectBRun, "scoped-b", "claimed", now, &projectBWorker, &projectBClaimedAt, &projectBLeaseExpiry)
 
 	rec := invokeEngineHealth(t, handler, apiKey)
 
@@ -158,9 +158,9 @@ func TestGetEngineHealth_ScopedToProject(t *testing.T) {
 
 func TestGetEngineHealth_RetentionCounts(t *testing.T) {
 	ctx, pool, handler, apiKey, projectID := setupEngineHealthTest(t, true)
-	seedHealthTrace(t, ctx, pool, projectID, uuid.New(), "summary_only", 11, 2)
-	seedHealthTrace(t, ctx, pool, projectID, uuid.New(), "journal_expired", 21, 3)
-	seedHealthTrace(t, ctx, pool, projectID, uuid.New(), "journal_expired", 31, 4)
+	seedHealthTrace(ctx, t, pool, projectID, uuid.New(), "summary_only", 11, 2)
+	seedHealthTrace(ctx, t, pool, projectID, uuid.New(), "journal_expired", 21, 3)
+	seedHealthTrace(ctx, t, pool, projectID, uuid.New(), "journal_expired", 31, 4)
 
 	rec := invokeEngineHealth(t, handler, apiKey)
 
@@ -225,7 +225,7 @@ func invokeEngineHealth(t *testing.T, handler http.Handler, apiKey string) *http
 	return rec
 }
 
-func seedHealthInstance(t *testing.T, ctx context.Context, pool *pgxpool.Pool, projectID uuid.UUID, key string) uuid.UUID {
+func seedHealthInstance(ctx context.Context, t *testing.T, pool *pgxpool.Pool, projectID uuid.UUID, key string) uuid.UUID {
 	t.Helper()
 
 	id := uuid.New()
@@ -238,8 +238,8 @@ func seedHealthInstance(t *testing.T, ctx context.Context, pool *pgxpool.Pool, p
 }
 
 func seedHealthRun(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	pool *pgxpool.Pool,
 	projectID uuid.UUID,
 	instanceID uuid.UUID,
@@ -265,8 +265,8 @@ func seedHealthRun(
 }
 
 func seedHealthActivityTask(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	pool *pgxpool.Pool,
 	projectID uuid.UUID,
 	instanceID uuid.UUID,
@@ -291,8 +291,8 @@ func seedHealthActivityTask(
 }
 
 func seedHealthInbox(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	pool *pgxpool.Pool,
 	projectID uuid.UUID,
 	instanceID uuid.UUID,
@@ -309,8 +309,8 @@ func seedHealthInbox(
 }
 
 func seedHealthTrace(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	pool *pgxpool.Pool,
 	projectID uuid.UUID,
 	runID uuid.UUID,
