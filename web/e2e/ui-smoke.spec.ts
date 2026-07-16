@@ -21,6 +21,26 @@ const ENGINE_RUN_ID = '123e4567-e89b-12d3-a456-426614174100';
 const ENGINE_TRACE_ID = 'engine-trace-1';
 const STARTED_ENGINE_TRACE_ID = 'engine-trace-new';
 
+const ENGINE_HEALTH = {
+  generated_at: '2026-03-14T10:00:05.000Z',
+  projector: { lag_rows: 7, runs_catching_up: 2 },
+  queues: {
+    runs_ready: 3,
+    activity_tasks_pending: 4,
+    inbox_pending: 5,
+  },
+  workers: [
+    {
+      id: 'engine-worker-1',
+      last_claim_at: '2026-03-14T10:00:04.000Z',
+      active_leases: 2,
+      expired_leases: 0,
+      status: 'active',
+    },
+  ],
+  retention: { summary_only_runs: 1, journal_expired_runs: 0 },
+};
+
 const ENGINE_TRACE = {
   ...TRACE_ONE,
   id: ENGINE_TRACE_ID,
@@ -383,6 +403,10 @@ async function mockEngineRoutes(page: Page) {
       });
     }
 
+    if (url.pathname === '/v1/engine/health' && request.method() === 'GET') {
+      return fulfillJson(route, ENGINE_HEALTH);
+    }
+
     if (/^\/v1\/engine\/instances\/[^/]+$/.test(url.pathname)) {
       return fulfillJson(route, { code: 'not_found', message: 'Instance not found' }, 404);
     }
@@ -665,6 +689,22 @@ test('covers the engine runs console smoke flows', async ({ page }, testInfo) =>
     body: screenshot,
     contentType: 'image/png',
   });
+
+  await gotoAndCapture(
+    page,
+    testInfo,
+    `/tools/engine-health?project_id=${PRIMARY_PROJECT_ID}`,
+    async () => {
+      await expect(
+        page.getByRole('heading', { name: 'Engine health', exact: true })
+      ).toBeVisible();
+      await expect(page.getByText('Projector lag', { exact: true })).toBeVisible();
+      await expect(page.getByText('Runs ready', { exact: true })).toBeVisible();
+      await expect(page.getByText('Activity tasks pending', { exact: true })).toBeVisible();
+      await expect(page.getByText('Inbox pending', { exact: true })).toBeVisible();
+    },
+    `${testInfo.project.name}-engine-health`
+  );
 });
 
 test('starts an engine run from the live definition picker', async ({ page }, testInfo) => {

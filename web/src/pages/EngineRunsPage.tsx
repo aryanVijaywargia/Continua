@@ -112,6 +112,12 @@ export function EngineRunsPage() {
       <PageHeader
         actions={
           <>
+            <Link
+              className="inline-flex h-7 items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 text-xs font-medium text-[var(--c-text-primary)] transition hover:border-[var(--c-border-strong)]"
+              to={buildProjectPath('/tools/engine-health', projectId)}
+            >
+              Engine health
+            </Link>
             <Btn kind="secondary" leadingIcon={RefreshCw} size="sm" onClick={() => void runsQuery.refetch()}>
               Refresh
             </Btn>
