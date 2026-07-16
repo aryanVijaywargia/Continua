@@ -7,6 +7,7 @@ import {
   fetchEngineInstance,
   fetchTraces,
   isAuthError,
+  listEngineDefinitions,
   startEngineRun,
   type EngineRunStatus,
   type JsonValue,
@@ -280,6 +281,7 @@ function StartEngineRunDialog({
   const [instanceKey, setInstanceKey] = useState('');
   const [definitionName, setDefinitionName] = useState('');
   const [definitionVersion, setDefinitionVersion] = useState('');
+  const [definitionMode, setDefinitionMode] = useState<'picker' | 'manual'>('picker');
   const [requestKey, setRequestKey] = useState(generateRequestKey);
   const [inputText, setInputText] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -293,9 +295,26 @@ function StartEngineRunDialog({
     | { state: 'unknown'; message: string }
   >({ state: 'idle' });
   const [submitting, setSubmitting] = useState(false);
+  const definitionsQuery = useQuery({
+    queryKey: ['engine-definitions', projectId ?? null],
+    queryFn: listEngineDefinitions,
+  });
+  const definitions = definitionsQuery.data?.definitions ?? [];
+  const definitionNames = Array.from(
+    new Set(definitions.map((definition) => definition.definition_name))
+  );
+  const pickerVersions = definitions.filter(
+    (definition) => definition.definition_name === definitionName
+  );
   const versionSuggestions = definitionName
     ? Array.from(definitionVersions.get(definitionName) ?? [])
     : [];
+  const definitionsLoading = definitionsQuery.isPending;
+  const manualOnly =
+    !definitionsLoading &&
+    (definitionsQuery.isError || definitionsQuery.data?.definitions.length === 0);
+  const manualMode = definitionMode === 'manual' || manualOnly;
+  const staleDefinitions = definitions.filter((definition) => !definition.live);
 
   const runPreflight = async (): Promise<void> => {
     const key = instanceKey.trim();
@@ -346,6 +365,19 @@ function StartEngineRunDialog({
     setFieldError(null);
     setSubmitError(null);
     setDefinitionError(false);
+
+    if (
+      !manualMode &&
+      !definitions.some(
+        (definition) =>
+          definition.live &&
+          definition.definition_name === definitionName &&
+          definition.definition_version === definitionVersion
+      )
+    ) {
+      setFieldError('Select a live definition and version.');
+      return;
+    }
 
     let input: JsonValue | undefined;
     try {
@@ -440,35 +472,115 @@ function StartEngineRunDialog({
             <PreflightNotice state={preflight} />
           </FormField>
 
+          {definitionsLoading ? (
+            <div className="text-sm text-[var(--c-text-secondary)]">
+              Loading registered definitions…
+            </div>
+          ) : manualOnly ? (
+            <div className="app-alert-warning">
+              Definitions unavailable. Enter the definition and version manually.
+            </div>
+          ) : (
+            <div>
+              <Btn
+                kind="secondary"
+                size="sm"
+                type="button"
+                onClick={() => setDefinitionMode(manualMode ? 'picker' : 'manual')}
+              >
+                {manualMode ? 'Use picker' : 'Enter manually'}
+              </Btn>
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label="Definition name">
-              <input
-                aria-invalid={definitionError}
-                className="app-input h-9 w-full rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 text-sm"
-                value={definitionName}
-                onChange={(event) => handleDefinitionNameChange(event.target.value)}
-                list="engine-definition-names"
-              />
-              <datalist id="engine-definition-names">
-                {Array.from(definitionVersions.keys()).map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
+              {manualMode ? (
+                <>
+                  <input
+                    aria-invalid={definitionError}
+                    className="app-input h-9 w-full rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 text-sm"
+                    value={definitionName}
+                    onChange={(event) => handleDefinitionNameChange(event.target.value)}
+                    list="engine-definition-names"
+                  />
+                  <datalist id="engine-definition-names">
+                    {Array.from(definitionVersions.keys()).map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                </>
+              ) : (
+                <select
+                  aria-invalid={definitionError}
+                  className="app-input h-9 w-full rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 text-sm"
+                  value={definitionName}
+                  onChange={(event) => handleDefinitionNameChange(event.target.value)}
+                >
+                  <option value="">Select a definition</option>
+                  {definitionNames.map((name) => {
+                    const live = definitions.some(
+                      (definition) =>
+                        definition.definition_name === name && definition.live
+                    );
+                    return (
+                      <option key={name} value={name} disabled={!live}>
+                        {live ? name : `${name} — not live`}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
             </FormField>
             <FormField label="Definition version">
-              <input
-                className="app-input h-9 w-full rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 text-sm"
-                value={definitionVersion}
-                onChange={(event) => setDefinitionVersion(event.target.value)}
-                list="engine-definition-versions"
-              />
-              <datalist id="engine-definition-versions">
-                {versionSuggestions.map((version) => (
-                  <option key={version} value={version} />
-                ))}
-              </datalist>
+              {manualMode ? (
+                <>
+                  <input
+                    className="app-input h-9 w-full rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 text-sm"
+                    value={definitionVersion}
+                    onChange={(event) => setDefinitionVersion(event.target.value)}
+                    list="engine-definition-versions"
+                  />
+                  <datalist id="engine-definition-versions">
+                    {versionSuggestions.map((version) => (
+                      <option key={version} value={version} />
+                    ))}
+                  </datalist>
+                </>
+              ) : (
+                <select
+                  className="app-input h-9 w-full rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 text-sm"
+                  value={definitionVersion}
+                  onChange={(event) => setDefinitionVersion(event.target.value)}
+                >
+                  <option value="">Select a version</option>
+                  {pickerVersions.map((definition) => (
+                    <option
+                      key={definition.definition_version}
+                      value={definition.definition_version}
+                      disabled={!definition.live}
+                    >
+                      {definition.definition_version}
+                    </option>
+                  ))}
+                </select>
+              )}
             </FormField>
           </div>
+
+          {!manualMode && staleDefinitions.length > 0 ? (
+            <div className="grid gap-1">
+              {staleDefinitions.map((definition) => (
+                <p
+                  key={`${definition.definition_name}:${definition.definition_version}`}
+                  className="text-xs text-[var(--c-text-muted)]"
+                >
+                  {definition.definition_name} · {definition.definition_version} — last published{' '}
+                  {formatTimestamp(definition.runtime_published_at)}
+                </p>
+              ))}
+            </div>
+          ) : null}
 
           <FormField label="Idempotency key" helper="Idempotency key — change only when retrying a prior start.">
             <input
@@ -495,7 +607,7 @@ function StartEngineRunDialog({
           <Btn kind="secondary" type="button" onClick={onClose}>
             Cancel
           </Btn>
-          <Btn kind="primary" type="submit" disabled={submitting}>
+          <Btn kind="primary" type="submit" disabled={submitting || definitionsLoading}>
             {submitting ? 'Starting…' : 'Start run'}
           </Btn>
         </div>
