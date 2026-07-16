@@ -370,6 +370,19 @@ export type EngineProjectionBackfillAction =
 
 export type EnginePurgeMode = 'projection_only' | 'full';
 
+export interface EngineDefinition {
+  definition_name: string;
+  definition_version: string;
+  enabled: boolean;
+  live: boolean;
+  runtime_published_at: string;
+  published_at: string;
+}
+
+export interface EngineDefinitionListResponse {
+  definitions: EngineDefinition[];
+}
+
 export interface EngineTraceInfo {
   run_id: string;
   definition_name: string;
@@ -1138,6 +1151,10 @@ export async function fetchEngineInstance(
   return fetchAPI<EngineInstanceResponse>(
     `/v1/engine/instances/${encodeURIComponent(instanceKey)}`
   );
+}
+
+export async function listEngineDefinitions(): Promise<EngineDefinitionListResponse> {
+  return fetchAPI<EngineDefinitionListResponse>('/v1/engine/definitions');
 }
 
 export async function startEngineRun(
