@@ -33,6 +33,11 @@ import {
   buildProjectPath,
   getProjectIdFromSearchParams,
 } from '../utils/projectSearchParams';
+import {
+  ENGINE_RUN_STATUS_FILTER_VALUES,
+  formatEngineRunStatusLabel,
+  type EngineRunStatusFilter,
+} from '../utils/tracesSearchParams';
 
 const EMPTY_TRACES: Trace[] = [];
 
@@ -74,7 +79,14 @@ function formatEngineDefinitionLabel(engine: Trace['engine']): string {
 export function EngineRunsPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const projectId = getProjectIdFromSearchParams(new URLSearchParams(location.search));
+  const searchParams = new URLSearchParams(location.search);
+  const projectId = getProjectIdFromSearchParams(searchParams);
+  const engineRunStatusCandidate = searchParams.get('engine_run_status');
+  const engineRunStatus = ENGINE_RUN_STATUS_FILTER_VALUES.includes(
+    engineRunStatusCandidate as EngineRunStatusFilter
+  )
+    ? (engineRunStatusCandidate as EngineRunStatusFilter)
+    : undefined;
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -82,9 +94,10 @@ export function EngineRunsPage() {
     engine_only: true,
     limit: pageSize,
     offset,
+    ...(engineRunStatus ? { engine_run_status: engineRunStatus } : {}),
   };
   const runsQuery = useQuery({
-    queryKey: ['engine-runs', projectId ?? null, offset, pageSize],
+    queryKey: ['engine-runs', projectId ?? null, engineRunStatus ?? null, offset, pageSize],
     queryFn: () => fetchTraces(queryParams),
     placeholderData: keepPreviousData,
     refetchInterval: 5000,
@@ -129,6 +142,45 @@ export function EngineRunsPage() {
         description={`${traces.length} of ${total} engine-backed traces · auto-refreshing every 5s`}
         title="Engine Runs"
       />
+
+      <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-6 py-2">
+        <label
+          className="text-xs font-medium text-[var(--c-text-secondary)]"
+          htmlFor="engine-run-status"
+        >
+          Status
+        </label>
+        <select
+          id="engine-run-status"
+          aria-label="Engine run status"
+          className="h-7 rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 text-xs text-[var(--c-text-primary)] outline-none"
+          value={engineRunStatus ?? ''}
+          onChange={(event) => {
+            const nextSearchParams = new URLSearchParams(location.search);
+            if (event.target.value) {
+              nextSearchParams.set('engine_run_status', event.target.value);
+            } else {
+              nextSearchParams.delete('engine_run_status');
+            }
+            nextSearchParams.delete('offset');
+            setOffset(0);
+            navigate({
+              pathname: location.pathname,
+              search: nextSearchParams.toString(),
+            });
+          }}
+        >
+          <option value="">All statuses</option>
+          {ENGINE_RUN_STATUS_FILTER_VALUES.map((value) => (
+            <option
+              key={value}
+              aria-label={formatEngineRunStatusLabel(value)}
+              label={formatEngineRunStatusLabel(value)}
+              value={value}
+            />
+          ))}
+        </select>
+      </div>
 
       {runsQuery.error ? (
         isAuthError(runsQuery.error) ? (

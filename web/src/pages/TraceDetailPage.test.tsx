@@ -394,6 +394,138 @@ describe('TraceDetailPage', () => {
     expect(screen.getAllByRole('button', { name: 'Signal' })).toHaveLength(1);
   });
 
+  it('shows the pinned definition version in the engine run header', async () => {
+    const user = userEvent.setup();
+    const base = createEngineTraceDetail();
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () =>
+          jsonResponse(
+            createEngineTraceDetail({
+              engine: {
+                ...base.engine!,
+                definition_version: 'v3',
+              },
+            })
+          ),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    const runHeader = screen
+      .getAllByText('Version')
+      .map((label) => label.closest('.rounded-lg'))
+      .find(
+        (card) =>
+          card && within(card as HTMLElement).queryByText(base.engine!.run_id)
+      );
+    expect(runHeader).toBeDefined();
+    expect(within(runHeader as HTMLElement).getByText('v3')).toBeInTheDocument();
+  });
+
+  it('renders workflow.version_marker history events legibly', async () => {
+    const user = userEvent.setup();
+    const detail = createEngineTraceDetail();
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(detail),
+        engineHistory: () =>
+          jsonResponse({
+            events: [
+              {
+                id: 1,
+                sequence_no: 1,
+                event_type: 'workflow.version_marker',
+                payload: { change_id: 'new-pricing', version: 2 },
+                created_at: '2026-03-14T10:00:01.000Z',
+              },
+            ],
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+    await user.click(screen.getByRole('button', { name: 'Engine history 0' }));
+
+    const eventType = await screen.findByText('workflow.version_marker');
+    const historyRow = eventType.closest('.grid');
+    expect(historyRow).not.toBeNull();
+    const payloadInspector = within(historyRow as HTMLElement)
+      .getByRole('button', { name: 'Collapse payload' })
+      .closest('.mt-2');
+    expect(payloadInspector).not.toBeNull();
+
+    const changeMatches = within(historyRow as HTMLElement).getAllByText(/new-pricing/i);
+    expect(
+      changeMatches.some((element) =>
+        !(payloadInspector as HTMLElement).contains(element)
+      )
+    ).toBe(true);
+    const versionMatches = within(historyRow as HTMLElement).getAllByText(/version\s*2|v2/i);
+    expect(
+      versionMatches.some((element) =>
+        !(payloadInspector as HTMLElement).contains(element)
+      )
+    ).toBe(true);
+  });
+
+  it('explains a quarantined engine run and enables resume from the engine section', async () => {
+    const user = userEvent.setup();
+    const base = createEngineTraceDetail();
+    const errorMessage =
+      'expected activity_scheduled charge-card but history has timer_started timeout';
+    const detail = createEngineTraceDetail({
+      engine: {
+        ...base.engine!,
+        status: 'QUARANTINED',
+        failure: {
+          error_code: 'replay_mismatch',
+          error_message: errorMessage,
+          status: 'QUARANTINED',
+        },
+        wait_state: {
+          kind: 'replay_mismatch',
+          expected_type: 'activity_scheduled',
+          expected_key: 'charge-card',
+          actual_type: 'timer_started',
+          actual_key: 'timeout',
+          detail: 'replay produced a different next event',
+        },
+      },
+    });
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse(detail),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    await user.click(await screen.findByRole('button', { name: 'Engine state' }));
+
+    const bannerHeading = screen.getByRole('heading', { name: 'Run quarantined' });
+    const quarantineBanner = bannerHeading.closest('section, [role="alert"]');
+    expect(quarantineBanner).not.toBeNull();
+    expect(
+      within(quarantineBanner as HTMLElement).getByText(/replay_mismatch/)
+    ).toBeInTheDocument();
+    expect(
+      within(quarantineBanner as HTMLElement).getByText(new RegExp(errorMessage))
+    ).toBeInTheDocument();
+    expect(
+      within(quarantineBanner as HTMLElement).getByText(
+        /rolling back the workflow code/i
+      )
+    ).toHaveTextContent(/Resume/i);
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeDisabled();
+  });
+
   it('counts continued-as-new engine result panes and marks the state closed', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(

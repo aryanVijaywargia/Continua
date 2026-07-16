@@ -91,11 +91,15 @@ export function EnginePendingWorkPanel({
                 <PendingWorkCard
                   key={key}
                   title={`${item.activity_type} · ${item.activity_key}`}
+                  badge={item.execution_target}
                   metadata={[
                     `Status: ${item.status}`,
                     `Available ${formatPendingAvailability(item.available_at)}`,
                     `Attempts: ${item.attempt_count}`,
                   ]}
+                  claimedBy={
+                    item.execution_target === 'remote' ? item.claimed_by : null
+                  }
                   keyValue={`Task ${item.task_id}`}
                 />
               )}
@@ -188,18 +192,29 @@ function PendingWorkList<Item>({
 
 function PendingWorkCard({
   title,
+  badge,
+  claimedBy,
   metadata,
   keyValue,
 }: {
   title: string;
+  badge?: string;
+  claimedBy?: string | null;
   metadata: string[];
   keyValue: string;
 }) {
   return (
     <article className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
-      <h3 className="text-sm font-semibold text-[var(--c-text-primary)]">
-        {title}
-      </h3>
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-sm font-semibold text-[var(--c-text-primary)]">
+          {title}
+        </h3>
+        {badge ? (
+          <span className="rounded border border-[var(--c-border)] bg-[var(--c-surface-muted)] px-2 py-0.5 text-xs text-[var(--c-text-secondary)]">
+            {badge}
+          </span>
+        ) : null}
+      </div>
       <p className="mt-1 font-mono text-xs text-[var(--c-text-muted)]">
         {keyValue}
       </p>
@@ -207,6 +222,11 @@ function PendingWorkCard({
         {metadata.map((entry) => (
           <li key={entry}>{entry}</li>
         ))}
+        {claimedBy ? (
+          <li>
+            Worker: <span>{claimedBy}</span>
+          </li>
+        ) : null}
       </ul>
     </article>
   );
