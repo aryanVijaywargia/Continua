@@ -774,8 +774,11 @@ test('covers the engine runs console smoke flows', async ({ page }, testInfo) =>
   });
 
   await page.getByRole('button', { name: /^Engine history \d+$/ }).click();
-  await expect(page.getByText('Version marker: new-pricing → v2')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Collapse payload' })).toBeVisible();
+  const versionMarkerRow = page
+    .getByText('Version marker: new-pricing → v2')
+    .locator('xpath=ancestor::div[contains(@class, "grid")][1]');
+  await expect(versionMarkerRow).toBeVisible();
+  await expect(versionMarkerRow.getByRole('button', { name: 'Collapse payload' })).toBeVisible();
   await testInfo.attach(`${testInfo.project.name}-engine-version-marker`, {
     body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
     contentType: 'image/png',
