@@ -23,23 +23,6 @@ func TestListPendingInboxByRunFIFOOnAvailableAtTie(t *testing.T) {
 	assertInboxPayloadIdxSequence(t, "ListPendingInboxByRun", items)
 }
 
-func TestClaimNextInboxItemFIFOOnAvailableAtTie(t *testing.T) {
-	ts := newTestStore(t)
-	run := createInboxOrderingRun(t, ts, "claim-next")
-	insertInboxOrderingItems(t, ts, run, "signal")
-
-	items := make([]enginedb.EngineInbox, 0, inboxOrderingItemCount)
-	for range inboxOrderingItemCount {
-		item, err := ts.store.ClaimNextInboxItem(ts.ctx, "worker-fifo", time.Minute)
-		if err != nil {
-			t.Fatalf("ClaimNextInboxItem() error = %v", err)
-		}
-		items = append(items, item)
-	}
-
-	assertInboxPayloadIdxSequence(t, "ClaimNextInboxItem", items)
-}
-
 func TestListOpenInboxItemsByRunAndKindFIFOOnAvailableAtTie(t *testing.T) {
 	ts := newTestStore(t)
 	run := createInboxOrderingRun(t, ts, "list-open-kind")

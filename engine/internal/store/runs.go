@@ -55,13 +55,6 @@ func (o *storeOps) ListRunsByInstance(
 	return o.q.ListRunsByInstance(ctx, arg)
 }
 
-func (o *storeOps) UpdateRunStatus(
-	ctx context.Context,
-	arg enginedb.UpdateRunStatusParams,
-) (enginedb.EngineRun, error) {
-	return mapResult(o.q.UpdateRunStatus(ctx, arg))
-}
-
 func (o *storeOps) TransitionRunToWaiting(
 	ctx context.Context,
 	arg enginedb.TransitionRunToWaitingParams,

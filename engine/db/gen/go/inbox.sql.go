@@ -13,55 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const claimNextInboxItem = `-- name: ClaimNextInboxItem :one
-UPDATE engine.inbox
-SET status = 'claimed',
-    claimed_by = $1,
-    claimed_at = NOW(),
-    lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
-    updated_at = NOW()
-WHERE id = (
-    SELECT id
-    FROM engine.inbox
-    WHERE (status = 'pending' AND available_at <= NOW())
-       OR (status = 'claimed' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
-    ORDER BY available_at ASC, ordinal ASC
-    LIMIT 1
-    FOR UPDATE SKIP LOCKED
-)
-RETURNING id, project_id, instance_id, run_id, history_id, kind, payload, status, available_at, claimed_by, claimed_at, lease_expires_at, dedupe_key, resolved_at, created_at, updated_at, ordinal
-`
-
-type ClaimNextInboxItemParams struct {
-	ClaimedBy           *string `json:"claimed_by"`
-	LeaseDurationMicros int64   `json:"lease_duration_micros"`
-}
-
-func (q *Queries) ClaimNextInboxItem(ctx context.Context, arg ClaimNextInboxItemParams) (EngineInbox, error) {
-	row := q.db.QueryRow(ctx, claimNextInboxItem, arg.ClaimedBy, arg.LeaseDurationMicros)
-	var i EngineInbox
-	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.InstanceID,
-		&i.RunID,
-		&i.HistoryID,
-		&i.Kind,
-		&i.Payload,
-		&i.Status,
-		&i.AvailableAt,
-		&i.ClaimedBy,
-		&i.ClaimedAt,
-		&i.LeaseExpiresAt,
-		&i.DedupeKey,
-		&i.ResolvedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Ordinal,
-	)
-	return i, err
-}
-
 const clearInboxHistoryByRun = `-- name: ClearInboxHistoryByRun :execrows
 UPDATE engine.inbox
 SET history_id = NULL,
