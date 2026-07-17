@@ -101,15 +101,6 @@ WHERE instance_id = $1
 ORDER BY run_number DESC, id DESC
 LIMIT 1;
 
--- name: UpdateRunStatus :one
-UPDATE engine.runs
-SET status = $2,
-    last_error_code = $3,
-    last_error_message = $4,
-    updated_at = NOW()
-WHERE id = $1
-RETURNING *;
-
 -- name: TransitionRunToWaiting :one
 UPDATE engine.runs
 SET status = 'waiting',

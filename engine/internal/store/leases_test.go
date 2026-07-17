@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
-	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
 )
 
 func TestClaimNextRunLeaseLifecycle(t *testing.T) {
@@ -412,56 +411,5 @@ func (ts *testStore) expireRemoteLeaseTestTask(t *testing.T, taskID uuid.UUID) {
 		WHERE id = $1
 	`, taskID); err != nil {
 		t.Fatalf("expire remote activity lease: %v", err)
-	}
-}
-
-func TestClaimNextInboxItemLeaseLifecycle(t *testing.T) {
-	ts := newTestStore(t)
-	projectID := uuidOrFatal(t)
-	instance := ts.createInstance(t, projectID, "instance-inbox")
-	run := ts.createRun(t, instance, 1)
-	history := ts.createHistory(t, projectID, instance.ID, run.ID, 1, "signal.received")
-
-	inbox, err := ts.store.CreateInboxItem(ts.ctx, enginedb.CreateInboxItemParams{
-		ProjectID:   projectID,
-		InstanceID:  instance.ID,
-		RunID:       enginetest.NullableUUID(run.ID),
-		HistoryID:   &history.ID,
-		Kind:        "signal",
-		Payload:     []byte(`{"name":"wake"}`),
-		AvailableAt: time.Now().Add(-time.Minute),
-		DedupeKey:   enginetest.Ptr("signal-1"),
-	})
-	if err != nil {
-		t.Fatalf("CreateInboxItem() error = %v", err)
-	}
-
-	claimed, err := ts.store.ClaimNextInboxItem(ts.ctx, "worker-a", time.Minute)
-	if err != nil {
-		t.Fatalf("ClaimNextInboxItem() error = %v", err)
-	}
-	if claimed.ID != inbox.ID || claimed.Status != enginedb.EngineInboxStatusClaimed {
-		t.Fatalf("expected claimed inbox item %s in claimed status, got %+v", inbox.ID, claimed)
-	}
-
-	_, err = ts.store.ClaimNextInboxItem(ts.ctx, "worker-b", time.Minute)
-	if !errors.Is(err, ErrNotFound) {
-		t.Fatalf("expected active lease to block duplicate inbox claim, got %v", err)
-	}
-
-	if _, err := ts.db.Pool.Exec(ts.ctx, `
-		UPDATE engine.inbox
-		SET lease_expires_at = NOW() - INTERVAL '1 minute'
-		WHERE id = $1
-	`, inbox.ID); err != nil {
-		t.Fatalf("expire inbox lease: %v", err)
-	}
-
-	reclaimed, err := ts.store.ClaimNextInboxItem(ts.ctx, "worker-c", time.Minute)
-	if err != nil {
-		t.Fatalf("ClaimNextInboxItem() reclaim error = %v", err)
-	}
-	if reclaimed.ID != inbox.ID {
-		t.Fatalf("expected reclaimed inbox item %s, got %s", inbox.ID, reclaimed.ID)
 	}
 }

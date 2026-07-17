@@ -1244,61 +1244,6 @@ func (q *Queries) TransitionRunToWaiting(ctx context.Context, arg TransitionRunT
 	return i, err
 }
 
-const updateRunStatus = `-- name: UpdateRunStatus :one
-UPDATE engine.runs
-SET status = $2,
-    last_error_code = $3,
-    last_error_message = $4,
-    updated_at = NOW()
-WHERE id = $1
-RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
-`
-
-type UpdateRunStatusParams struct {
-	ID               uuid.UUID                `json:"id"`
-	Status           EngineRunLifecycleStatus `json:"status"`
-	LastErrorCode    *string                  `json:"last_error_code"`
-	LastErrorMessage *string                  `json:"last_error_message"`
-}
-
-func (q *Queries) UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) (EngineRun, error) {
-	row := q.db.QueryRow(ctx, updateRunStatus,
-		arg.ID,
-		arg.Status,
-		arg.LastErrorCode,
-		arg.LastErrorMessage,
-	)
-	var i EngineRun
-	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.InstanceID,
-		&i.RunNumber,
-		&i.DefinitionVersion,
-		&i.Status,
-		&i.ReadyAt,
-		&i.AttemptCount,
-		&i.LastErrorCode,
-		&i.LastErrorMessage,
-		&i.ClaimedBy,
-		&i.ClaimedAt,
-		&i.LeaseExpiresAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Result,
-		&i.CustomStatus,
-		&i.WaitingFor,
-		&i.CompletedAt,
-		&i.ContinuedFromRunID,
-		&i.ContinuedToRunID,
-		&i.ParentRunID,
-		&i.RootRunID,
-		&i.ChildKey,
-		&i.ChildDepth,
-	)
-	return i, err
-}
-
 const wakeWaitingChildWorkflowRun = `-- name: WakeWaitingChildWorkflowRun :one
 UPDATE engine.runs
 SET status = 'queued',

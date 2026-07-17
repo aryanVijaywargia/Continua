@@ -12,24 +12,6 @@ INSERT INTO engine.inbox (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
--- name: ClaimNextInboxItem :one
-UPDATE engine.inbox
-SET status = 'claimed',
-    claimed_by = sqlc.arg(claimed_by),
-    claimed_at = NOW(),
-    lease_expires_at = NOW() + (sqlc.arg(lease_duration_micros)::bigint * INTERVAL '1 microsecond'),
-    updated_at = NOW()
-WHERE id = (
-    SELECT id
-    FROM engine.inbox
-    WHERE (status = 'pending' AND available_at <= NOW())
-       OR (status = 'claimed' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
-    ORDER BY available_at ASC, ordinal ASC
-    LIMIT 1
-    FOR UPDATE SKIP LOCKED
-)
-RETURNING *;
-
 -- name: ListPendingInboxByRun :many
 SELECT *
 FROM engine.inbox

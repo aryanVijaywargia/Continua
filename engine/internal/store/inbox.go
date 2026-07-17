@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -20,17 +19,6 @@ func (o *storeOps) CreateInboxItem(ctx context.Context, arg enginedb.CreateInbox
 		return err
 	})
 	return mapResult(inbox, err)
-}
-
-func (o *storeOps) ClaimNextInboxItem(
-	ctx context.Context,
-	workerID string,
-	leaseDuration time.Duration,
-) (enginedb.EngineInbox, error) {
-	return mapResult(o.q.ClaimNextInboxItem(ctx, enginedb.ClaimNextInboxItemParams{
-		ClaimedBy:           nullableWorkerID(workerID),
-		LeaseDurationMicros: leaseDurationMicros(leaseDuration),
-	}))
 }
 
 func (o *storeOps) ListPendingInboxByRun(
