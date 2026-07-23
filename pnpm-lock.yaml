@@ -78,7 +78,7 @@ importers:
     dependencies:
       '@auth0/auth0-react':
         specifier: ^2.17.0
-        version: 2.17.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 2.17.0(react-dom@19.2.6(react@18.3.1))(react@18.3.1)
       '@continua/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -104,14 +104,14 @@ importers:
         specifier: 18.3.1
         version: 18.3.1
       react-dom:
-        specifier: 18.3.1
-        version: 18.3.1(react@18.3.1)
+        specifier: 19.2.6
+        version: 19.2.6(react@18.3.1)
       react-resizable-panels:
         specifier: ^4.11.2
-        version: 4.11.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 4.11.2(react-dom@19.2.6(react@18.3.1))(react@18.3.1)
       react-router-dom:
         specifier: 6.28.0
-        version: 6.28.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 6.28.0(react-dom@19.2.6(react@18.3.1))(react@18.3.1)
       tailwind-merge:
         specifier: 2.5.4
         version: 2.5.4
@@ -124,7 +124,7 @@ importers:
         version: 6.6.3
       '@testing-library/react':
         specifier: 16.0.1
-        version: 16.0.1(@testing-library/dom@10.4.1)(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 16.0.1(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@18.3.12))(@types/react@18.3.12)(react-dom@19.2.6(react@18.3.1))(react@18.3.1)
       '@testing-library/user-event':
         specifier: 14.5.2
         version: 14.5.2(@testing-library/dom@10.4.1)
@@ -132,8 +132,8 @@ importers:
         specifier: 18.3.12
         version: 18.3.12
       '@types/react-dom':
-        specifier: 18.3.1
-        version: 18.3.1
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@18.3.12)
       '@typescript-eslint/eslint-plugin':
         specifier: 8.13.0
         version: 8.13.0(@typescript-eslint/parser@8.13.0(eslint@8.57.1)(typescript@5.6.3))(eslint@8.57.1)(typescript@5.6.3)
@@ -1185,8 +1185,10 @@ packages:
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
 
-  '@types/react-dom@18.3.1':
-    resolution: {integrity: sha512-qW1Mfv8taImTthu4KoXgDfLuk4bydU6Q/TkADnDWWHwi4NX4BR+LWfTp2sVmTqRrsHvyDDTelgelxJ+SsejKKQ==}
+  '@types/react-dom@19.2.3':
+    resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
+    peerDependencies:
+      '@types/react': ^19.2.0
 
   '@types/react@18.3.12':
     resolution: {integrity: sha512-D2wOSq/d6Agt28q7rSI3jhU7G6aiuzljDGZ2hTZHIkrTLUI+AF3WMeKkEZ9nN2fkBAlcktT6vcZjDFiIhMYEQw==}
@@ -2486,6 +2488,11 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
+  react-dom@19.2.6:
+    resolution: {integrity: sha512-0prMI+hvBbPjsWnxDLxlCGyM8PN6UuWjEUCYmZhO67xIV9Xasa/r/vDnq+Xyq4Lo27g8QSbO5YzARu0D1Sps3g==}
+    peerDependencies:
+      react: ^19.2.6
+
   react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
 
@@ -2615,6 +2622,9 @@ packages:
 
   scheduler@0.23.2:
     resolution: {integrity: sha512-UOShsPwz7NrMUqhR6t0hWjFduvOzbtv7toDH1/hIrfRNIDBnnBWd0CwJTGvTpngVlmwGCdP9/Zl/tVrDqcuYzQ==}
+
+  scheduler@0.27.0:
+    resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
@@ -3141,11 +3151,11 @@ snapshots:
       jose: 6.2.3
       openid-client: 6.8.4
 
-  '@auth0/auth0-react@2.17.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@auth0/auth0-react@2.17.0(react-dom@19.2.6(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@auth0/auth0-spa-js': 2.20.0
       react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
+      react-dom: 19.2.6(react@18.3.1)
 
   '@auth0/auth0-spa-js@2.20.0':
     dependencies:
@@ -3928,15 +3938,15 @@ snapshots:
       lodash: 4.17.23
       redent: 3.0.0
 
-  '@testing-library/react@16.0.1(@testing-library/dom@10.4.1)(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@testing-library/react@16.0.1(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@18.3.12))(@types/react@18.3.12)(react-dom@19.2.6(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.28.4
       '@testing-library/dom': 10.4.1
       react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
+      react-dom: 19.2.6(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.12
-      '@types/react-dom': 18.3.1
+      '@types/react-dom': 19.2.3(@types/react@18.3.12)
 
   '@testing-library/user-event@14.5.2(@testing-library/dom@10.4.1)':
     dependencies:
@@ -3979,7 +3989,7 @@ snapshots:
 
   '@types/prop-types@15.7.15': {}
 
-  '@types/react-dom@18.3.1':
+  '@types/react-dom@19.2.3(@types/react@18.3.12)':
     dependencies:
       '@types/react': 18.3.12
 
@@ -5314,22 +5324,27 @@ snapshots:
       react: 18.3.1
       scheduler: 0.23.2
 
+  react-dom@19.2.6(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+      scheduler: 0.27.0
+
   react-is@16.13.1: {}
 
   react-is@17.0.2: {}
 
   react-refresh@0.14.2: {}
 
-  react-resizable-panels@4.11.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  react-resizable-panels@4.11.2(react-dom@19.2.6(react@18.3.1))(react@18.3.1):
     dependencies:
       react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
+      react-dom: 19.2.6(react@18.3.1)
 
-  react-router-dom@6.28.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  react-router-dom@6.28.0(react-dom@19.2.6(react@18.3.1))(react@18.3.1):
     dependencies:
       '@remix-run/router': 1.21.0
       react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
+      react-dom: 19.2.6(react@18.3.1)
       react-router: 6.28.0(react@18.3.1)
 
   react-router@6.28.0(react@18.3.1):
@@ -5472,6 +5487,8 @@ snapshots:
   scheduler@0.23.2:
     dependencies:
       loose-envify: 1.4.0
+
+  scheduler@0.27.0: {}
 
   semver@6.3.1: {}
 
