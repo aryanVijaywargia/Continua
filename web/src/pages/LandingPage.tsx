@@ -1,13 +1,22 @@
 import {
+  Activity,
   ArrowRight,
+  Ban,
   Check,
   ChevronRight,
+  Clock3,
   Copy,
+  GitBranch,
   Github,
   Moon,
+  Pause,
+  Play,
+  Radio,
+  RotateCcw,
   Star,
   Sun,
   Terminal,
+  Workflow,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -82,7 +91,7 @@ const TICKER_ITEMS = [
   ['trc_c91f0a', 'tool_executor', '0.9s', 'retry'],
 ] as const;
 
-const LANDING_SECTION_IDS = ['product', 'how', 'sdk', 'open-source'] as const;
+const LANDING_SECTION_IDS = ['engine', 'observability', 'sdk', 'open-source'] as const;
 
 const CODE_TABS = [
   {
@@ -137,7 +146,7 @@ export function LandingPage() {
   useLandingSectionHashSync();
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[var(--c-app-bg)] text-[var(--c-text-primary)]">
+    <div className="landing-theme min-h-screen overflow-x-hidden bg-[var(--c-app-bg)] text-[var(--c-text-primary)]">
       <StatusBanner isPublicDemo={isPublicDemo} />
       <Nav
         consoleLabel={consoleLabel}
@@ -154,6 +163,7 @@ export function LandingPage() {
         <TraceTicker />
         <StatsStrip />
         <Manifesto />
+        <EngineSection />
         <LogsVsTraces />
         <AnatomySection />
         <StackDiagram />
@@ -226,7 +236,7 @@ function StatusBanner({ isPublicDemo }: { isPublicDemo: boolean }) {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-1.5 text-[10.5px]">
         <div className="flex items-center gap-2 font-mono text-[var(--c-text-muted)]">
           <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)] shadow-[0_0_0_3px_var(--c-green-faint)]" />
-          <span>{isPublicDemo ? 'Public demo with seeded traces' : 'Observability live · engine preview'}</span>
+          <span>{isPublicDemo ? 'Public demo · engine + observability' : 'Durable engine preview · observability live'}</span>
           <span className="text-[var(--c-border-strong)]">·</span>
           <span>docs at continua.in/docs</span>
         </div>
@@ -255,8 +265,8 @@ function Nav({
   toggleTheme: () => void;
 }) {
   const compactLinks = [
-    ['Product', '#product'],
-    ['How', '#how'],
+    ['Engine', '#engine'],
+    ['Observability', '#observability'],
     ['SDK', '#sdk'],
     ['Open source', '#open-source'],
   ] as const;
@@ -275,8 +285,8 @@ function Nav({
           <span className="text-[14px] font-semibold tracking-tight">Continua</span>
         </a>
         <nav className="hidden items-center gap-7 text-[12.5px] font-medium text-[var(--c-text-secondary)] md:flex">
-          <a href="#product" className="transition hover:text-[var(--c-text-primary)]">Product</a>
-          <a href="#how" className="transition hover:text-[var(--c-text-primary)]">How it works</a>
+          <a href="#engine" className="transition hover:text-[var(--c-text-primary)]">Engine</a>
+          <a href="#observability" className="transition hover:text-[var(--c-text-primary)]">Observability</a>
           <a href="#sdk" className="transition hover:text-[var(--c-text-primary)]">SDK</a>
           <a href="#open-source" className="transition hover:text-[var(--c-text-primary)]">Open source</a>
         </nav>
@@ -363,31 +373,32 @@ function Hero({
   isPublicDemo: boolean;
 }) {
   return (
-    <section className="relative overflow-hidden">
+    <section className="relative isolate overflow-hidden">
       <div
         className="landing-hero-grid absolute inset-0 -z-10"
         style={{ maskImage: 'linear-gradient(to bottom, black 0%, transparent 90%)' }}
       />
+      <div className="landing-hero-aura absolute inset-0 -z-10" aria-hidden="true" />
       <div className="mx-auto max-w-7xl px-6 pb-20 pt-16 sm:pt-20">
         <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_580px]">
           <div className="min-w-0 max-w-2xl">
-            <SpanEyebrow idx={0} kind="TRACE" name="introducing_continua" dur="alpha" status="ok" />
+            <SpanEyebrow idx={0} kind="ENGINE · TRACE" name="introducing_continua" dur="alpha" status="ok" />
             <h1
-              aria-label="Your agent's black box. Opened."
+              aria-label="Built to survive. Open to inspect."
               className="landing-display mt-6 text-[52px] font-bold tracking-[-0.035em] text-[var(--c-text-primary)] sm:text-[68px] lg:text-[76px]"
             >
-              <span className="block">Your agent's black box.</span>
+              <span className="block">Built to survive.</span>
               <span
-                className="inline-block rounded-[2px] bg-[var(--c-accent)] px-[0.2em] pb-[0.08em] pt-[0.04em] text-white"
+                className="landing-serif inline-block rounded-[2px] bg-[var(--c-accent)] px-[0.2em] pb-[0.08em] pt-[0.04em] text-[#17100a]"
                 style={{ transform: 'rotate(-0.6deg) translateY(2px)' }}
               >
-                Opened.
+                Open to inspect.
               </span>
             </h1>
             <p className="mt-6 max-w-xl text-[15.5px] leading-relaxed text-[var(--c-text-secondary)]">
-              Open-source durable execution engine for AI agents, with built-in observability. Run
-              workflows that survive restarts and crashes — then inspect every retry, payload, and
-              state transition from a console you self-host on your own infrastructure.
+              Open-source durable execution and observability for AI agents. Run workflows that
+              survive restarts, timers, and external signals — then inspect every activity, retry,
+              payload, and state transition from the same self-hosted console.
             </p>
             {isPublicDemo ? (
               <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">
@@ -680,10 +691,10 @@ function TraceTicker() {
 function StatsStrip() {
   const [ref, inView] = useInView<HTMLDivElement>();
   const items = [
-    { value: 'REST', label: 'Ingest API', hint: 'Authenticated trace, session, span, and event writes', pct: 88 },
-    { value: 'SQLC', label: 'Postgres store', hint: 'Typed queries backed by platform migrations', pct: 99 },
-    { value: 'River', label: 'Async jobs', hint: 'Background ingest, rollups, and payload cleanup', pct: 72 },
-    { value: 'Preview', label: 'Durable engine', hint: 'Runs Go workflows end-to-end: activities, timers, signals, replay', pct: 56, zero: true },
+    { value: 'Workflows', label: 'Durable execution', hint: 'Activities, timers, signals, child workflows, and cancellation', pct: 92 },
+    { value: 'History', label: 'Crash recovery', hint: 'Event-sourced replay resumes work after process restarts', pct: 84 },
+    { value: 'Traces', label: 'Built-in observability', hint: 'Runs project into the same trace, span, session, and event model', pct: 92 },
+    { value: 'Postgres', label: 'One durable core', hint: 'Engine history, async ingest, projections, and debugger state', pct: 100, zero: true },
   ];
 
   return (
@@ -724,21 +735,18 @@ function Manifesto() {
           <span className="select-none pt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--c-text-muted)]">¶ 02</span>
           <div className="flex-1">
             <h2 className="landing-display text-[36px] font-semibold tracking-[-0.03em] text-[var(--c-text-primary)] sm:text-[52px]">
-              Spans are first-class.
+              Execution that remembers.
               <br />
-              <span className="text-[var(--c-text-muted)]">Logs are aftermath.</span>
+              <span className="text-[var(--c-text-muted)]">Observability that explains.</span>
             </h2>
             <div className="mt-7 grid gap-x-10 gap-y-3 text-[14.5px] leading-7 text-[var(--c-text-secondary)] sm:grid-cols-2">
               <p>
-                Most teams ship agents to production and then reconstruct the run from{' '}
-                <code className="mx-1 rounded-[3px] border bg-[var(--c-surface)] px-1 font-mono text-[12.5px]" style={{ borderColor: 'var(--c-border)' }}>
-                  stdout
-                </code>
-                and stack traces.
+                The engine persists decisions as history, leases work durably, and replays from the
+                last known state after a crash. A restart becomes another event, not a lost run.
               </p>
               <p>
-                Continua flips the model: retries, payloads, and state transitions are captured
-                as they happen, then made queryable from the console.
+                The observability platform projects that same run into traces, spans, sessions, and
+                events, so operators can explain what happened without reconstructing it from logs.
               </p>
             </div>
           </div>
@@ -748,9 +756,150 @@ function Manifesto() {
   );
 }
 
+function EngineSection() {
+  const primitives = [
+    {
+      icon: <Activity size={15} />,
+      title: 'Activities + retries',
+      copy: 'Lease-backed tasks retry with durable backoff instead of disappearing with a worker.',
+    },
+    {
+      icon: <Clock3 size={15} />,
+      title: 'Timers + signals',
+      copy: 'Sleep for minutes or days, then wake on time or on an external event.',
+    },
+    {
+      icon: <GitBranch size={15} />,
+      title: 'Child workflows',
+      copy: 'Spawn durable children and keep parent-child lineage visible in the debugger.',
+    },
+    {
+      icon: <Ban size={15} />,
+      title: 'Lifecycle control',
+      copy: 'Suspend, resume, cancel, or terminate a run through the preview control plane.',
+    },
+    {
+      icon: <Workflow size={15} />,
+      title: 'Continue-as-new',
+      copy: 'Roll long-lived work into a fresh run without losing the logical workflow.',
+    },
+    {
+      icon: <RotateCcw size={15} />,
+      title: 'History replay',
+      copy: 'Recover workflow and activity progress across process restarts from event history.',
+    },
+  ];
+
+  return (
+    <section id="engine" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="mx-auto max-w-7xl px-6 py-24">
+        <SectionHeader
+          eyebrow={<SpanEyebrow idx={2} kind="ENGINE" name="durable execution" status="run" />}
+          title={<>Crash the process.<br /><span className="text-[var(--c-text-muted)]">Not the workflow.</span></>}
+          copy="Continua's preview engine executes Go-defined workflows end to end, persists every decision, and resumes from history after a worker or process restart."
+        />
+
+        <div className="grid gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)] lg:items-start">
+          <Reveal>
+            <EngineRunVisual />
+          </Reveal>
+          <div className="grid gap-px overflow-hidden border-y sm:grid-cols-2 lg:grid-cols-1" style={{ borderColor: 'var(--c-border)', background: 'var(--c-border)' }}>
+            {primitives.map((item) => (
+              <div key={item.title} className="bg-[var(--c-app-bg)] px-4 py-4">
+                <div className="flex items-center gap-2 text-[var(--c-accent-text)]">
+                  {item.icon}
+                  <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em]">{item.title}</h3>
+                </div>
+                <p className="mt-2 text-[12px] leading-5 text-[var(--c-text-secondary)]">{item.copy}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Reveal>
+          <div className="mt-12 grid gap-px overflow-hidden rounded-lg border md:grid-cols-3" style={{ borderColor: 'var(--c-border)', background: 'var(--c-border)' }}>
+            {[
+              ['Run lifecycle', 'Start · inspect · signal · suspend · resume · cancel · terminate'],
+              ['Worker surface', 'Go workflow worker · local activities · remote Python activities'],
+              ['Engine operations', 'Pending work · projection state · dry-run · backfill · repair'],
+            ].map(([label, value]) => (
+              <div key={label} className="bg-[var(--c-surface)] px-5 py-4">
+                <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-accent-text)]">{label}</div>
+                <div className="mt-2 text-[12px] leading-5 text-[var(--c-text-secondary)]">{value}</div>
+              </div>
+            ))}
+          </div>
+        </Reveal>
+
+        <p className="mt-5 max-w-3xl font-mono text-[10px] leading-5 text-[var(--c-text-muted)]">
+          Preview boundary: workflow authoring is Go-only and the built-in runtime currently uses a fixed dark-launch demo project. The engine REST surface is preview-gated.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function EngineRunVisual() {
+  const events = [
+    ['00', 'WORKFLOW', 'research_agent started', 'complete'],
+    ['01', 'ACTIVITY', 'fetch_corpus completed', 'complete'],
+    ['02', 'TIMER', 'backoff · 30s', 'waiting'],
+    ['03', 'RESTART', 'worker process replaced', 'recovered'],
+    ['04', 'REPLAY', 'history restored · 18 events', 'complete'],
+    ['05', 'SIGNAL', 'approval.received', 'complete'],
+    ['06', 'CHILD', 'synthesize_report completed', 'complete'],
+    ['07', 'CONTINUE', 'generation 2 scheduled', 'running'],
+  ] as const;
+
+  return (
+    <div className="overflow-hidden rounded-xl border bg-[var(--c-surface)] shadow-[0_28px_64px_-42px_rgba(0,0,0,0.8)]" style={{ borderColor: 'var(--c-border)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-[var(--c-sidebar-bg)] px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--c-text-muted)]">engine run</div>
+          <div className="mt-1 font-mono text-[11px] font-semibold text-[var(--c-text-primary)]">research_agent@v3 · run_8f2a91c4</div>
+        </div>
+        <span className="inline-flex items-center gap-1.5 rounded-[3px] border bg-[var(--c-green-faint)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--c-green-text)]" style={{ borderColor: 'var(--c-green-border)' }}>
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)]" /> recovered
+        </span>
+      </div>
+
+      <div className="relative px-4 py-2">
+        <div className="absolute bottom-5 left-[31px] top-5 w-px bg-[var(--c-border-strong)]" aria-hidden="true" />
+        {events.map(([idx, kind, label, state]) => {
+          const isRestart = kind === 'RESTART';
+          const isRunning = state === 'running';
+          const dot = isRestart ? 'var(--c-red)' : isRunning ? 'var(--c-accent)' : state === 'waiting' ? 'var(--c-amber)' : 'var(--c-green)';
+          return (
+            <div key={idx} className="relative grid min-h-11 items-center gap-2 border-b py-2 last:border-b-0" style={{ gridTemplateColumns: '26px 72px minmax(0,1fr) auto', borderColor: 'var(--c-border-subtle)' }}>
+              <span className="z-10 flex h-4 w-4 items-center justify-center rounded-full border bg-[var(--c-surface)] font-mono text-[7px] text-[var(--c-text-muted)]" style={{ borderColor: dot }}>{idx}</span>
+              <span className="font-mono text-[8.5px] font-semibold tracking-[0.08em]" style={{ color: isRestart ? 'var(--c-red-text)' : 'var(--c-text-muted)' }}>{kind}</span>
+              <span className="truncate font-mono text-[10.5px] text-[var(--c-text-primary)]">{label}</span>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-5 gap-px border-t bg-[var(--c-border)]" style={{ borderColor: 'var(--c-border)' }}>
+        {[
+          [<Radio size={12} />, 'Signal'],
+          [<Pause size={12} />, 'Suspend'],
+          [<Play size={12} />, 'Resume'],
+          [<Ban size={12} />, 'Cancel'],
+          [<RotateCcw size={12} />, 'Replay'],
+        ].map(([icon, label]) => (
+          <div key={String(label)} className="flex items-center justify-center gap-1.5 bg-[var(--c-surface-muted)] px-2 py-2.5 font-mono text-[9px] text-[var(--c-text-secondary)]">
+            {icon}{label}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LogsVsTraces() {
   return (
-    <section id="product" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+    <section id="observability" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
       <div className="mx-auto max-w-7xl px-6 py-24">
         <SectionHeader
           eyebrow={<SpanEyebrow idx={1} kind="SECTION" name="before / after" status="ok" />}
@@ -870,7 +1019,7 @@ function AnatomySection() {
   ];
 
   return (
-    <section id="how" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
+    <section className="border-t" style={{ borderColor: 'var(--c-border)' }}>
       <div className="mx-auto max-w-7xl px-6 py-24">
         <SectionHeader
           eyebrow={<SpanEyebrow idx={4} kind="SECTION" name="anatomy" status="ok" />}
@@ -903,21 +1052,22 @@ function StackDiagram() {
           <div>
             <SpanEyebrow idx={3} kind="SECTION" name="what's in the box" status="ok" />
             <h2 className="landing-display mt-4 text-[32px] font-semibold tracking-[-0.025em] text-[var(--c-text-primary)] sm:text-[40px]">
-              One binary,
+              Two runtimes,
               <br />
-              one Postgres.
+              one operational story.
             </h2>
             <p className="mt-4 max-w-md text-[14px] leading-6 text-[var(--c-text-secondary)]">
-              The stack is a Go service, a Postgres database, and a React console served from the
-              same binary. River queues handle async ingest, rollups, and cleanup.
+              The production-shaped observability service and preview durable engine share
+              Postgres. The projector turns engine history into the same traces your operators
+              already inspect.
             </p>
             <ul className="mt-6 space-y-2">
               {[
-                ['Go service', 'Fx-wired modules under internal/'],
-                ['Postgres', 'Idempotent ingest, sqlc-typed queries'],
-                ['River', 'Async jobs: rollups, cleanup, dependencies'],
-                ['React console', 'Embedded SPA served from /'],
-                ['SDKs', 'Python real, TypeScript stub'],
+                ['Engine runtime', 'Workflow, activity, maintenance, projector workers'],
+                ['Platform runtime', 'REST ingest, read APIs, River jobs'],
+                ['Projection bridge', 'Run state mirrored into public traces'],
+                ['Postgres', 'Engine history and observability data'],
+                ['React console', 'Runs, traces, sessions, controls, repair tools'],
               ].map(([k, v]) => (
                 <li key={k} className="flex items-baseline gap-3 text-[12.5px]">
                   <span className="w-[110px] shrink-0 font-mono font-medium text-[var(--c-text-primary)]">{k}</span>
@@ -928,15 +1078,13 @@ function StackDiagram() {
           </div>
           <Reveal>
             <div className="relative rounded-xl border bg-[var(--c-surface-muted)] p-6" style={{ borderColor: 'var(--c-border)' }}>
-              <Layer label="Your code" sub="agent.py · @trace · span()" tone="muted" />
-              <Connector label="import" />
-              <Layer label="Python SDK" sub="continua · batching · helpers" tone="accent" />
-              <Connector label="POST /v1/ingest · HTTPS" />
-              <Layer label="Continua service · Go" sub="auth · ingest · mappers" tone="primary" split={[['Postgres', 'sqlc + migrations'], ['River', 'async workers']]} />
-              <Connector label="engine preview surface" />
-              <Layer label="Durable engine · preview runtime" sub="workflows · activities · timers · signals" tone="muted" />
-              <Connector label="GET /api/*" />
-              <Layer label="Operator console · React" sub="traces · sessions · settings" tone="accent" />
+              <Layer label="Your agent" sub="Go workflows · Python instrumentation" tone="muted" />
+              <Connector label="workflow commands + REST ingest" />
+              <Layer label="Continua runtimes" sub="execution + explanation" tone="primary" split={[['Durable engine', 'history + workers'], ['Observability', 'ingest + River']]} />
+              <Connector label="persist + project" />
+              <Layer label="Postgres" sub="engine schema · public trace model" tone="muted" />
+              <Connector label="projected run state + read APIs" />
+              <Layer label="Operator console · React" sub="engine runs · traces · sessions · repair" tone="accent" />
             </div>
           </Reveal>
         </div>
@@ -1063,16 +1211,16 @@ function OpenSourceSection({
               style={{ borderColor: 'var(--c-border)' }}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)] shadow-[0_0_0_3px_var(--c-green-faint)]" />
-              {isPublicDemo ? 'demo_ready' : 'ready_to_trace'}
+              {isPublicDemo ? 'demo_ready' : 'ready_to_run'}
             </div>
             <h2 className="landing-display mt-7 text-[44px] font-bold tracking-[-0.03em] text-[var(--c-text-primary)] sm:text-[54px]">
-              Trace your first agent
+              Run your first durable agent
               <br />
-              in <span className="text-[var(--c-accent)]">under sixty seconds</span>.
+              with <span className="text-[var(--c-accent)]">the whole story attached</span>.
             </h2>
             <p className="mt-6 max-w-[480px] text-[15px] leading-7 text-[var(--c-text-secondary)]">
-              Self-host the whole stack with one command. Postgres ships with the binary — no
-              accounts, no cloud, no telemetry phoning home.
+              Start the engine, observability service, and debugger on infrastructure you control.
+              One Postgres keeps workflow history and the projected trace together.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-2.5">
               {isConsoleAvailable ? (
@@ -1115,7 +1263,7 @@ function Footer({
   isConsoleAvailable: boolean;
 }) {
   const columns = [
-    { label: 'Product', links: [['Console', '/dashboard'], ['Traces', '/traces'], ['Sessions', '/sessions'], ['Changelog', `${GITHUB_REPO_URL}/blob/main/CHANGELOG.md`]] },
+    { label: 'Product', links: [['Console', '/dashboard'], ['Engine runs', '/engine/runs'], ['Traces', '/traces'], ['Sessions', '/sessions']] },
     { label: 'Develop', links: [['Docs', DOCS_URL], ['API reference', API_REFERENCE_URL], ['Python SDK', PYTHON_SDK_DOCS_URL], ['Run locally', RUN_LOCALLY_DOCS_URL]] },
     { label: 'Open source', links: [['GitHub', GITHUB_REPO_URL], ['License', GITHUB_LICENSE_URL], ['Contributing', `${GITHUB_REPO_URL}/blob/main/CONTRIBUTING.md`], ['Architecture', ARCHITECTURE_DOCS_URL]] },
   ];

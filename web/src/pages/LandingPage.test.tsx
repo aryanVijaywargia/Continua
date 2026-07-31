@@ -71,14 +71,14 @@ describe('LandingPage', () => {
     expect(screen.queryByText('Agentic Engine')).not.toBeInTheDocument();
     expect(screen.getAllByText('Continua').length).toBeGreaterThan(0);
 
-    expect(screen.getByRole('link', { name: 'How it works' })).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: 'Engine' })[0]).toHaveAttribute(
       'href',
-      '#how'
+      '#engine'
     );
     expect(
       screen.getAllByRole('link', { name: 'SDK' }).some((link) => link.getAttribute('href') === '#sdk')
     ).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'Product' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Observability' }).length).toBeGreaterThan(0);
     expect(
       screen
         .getAllByRole('link', { name: 'Open source' })
@@ -98,8 +98,15 @@ describe('LandingPage', () => {
     expect(screen.getByText(/The Python SDK batches spans/i)).toBeInTheDocument();
     expect(screen.queryByText(/TypeScript SDK/i)).not.toBeInTheDocument();
     expect(document.body).toHaveTextContent(/from continua import Continua, span, trace/i);
-    expect(screen.getByRole('heading', { name: /Your agent's black box\. Opened\./i })).toBeInTheDocument();
-    expect(document.body).toHaveTextContent(/Durable execution engine for AI agents, with built-in observability/i);
+    expect(screen.getByRole('heading', { name: /Built to survive\. Open to inspect\./i })).toBeInTheDocument();
+    expect(document.body).toHaveTextContent(/Open-source durable execution and observability for AI agents/i);
+    expect(screen.getByRole('heading', { name: /Crash the process\. Not the workflow\./i })).toBeInTheDocument();
+    expect(document.body).toHaveTextContent(/Activities \+ retries/i);
+    expect(document.body).toHaveTextContent(/Timers \+ signals/i);
+    expect(document.body).toHaveTextContent(/Child workflows/i);
+    expect(document.body).toHaveTextContent(/Continue-as-new/i);
+    expect(document.body).toHaveTextContent(/remote Python activities/i);
+    expect(document.body).toHaveTextContent(/projection state · dry-run · backfill · repair/i);
     expect(screen.getByRole('tablist', { name: 'Python SDK examples' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'agent.py' })).toHaveAttribute('aria-selected', 'true');
     expect(document.body).toHaveTextContent(/MIT licensed/i);
@@ -120,10 +127,14 @@ describe('LandingPage', () => {
 
     expect(
       screen
-        .getAllByRole('link', { name: 'Product' })
-        .some((link) => link.getAttribute('href') === '#product')
+        .getAllByRole('link', { name: 'Engine' })
+        .some((link) => link.getAttribute('href') === '#engine')
     ).toBe(true);
-    expect(screen.getByRole('link', { name: 'How it works' })).toHaveAttribute('href', '#how');
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Observability' })
+        .some((link) => link.getAttribute('href') === '#observability')
+    ).toBe(true);
     expect(
       screen.getAllByRole('link', { name: 'SDK' }).some((link) => link.getAttribute('href') === '#sdk')
     ).toBe(true);

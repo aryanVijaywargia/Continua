@@ -186,6 +186,100 @@
     --c-bar-tick: rgba(255, 255, 255, 0.08);
   }
 
+  .landing-theme {
+    --c-app-bg: #f3eee5;
+    --c-sidebar-bg: #e9e0d2;
+    --c-surface: #fbf7ef;
+    --c-surface-elevated: #fffaf2;
+    --c-surface-muted: #e9e1d5;
+    --c-table-head-bg: #efe7da;
+    --c-row-hover-bg: rgba(102, 63, 25, 0.045);
+    --c-row-selected-bg: rgba(195, 103, 35, 0.09);
+    --c-nav-active-bg: rgba(102, 63, 25, 0.07);
+    --c-nav-hover-bg: rgba(102, 63, 25, 0.045);
+    --c-border: rgba(65, 43, 24, 0.13);
+    --c-border-subtle: rgba(65, 43, 24, 0.075);
+    --c-border-strong: rgba(65, 43, 24, 0.24);
+    --c-text-primary: #19140f;
+    --c-text-secondary: #63584c;
+    --c-text-muted: #948778;
+    --c-text-inverse: #fffaf2;
+    --c-accent: #e99a4d;
+    --c-accent-text: #9b4e18;
+    --c-accent-faint: rgba(201, 105, 34, 0.11);
+    --c-accent-border: rgba(201, 105, 34, 0.3);
+    --c-blue: #c96a26;
+    --c-blue-text: #9b4e18;
+    --c-blue-faint: rgba(201, 106, 38, 0.1);
+    --c-blue-border: rgba(201, 106, 38, 0.25);
+    --c-green: #6e8d39;
+    --c-green-text: #4f6d24;
+    --c-green-faint: rgba(110, 141, 57, 0.11);
+    --c-green-border: rgba(110, 141, 57, 0.28);
+    --c-red: #bd4d3e;
+    --c-red-text: #9d3328;
+    --c-red-faint: rgba(189, 77, 62, 0.1);
+    --c-red-border: rgba(189, 77, 62, 0.25);
+    --c-amber: #c99024;
+    --c-amber-text: #8e620f;
+    --c-amber-faint: rgba(201, 144, 36, 0.1);
+    --c-amber-border: rgba(201, 144, 36, 0.26);
+    --c-bar-success: #6e8d39;
+    --c-bar-success-bg: rgba(110, 141, 57, 0.17);
+    --c-bar-running: #d37a31;
+    --c-bar-running-bg: rgba(211, 122, 49, 0.16);
+    --c-bar-failed: #bd4d3e;
+    --c-bar-failed-bg: rgba(189, 77, 62, 0.16);
+    --c-bar-tick: rgba(65, 43, 24, 0.09);
+  }
+
+  html.dark .landing-theme {
+    --c-app-bg: #0d0b08;
+    --c-sidebar-bg: #120f0b;
+    --c-surface: #17120d;
+    --c-surface-elevated: #1d1711;
+    --c-surface-muted: #1c1610;
+    --c-table-head-bg: #120f0b;
+    --c-row-hover-bg: rgba(255, 224, 188, 0.035);
+    --c-row-selected-bg: rgba(238, 160, 81, 0.09);
+    --c-nav-active-bg: rgba(255, 224, 188, 0.07);
+    --c-nav-hover-bg: rgba(255, 224, 188, 0.04);
+    --c-border: rgba(255, 224, 188, 0.11);
+    --c-border-subtle: rgba(255, 224, 188, 0.06);
+    --c-border-strong: rgba(255, 224, 188, 0.2);
+    --c-text-primary: #f4ede2;
+    --c-text-secondary: #b9ad9c;
+    --c-text-muted: #786d60;
+    --c-text-inverse: #17100a;
+    --c-accent: #efa051;
+    --c-accent-text: #ffc071;
+    --c-accent-faint: rgba(239, 160, 81, 0.12);
+    --c-accent-border: rgba(239, 160, 81, 0.28);
+    --c-blue: #efa051;
+    --c-blue-text: #ffc071;
+    --c-blue-faint: rgba(239, 160, 81, 0.11);
+    --c-blue-border: rgba(239, 160, 81, 0.27);
+    --c-green: #9bb768;
+    --c-green-text: #bfd98b;
+    --c-green-faint: rgba(155, 183, 104, 0.11);
+    --c-green-border: rgba(155, 183, 104, 0.25);
+    --c-red: #db7766;
+    --c-red-text: #f09c8e;
+    --c-red-faint: rgba(219, 119, 102, 0.11);
+    --c-red-border: rgba(219, 119, 102, 0.25);
+    --c-amber: #e3b653;
+    --c-amber-text: #f4cc72;
+    --c-amber-faint: rgba(227, 182, 83, 0.11);
+    --c-amber-border: rgba(227, 182, 83, 0.24);
+    --c-bar-success: #9bb768;
+    --c-bar-success-bg: rgba(155, 183, 104, 0.18);
+    --c-bar-running: #efa051;
+    --c-bar-running-bg: rgba(239, 160, 81, 0.18);
+    --c-bar-failed: #db7766;
+    --c-bar-failed-bg: rgba(219, 119, 102, 0.18);
+    --c-bar-tick: rgba(255, 224, 188, 0.085);
+  }
+
 
   html,
   body,
@@ -356,9 +450,25 @@
     line-height: 0.96;
   }
 
+  .landing-serif {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    font-weight: 500;
+    letter-spacing: -0.055em;
+  }
+
   .landing-hero-grid {
     background-image: radial-gradient(circle at 1px 1px, var(--c-bar-tick) 1px, transparent 0);
     background-size: 22px 22px;
+  }
+
+  .landing-hero-aura {
+    background:
+      radial-gradient(circle at 76% 28%, color-mix(in srgb, var(--c-accent) 34%, transparent) 0, transparent 36%),
+      repeating-radial-gradient(circle at 76% 28%, transparent 0 86px, color-mix(in srgb, var(--c-accent) 12%, transparent) 87px 88px, transparent 89px 148px),
+      linear-gradient(110deg, transparent 10%, color-mix(in srgb, var(--c-accent) 5%, transparent) 60%, transparent 90%);
+    mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
+    opacity: 0.9;
   }
 
   .landing-reveal {
