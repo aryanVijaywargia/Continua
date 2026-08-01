@@ -1,3 +1,458 @@
+const ENGINE_DEMO_COMPLETED_TRACE_ID = '7b1e7c28-8f55-4f8f-a9b1-d37d0e3aa201';
+const ENGINE_DEMO_COMPLETED_RUN_ID = '6c4e79af-4bc4-47b1-a6cf-2d3c44b2a201';
+const ENGINE_DEMO_COMPLETED_INSTANCE_ID = 'a6f54e45-b3b3-4f0a-ab66-5011659c6201';
+const ENGINE_DEMO_WAITING_TRACE_ID = '7b1e7c28-8f55-4f8f-a9b1-d37d0e3aa202';
+const ENGINE_DEMO_WAITING_RUN_ID = '6c4e79af-4bc4-47b1-a6cf-2d3c44b2a202';
+const ENGINE_DEMO_WAITING_INSTANCE_ID = 'a6f54e45-b3b3-4f0a-ab66-5011659c6202';
+
+const engineDemoCompletedSummary = {
+  run_id: ENGINE_DEMO_COMPLETED_RUN_ID,
+  instance_key: 'demo-greeting-completed',
+  definition_name: 'darklaunch.demo',
+  definition_version: 'v1',
+  projection_state: 'up_to_date',
+  root_run_id: ENGINE_DEMO_COMPLETED_RUN_ID,
+  child_depth: 0,
+  status: 'COMPLETED',
+  created_at: '2026-06-03T00:41:50.000Z',
+  updated_at: '2026-06-03T00:41:55.400Z',
+  completed_at: '2026-06-03T00:41:55.400Z',
+  custom_status: {
+    phase: 'completed',
+    approval: 'approved',
+  },
+  pending_work: {
+    pending_activity_tasks: 0,
+    pending_inbox_items: 0,
+  },
+  result: {
+    greeting: 'hello, demo',
+    approval: 'approved',
+  },
+};
+
+const engineDemoWaitingSummary = {
+  run_id: ENGINE_DEMO_WAITING_RUN_ID,
+  instance_key: 'demo-approval-gate',
+  definition_name: 'darklaunch.sleep-demo',
+  definition_version: 'v1',
+  projection_state: 'up_to_date',
+  root_run_id: ENGINE_DEMO_WAITING_RUN_ID,
+  child_depth: 0,
+  status: 'WAITING',
+  created_at: '2026-06-03T00:41:56.000Z',
+  updated_at: '2026-06-03T00:41:59.000Z',
+  custom_status: {
+    phase: 'approval',
+  },
+  wait_state: {
+    kind: 'signal',
+    signal_name: 'approval',
+  },
+  pending_work: {
+    pending_activity_tasks: 0,
+    pending_inbox_items: 0,
+  },
+};
+
+const engineDemoTraces = [
+  {
+    id: ENGINE_DEMO_WAITING_TRACE_ID,
+    name: 'darklaunch.sleep-demo',
+    status: 'RUNNING',
+    started_at: '2026-06-03T00:41:56.000Z',
+    error_count: 0,
+    total_cost_usd: 0,
+    total_tokens_in: 0,
+    total_tokens_out: 0,
+    metadata: {
+      demo: true,
+      runtime: 'continua-engine',
+    },
+    engine: engineDemoWaitingSummary,
+  },
+  {
+    id: ENGINE_DEMO_COMPLETED_TRACE_ID,
+    name: 'darklaunch.demo',
+    status: 'COMPLETED',
+    started_at: '2026-06-03T00:41:50.000Z',
+    ended_at: '2026-06-03T00:41:55.400Z',
+    error_count: 0,
+    total_cost_usd: 0,
+    total_tokens_in: 0,
+    total_tokens_out: 0,
+    metadata: {
+      demo: true,
+      runtime: 'continua-engine',
+    },
+    engine: engineDemoCompletedSummary,
+  },
+];
+
+const engineDemoTraceDetails = {
+  [ENGINE_DEMO_WAITING_TRACE_ID]: {
+    ...engineDemoTraces[0],
+    trace_id: 'engine:' + ENGINE_DEMO_WAITING_RUN_ID,
+    input: {
+      name: 'demo',
+      sleep_ms: 1000,
+    },
+    output: null,
+  },
+  [ENGINE_DEMO_COMPLETED_TRACE_ID]: {
+    ...engineDemoTraces[1],
+    trace_id: 'engine:' + ENGINE_DEMO_COMPLETED_RUN_ID,
+    input: {
+      name: 'demo',
+      timer_at: '2026-06-03T00:41:53.000Z',
+    },
+    output: engineDemoCompletedSummary.result,
+  },
+};
+
+const engineDemoSpansByTrace = {
+  [ENGINE_DEMO_WAITING_TRACE_ID]: {
+    spans: [
+      {
+        id: 'd20f6c6f-86bf-4e89-9e3d-80699aa76202',
+        trace_id: ENGINE_DEMO_WAITING_TRACE_ID,
+        span_id: 'engine-workflow-waiting',
+        name: 'darklaunch.sleep-demo',
+        kind: 'CHAIN',
+        status: 'STARTED',
+        started_at: '2026-06-03T00:41:56.000Z',
+        input: {
+          name: 'demo',
+          sleep_ms: 1000,
+        },
+      },
+    ],
+  },
+  [ENGINE_DEMO_COMPLETED_TRACE_ID]: {
+    spans: [
+      {
+        id: 'd20f6c6f-86bf-4e89-9e3d-80699aa76201',
+        trace_id: ENGINE_DEMO_COMPLETED_TRACE_ID,
+        span_id: 'engine-workflow-completed',
+        name: 'darklaunch.demo',
+        kind: 'CHAIN',
+        status: 'COMPLETED',
+        started_at: '2026-06-03T00:41:50.000Z',
+        ended_at: '2026-06-03T00:41:55.400Z',
+        latency_ms: 5400,
+        input: {
+          name: 'demo',
+        },
+        output: engineDemoCompletedSummary.result,
+      },
+      {
+        id: '43f1d2a8-f7bd-43a8-8382-b9ae87ed3201',
+        trace_id: ENGINE_DEMO_COMPLETED_TRACE_ID,
+        span_id: 'engine-activity-compose-greeting',
+        parent_span_id: 'engine-workflow-completed',
+        name: 'demo.greeting',
+        kind: 'TOOL',
+        status: 'COMPLETED',
+        started_at: '2026-06-03T00:41:50.250Z',
+        ended_at: '2026-06-03T00:41:50.620Z',
+        latency_ms: 370,
+        input: {
+          name: 'demo',
+        },
+        output: {
+          greeting: 'hello, demo',
+        },
+      },
+    ],
+  },
+};
+
+const engineDemoTimelinesByTrace = {
+  [ENGINE_DEMO_WAITING_TRACE_ID]: {
+    events: [
+      {
+        id: 'engine-waiting-signal',
+        trace_id: ENGINE_DEMO_WAITING_TRACE_ID,
+        span_id: 'engine-workflow-waiting',
+        span_name: 'darklaunch.sleep-demo',
+        event_type: 'wait',
+        source: 'explicit',
+        message: 'Workflow is waiting for approval',
+        signal_name: 'approval',
+        timestamp: '2026-06-03T00:41:59.000Z',
+      },
+    ],
+    trace_status: 'RUNNING',
+    has_more: false,
+  },
+  [ENGINE_DEMO_COMPLETED_TRACE_ID]: {
+    events: [
+      {
+        id: 'engine-completed-activity',
+        trace_id: ENGINE_DEMO_COMPLETED_TRACE_ID,
+        span_id: 'engine-activity-compose-greeting',
+        span_name: 'demo.greeting',
+        event_type: 'effect',
+        source: 'explicit',
+        message: 'Activity completed: demo.greeting',
+        activity_key: 'compose-greeting',
+        activity_type: 'demo.greeting',
+        timestamp: '2026-06-03T00:41:50.620Z',
+      },
+      {
+        id: 'engine-completed-signal',
+        trace_id: ENGINE_DEMO_COMPLETED_TRACE_ID,
+        span_id: 'engine-workflow-completed',
+        span_name: 'darklaunch.demo',
+        event_type: 'message',
+        source: 'explicit',
+        message: 'Approval signal received',
+        signal_name: 'approval',
+        timestamp: '2026-06-03T00:41:55.200Z',
+      },
+    ],
+    trace_status: 'COMPLETED',
+    has_more: false,
+  },
+};
+
+const engineDemoRunsById = new Map([
+  [
+    ENGINE_DEMO_COMPLETED_RUN_ID,
+    {
+      instance_id: ENGINE_DEMO_COMPLETED_INSTANCE_ID,
+      ...engineDemoCompletedSummary,
+    },
+  ],
+  [
+    ENGINE_DEMO_WAITING_RUN_ID,
+    {
+      instance_id: ENGINE_DEMO_WAITING_INSTANCE_ID,
+      ...engineDemoWaitingSummary,
+    },
+  ],
+]);
+
+const engineDemoPendingWorkByRun = new Map([
+  [
+    ENGINE_DEMO_COMPLETED_RUN_ID,
+    {
+      run_id: ENGINE_DEMO_COMPLETED_RUN_ID,
+      current_wait: null,
+      activities: [],
+      timers: [],
+      signals: [],
+      pending_activity_tasks: 0,
+      pending_inbox_items: 0,
+    },
+  ],
+  [
+    ENGINE_DEMO_WAITING_RUN_ID,
+    {
+      run_id: ENGINE_DEMO_WAITING_RUN_ID,
+      current_wait: {
+        kind: 'signal',
+        signal_name: 'approval',
+      },
+      activities: [],
+      timers: [],
+      signals: [],
+      pending_activity_tasks: 0,
+      pending_inbox_items: 0,
+    },
+  ],
+]);
+
+const engineDemoHistoryByRun = new Map([
+  [
+    ENGINE_DEMO_COMPLETED_RUN_ID,
+    {
+      events: [
+        {
+          id: 1,
+          sequence_no: 1,
+          event_type: 'workflow.started',
+          payload: {
+            definition_name: 'darklaunch.demo',
+            definition_version: 'v1',
+            instance_key: 'demo-greeting-completed',
+            input: { name: 'demo' },
+          },
+          created_at: '2026-06-03T00:41:50.000Z',
+        },
+        {
+          id: 2,
+          sequence_no: 2,
+          event_type: 'activity.scheduled',
+          payload: {
+            activity_key: 'compose-greeting',
+            activity_type: 'demo.greeting',
+          },
+          created_at: '2026-06-03T00:41:50.200Z',
+        },
+        {
+          id: 3,
+          sequence_no: 3,
+          event_type: 'activity.completed',
+          payload: {
+            activity_key: 'compose-greeting',
+            result: { greeting: 'hello, demo' },
+          },
+          created_at: '2026-06-03T00:41:50.620Z',
+        },
+        {
+          id: 4,
+          sequence_no: 4,
+          event_type: 'timer.fired',
+          payload: {
+            timer_key: 'demo-timer',
+          },
+          created_at: '2026-06-03T00:41:53.000Z',
+        },
+        {
+          id: 5,
+          sequence_no: 5,
+          event_type: 'signal.received',
+          payload: {
+            signal_name: 'approval',
+            payload: { approval: 'approved' },
+          },
+          created_at: '2026-06-03T00:41:55.200Z',
+        },
+        {
+          id: 6,
+          sequence_no: 6,
+          event_type: 'workflow.completed',
+          payload: {
+            result: engineDemoCompletedSummary.result,
+          },
+          created_at: '2026-06-03T00:41:55.400Z',
+        },
+      ],
+      has_more: false,
+    },
+  ],
+  [
+    ENGINE_DEMO_WAITING_RUN_ID,
+    {
+      events: [
+        {
+          id: 7,
+          sequence_no: 1,
+          event_type: 'workflow.started',
+          payload: {
+            definition_name: 'darklaunch.sleep-demo',
+            definition_version: 'v1',
+            instance_key: 'demo-approval-gate',
+            input: { name: 'demo', sleep_ms: 1000 },
+          },
+          created_at: '2026-06-03T00:41:56.000Z',
+        },
+        {
+          id: 8,
+          sequence_no: 2,
+          event_type: 'timer.scheduled',
+          payload: {
+            timer_key: 'sleep',
+          },
+          created_at: '2026-06-03T00:41:56.100Z',
+        },
+        {
+          id: 9,
+          sequence_no: 3,
+          event_type: 'timer.fired',
+          payload: {
+            timer_key: 'sleep',
+          },
+          created_at: '2026-06-03T00:41:57.100Z',
+        },
+      ],
+      has_more: false,
+    },
+  ],
+]);
+
+const engineDemoResultsByRun = new Map([
+  [
+    ENGINE_DEMO_COMPLETED_RUN_ID,
+    {
+      run_id: ENGINE_DEMO_COMPLETED_RUN_ID,
+      status: 'COMPLETED',
+      result: engineDemoCompletedSummary.result,
+    },
+  ],
+]);
+
+const engineDemoInstancesByKey = new Map([
+  [
+    'demo-greeting-completed',
+    {
+      instance_id: ENGINE_DEMO_COMPLETED_INSTANCE_ID,
+      instance_key: 'demo-greeting-completed',
+      definition_name: 'darklaunch.demo',
+      status: 'completed',
+      current_run: engineDemoCompletedSummary,
+    },
+  ],
+  [
+    'demo-approval-gate',
+    {
+      instance_id: ENGINE_DEMO_WAITING_INSTANCE_ID,
+      instance_key: 'demo-approval-gate',
+      definition_name: 'darklaunch.sleep-demo',
+      status: 'active',
+      current_run: engineDemoWaitingSummary,
+    },
+  ],
+]);
+
+const engineDemoDefinitions = {
+  definitions: [
+    {
+      definition_name: 'darklaunch.demo',
+      definition_version: 'v1',
+      enabled: true,
+      live: true,
+      runtime_published_at: '2026-06-03T00:40:00.000Z',
+      published_at: '2026-06-03T00:40:00.000Z',
+    },
+    {
+      definition_name: 'darklaunch.sleep-demo',
+      definition_version: 'v1',
+      enabled: true,
+      live: true,
+      runtime_published_at: '2026-06-03T00:40:00.000Z',
+      published_at: '2026-06-03T00:40:00.000Z',
+    },
+  ],
+};
+
+const engineDemoHealth = {
+  generated_at: '2026-06-03T00:42:00.000Z',
+  projector: {
+    lag_rows: 0,
+    runs_catching_up: 0,
+  },
+  queues: {
+    runs_ready: 0,
+    activity_tasks_pending: 0,
+    inbox_pending: 0,
+  },
+  workers: [
+    {
+      id: 'demo-engine-worker',
+      last_claim_at: '2026-06-03T00:41:59.000Z',
+      active_leases: 0,
+      expired_leases: 0,
+      status: 'active',
+    },
+  ],
+  retention: {
+    summary_only_runs: 0,
+    journal_expired_runs: 0,
+  },
+};
+
 const sessions = [
   {
     "created_at": "2026-06-03T00:42:25.175485+05:30",
@@ -26,6 +481,7 @@ const sessions = [
 ];
 
 const traces = [
+  ...engineDemoTraces,
   {
     "ended_at": "2026-06-03T00:42:26.250695+05:30",
     "error_count": 1,
@@ -68,6 +524,7 @@ const traces = [
 ];
 
 const traceDetails = new Map(Object.entries({
+  ...engineDemoTraceDetails,
   "e4271b6e-9b16-4c3d-a42a-07d04c0e5fa4": {
     "ended_at": "2026-06-03T00:42:26.250695+05:30",
     "error_count": 1,
@@ -122,6 +579,7 @@ const traceDetails = new Map(Object.entries({
 }));
 
 const traceSpansByTrace = new Map(Object.entries({
+  ...engineDemoSpansByTrace,
   "e4271b6e-9b16-4c3d-a42a-07d04c0e5fa4": {
     "spans": [
       {
@@ -435,6 +893,7 @@ const traceSpansByTrace = new Map(Object.entries({
 }));
 
 const traceTimelinesByTrace = new Map(Object.entries({
+  ...engineDemoTimelinesByTrace,
   "e4271b6e-9b16-4c3d-a42a-07d04c0e5fa4": {
     "events": [
       {
@@ -1650,6 +2109,16 @@ function badRequest(message) {
   return json({ code: 'invalid_request', message }, 400);
 }
 
+function readOnly() {
+  return json(
+    {
+      code: 'public_demo_read_only',
+      message: 'The public demo exposes captured engine reads only.',
+    },
+    403
+  );
+}
+
 function filterTraces(url) {
   let filtered = [...traces];
   const session = url.searchParams.get('session_id');
@@ -1658,9 +2127,13 @@ function filterTraces(url) {
   const userId = url.searchParams.get('user_id');
   const hasErrors = url.searchParams.get('has_errors') === 'true';
   const engineOnly = url.searchParams.get('engine_only') === 'true';
+  const engineRunStatus = url.searchParams.get('engine_run_status')?.toUpperCase();
 
   if (engineOnly) {
     filtered = filtered.filter((trace) => trace.engine || trace.engine_run_id);
+  }
+  if (engineRunStatus) {
+    filtered = filtered.filter((trace) => trace.engine?.status === engineRunStatus);
   }
   if (session) {
     filtered = filtered.filter((trace) => trace.session_id === session);
@@ -1719,12 +2192,16 @@ function filterSessions(url) {
   };
 }
 
-function handleApi(url) {
+function handleApi(url, method = 'GET') {
+  if (url.pathname.startsWith('/v1/engine/') && method !== 'GET') {
+    return readOnly();
+  }
+
   if (url.pathname === '/api/auth/config') {
     return json({
       enabled: false,
       public_demo_enabled: true,
-      public_demo_label: 'Real OpenAI-backed demo',
+      public_demo_label: 'OpenAI + durable engine demo',
     });
   }
 
@@ -1790,6 +2267,44 @@ function handleApi(url) {
     return session ? json(session) : notFound();
   }
 
+  if (url.pathname === '/v1/engine/definitions') {
+    return json(engineDemoDefinitions);
+  }
+
+  if (url.pathname === '/v1/engine/health') {
+    return json(engineDemoHealth);
+  }
+
+  if (/^\/v1\/engine\/instances\/[^/]+$/.test(url.pathname)) {
+    const instanceKey = decodeURIComponent(url.pathname.split('/').at(-1));
+    const instance = engineDemoInstancesByKey.get(instanceKey);
+    return instance ? json(instance) : notFound();
+  }
+
+  if (/^\/v1\/engine\/runs\/[^/]+\/pending-work$/.test(url.pathname)) {
+    const runId = url.pathname.split('/').at(-2);
+    const pendingWork = engineDemoPendingWorkByRun.get(runId);
+    return pendingWork ? json(pendingWork) : notFound();
+  }
+
+  if (/^\/v1\/engine\/runs\/[^/]+\/history$/.test(url.pathname)) {
+    const runId = url.pathname.split('/').at(-2);
+    const history = engineDemoHistoryByRun.get(runId);
+    return history ? json(history) : notFound();
+  }
+
+  if (/^\/v1\/engine\/runs\/[^/]+\/result$/.test(url.pathname)) {
+    const runId = url.pathname.split('/').at(-2);
+    const result = engineDemoResultsByRun.get(runId);
+    return result ? json(result) : notFound();
+  }
+
+  if (/^\/v1\/engine\/runs\/[^/]+$/.test(url.pathname)) {
+    const runId = url.pathname.split('/').at(-1);
+    const run = engineDemoRunsById.get(runId);
+    return run ? json(run) : notFound();
+  }
+
   return notFound();
 }
 
@@ -1809,8 +2324,11 @@ export default {
       return fetch(proxyRequest);
     }
 
-    if (url.pathname.startsWith('/api/')) {
-      return handleApi(url);
+    if (
+      url.pathname.startsWith('/api/') ||
+      url.pathname.startsWith('/v1/engine/')
+    ) {
+      return handleApi(url, request.method);
     }
 
     const response = await env.ASSETS.fetch(request);

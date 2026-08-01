@@ -38,6 +38,7 @@ import {
   formatEngineRunStatusLabel,
   type EngineRunStatusFilter,
 } from '../utils/tracesSearchParams';
+import { useRuntimeAuth } from '../auth/runtime';
 
 const EMPTY_TRACES: Trace[] = [];
 
@@ -79,6 +80,8 @@ function formatEngineDefinitionLabel(engine: Trace['engine']): string {
 export function EngineRunsPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const runtimeAuth = useRuntimeAuth();
+  const isPublicDemo = runtimeAuth.public_demo_enabled === true;
   const searchParams = new URLSearchParams(location.search);
   const projectId = getProjectIdFromSearchParams(searchParams);
   const engineRunStatusCandidate = searchParams.get('engine_run_status');
@@ -134,12 +137,14 @@ export function EngineRunsPage() {
             <Btn kind="secondary" leadingIcon={RefreshCw} size="sm" onClick={() => void runsQuery.refetch()}>
               Refresh
             </Btn>
-            <Btn kind="primary" leadingIcon={Play} size="sm" onClick={() => setDialogOpen(true)}>
-              Start run
-            </Btn>
+            {!isPublicDemo ? (
+              <Btn kind="primary" leadingIcon={Play} size="sm" onClick={() => setDialogOpen(true)}>
+                Start run
+              </Btn>
+            ) : null}
           </>
         }
-        description={`${traces.length} of ${total} engine-backed traces · auto-refreshing every 5s`}
+        description={`${traces.length} of ${total} engine-backed traces · ${isPublicDemo ? 'read-only captured runs' : 'auto-refreshing every 5s'}`}
         title="Engine Runs"
       />
 
@@ -208,12 +213,18 @@ export function EngineRunsPage() {
           <h2 className="text-base font-semibold text-[var(--c-text-primary)]">
             No engine runs yet
           </h2>
-          <p className="mt-2">Start a workflow run to inspect its projected trace here.</p>
-          <div className="mt-4">
-            <Btn kind="primary" leadingIcon={Play} onClick={() => setDialogOpen(true)}>
-              Start run
-            </Btn>
-          </div>
+          <p className="mt-2">
+            {isPublicDemo
+              ? 'No captured engine runs are available in this demo.'
+              : 'Start a workflow run to inspect its projected trace here.'}
+          </p>
+          {!isPublicDemo ? (
+            <div className="mt-4">
+              <Btn kind="primary" leadingIcon={Play} onClick={() => setDialogOpen(true)}>
+                Start run
+              </Btn>
+            </div>
+          ) : null}
         </div>
       ) : (
         <>
@@ -307,7 +318,7 @@ export function EngineRunsPage() {
         </>
       )}
 
-      {dialogOpen ? (
+      {dialogOpen && !isPublicDemo ? (
         <StartEngineRunDialog
           definitionVersions={definitionVersions}
           projectId={projectId}

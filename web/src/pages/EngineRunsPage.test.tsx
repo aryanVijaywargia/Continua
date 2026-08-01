@@ -14,6 +14,10 @@ import { ThemeProvider } from '../hooks/ThemeProvider';
 import { DEFAULT_PAGE_SIZE } from '../utils/pagination';
 import { jsonResponse, readRequestUrl, type RequestInput } from './testUtils';
 import { EngineRunsPage } from './EngineRunsPage';
+import {
+  RuntimeAuthStateProvider,
+  type RuntimeAuthState,
+} from '../auth/runtime';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -110,7 +114,15 @@ function LocationProbe() {
   );
 }
 
-function renderEngineRunsPage(initialEntry = '/engine/runs') {
+const DEFAULT_RUNTIME_AUTH: RuntimeAuthState = {
+  status: 'ready',
+  enabled: false,
+};
+
+function renderEngineRunsPage(
+  initialEntry = '/engine/runs',
+  runtimeAuth: RuntimeAuthState = DEFAULT_RUNTIME_AUTH
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -121,24 +133,26 @@ function renderEngineRunsPage(initialEntry = '/engine/runs') {
   });
 
   return render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <MemoryRouter initialEntries={[initialEntry]}>
-          <Routes>
-            <Route
-              path="/engine/runs"
-              element={
-                <>
-                  <EngineRunsPage />
-                  <LocationProbe />
-                </>
-              }
-            />
-            <Route path="/traces/:traceId" element={<LocationProbe />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <RuntimeAuthStateProvider auth={runtimeAuth}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={[initialEntry]}>
+            <Routes>
+              <Route
+                path="/engine/runs"
+                element={
+                  <>
+                    <EngineRunsPage />
+                    <LocationProbe />
+                  </>
+                }
+              />
+              <Route path="/traces/:traceId" element={<LocationProbe />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </RuntimeAuthStateProvider>
   );
 }
 
@@ -356,6 +370,22 @@ describe('EngineRunsPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Start run' })).toBeInTheDocument();
     expect(screen.getByLabelText(/^Instance key/)).toBeInTheDocument();
+  });
+
+  it('keeps the public demo read-only while rendering captured engine runs', async () => {
+    mockEngineRequests();
+
+    renderEngineRunsPage('/engine/runs', {
+      status: 'ready',
+      enabled: false,
+      public_demo_enabled: true,
+      public_demo_label: 'Sample data',
+    });
+
+    expect(await screen.findByText('darklaunch.demo · v1')).toBeInTheDocument();
+    expect(screen.getByText(/read-only captured runs/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Engine health' })).toBeInTheDocument();
   });
 });
 
