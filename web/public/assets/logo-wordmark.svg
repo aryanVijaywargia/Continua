@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 56" fill="none">
   <defs>
     <linearGradient id="cont-grad-w" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#0075d6"></stop>
-      <stop offset="1" stop-color="#005cab"></stop>
+      <stop offset="0" stop-color="#e99a4d"></stop>
+      <stop offset="1" stop-color="#c96a26"></stop>
     </linearGradient>
   </defs>
   <g transform="translate(0, -4)">
@@ -11,5 +11,5 @@
     <circle cx="44" cy="18" r="2.6" fill="url(#cont-grad-w)"></circle>
     <circle cx="44" cy="46" r="2.6" fill="url(#cont-grad-w)"></circle>
   </g>
-  <text x="68" y="36" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="26" letter-spacing="-1.2" fill="#0f172a">Continua</text>
+  <text x="68" y="36" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="26" letter-spacing="-1.2" fill="#19140f">Continua</text>
 </svg>
