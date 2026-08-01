@@ -47,6 +47,7 @@ describe('public demo worker engine fixtures', () => {
     const completed = traces.find((trace) => trace.engine.status === 'COMPLETED');
 
     const detailResponse = await request('/api/traces/' + completed.id);
+    expect(detailResponse.status).toBe(200);
     const detail = await detailResponse.json();
     expect(detail.engine.result).toEqual({
       greeting: 'hello, demo',
@@ -56,6 +57,7 @@ describe('public demo worker engine fixtures', () => {
     const historyResponse = await request(
       '/v1/engine/runs/' + completed.engine.run_id + '/history'
     );
+    expect(historyResponse.status).toBe(200);
     const history = await historyResponse.json();
     expect(history.events.map((event) => event.event_type)).toContain(
       'workflow.completed'
@@ -64,6 +66,7 @@ describe('public demo worker engine fixtures', () => {
     const resultResponse = await request(
       '/v1/engine/runs/' + completed.engine.run_id + '/result'
     );
+    expect(resultResponse.status).toBe(200);
     const result = await resultResponse.json();
     expect(result.status).toBe('COMPLETED');
     expect(result.result.greeting).toBe('hello, demo');
@@ -71,6 +74,7 @@ describe('public demo worker engine fixtures', () => {
     const pendingResponse = await request(
       '/v1/engine/runs/' + waiting.engine.run_id + '/pending-work'
     );
+    expect(pendingResponse.status).toBe(200);
     const pending = await pendingResponse.json();
     expect(pending.current_wait).toEqual({
       kind: 'signal',
@@ -78,9 +82,30 @@ describe('public demo worker engine fixtures', () => {
     });
 
     const healthResponse = await request('/v1/engine/health');
+    expect(healthResponse.status).toBe(200);
     const health = await healthResponse.json();
     expect(health.projector.lag_rows).toBe(0);
     expect(health.workers[0].status).toBe('active');
+  });
+
+  it('serves captured definitions and instances', async () => {
+    const definitionsResponse = await request('/v1/engine/definitions');
+    expect(definitionsResponse.status).toBe(200);
+    const { definitions } = await definitionsResponse.json();
+    expect(definitions.map((definition) => definition.definition_name)).toEqual([
+      'darklaunch.demo',
+      'darklaunch.sleep-demo',
+    ]);
+
+    const instanceResponse = await request('/v1/engine/instances/demo-approval-gate');
+    expect(instanceResponse.status).toBe(200);
+    expect((await instanceResponse.json()).current_run.status).toBe('WAITING');
+
+    const missingResponse = await request('/v1/engine/instances/no-such-instance');
+    expect(missingResponse.status).toBe(404);
+
+    const malformedResponse = await request('/v1/engine/instances/%');
+    expect(malformedResponse.status).toBe(404);
   });
 
   it('rejects engine writes in the read-only public demo', async () => {

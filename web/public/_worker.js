@@ -2130,7 +2130,7 @@ function filterTraces(url) {
   const engineRunStatus = url.searchParams.get('engine_run_status')?.toUpperCase();
 
   if (engineOnly) {
-    filtered = filtered.filter((trace) => trace.engine || trace.engine_run_id);
+    filtered = filtered.filter((trace) => Boolean(trace.engine));
   }
   if (engineRunStatus) {
     filtered = filtered.filter((trace) => trace.engine?.status === engineRunStatus);
@@ -2276,7 +2276,12 @@ function handleApi(url, method = 'GET') {
   }
 
   if (/^\/v1\/engine\/instances\/[^/]+$/.test(url.pathname)) {
-    const instanceKey = decodeURIComponent(url.pathname.split('/').at(-1));
+    let instanceKey;
+    try {
+      instanceKey = decodeURIComponent(url.pathname.split('/').at(-1));
+    } catch {
+      return notFound();
+    }
     const instance = engineDemoInstancesByKey.get(instanceKey);
     return instance ? json(instance) : notFound();
   }

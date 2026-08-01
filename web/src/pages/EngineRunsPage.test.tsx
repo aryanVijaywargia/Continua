@@ -387,6 +387,22 @@ describe('EngineRunsPage', () => {
     expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Engine health' })).toBeInTheDocument();
   });
+
+  it('shows the public demo empty state without a start action', async () => {
+    mockEngineRequests({ traces: [] });
+
+    renderEngineRunsPage('/engine/runs', {
+      status: 'ready',
+      enabled: false,
+      public_demo_enabled: true,
+      public_demo_label: 'Sample data',
+    });
+
+    expect(
+      await screen.findByText('No captured engine runs are available in this demo.')
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
+  });
 });
 
 describe('StartEngineRunDialog', () => {

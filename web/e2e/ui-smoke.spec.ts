@@ -961,6 +961,7 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
   await page.goto('/engine/runs');
   await expect(page.getByRole('heading', { name: 'Engine Runs' })).toBeVisible();
   await expect(page.getByText('darklaunch.demo · v1')).toBeVisible();
+  await expect(page.getByText('darklaunch.sleep-demo · v1')).toBeVisible();
   await expect(page.getByText(/read-only captured runs/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start run' })).toHaveCount(0);
 

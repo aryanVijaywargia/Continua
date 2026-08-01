@@ -103,7 +103,7 @@ export function EngineRunsPage() {
     queryKey: ['engine-runs', projectId ?? null, engineRunStatus ?? null, offset, pageSize],
     queryFn: () => fetchTraces(queryParams),
     placeholderData: keepPreviousData,
-    refetchInterval: 5000,
+    refetchInterval: isPublicDemo ? false : 5000,
   });
   const traces = runsQuery.data?.traces ?? EMPTY_TRACES;
   const total = runsQuery.data?.total ?? 0;
