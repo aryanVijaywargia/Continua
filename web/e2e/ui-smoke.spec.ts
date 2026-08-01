@@ -68,6 +68,39 @@ const ENGINE_TRACE = {
   },
 };
 
+const PUBLIC_DEMO_ENGINE_TRACES = [
+  {
+    ...ENGINE_TRACE,
+    id: '7b1e7c28-8f55-4f8f-a9b1-d37d0e3aa202',
+    name: 'darklaunch.sleep-demo',
+    status: 'RUNNING',
+    ended_at: undefined,
+    engine: {
+      ...ENGINE_TRACE.engine,
+      run_id: '6c4e79af-4bc4-47b1-a6cf-2d3c44b2a202',
+      definition_name: 'darklaunch.sleep-demo',
+      instance_key: 'demo-approval-gate',
+      status: 'WAITING',
+      completed_at: undefined,
+      wait_state: {
+        kind: 'signal',
+        signal_name: 'approval',
+      },
+    },
+  },
+  {
+    ...ENGINE_TRACE,
+    id: '7b1e7c28-8f55-4f8f-a9b1-d37d0e3aa201',
+    name: 'darklaunch.demo',
+    engine: {
+      ...ENGINE_TRACE.engine,
+      run_id: '6c4e79af-4bc4-47b1-a6cf-2d3c44b2a201',
+      definition_name: 'darklaunch.demo',
+      instance_key: 'demo-greeting-completed',
+    },
+  },
+];
+
 const ENGINE_TRACE_DETAIL = {
   ...TRACE_DETAIL,
   ...ENGINE_TRACE,
@@ -360,7 +393,11 @@ async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'ope
           });
         }
         const status = url.searchParams.get('engine_run_status');
-        const traces = [ENGINE_TRACE, QUARANTINED_ENGINE_TRACE].filter(
+        const engineTraces =
+          mode === 'public-demo'
+            ? PUBLIC_DEMO_ENGINE_TRACES
+            : [ENGINE_TRACE, QUARANTINED_ENGINE_TRACE];
+        const traces = engineTraces.filter(
           (trace) => !status || trace.engine.status.toLowerCase() === status
         );
         return fulfillJson(route, { traces, total: traces.length });
@@ -921,6 +958,12 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
   await expect(page.getByRole('heading', { name: 'Traces' })).toBeVisible();
   await expect(page.getByLabel('Active project')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+  await page.goto('/engine/runs');
+  await expect(page.getByRole('heading', { name: 'Engine Runs' })).toBeVisible();
+  await expect(page.getByText('darklaunch.demo · v1')).toBeVisible();
+  await expect(page.getByText('darklaunch.sleep-demo · v1')).toBeVisible();
+  await expect(page.getByText(/read-only captured runs/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start run' })).toHaveCount(0);
 
   await page.goto(`/traces/${TRACE_ONE.id}`);
   await expect(

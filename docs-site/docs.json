@@ -17,10 +17,7 @@
   "fonts": {
     "family": "Inter"
   },
-  "favicon": {
-    "light": "/brand/continua-mark.svg",
-    "dark": "/brand/continua-mark-dark.svg"
-  },
+  "favicon": "/continua-favicon.svg",
   "appearance": {
     "default": "system"
   },
