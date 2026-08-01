@@ -4,11 +4,23 @@
   "name": "Continua",
   "description": "Self-hosted durable execution engine with built-in observability for AI agent runs. Run agent workflows durably, then inspect every run as traces, spans, sessions, and events.",
   "colors": {
-    "primary": "#0075d6",
-    "light": "#7aaeff",
-    "dark": "#005cab"
+    "primary": "#c96a26",
+    "light": "#efa051",
+    "dark": "#9b4e18"
   },
-  "favicon": "/brand/continua-mark.svg",
+  "background": {
+    "color": {
+      "light": "#f3eee5",
+      "dark": "#0d0b08"
+    }
+  },
+  "fonts": {
+    "family": "Inter"
+  },
+  "favicon": {
+    "light": "/brand/continua-mark.svg",
+    "dark": "/brand/continua-mark-dark.svg"
+  },
   "appearance": {
     "default": "system"
   },
