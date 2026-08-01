@@ -217,6 +217,7 @@ describe('AppShell', () => {
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
     expect(screen.getByText('operator@continua.dev')).toBeInTheDocument();
     expect(screen.getByText('Session list content')).toBeInTheDocument();
+    expect(screen.getByText('Session list content').closest('.console-theme')).not.toBeNull();
 
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(primaryNav).getByText('Overview').closest('a')).toHaveAttribute(

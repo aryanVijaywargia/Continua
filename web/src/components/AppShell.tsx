@@ -349,7 +349,7 @@ export function AppShell() {
   );
 
   return (
-    <div className="app-shell-enter min-h-screen bg-[var(--c-app-bg)] text-[var(--c-text-primary)]">
+    <div className="console-theme app-shell-enter min-h-screen bg-[var(--c-app-bg)] text-[var(--c-text-primary)]">
       <ConsoleSidebar
         email={user?.email}
         isPublicDemo={isPublicDemo}
@@ -387,7 +387,7 @@ export function AppShell() {
             className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="app-drawer-enter relative flex h-full w-[19rem] max-w-[88vw] flex-col border-r border-[var(--c-border)] bg-[var(--c-sidebar-bg)]">
+          <aside className="console-sidebar app-drawer-enter relative flex h-full w-[19rem] max-w-[88vw] flex-col border-r border-[var(--c-border)]">
             <div className="flex items-center justify-between border-b border-[var(--c-border)] p-4">
               <BrandBlock />
               <button
@@ -450,7 +450,7 @@ function ConsoleSidebar({
   selectedProjectName?: string;
 }) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-50 hidden w-56 flex-col border-r border-[var(--c-border)] bg-[var(--c-sidebar-bg)] md:flex">
+    <aside className="console-sidebar fixed inset-y-0 left-0 z-50 hidden w-56 flex-col border-r border-[var(--c-border)] md:flex">
       <div className="border-b border-[var(--c-border)] px-4 py-3.5">
         <BrandBlock />
       </div>
@@ -482,11 +482,13 @@ function BrandBlock() {
       aria-label="Go to landing page"
       className="flex min-w-0 items-center gap-2.5 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[var(--c-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--c-sidebar-bg)]"
     >
-      <img
-        alt=""
-        className="h-[22px] w-[22px] shrink-0"
-        src="/logo.svg"
-      />
+      <span className="console-brand-mark flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+        <img
+          alt=""
+          className="h-[20px] w-[20px]"
+          src="/logo.svg"
+        />
+      </span>
       <div className="min-w-0 leading-none">
         <div className="truncate text-[13px] font-bold text-[var(--c-text-primary)]">
           Continua
@@ -546,7 +548,7 @@ function SidebarProjectSwitcher({
           </option>
         ))}
       </select>
-      <span className="absolute left-2 top-2 h-4 w-4 rounded-[3px] bg-gradient-to-br from-[#0075d6] to-[#79b4f5]" />
+      <span className="absolute left-2 top-2 h-4 w-4 rounded-[3px] border border-[var(--c-accent-border)] bg-[var(--c-accent)]" />
       <ChevronDown className="pointer-events-none absolute right-2 top-2 h-4 w-4 text-[var(--c-text-muted)]" />
       {!selectedProjectName && projectsQueryPending ? null : null}
     </label>
@@ -609,7 +611,7 @@ function SidebarNavLink({
       to={buildProjectPath(item.path, projectId)}
       end={item.path === '/dashboard'}
       className={({ isActive }) =>
-        `mb-0.5 flex items-center gap-2.5 rounded-[5px] px-2.5 py-1.5 text-[13px] font-medium transition ${
+        `console-nav-link mb-0.5 flex items-center gap-2.5 rounded-[5px] px-2.5 py-1.5 text-[13px] font-medium transition ${
           isActive
             ? 'bg-[var(--c-nav-active-bg)] font-semibold text-[var(--c-text-primary)]'
             : 'text-[var(--c-text-secondary)] hover:bg-[var(--c-nav-hover-bg)] hover:text-[var(--c-text-primary)]'
@@ -660,7 +662,7 @@ function ConsoleTopBar({
   toggleTheme: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 flex h-11 items-center justify-between border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-3 md:px-4">
+    <header className="console-topbar sticky top-0 z-40 flex h-11 items-center justify-between border-b border-[var(--c-border)] px-3 md:px-4">
       <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-[var(--c-text-secondary)]">
         <button
           type="button"
