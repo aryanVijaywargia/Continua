@@ -186,7 +186,31 @@
     --c-bar-tick: rgba(255, 255, 255, 0.08);
   }
 
-  .landing-theme {
+  :is(.landing-theme, .console-theme) {
+    --continua-app-bg: #f3eee5;
+    --continua-shell-rail: rgba(233, 224, 210, 0.94);
+    --continua-shell-topbar: rgba(243, 238, 229, 0.9);
+    --continua-surface: rgba(251, 247, 239, 0.86);
+    --continua-surface-elevated: rgba(255, 250, 242, 0.96);
+    --continua-surface-muted: rgba(233, 225, 213, 0.88);
+    --continua-border-soft: rgba(65, 43, 24, 0.075);
+    --continua-border-strong: rgba(65, 43, 24, 0.24);
+    --continua-text-primary: #19140f;
+    --continua-text-secondary: #63584c;
+    --continua-text-muted: #948778;
+    --continua-accent: #c96a26;
+    --continua-accent-strong: #e99a4d;
+    --continua-accent-contrast: #fffaf2;
+    --continua-accent-faint: rgba(201, 105, 34, 0.11);
+    --continua-shadow-soft: 0 24px 60px -28px rgba(65, 43, 24, 0.28);
+    --continua-panel-separator: rgba(65, 43, 24, 0.13);
+    --continua-error: #bd4d3e;
+    --continua-error-faint: rgba(189, 77, 62, 0.1);
+    --continua-error-border: rgba(189, 77, 62, 0.25);
+    --continua-secondary: #8e620f;
+    --continua-secondary-container: rgba(201, 144, 36, 0.16);
+    --continua-tertiary: #4f6d24;
+    --continua-tertiary-container: rgba(110, 141, 57, 0.16);
     --c-app-bg: #f3eee5;
     --c-sidebar-bg: #e9e0d2;
     --c-surface: #fbf7ef;
@@ -197,6 +221,7 @@
     --c-row-selected-bg: rgba(195, 103, 35, 0.09);
     --c-nav-active-bg: rgba(102, 63, 25, 0.07);
     --c-nav-hover-bg: rgba(102, 63, 25, 0.045);
+    --c-kbd-bg: rgba(102, 63, 25, 0.055);
     --c-border: rgba(65, 43, 24, 0.13);
     --c-border-subtle: rgba(65, 43, 24, 0.075);
     --c-border-strong: rgba(65, 43, 24, 0.24);
@@ -208,6 +233,7 @@
     --c-accent-text: #9b4e18;
     --c-accent-faint: rgba(201, 105, 34, 0.11);
     --c-accent-border: rgba(201, 105, 34, 0.3);
+    --c-focus: rgba(201, 105, 34, 0.5);
     --c-blue: #c96a26;
     --c-blue-text: #9b4e18;
     --c-blue-faint: rgba(201, 106, 38, 0.1);
@@ -233,7 +259,31 @@
     --c-bar-tick: rgba(65, 43, 24, 0.09);
   }
 
-  html.dark .landing-theme {
+  html.dark :is(.landing-theme, .console-theme) {
+    --continua-app-bg: #0d0b08;
+    --continua-shell-rail: rgba(18, 15, 11, 0.95);
+    --continua-shell-topbar: rgba(13, 11, 8, 0.9);
+    --continua-surface: rgba(23, 18, 13, 0.86);
+    --continua-surface-elevated: rgba(29, 23, 17, 0.96);
+    --continua-surface-muted: rgba(28, 22, 16, 0.9);
+    --continua-border-soft: rgba(255, 224, 188, 0.06);
+    --continua-border-strong: rgba(255, 224, 188, 0.2);
+    --continua-text-primary: #f4ede2;
+    --continua-text-secondary: #b9ad9c;
+    --continua-text-muted: #786d60;
+    --continua-accent: #efa051;
+    --continua-accent-strong: #ffc071;
+    --continua-accent-contrast: #17100a;
+    --continua-accent-faint: rgba(239, 160, 81, 0.12);
+    --continua-shadow-soft: 0 28px 64px -26px rgba(0, 0, 0, 0.72);
+    --continua-panel-separator: rgba(255, 224, 188, 0.11);
+    --continua-error: #db7766;
+    --continua-error-faint: rgba(219, 119, 102, 0.11);
+    --continua-error-border: rgba(219, 119, 102, 0.25);
+    --continua-secondary: #f4cc72;
+    --continua-secondary-container: rgba(227, 182, 83, 0.13);
+    --continua-tertiary: #bfd98b;
+    --continua-tertiary-container: rgba(155, 183, 104, 0.14);
     --c-app-bg: #0d0b08;
     --c-sidebar-bg: #120f0b;
     --c-surface: #17120d;
@@ -244,6 +294,7 @@
     --c-row-selected-bg: rgba(238, 160, 81, 0.09);
     --c-nav-active-bg: rgba(255, 224, 188, 0.07);
     --c-nav-hover-bg: rgba(255, 224, 188, 0.04);
+    --c-kbd-bg: rgba(255, 224, 188, 0.055);
     --c-border: rgba(255, 224, 188, 0.11);
     --c-border-subtle: rgba(255, 224, 188, 0.06);
     --c-border-strong: rgba(255, 224, 188, 0.2);
@@ -255,6 +306,7 @@
     --c-accent-text: #ffc071;
     --c-accent-faint: rgba(239, 160, 81, 0.12);
     --c-accent-border: rgba(239, 160, 81, 0.28);
+    --c-focus: rgba(239, 160, 81, 0.5);
     --c-blue: #efa051;
     --c-blue-text: #ffc071;
     --c-blue-faint: rgba(239, 160, 81, 0.11);
@@ -401,6 +453,40 @@
     animation: continua-shell-enter 240ms ease-out;
   }
 
+  .console-theme {
+    background: var(--c-app-bg);
+  }
+
+  .console-sidebar {
+    background: color-mix(in srgb, var(--c-sidebar-bg) 94%, transparent);
+    box-shadow: 12px 0 36px -30px rgba(65, 43, 24, 0.48);
+    backdrop-filter: blur(18px);
+  }
+
+  .console-topbar {
+    background: color-mix(in srgb, var(--c-app-bg) 88%, transparent);
+    backdrop-filter: blur(18px);
+  }
+
+  .console-brand-mark {
+    background: var(--c-accent-faint);
+    border: 1px solid var(--c-accent-border);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 45%, transparent);
+  }
+
+  .console-nav-link[aria-current='page'] {
+    box-shadow: inset 2px 0 0 var(--c-accent);
+    color: var(--c-text-primary);
+  }
+
+  .console-nav-link[aria-current='page'] svg {
+    color: var(--c-accent-text);
+  }
+
+  .console-page-header {
+    background: color-mix(in srgb, var(--c-surface) 54%, transparent);
+  }
+
   .app-overlay-enter {
     animation: continua-overlay-enter 180ms ease-out;
   }
@@ -420,14 +506,14 @@
   .app-surface {
     background: var(--c-surface);
     border: 1px solid var(--c-border);
-    box-shadow: none;
-    @apply rounded-md p-6;
+    box-shadow: 0 1px 0 color-mix(in srgb, white 35%, transparent);
+    @apply rounded-lg p-6;
   }
 
   .app-surface-muted {
     background: var(--c-surface-muted);
     border: 1px solid var(--c-border);
-    @apply rounded-md;
+    @apply rounded-lg;
   }
 
   .app-metric-panel {
@@ -505,7 +591,7 @@
   }
 
   .app-overline {
-    color: var(--c-text-muted);
+    color: var(--c-accent-text);
     @apply text-[10px] font-black uppercase tracking-widest;
   }
 
@@ -519,8 +605,8 @@
   }
 
   .app-button-primary {
-    background: var(--c-text-primary);
-    color: var(--c-app-bg);
+    background: var(--c-accent);
+    color: var(--c-text-inverse);
     @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-semibold transition hover:opacity-90 active:scale-95 focus:outline-none focus:ring-2;
   }
 
@@ -528,7 +614,7 @@
     background: var(--c-surface);
     border: 1px solid var(--c-border);
     color: var(--c-text-primary);
-    @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition hover:border-[var(--c-border-strong)] hover:text-[var(--c-accent-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)];
+    @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition hover:border-[var(--c-accent-border)] hover:bg-[var(--c-accent-faint)] hover:text-[var(--c-accent-text)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)];
   }
 
   .app-button-ghost {
