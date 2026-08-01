@@ -89,7 +89,7 @@ const buttonKindClasses: Record<ButtonKind, string> = {
   primary: 'border-transparent bg-[var(--c-text-primary)] text-[var(--c-app-bg)] font-semibold',
   secondary: 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-primary)] font-medium',
   ghost: 'border-transparent bg-transparent text-[var(--c-text-secondary)] font-medium hover:bg-[var(--c-nav-hover-bg)]',
-  accent: 'border-transparent bg-[var(--c-accent)] text-[var(--c-text-inverse)] font-semibold',
+  accent: 'border-transparent bg-[var(--c-accent)] text-[var(--continua-accent-contrast)] font-semibold',
 };
 
 const buttonSizeClasses: Record<ButtonSize, string> = {

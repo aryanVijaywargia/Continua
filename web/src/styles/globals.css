@@ -200,7 +200,7 @@
     --continua-text-muted: #948778;
     --continua-accent: #c96a26;
     --continua-accent-strong: #e99a4d;
-    --continua-accent-contrast: #fffaf2;
+    --continua-accent-contrast: #2b190d;
     --continua-accent-faint: rgba(201, 105, 34, 0.11);
     --continua-shadow-soft: 0 24px 60px -28px rgba(65, 43, 24, 0.28);
     --continua-panel-separator: rgba(65, 43, 24, 0.13);
@@ -606,7 +606,7 @@
 
   .app-button-primary {
     background: var(--c-accent);
-    color: var(--c-text-inverse);
+    color: var(--continua-accent-contrast);
     @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-semibold transition hover:opacity-90 active:scale-95 focus:outline-none focus:ring-2;
   }
 
