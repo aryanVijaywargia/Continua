@@ -21,6 +21,7 @@ import {
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useRuntimeAuth } from '../auth/runtime';
+import { BrandMark } from '../components/BrandMark';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useTheme } from '../hooks/useTheme';
 
@@ -281,7 +282,7 @@ function Nav({
     >
       <div className="mx-auto flex min-h-13 max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
         <a href="#" className="flex shrink-0 items-center gap-2.5">
-          <Logo />
+          <BrandMark />
           <span className="text-[14px] font-semibold tracking-tight">Continua</span>
         </a>
         <nav className="hidden items-center gap-7 text-[12.5px] font-medium text-[var(--c-text-secondary)] md:flex">
@@ -1274,7 +1275,7 @@ function Footer({
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2.5">
-              <Logo />
+              <BrandMark />
               <span className="text-[14px] font-semibold tracking-tight">Continua</span>
             </div>
             <p className="mt-4 max-w-xs text-[12px] leading-5 text-[var(--c-text-muted)]">Durable execution engine for AI agents, with built-in observability. MIT licensed.</p>
@@ -1361,12 +1362,6 @@ function SectionHeader({
       <h2 className="landing-display mt-4 text-[32px] font-semibold tracking-[-0.025em] text-[var(--c-text-primary)] sm:text-[44px]">{title}</h2>
       {copy ? <p className="mt-4 max-w-2xl text-[14px] leading-6 text-[var(--c-text-secondary)]">{copy}</p> : null}
     </div>
-  );
-}
-
-function Logo() {
-  return (
-    <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
   );
 }
 

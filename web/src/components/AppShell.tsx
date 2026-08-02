@@ -31,6 +31,7 @@ import {
 } from '../api/client';
 import { useOperatorAuth, useRuntimeAuth } from '../auth/runtime';
 import { useTheme } from '../hooks/useTheme';
+import { BrandMark } from './BrandMark';
 import { CommandPalette } from './CommandPalette';
 import {
   buildProjectPath,
@@ -482,13 +483,7 @@ function BrandBlock() {
       aria-label="Go to landing page"
       className="flex min-w-0 items-center gap-2.5 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[var(--c-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--c-sidebar-bg)]"
     >
-      <span className="console-brand-mark flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
-        <img
-          alt=""
-          className="h-[20px] w-[20px]"
-          src="/logo.svg"
-        />
-      </span>
+      <BrandMark />
       <div className="min-w-0 leading-none">
         <div className="truncate text-[13px] font-bold text-[var(--c-text-primary)]">
           Continua

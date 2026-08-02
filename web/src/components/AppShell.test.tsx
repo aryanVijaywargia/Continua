@@ -259,10 +259,11 @@ describe('AppShell', () => {
     await renderShell('/sessions');
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Go to landing page' })).toHaveAttribute(
-      'href',
-      '/'
-    );
+    const brandLink = screen.getByRole('link', { name: 'Go to landing page' });
+
+    expect(brandLink).toHaveAttribute('href', '/');
+    expect(brandLink.firstElementChild).toHaveAttribute('src', '/logo.svg');
+    expect(brandLink.firstElementChild).toHaveClass('h-6', 'w-6');
   });
 
   it('switches the active project and keeps the selected project in route state', async () => {
