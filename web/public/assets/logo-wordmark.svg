@@ -5,11 +5,11 @@
       <stop offset="1" stop-color="#c96a26"></stop>
     </linearGradient>
   </defs>
-  <g transform="translate(0, -4)">
-    <circle cx="32" cy="32" r="24" stroke="url(#cont-grad-w)" stroke-width="3" stroke-linecap="round" stroke-dasharray="100 26 18 5" stroke-dashoffset="-28"></circle>
-    <path d="M 44 18 A 14.5 14.5 0 1 0 44 46" stroke="url(#cont-grad-w)" stroke-width="3.75" stroke-linecap="round"></path>
-    <circle cx="44" cy="18" r="2.6" fill="url(#cont-grad-w)"></circle>
-    <circle cx="44" cy="46" r="2.6" fill="url(#cont-grad-w)"></circle>
+  <g transform="scale(0.875)">
+    <circle cx="32" cy="32" r="28" stroke="url(#cont-grad-w)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="118 30 22 6" stroke-dashoffset="-32"></circle>
+    <path d="M 46 18 A 18 18 0 1 0 46 46" stroke="url(#cont-grad-w)" stroke-width="4.5" stroke-linecap="round"></path>
+    <circle cx="46" cy="18" r="3.25" fill="url(#cont-grad-w)"></circle>
+    <circle cx="46" cy="46" r="3.25" fill="url(#cont-grad-w)"></circle>
   </g>
   <text x="68" y="36" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="26" letter-spacing="-1.2" fill="#19140f">Continua</text>
 </svg>
