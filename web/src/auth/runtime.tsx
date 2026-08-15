@@ -19,6 +19,7 @@ import {
   setAccessTokenProvider,
   setApiKey,
   setLocalApiKeyMode,
+  setLocalSingleUserMode,
   setPublicDemoMode,
   type RuntimeAuthConfig,
 } from '../api/client';
@@ -147,14 +148,17 @@ export function Auth0RuntimeProvider({
   const navigate = useNavigate();
 
   let content = (
-    <UnauthenticatedSessionBridge publicDemoEnabled={auth.public_demo_enabled === true}>
+    <UnauthenticatedSessionBridge
+      publicDemoEnabled={auth.public_demo_enabled === true}
+      localSingleUserEnabled={isLocalSingleUserRuntime(auth)}
+    >
       {children}
     </UnauthenticatedSessionBridge>
   );
 
   if (auth.public_demo_enabled === true) {
     content = (
-      <UnauthenticatedSessionBridge publicDemoEnabled>
+      <UnauthenticatedSessionBridge publicDemoEnabled localSingleUserEnabled={false}>
         {children}
       </UnauthenticatedSessionBridge>
     );
@@ -193,11 +197,23 @@ export function Auth0RuntimeProvider({
   return <RuntimeAuthStateProvider auth={auth}>{content}</RuntimeAuthStateProvider>;
 }
 
+// isLocalSingleUserRuntime reports whether the server offered API-key-free local
+// access. The server only advertises it to loopback callers, and it is mutually
+// exclusive with Auth0 and the public demo.
+function isLocalSingleUserRuntime(auth: RuntimeAuthState): boolean {
+  return (
+    auth.local_mode_enabled === true &&
+    !auth.enabled &&
+    auth.public_demo_enabled !== true
+  );
+}
+
 function AuthSessionBridge() {
   const { getAccessTokenSilently, isAuthenticated } = useOperatorAuth();
 
   useLayoutEffect(() => {
     setLocalApiKeyMode(false);
+    setLocalSingleUserMode(false);
     setPublicDemoMode(false);
     setAccessTokenProvider(async () => {
       if (!isAuthenticated) {
@@ -217,11 +233,13 @@ function AuthSessionBridge() {
 
 function E2EAuthSessionBridge({ children }: { children: ReactNode }) {
   setLocalApiKeyMode(false);
+  setLocalSingleUserMode(false);
   setAccessTokenProvider(async () => getE2EAuthToken());
   setPublicDemoMode(false);
 
   useLayoutEffect(() => {
     setLocalApiKeyMode(false);
+    setLocalSingleUserMode(false);
     setPublicDemoMode(false);
     setAccessTokenProvider(async () => getE2EAuthToken());
 
@@ -236,20 +254,24 @@ function E2EAuthSessionBridge({ children }: { children: ReactNode }) {
 function UnauthenticatedSessionBridge({
   children,
   publicDemoEnabled,
+  localSingleUserEnabled,
 }: {
   children: ReactNode;
   publicDemoEnabled: boolean;
+  localSingleUserEnabled: boolean;
 }) {
   useLayoutEffect(() => {
     setLocalApiKeyMode(false);
     setAccessTokenProvider(null);
     setPublicDemoMode(publicDemoEnabled);
+    setLocalSingleUserMode(localSingleUserEnabled);
 
     return () => {
       setAccessTokenProvider(null);
       setPublicDemoMode(false);
+      setLocalSingleUserMode(false);
     };
-  }, [publicDemoEnabled]);
+  }, [localSingleUserEnabled, publicDemoEnabled]);
 
   return children;
 }
@@ -306,13 +328,21 @@ export function ProtectedRoute({ auth }: { auth: RuntimeAuthState }) {
   }
 
   if (!auth.enabled) {
-    return <LocalApiKeyProtectedOutlet />;
+    return (
+      <LocalApiKeyProtectedOutlet
+        localSingleUserEnabled={isLocalSingleUserRuntime(auth)}
+      />
+    );
   }
 
   return <Auth0ProtectedOutlet />;
 }
 
-function LocalApiKeyProtectedOutlet() {
+function LocalApiKeyProtectedOutlet({
+  localSingleUserEnabled,
+}: {
+  localSingleUserEnabled: boolean;
+}) {
   const location = useLocation();
   const navigate = useNavigate();
   const [draftKey, setDraftKey] = useState(() => getApiKey() ?? '');
@@ -389,6 +419,12 @@ function LocalApiKeyProtectedOutlet() {
 
   if (!bootstrapChecked) {
     return <RouteGateState message="Checking local project setup..." />;
+  }
+
+  // API-key-free local mode: the server already trusts this loopback caller, so
+  // there is nothing to prompt for. The project selector picks the read scope.
+  if (localSingleUserEnabled) {
+    return <Outlet />;
   }
 
   return (
@@ -555,6 +591,9 @@ export function useOperatorAuth(): ReturnType<typeof useAuth0> {
     if (localApiKey) {
       return localApiKeyOperatorAuth(localApiKey);
     }
+    if (isLocalSingleUserRuntime(runtimeAuth)) {
+      return localSingleUserOperatorAuth();
+    }
     return unauthenticatedOperatorAuth();
   }
 
@@ -573,6 +612,26 @@ function localApiKeyOperatorAuth(localApiKey: string): ReturnType<typeof useAuth
       email: 'Local API key',
       name: 'Local self-host',
       sub: 'local-api-key',
+    },
+  } as ReturnType<typeof useAuth0>;
+}
+
+// localSingleUserOperatorAuth represents the box owner in API-key-free local mode.
+// The session is authenticated from the console's point of view, but carries no
+// credential: the client sends no Authorization header and the server scopes reads
+// by the selected project_id.
+function localSingleUserOperatorAuth(): ReturnType<typeof useAuth0> {
+  return {
+    error: undefined,
+    getAccessTokenSilently: async () => '',
+    isAuthenticated: true,
+    isLoading: false,
+    loginWithRedirect: async () => undefined,
+    logout: async () => undefined,
+    user: {
+      email: 'Local mode',
+      name: 'Local single-user',
+      sub: 'local-single-user',
     },
   } as ReturnType<typeof useAuth0>;
 }

@@ -102,11 +102,11 @@ func Load() (*Config, error) {
 		port = "8080"
 	}
 
-	trueAsyncDefault, err := loadBool("INGEST_TRUE_ASYNC_DEFAULT", false)
+	trueAsyncDefault, err := loadBool("INGEST_TRUE_ASYNC_DEFAULT")
 	if err != nil {
 		return nil, err
 	}
-	enginePublicAPIEnabled, err := loadBool("ENGINE_PUBLIC_API_ENABLED", false)
+	enginePublicAPIEnabled, err := loadBool("ENGINE_PUBLIC_API_ENABLED")
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +164,18 @@ func Load() (*Config, error) {
 			return nil, err
 		}
 	}
+	localSingleUserMode, err := loadBool("LOCAL_SINGLE_USER_MODE")
+	if err != nil {
+		return nil, err
+	}
+	// Fail closed: an unauthenticated loopback bypass must never coexist with a
+	// multi-identity auth posture. Refuse to boot rather than silently picking one.
+	if localSingleUserMode && publicDemoConfig.Enabled {
+		return nil, errors.New("LOCAL_SINGLE_USER_MODE cannot be enabled together with PUBLIC_DEMO_ENABLED")
+	}
+	if localSingleUserMode && auth0Config.Enabled {
+		return nil, errors.New("LOCAL_SINGLE_USER_MODE cannot be enabled together with AUTH0 operator authentication")
+	}
 
 	return &Config{
 		Server: ServerConfig{
@@ -190,13 +202,14 @@ func Load() (*Config, error) {
 			MaintenanceWorkers: maintenanceWorkers,
 			DefaultWorkers:     defaultWorkers,
 		},
-		Auth0:      auth0Config,
-		PublicDemo: publicDemoConfig,
+		Auth0:               auth0Config,
+		PublicDemo:          publicDemoConfig,
+		LocalSingleUserMode: localSingleUserMode,
 	}, nil
 }
 
 func loadPublicDemoConfig() (PublicDemoConfig, error) {
-	enabled, err := loadBool("PUBLIC_DEMO_ENABLED", false)
+	enabled, err := loadBool("PUBLIC_DEMO_ENABLED")
 	if err != nil {
 		return PublicDemoConfig{}, err
 	}
@@ -328,10 +341,12 @@ func parseAllowedEmails(raw string) ([]string, error) {
 	return emails, nil
 }
 
-func loadBool(key string, defaultValue bool) (bool, error) {
+// loadBool reads an opt-in boolean environment variable. Every boolean setting
+// defaults to off, so an unset variable is false.
+func loadBool(key string) (bool, error) {
 	raw := os.Getenv(key)
 	if raw == "" {
-		return defaultValue, nil
+		return false, nil
 	}
 
 	value, err := strconv.ParseBool(raw)

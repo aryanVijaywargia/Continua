@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"encoding/hex"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 
@@ -179,6 +180,9 @@ func (a *Authenticator) serveComposite(next http.Handler, w http.ResponseWriter,
 		if a.serveProjectBootstrap(next, w, r) {
 			return
 		}
+		if a.serveLocalSingleUser(next, w, r) {
+			return
+		}
 		writeAuthError(w, http.StatusUnauthorized, "missing_credentials", "Authentication required")
 		return
 	}
@@ -239,6 +243,35 @@ func (a *Authenticator) serveProjectBootstrap(next http.Handler, w http.Response
 	ctx := context.WithValue(r.Context(), AuthModeKey, AuthModeBootstrap)
 	next.ServeHTTP(w, r.WithContext(ctx))
 	return true
+}
+
+// serveLocalSingleUser admits a credential-free request when the deployment opted
+// into local single-user mode and the transport peer is the local machine. No
+// project is bound: the project_id query parameter selects the read scope, exactly
+// as it does for an operator. Returns true when it handled the request.
+func (a *Authenticator) serveLocalSingleUser(next http.Handler, w http.ResponseWriter, r *http.Request) bool {
+	if !a.localSingleUserMode || !IsLoopbackRequest(r) {
+		return false
+	}
+
+	ctx := context.WithValue(r.Context(), AuthModeKey, AuthModeLocalSingleUser)
+	next.ServeHTTP(w, r.WithContext(ctx))
+	return true
+}
+
+// IsLoopbackRequest reports whether the request's transport peer is the local
+// machine. The peer is read only from r.RemoteAddr: proxy headers such as
+// X-Forwarded-For are attacker-controlled and must never influence an
+// authentication decision.
+func IsLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// RemoteAddr is not host:port (e.g. a Unix socket peer); treat it whole.
+		host = r.RemoteAddr
+	}
+
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
 }
 
 func (a *Authenticator) apiKeyContext(

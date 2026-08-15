@@ -264,13 +264,15 @@ export async function fetchAPI<T>(
 ): Promise<T> {
   const { allowUnauthenticated = false, ...requestOptions } = options;
   const requestUrl = buildRequestUrl(path);
-  const localApiKey = publicDemoModeEnabled ? null : getApiKey();
+  const localApiKey =
+    publicDemoModeEnabled || localSingleUserModeEnabled ? null : getApiKey();
 
   if (
     !allowUnauthenticated &&
     !accessTokenProvider &&
     !localApiKey &&
-    !publicDemoModeEnabled
+    !publicDemoModeEnabled &&
+    !localSingleUserModeEnabled
   ) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
@@ -293,7 +295,18 @@ export async function fetchAPI<T>(
     accessToken = getKnownProjectApiKey(selectedProjectId) ?? accessToken;
   }
 
-  if (!accessToken && !publicDemoModeEnabled && !allowUnauthenticated) {
+  // Local single-user mode is API-key-free by design: the server scopes the read
+  // by project_id, so the request must carry no Authorization header at all.
+  if (localSingleUserModeEnabled) {
+    accessToken = null;
+  }
+
+  if (
+    !accessToken &&
+    !publicDemoModeEnabled &&
+    !localSingleUserModeEnabled &&
+    !allowUnauthenticated
+  ) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
 
@@ -930,12 +943,16 @@ async function fetchAPIEmpty(
   path: string,
   options: RequestInit = {}
 ): Promise<void> {
-  const localApiKey = publicDemoModeEnabled ? null : getApiKey();
+  const localApiKey =
+    publicDemoModeEnabled || localSingleUserModeEnabled ? null : getApiKey();
   let accessToken: string | null = localApiKey;
   if (accessTokenProvider) {
     accessToken = await accessTokenProvider();
   }
-  if (!accessToken && !publicDemoModeEnabled) {
+  if (localSingleUserModeEnabled) {
+    accessToken = null;
+  }
+  if (!accessToken && !publicDemoModeEnabled && !localSingleUserModeEnabled) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
 
