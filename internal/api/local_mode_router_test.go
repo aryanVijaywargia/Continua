@@ -166,3 +166,71 @@ func newLocalModeAuthConfigRouter(t *testing.T) http.Handler {
 
 	return NewRouter(server, authenticator)
 }
+
+// Local single-user mode is read-only. The composite route class is broader than
+// the console's read surface — it also covers the engine write endpoints — so
+// these drive the production router and confirm a credential-free loopback
+// caller cannot start a run or trigger a backfill. That matters because any
+// process on the machine can reach this surface, including a browser tab on a
+// hostile page issuing a cross-origin POST to localhost.
+func TestLocalModeRouterRejectsCredentialFreeEngineWrites(t *testing.T) {
+	router := newLocalModeEngineRouter(t)
+
+	writes := []struct {
+		name   string
+		method string
+		target string
+	}{
+		{"start run", http.MethodPost, "/v1/engine/runs"},
+		{"projection backfill", http.MethodPost, "/v1/engine/projections/backfill"},
+	}
+
+	for _, write := range writes {
+		t.Run(write.name, func(t *testing.T) {
+			req := httptest.NewRequest(write.method, write.target, http.NoBody)
+			req.RemoteAddr = "127.0.0.1:54321"
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			require.Equal(
+				t,
+				http.StatusUnauthorized,
+				rec.Code,
+				"local single-user mode must not admit a credential-free write to %s", write.target,
+			)
+			resp := decodeJSONBody[Error](t, rec)
+			assert.Equal(t, "missing_credentials", resp.Code)
+		})
+	}
+}
+
+// TestLocalModeRouterStillAllowsEngineReads pins the other half of the rule: the
+// read surface the console actually needs stays open, so the method restriction
+// above is not simply switching local mode off.
+func TestLocalModeRouterStillAllowsEngineReads(t *testing.T) {
+	router := newLocalModeEngineRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/engine/runs", http.NoBody)
+	req.RemoteAddr = "127.0.0.1:54321"
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "engine reads must stay open in local mode")
+}
+
+// newLocalModeEngineRouter builds the production router with local single-user
+// mode on and the engine public API mounted. Auth runs ahead of the handlers, so
+// the rejected requests never need a store.
+func newLocalModeEngineRouter(t *testing.T) http.Handler {
+	t.Helper()
+
+	server := NewServer(nil, nil)
+	server.localSingleUserMode = true
+	server.enginePublicAPIEnabled = true
+	authenticator, err := middleware.NewAuthenticator(nil, &config.Config{
+		LocalSingleUserMode: true,
+	})
+	require.NoError(t, err)
+
+	return NewRouter(server, authenticator)
+}
