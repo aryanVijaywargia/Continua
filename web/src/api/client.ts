@@ -29,7 +29,7 @@ let accessTokenProvider: AccessTokenProvider | null = null;
 let selectedProjectIdProvider: SelectedProjectIdProvider | null = null;
 let legacyTestToken: string | null = null;
 let publicDemoModeEnabled = false;
-let localApiKeyModeEnabled = true;
+let localApiKeyModeEnabled = false;
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -43,9 +43,6 @@ export type {
  */
 export function setAccessTokenProvider(provider: AccessTokenProvider | null): void {
   accessTokenProvider = provider;
-  if (provider) {
-    localApiKeyModeEnabled = false;
-  }
 }
 
 export function setSelectedProjectIdProvider(
@@ -90,7 +87,7 @@ export function clearApiKey(): void {
     window.dispatchEvent(new Event(LOCAL_API_KEY_CHANGED_EVENT));
   }
   setAccessTokenProvider(null);
-  setLocalApiKeyMode(true);
+  setLocalApiKeyMode(false);
 }
 
 export function rememberProjectApiKey(projectId: string, apiKey: string): void {
