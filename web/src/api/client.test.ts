@@ -10,6 +10,7 @@ import {
   getKnownProjectApiKey,
   rememberProjectApiKey,
   setAccessTokenProvider,
+  setLocalApiKeyMode,
   setPublicDemoMode,
   setSelectedProjectIdProvider,
 } from './client';
@@ -226,6 +227,7 @@ describe('client', () => {
     window.localStorage.setItem('continua_api_key', 'pk_A');
     rememberProjectApiKey(selectedProjectId, 'pk_B');
     setSelectedProjectIdProvider(() => selectedProjectId);
+    setLocalApiKeyMode(true);
 
     await fetchAPI('/api/traces');
 
@@ -249,6 +251,7 @@ describe('client', () => {
     );
     window.localStorage.setItem('continua_api_key', 'pk_A');
     setSelectedProjectIdProvider(() => selectedProjectId);
+    setLocalApiKeyMode(true);
 
     await fetchAPI('/api/traces');
 
@@ -274,6 +277,7 @@ describe('client', () => {
     rememberProjectApiKey(selectedProjectId, 'pk_B');
     setSelectedProjectIdProvider(() => selectedProjectId);
     setAccessTokenProvider(async () => 'auth0-operator-token');
+    setLocalApiKeyMode(false);
 
     await fetchAPI('/api/traces');
 
