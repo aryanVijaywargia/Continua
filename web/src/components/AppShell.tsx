@@ -124,6 +124,9 @@ export function AppShell() {
     if (!isAuthError(projectsQuery.error)) {
       return;
     }
+    if (projectsQuery.error.code === 'project_scope_mismatch') {
+      return;
+    }
     if (staleKeyClearedFor.current === localAuthVersion) {
       return;
     }

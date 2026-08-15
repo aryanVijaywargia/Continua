@@ -29,6 +29,7 @@ let accessTokenProvider: AccessTokenProvider | null = null;
 let selectedProjectIdProvider: SelectedProjectIdProvider | null = null;
 let legacyTestToken: string | null = null;
 let publicDemoModeEnabled = false;
+let localApiKeyModeEnabled = true;
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -42,6 +43,9 @@ export type {
  */
 export function setAccessTokenProvider(provider: AccessTokenProvider | null): void {
   accessTokenProvider = provider;
+  if (provider) {
+    localApiKeyModeEnabled = false;
+  }
 }
 
 export function setSelectedProjectIdProvider(
@@ -52,6 +56,10 @@ export function setSelectedProjectIdProvider(
 
 export function setPublicDemoMode(enabled: boolean): void {
   publicDemoModeEnabled = enabled;
+}
+
+export function setLocalApiKeyMode(enabled: boolean): void {
+  localApiKeyModeEnabled = enabled;
 }
 
 export function getApiKey(): string | null {
@@ -72,6 +80,7 @@ export function setApiKey(key: string): void {
     window.dispatchEvent(new Event(LOCAL_API_KEY_CHANGED_EVENT));
   }
   setAccessTokenProvider(async () => trimmedKey);
+  setLocalApiKeyMode(true);
 }
 
 export function clearApiKey(): void {
@@ -81,6 +90,7 @@ export function clearApiKey(): void {
     window.dispatchEvent(new Event(LOCAL_API_KEY_CHANGED_EVENT));
   }
   setAccessTokenProvider(null);
+  setLocalApiKeyMode(true);
 }
 
 export function rememberProjectApiKey(projectId: string, apiKey: string): void {
@@ -242,6 +252,7 @@ export async function fetchAPI<T>(
   options: FetchAPIOptions = {}
 ): Promise<T> {
   const { allowUnauthenticated = false, ...requestOptions } = options;
+  const requestUrl = buildRequestUrl(path);
   const localApiKey = publicDemoModeEnabled ? null : getApiKey();
 
   if (
@@ -266,11 +277,15 @@ export async function fetchAPI<T>(
     }
   }
 
+  const selectedProjectId = requestUrl.searchParams.get('project_id');
+  if (localApiKeyModeEnabled && selectedProjectId) {
+    accessToken = getKnownProjectApiKey(selectedProjectId) ?? accessToken;
+  }
+
   if (!accessToken && !publicDemoModeEnabled && !allowUnauthenticated) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
 
-  const requestUrl = buildRequestUrl(path);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(requestOptions.headers as Record<string, string> | undefined),
