@@ -22,6 +22,10 @@ type Config struct {
 	Jobs       JobsConfig
 	Auth0      Auth0Config
 	PublicDemo PublicDemoConfig
+
+	// LocalSingleUserMode opts the deployment into API-key-free, loopback-only
+	// debugger access. Sourced from LOCAL_SINGLE_USER_MODE; defaults to false.
+	LocalSingleUserMode bool
 }
 
 // ServerConfig holds HTTP server configuration.

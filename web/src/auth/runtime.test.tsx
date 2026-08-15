@@ -7,6 +7,7 @@ import {
   clearApiKey,
   fetchAPI,
   setAccessTokenProvider,
+  setLocalSingleUserMode,
   setPublicDemoMode,
 } from '../api/client';
 import {
@@ -78,6 +79,7 @@ beforeEach(() => {
   clearApiKey();
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
+  setLocalSingleUserMode(false);
   auth0State.error = undefined;
   auth0State.isAuthenticated = true;
   auth0State.isLoading = false;
@@ -88,6 +90,7 @@ afterEach(() => {
   clearApiKey();
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
+  setLocalSingleUserMode(false);
   vi.unstubAllGlobals();
 });
 
@@ -297,6 +300,55 @@ describe('runtime auth', () => {
 
     expect(screen.getByText('Local traces')).toBeInTheDocument();
     expect(window.localStorage.getItem('continua_api_key')).toBe('pk_runtime_key');
+  });
+
+  it('renders the console without an API key prompt when local mode is enabled', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          projects: [
+            {
+              id: PROJECT_ID,
+              name: 'Local project',
+              created_at: '2026-08-15T10:00:00Z',
+              updated_at: '2026-08-15T10:00:00Z',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/traces']}>
+        <Routes>
+          <Route
+            element={
+              <ProtectedRoute
+                auth={{
+                  status: 'ready',
+                  enabled: false,
+                  local_mode_enabled: true,
+                }}
+              />
+            }
+          >
+            <Route path="/traces" element={<div>Local traces</div>} />
+            <Route path="/projects" element={<div>Create first project</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Local traces')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Enter a local project API key.')
+    ).not.toBeInTheDocument();
   });
 
   it('routes local first-run consoles to project creation when no projects exist', async () => {

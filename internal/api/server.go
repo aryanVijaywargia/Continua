@@ -24,6 +24,7 @@ type Server struct {
 	enginePublicAPIEnabled bool
 	auth0Config            config.Auth0Config
 	publicDemoConfig       config.PublicDemoConfig
+	localSingleUserMode    bool
 }
 
 // NewServer creates a new API server with the given dependencies.
@@ -48,6 +49,7 @@ func newConfiguredServer(
 		server.engineControl.completionGrace = cfg.Engine.LeaseCompletionGrace
 		server.auth0Config = cfg.Auth0
 		server.publicDemoConfig = cfg.PublicDemo
+		server.localSingleUserMode = cfg.LocalSingleUserMode
 	}
 	return server
 }

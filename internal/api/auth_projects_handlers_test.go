@@ -91,6 +91,43 @@ func TestGetAuthConfig_PublicDemoReturnsDemoFields(t *testing.T) {
 	assert.Equal(t, "Portfolio demo", *resp.PublicDemoLabel)
 }
 
+func TestAuthConfigAdvertisesLocalModeOnLoopback(t *testing.T) {
+	server := NewServer(nil, nil)
+	server.localSingleUserMode = true
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/config", nil)
+	req.RemoteAddr = "127.0.0.1:54321"
+
+	server.GetAuthConfig(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	resp := decodeJSONBody[AuthConfig](t, rec)
+	require.NotNil(t, resp.LocalModeEnabled)
+	assert.True(t, *resp.LocalModeEnabled)
+}
+
+func TestAuthConfigHidesLocalModeOffLoopback(t *testing.T) {
+	// Never tell a remote client that an unauthenticated bypass exists.
+	server := NewServer(nil, nil)
+	server.localSingleUserMode = true
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/config", nil)
+	req.RemoteAddr = "203.0.113.5:44444"
+
+	server.GetAuthConfig(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	assert.NotContains(t, body, `"local_mode_enabled":true`)
+
+	resp := decodeJSONBody[AuthConfig](t, rec)
+	if resp.LocalModeEnabled != nil {
+		assert.False(t, *resp.LocalModeEnabled)
+	}
+}
+
 func TestListProjects_OperatorReturnsAllVisibleProjects(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()

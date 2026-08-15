@@ -30,6 +30,7 @@ let selectedProjectIdProvider: SelectedProjectIdProvider | null = null;
 let legacyTestToken: string | null = null;
 let publicDemoModeEnabled = false;
 let localApiKeyModeEnabled = false;
+let localSingleUserModeEnabled = false;
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -57,6 +58,18 @@ export function setPublicDemoMode(enabled: boolean): void {
 
 export function setLocalApiKeyMode(enabled: boolean): void {
   localApiKeyModeEnabled = enabled;
+}
+
+/**
+ * Toggle API-key-free single-user local mode. When active the client must issue
+ * requests with no Authorization header and must not demand a stored API key.
+ */
+export function setLocalSingleUserMode(enabled: boolean): void {
+  localSingleUserModeEnabled = enabled;
+}
+
+export function isLocalSingleUserMode(): boolean {
+  return localSingleUserModeEnabled;
 }
 
 export function getApiKey(): string | null {
@@ -222,6 +235,7 @@ export interface RuntimeAuthConfig {
   audience?: string;
   public_demo_enabled?: boolean;
   public_demo_label?: string;
+  local_mode_enabled?: boolean;
   console_available?: boolean;
 }
 

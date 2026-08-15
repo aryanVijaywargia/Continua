@@ -329,6 +329,9 @@ type AuthConfig struct {
 	Domain   *string `json:"domain,omitempty"`
 	Enabled  bool    `json:"enabled"`
 
+	// LocalModeEnabled Whether API-key-free single-user local mode is active for this connection. True only when the server has local single-user mode enabled and the requesting connection originates from loopback.
+	LocalModeEnabled *bool `json:"local_mode_enabled,omitempty"`
+
 	// PublicDemoEnabled Whether the deployment exposes a public read-only demo console.
 	PublicDemoEnabled *bool `json:"public_demo_enabled,omitempty"`
 

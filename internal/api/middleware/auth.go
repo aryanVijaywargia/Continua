@@ -35,6 +35,10 @@ const (
 	AuthModeOperator   AuthMode = "operator"
 	AuthModePublicDemo AuthMode = "public_demo"
 	AuthModeBootstrap  AuthMode = "bootstrap"
+	// AuthModeLocalSingleUser marks a credential-free loopback request accepted
+	// because the deployment opted into local single-user mode. Requests in this
+	// mode carry no bound project; the project_id query parameter selects scope.
+	AuthModeLocalSingleUser AuthMode = "local_single_user"
 )
 
 type routeProtection int
@@ -50,6 +54,8 @@ type Authenticator struct {
 	store      *store.Store
 	auth0      *auth0Authenticator
 	publicDemo *publicDemoAccess
+	// localSingleUserMode mirrors config.Config.LocalSingleUserMode.
+	localSingleUserMode bool
 }
 
 type publicDemoAccess struct {
@@ -72,6 +78,9 @@ func NewAuthenticator(s *store.Store, cfg *config.Config) (*Authenticator, error
 		authenticator.publicDemo = &publicDemoAccess{
 			projectID: cfg.PublicDemo.ProjectID,
 		}
+	}
+	if cfg != nil {
+		authenticator.localSingleUserMode = cfg.LocalSingleUserMode
 	}
 	return authenticator, nil
 }
