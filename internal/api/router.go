@@ -18,6 +18,10 @@ func NewRouter(server *Server, auth *middleware.Authenticator) http.Handler {
 
 	// Global middleware
 	r.Use(chimiddleware.RequestID)
+	// CaptureTransportPeer must stay ahead of RealIP: RealIP overwrites
+	// RemoteAddr with X-Forwarded-For, which any client can set, so the real
+	// peer address has to be recorded before that happens.
+	r.Use(middleware.CaptureTransportPeer)
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)

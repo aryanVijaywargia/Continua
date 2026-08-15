@@ -26,7 +26,21 @@ const (
 	AuthModeKey        contextKey = "auth_mode"
 	OperatorEmailKey   contextKey = "operator_email"
 	OperatorSubjectKey contextKey = "operator_subject"
+	// TransportPeerKey carries the connection's true peer address, captured
+	// before any middleware that rewrites RemoteAddr from proxy headers.
+	TransportPeerKey contextKey = "transport_peer"
 )
+
+// CaptureTransportPeer records the real transport peer address so later
+// middleware can make trust decisions about it. It MUST be mounted before
+// chi's RealIP middleware, which overwrites RemoteAddr with the value of the
+// attacker-controlled X-Forwarded-For / X-Real-IP headers.
+func CaptureTransportPeer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), TransportPeerKey, r.RemoteAddr)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 // AuthMode identifies how a request was authenticated.
 type AuthMode string
@@ -260,11 +274,18 @@ func (a *Authenticator) serveLocalSingleUser(next http.Handler, w http.ResponseW
 }
 
 // IsLoopbackRequest reports whether the request's transport peer is the local
-// machine. The peer is read only from r.RemoteAddr: proxy headers such as
-// X-Forwarded-For are attacker-controlled and must never influence an
-// authentication decision.
+// machine. The peer address comes from the connection, never from proxy headers
+// such as X-Forwarded-For, which are attacker-controlled and must never
+// influence an authentication decision. CaptureTransportPeer stashes the real
+// peer before chi's RealIP middleware overwrites RemoteAddr with those headers;
+// without that middleware in the stack, RemoteAddr is still the raw peer.
 func IsLoopbackRequest(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	remoteAddr, ok := r.Context().Value(TransportPeerKey).(string)
+	if !ok {
+		remoteAddr = r.RemoteAddr
+	}
+
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
 		// RemoteAddr is not host:port (e.g. a Unix socket peer); treat it whole.
 		host = r.RemoteAddr

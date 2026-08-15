@@ -261,6 +261,66 @@ async function bootstrapLocalApiKeySession(page: Page) {
   );
 }
 
+// Local single-user mode owns no credential at all: nothing is written to
+// localStorage, so a second browser profile sees exactly the same console.
+async function bootstrapLocalSingleUserSession(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('continua_theme_mode', 'light');
+  });
+}
+
+async function mockLocalSingleUserRoutes(page: Page) {
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+
+    if (url.pathname === '/api/auth/config') {
+      return fulfillJson(route, { enabled: false, local_mode_enabled: true });
+    }
+
+    // The whole point of the mode: no credential ever leaves the browser.
+    expect(route.request().headers().authorization).toBeUndefined();
+
+    if (url.pathname === '/api/projects') {
+      return fulfillJson(route, {
+        projects: [
+          {
+            id: PRIMARY_PROJECT_ID,
+            name: 'Primary Project',
+            created_at: '2026-03-14T10:00:00.000Z',
+            updated_at: '2026-03-14T10:00:00.000Z',
+          },
+          {
+            id: SECONDARY_PROJECT_ID,
+            name: 'Secondary Project',
+            created_at: '2026-03-15T10:00:00.000Z',
+            updated_at: '2026-03-15T10:00:00.000Z',
+          },
+        ],
+      });
+    }
+
+    if (url.pathname === '/api/traces') {
+      const projectId = url.searchParams.get('project_id');
+      if (!projectId) {
+        // Mirror the server: with no bound project, project_id is the only
+        // thing that scopes the read, so an unscoped read is rejected.
+        return fulfillJson(
+          route,
+          { code: 'missing_project_id', message: 'project_id is required' },
+          400
+        );
+      }
+      const isSecondary = projectId === SECONDARY_PROJECT_ID;
+      const trace = isSecondary
+        ? { ...TRACE_TWO, name: 'Secondary project trace' }
+        : { ...TRACE_ONE, name: 'Primary project trace' };
+      return fulfillJson(route, { traces: [trace], total: 1 });
+    }
+
+    return fulfillJson(route, { code: 'not_found', message: 'Resource not found' }, 404);
+  });
+}
+
 async function fulfillJson(route: Route, data: unknown, status = 200) {
   await route.fulfill({
     status,
@@ -749,6 +809,45 @@ test('switches displayed traces with the selected project API key in local mode'
     page.getByRole('row').filter({ hasText: 'Primary project trace' })
   ).toHaveCount(0);
   await testInfo.attach(`${testInfo.project.name}-local-project-switch`, {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
+});
+
+test('opens the console with no API key and switches projects in local single-user mode', async ({
+  page,
+}, testInfo) => {
+  await bootstrapLocalSingleUserSession(page);
+  await mockLocalSingleUserRoutes(page);
+  await page.goto('/traces');
+
+  // No API key prompt: the server already trusts this loopback console.
+  await expect(page.getByText('Enter a local project API key.')).toHaveCount(0);
+  await expect(
+    page.getByRole('row').filter({ hasText: 'Primary project trace' })
+  ).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`project_id=${PRIMARY_PROJECT_ID}`));
+  expect(
+    await page.evaluate(() => window.localStorage.getItem('continua_api_key'))
+  ).toBeNull();
+
+  if (testInfo.project.name === 'mobile-chromium') {
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('combobox', { name: 'Project' }).selectOption(
+      SECONDARY_PROJECT_ID
+    );
+  } else {
+    await page.getByLabel('Active project').selectOption(SECONDARY_PROJECT_ID);
+  }
+
+  await expect(page).toHaveURL(new RegExp(`project_id=${SECONDARY_PROJECT_ID}`));
+  await expect(
+    page.getByRole('row').filter({ hasText: 'Secondary project trace' })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('row').filter({ hasText: 'Primary project trace' })
+  ).toHaveCount(0);
+  await testInfo.attach(`${testInfo.project.name}-local-single-user-switch`, {
     body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
     contentType: 'image/png',
   });
