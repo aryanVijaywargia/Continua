@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -53,6 +54,46 @@ afterEach(() => {
 });
 
 describe('SessionsPage', () => {
+  it('sessions query cache is scoped per project', async () => {
+    const projectA = '55555555-5555-4555-8555-555555555555';
+    const projectB = '66666666-6666-4666-8666-666666666666';
+    const sessionA = {
+      ...SESSION_ONE,
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      external_id: 'project-a-session',
+      name: 'Project A session',
+    };
+    const sessionB = {
+      ...SESSION_TWO,
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      external_id: 'project-b-session',
+      name: 'Project B session',
+    };
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionsList: (url) => {
+          const session =
+            url.searchParams.get('project_id') === projectB ? sessionB : sessionA;
+          return jsonResponse({ sessions: [session], total: 1 });
+        },
+      })
+    );
+
+    const { router } = renderTraceRoutes([
+      `/sessions?project_id=${projectA}&q=checkout`,
+    ]);
+    expect(await screen.findByText('project-a-session')).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate(`/sessions?project_id=${projectB}&q=checkout`);
+    });
+
+    expect(await screen.findByText('project-b-session')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('project-a-session')).not.toBeInTheDocument();
+    });
+  });
+
   it('does not introduce engine aggregate badges on the sessions index', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 

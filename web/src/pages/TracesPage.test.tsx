@@ -87,6 +87,79 @@ afterEach(() => {
 });
 
 describe('TracesPage', () => {
+  it('traces query cache is scoped per project', async () => {
+    const projectA = '11111111-1111-4111-8111-111111111111';
+    const projectB = '22222222-2222-4222-8222-222222222222';
+    const traceA = {
+      ...TRACE_ONE,
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      name: 'Project A trace',
+    };
+    const traceB = {
+      ...TRACE_TWO,
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      name: 'Project B trace',
+    };
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: (url) => {
+          const trace = url.searchParams.get('project_id') === projectB ? traceB : traceA;
+          return jsonResponse({ traces: [trace], total: 1 });
+        },
+      })
+    );
+
+    const { router } = renderTraceRoutes([
+      `/traces?project_id=${projectA}&q=checkout`,
+    ]);
+    expect(await screen.findByText('Project A trace')).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate(`/traces?project_id=${projectB}&q=checkout`);
+    });
+
+    expect(await screen.findByText('Project B trace')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Project A trace')).not.toBeInTheDocument();
+    });
+  });
+
+  it('builds deterministic trace query cache keys from project and filters', async () => {
+    const projectA = '33333333-3333-4333-8333-333333333333';
+    const projectB = '44444444-4444-4444-8444-444444444444';
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    const firstProjectAView = renderTraceRoutes([
+      `/traces?project_id=${projectA}&q=checkout`,
+    ]);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    const keyForProjectA = firstProjectAView.queryClient.getQueryCache().findAll({
+      queryKey: ['traces'],
+    })[0]?.queryKey;
+    expect(keyForProjectA).toBeDefined();
+    firstProjectAView.unmount();
+
+    const secondProjectAView = renderTraceRoutes([
+      `/traces?project_id=${projectA}&q=checkout`,
+    ]);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    const equalKeyForProjectA = secondProjectAView.queryClient.getQueryCache().findAll({
+      queryKey: ['traces'],
+    })[0]?.queryKey;
+    secondProjectAView.unmount();
+
+    const projectBView = renderTraceRoutes([
+      `/traces?project_id=${projectB}&q=checkout`,
+    ]);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    const keyForProjectB = projectBView.queryClient.getQueryCache().findAll({
+      queryKey: ['traces'],
+    })[0]?.queryKey;
+
+    expect(equalKeyForProjectA).toEqual(keyForProjectA);
+    expect(keyForProjectB).not.toEqual(keyForProjectA);
+  });
+
   it('loads the default trace list from /traces', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
