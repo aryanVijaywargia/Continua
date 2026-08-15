@@ -1559,7 +1559,7 @@ export interface components {
     };
     responses: never;
     parameters: {
-        /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+        /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
         SelectedProjectId: string;
     };
     requestBodies: never;
@@ -3026,7 +3026,7 @@ export interface operations {
     listTraces: {
         parameters: {
             query?: {
-                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
                 limit?: number;
                 offset?: number;
@@ -3101,7 +3101,7 @@ export interface operations {
     getTrace: {
         parameters: {
             query?: {
-                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;
@@ -3144,7 +3144,7 @@ export interface operations {
     listSpansByTrace: {
         parameters: {
             query?: {
-                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;
@@ -3187,7 +3187,7 @@ export interface operations {
     getTraceEvents: {
         parameters: {
             query?: {
-                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
                 /** @description Opaque cursor returned by a previous timeline response */
                 after?: string;
@@ -3243,7 +3243,7 @@ export interface operations {
     listSessions: {
         parameters: {
             query?: {
-                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
                 limit?: number;
                 offset?: number;
@@ -3285,7 +3285,7 @@ export interface operations {
     getSession: {
         parameters: {
             query?: {
-                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;
@@ -3328,7 +3328,7 @@ export interface operations {
     getSessionNarrative: {
         parameters: {
             query?: {
-                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;
@@ -3371,7 +3371,7 @@ export interface operations {
     getSessionCompare: {
         parameters: {
             query: {
-                /** @description Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key. */
+                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
                 baseline_trace_id: string;
                 candidate_trace_id: string;

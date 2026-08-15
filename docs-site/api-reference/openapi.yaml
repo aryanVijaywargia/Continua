@@ -1690,7 +1690,7 @@ components:
     SelectedProjectId:
       name: project_id
       in: query
-      description: Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+      description: Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
       schema:
         type: string
         format: uuid
