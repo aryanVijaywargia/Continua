@@ -1387,6 +1387,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/traces/{id}:
     get:
       operationId: getTrace
@@ -1410,6 +1416,12 @@ paths:
                 $ref: '#/components/schemas/TraceDetail'
         '401':
           description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
           content:
             application/json:
               schema:
@@ -1443,6 +1455,12 @@ paths:
                 $ref: '#/components/schemas/SpanList'
         '401':
           description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
           content:
             application/json:
               schema:
@@ -1495,6 +1513,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
           content:
             application/json:
               schema:
@@ -1562,6 +1586,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/sessions/{id}:
     get:
       operationId: getSession
@@ -1585,6 +1615,12 @@ paths:
                 $ref: '#/components/schemas/Session'
         '401':
           description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
           content:
             application/json:
               schema:
@@ -1618,6 +1654,12 @@ paths:
                 $ref: '#/components/schemas/SessionNarrativeResponse'
         '401':
           description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
           content:
             application/json:
               schema:
@@ -1669,6 +1711,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
           content:
             application/json:
               schema:

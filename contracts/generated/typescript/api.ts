@@ -3096,6 +3096,15 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getTrace: {
@@ -3123,6 +3132,15 @@ export interface operations {
             };
             /** @description Unauthorized - missing or invalid credentials */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3166,6 +3184,15 @@ export interface operations {
             };
             /** @description Unauthorized - missing or invalid credentials */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3229,6 +3256,15 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Trace not found */
             404: {
                 headers: {
@@ -3280,6 +3316,15 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getSession: {
@@ -3307,6 +3352,15 @@ export interface operations {
             };
             /** @description Unauthorized - missing or invalid credentials */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3350,6 +3404,15 @@ export interface operations {
             };
             /** @description Unauthorized - missing or invalid credentials */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3404,6 +3467,15 @@ export interface operations {
             };
             /** @description Unauthorized - missing or invalid credentials */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
