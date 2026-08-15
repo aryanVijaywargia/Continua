@@ -18,6 +18,7 @@ import {
   LOCAL_API_KEY_CHANGED_EVENT,
   setAccessTokenProvider,
   setApiKey,
+  setLocalApiKeyMode,
   setPublicDemoMode,
   type RuntimeAuthConfig,
 } from '../api/client';
@@ -196,6 +197,7 @@ function AuthSessionBridge() {
   const { getAccessTokenSilently, isAuthenticated } = useOperatorAuth();
 
   useLayoutEffect(() => {
+    setLocalApiKeyMode(false);
     setPublicDemoMode(false);
     setAccessTokenProvider(async () => {
       if (!isAuthenticated) {
@@ -214,10 +216,12 @@ function AuthSessionBridge() {
 }
 
 function E2EAuthSessionBridge({ children }: { children: ReactNode }) {
+  setLocalApiKeyMode(false);
   setAccessTokenProvider(async () => getE2EAuthToken());
   setPublicDemoMode(false);
 
   useLayoutEffect(() => {
+    setLocalApiKeyMode(false);
     setPublicDemoMode(false);
     setAccessTokenProvider(async () => getE2EAuthToken());
 
@@ -237,6 +241,7 @@ function UnauthenticatedSessionBridge({
   publicDemoEnabled: boolean;
 }) {
   useLayoutEffect(() => {
+    setLocalApiKeyMode(false);
     setAccessTokenProvider(null);
     setPublicDemoMode(publicDemoEnabled);
 
@@ -322,7 +327,9 @@ function LocalApiKeyProtectedOutlet() {
     }
 
     setAccessTokenProvider(async () => storedKey);
+    setLocalApiKeyMode(true);
     return () => {
+      setLocalApiKeyMode(false);
       setAccessTokenProvider(null);
     };
   }, [storedKey]);

@@ -1354,7 +1354,7 @@ type SelectedProjectId = openapi_types.UUID
 
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
-	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 	Limit     *int               `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset    *int               `form:"offset,omitempty" json:"offset,omitempty"`
@@ -1380,13 +1380,13 @@ type ListSessionsParamsSortDir string
 
 // GetSessionParams defines parameters for GetSession.
 type GetSessionParams struct {
-	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
 // GetSessionCompareParams defines parameters for GetSessionCompare.
 type GetSessionCompareParams struct {
-	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId        *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 	BaselineTraceId  openapi_types.UUID `form:"baseline_trace_id" json:"baseline_trace_id"`
 	CandidateTraceId openapi_types.UUID `form:"candidate_trace_id" json:"candidate_trace_id"`
@@ -1394,13 +1394,13 @@ type GetSessionCompareParams struct {
 
 // GetSessionNarrativeParams defines parameters for GetSessionNarrative.
 type GetSessionNarrativeParams struct {
-	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
 // ListTracesParams defines parameters for ListTraces.
 type ListTracesParams struct {
-	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId  `form:"project_id,omitempty" json:"project_id,omitempty"`
 	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset    *int                `form:"offset,omitempty" json:"offset,omitempty"`
@@ -1481,13 +1481,13 @@ type ListTracesParamsEngineRunStatus string
 
 // GetTraceParams defines parameters for GetTrace.
 type GetTraceParams struct {
-	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
 // GetTraceEventsParams defines parameters for GetTraceEvents.
 type GetTraceEventsParams struct {
-	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 
 	// After Opaque cursor returned by a previous timeline response
@@ -1499,7 +1499,7 @@ type GetTraceEventsParams struct {
 
 // ListSpansByTraceParams defines parameters for ListSpansByTrace.
 type ListSpansByTraceParams struct {
-	// ProjectId Required when authenticating with an Auth0 bearer token. Ignored when the request is already project-scoped by API key.
+	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 

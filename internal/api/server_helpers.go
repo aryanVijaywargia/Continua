@@ -151,6 +151,21 @@ func boundProjectIDFromRequest(w http.ResponseWriter, r *http.Request) (uuid.UUI
 
 func scopeFromRequest(w http.ResponseWriter, r *http.Request, policy requestScopePolicy) (store.Scope, bool) {
 	if projectID, ok := middleware.GetProjectID(r.Context()); ok {
+		if authMode, _ := middleware.GetAuthMode(r.Context()); authMode == middleware.AuthModeAPIKey {
+			selectedProjectID, selected, valid := projectIDSelectionFromRequest(w, r, false)
+			if !valid {
+				return store.Scope{}, false
+			}
+			if selected && selectedProjectID != projectID {
+				writeError(
+					w,
+					http.StatusForbidden,
+					"project_scope_mismatch",
+					"The API key is scoped to a different project",
+				)
+				return store.Scope{}, false
+			}
+		}
 		return store.BoundScope(projectID), true
 	}
 

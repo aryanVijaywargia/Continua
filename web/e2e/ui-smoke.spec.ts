@@ -16,6 +16,8 @@ import {
 const E2E_OPERATOR_TOKEN = 'e2e-operator-token';
 const PRIMARY_PROJECT_ID = '11111111-1111-1111-1111-111111111111';
 const SECONDARY_PROJECT_ID = '22222222-2222-2222-2222-222222222222';
+const PRIMARY_PROJECT_API_KEY = 'pk_primary';
+const SECONDARY_PROJECT_API_KEY = 'pk_secondary';
 const RUN_LOCALLY_DOCS_URL = 'https://www.continua.in/docs/guides/installation';
 const ENGINE_RUN_ID = '123e4567-e89b-12d3-a456-426614174100';
 const ENGINE_TRACE_ID = 'engine-trace-1';
@@ -237,6 +239,28 @@ async function bootstrapOperatorSession(page: Page) {
   }, E2E_OPERATOR_TOKEN);
 }
 
+async function bootstrapLocalApiKeySession(page: Page) {
+  await page.addInitScript(
+    ({ primaryProjectId, primaryKey, secondaryProjectId, secondaryKey }) => {
+      window.localStorage.setItem('continua_api_key', primaryKey);
+      window.localStorage.setItem(
+        'continua_project_api_keys',
+        JSON.stringify({
+          [primaryProjectId]: primaryKey,
+          [secondaryProjectId]: secondaryKey,
+        })
+      );
+      window.localStorage.setItem('continua_theme_mode', 'light');
+    },
+    {
+      primaryProjectId: PRIMARY_PROJECT_ID,
+      primaryKey: PRIMARY_PROJECT_API_KEY,
+      secondaryProjectId: SECONDARY_PROJECT_ID,
+      secondaryKey: SECONDARY_PROJECT_API_KEY,
+    }
+  );
+}
+
 async function fulfillJson(route: Route, data: unknown, status = 200) {
   await route.fulfill({
     status,
@@ -452,6 +476,53 @@ async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'ope
   });
 }
 
+async function mockLocalProjectRoutes(page: Page) {
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+
+    if (url.pathname === '/api/auth/config') {
+      return fulfillJson(route, { enabled: false });
+    }
+
+    if (url.pathname === '/api/projects') {
+      expect(route.request().headers().authorization).toBe(
+        `Bearer ${PRIMARY_PROJECT_API_KEY}`
+      );
+      return fulfillJson(route, {
+        authenticated_project_id: PRIMARY_PROJECT_ID,
+        projects: [
+          {
+            id: PRIMARY_PROJECT_ID,
+            name: 'Primary Project',
+            created_at: '2026-03-14T10:00:00.000Z',
+            updated_at: '2026-03-14T10:00:00.000Z',
+          },
+          {
+            id: SECONDARY_PROJECT_ID,
+            name: 'Secondary Project',
+            created_at: '2026-03-15T10:00:00.000Z',
+            updated_at: '2026-03-15T10:00:00.000Z',
+          },
+        ],
+      });
+    }
+
+    if (url.pathname === '/api/traces') {
+      const projectId = url.searchParams.get('project_id');
+      const isSecondary = projectId === SECONDARY_PROJECT_ID;
+      expect(route.request().headers().authorization).toBe(
+        `Bearer ${isSecondary ? SECONDARY_PROJECT_API_KEY : PRIMARY_PROJECT_API_KEY}`
+      );
+      const trace = isSecondary
+        ? { ...TRACE_TWO, name: 'Secondary project trace' }
+        : { ...TRACE_ONE, name: 'Primary project trace' };
+      return fulfillJson(route, { traces: [trace], total: 1 });
+    }
+
+    return fulfillJson(route, { code: 'not_found', message: 'Resource not found' }, 404);
+  });
+}
+
 async function mockEngineRoutes(page: Page) {
   await page.route('**/v1/engine/**', async (route) => {
     const request = route.request();
@@ -647,6 +718,40 @@ test('opens a protected route and switches the selected project', async ({ page 
   await projectSwitcher.selectOption(SECONDARY_PROJECT_ID);
   await expect(page).toHaveURL(new RegExp(`project_id=${SECONDARY_PROJECT_ID}`));
   await expect(projectSwitcher).toHaveValue(SECONDARY_PROJECT_ID);
+});
+
+test('switches displayed traces with the selected project API key in local mode', async ({
+  page,
+}, testInfo) => {
+  await bootstrapLocalApiKeySession(page);
+  await mockLocalProjectRoutes(page);
+  await page.goto('/traces');
+
+  await expect(
+    page.getByRole('row').filter({ hasText: 'Primary project trace' })
+  ).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`project_id=${PRIMARY_PROJECT_ID}`));
+
+  if (testInfo.project.name === 'mobile-chromium') {
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('combobox', { name: 'Project' }).selectOption(
+      SECONDARY_PROJECT_ID
+    );
+  } else {
+    await page.getByLabel('Active project').selectOption(SECONDARY_PROJECT_ID);
+  }
+
+  await expect(page).toHaveURL(new RegExp(`project_id=${SECONDARY_PROJECT_ID}`));
+  await expect(
+    page.getByRole('row').filter({ hasText: 'Secondary project trace' })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('row').filter({ hasText: 'Primary project trace' })
+  ).toHaveCount(0);
+  await testInfo.attach(`${testInfo.project.name}-local-project-switch`, {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
 });
 
 test('captures overview, traces, sessions, and settings shells', async ({ page }, testInfo) => {

@@ -10,6 +10,7 @@ import {
   getKnownProjectApiKey,
   rememberProjectApiKey,
   setAccessTokenProvider,
+  setLocalApiKeyMode,
   setPublicDemoMode,
   setSelectedProjectIdProvider,
 } from './client';
@@ -210,6 +211,81 @@ describe('client', () => {
     ).toMatchObject({
       'Content-Type': 'application/json',
       Authorization: 'Bearer stored-local-key',
+    });
+  });
+
+  it("sends the selected project's remembered API key in local API-key mode", async () => {
+    const selectedProjectId = '22222222-2222-2222-2222-222222222222';
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ traces: [], total: 0 }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    );
+    window.localStorage.setItem('continua_api_key', 'pk_A');
+    rememberProjectApiKey(selectedProjectId, 'pk_B');
+    setSelectedProjectIdProvider(() => selectedProjectId);
+    setLocalApiKeyMode(true);
+
+    await fetchAPI('/api/traces');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
+    ).toMatchObject({
+      Authorization: 'Bearer pk_B',
+    });
+  });
+
+  it('falls back to the stored API key when the selected project has no remembered key', async () => {
+    const selectedProjectId = '33333333-3333-3333-3333-333333333333';
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ traces: [], total: 0 }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    );
+    window.localStorage.setItem('continua_api_key', 'pk_A');
+    setSelectedProjectIdProvider(() => selectedProjectId);
+    setLocalApiKeyMode(true);
+
+    await fetchAPI('/api/traces');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
+    ).toMatchObject({
+      Authorization: 'Bearer pk_A',
+    });
+  });
+
+  it('does not substitute a project API key in Auth0 operator mode', async () => {
+    const selectedProjectId = '44444444-4444-4444-4444-444444444444';
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ traces: [], total: 0 }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    );
+    window.localStorage.setItem('continua_api_key', 'pk_A');
+    rememberProjectApiKey(selectedProjectId, 'pk_B');
+    setSelectedProjectIdProvider(() => selectedProjectId);
+    setAccessTokenProvider(async () => 'auth0-operator-token');
+    setLocalApiKeyMode(false);
+
+    await fetchAPI('/api/traces');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
+    ).toMatchObject({
+      Authorization: 'Bearer auth0-operator-token',
     });
   });
 
