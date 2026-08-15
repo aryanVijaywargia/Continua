@@ -81,7 +81,7 @@ func (s *Server) CreateProject(w http.ResponseWriter, r *http.Request) {
 
 // UpdateProject renames an existing project.
 func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	if !s.requireOperatorWhenAuth0Enabled(w, r) {
+	if !s.requireProjectMutationAuth(w, r) {
 		return
 	}
 	var req UpdateProjectRequest
@@ -105,7 +105,7 @@ func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, id openap
 
 // RotateProjectAPIKey replaces the project's API key and returns the new plaintext key once.
 func (s *Server) RotateProjectAPIKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	if !s.requireOperatorWhenAuth0Enabled(w, r) {
+	if !s.requireProjectMutationAuth(w, r) {
 		return
 	}
 	plaintextKey, err := middleware.GenerateAPIKey()
@@ -125,7 +125,7 @@ func (s *Server) RotateProjectAPIKey(w http.ResponseWriter, r *http.Request, id 
 
 // DeleteProject removes a project and cascades its data via FK.
 func (s *Server) DeleteProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	if !s.requireOperatorWhenAuth0Enabled(w, r) {
+	if !s.requireProjectMutationAuth(w, r) {
 		return
 	}
 
@@ -159,6 +159,33 @@ func (s *Server) requireOperatorWhenAuth0Enabled(w http.ResponseWriter, r *http.
 		http.StatusForbidden,
 		"operator_required",
 		"Project management requires operator authentication on this deployment",
+	)
+	return false
+}
+
+// requireProjectMutationAuth gates the project-modifying handlers: the Auth0
+// operator rule above, plus a refusal to let a credential-free local
+// single-user request change or destroy a project.
+//
+// Local single-user mode is read-only plus the project bootstrap. Any process
+// on the machine can reach that loopback surface, including a browser tab on a
+// hostile page, so renaming, rotating keys and deleting still require an API
+// key. Listing and creating stay open so first-run setup works.
+func (s *Server) requireProjectMutationAuth(w http.ResponseWriter, r *http.Request) bool {
+	if !s.requireOperatorWhenAuth0Enabled(w, r) {
+		return false
+	}
+
+	mode, _ := middleware.GetAuthMode(r.Context())
+	if mode != middleware.AuthModeLocalSingleUser {
+		return true
+	}
+
+	writeError(
+		w,
+		http.StatusUnauthorized,
+		"missing_credentials",
+		"Project changes require an API key in local single-user mode",
 	)
 	return false
 }

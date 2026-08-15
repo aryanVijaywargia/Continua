@@ -287,8 +287,10 @@ func IsLoopbackRequest(r *http.Request) bool {
 
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		// RemoteAddr is not host:port (e.g. a Unix socket peer); treat it whole.
-		host = r.RemoteAddr
+		// The peer address is not host:port (e.g. a Unix socket peer); treat it
+		// whole. It must stay the captured peer, never r.RemoteAddr, which RealIP
+		// may already have replaced with a header value.
+		host = remoteAddr
 	}
 
 	ip := net.ParseIP(strings.Trim(host, "[]"))
