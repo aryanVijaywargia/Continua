@@ -18,9 +18,11 @@ import (
 	"github.com/continua-ai/continua/internal/testutil"
 )
 
-// Local single-user mode is read-only plus the project bootstrap. Any process on
-// the machine can reach the loopback surface, so project mutations must still
-// demand an API key even though reads do not.
+// Local single-user mode is fully credential-free on loopback: reads, the
+// project bootstrap and project management all work without an API key. That is
+// a deliberate decision for single-user localhost use, and it widens the local
+// surface — so the property that keeps it confined, loopback-only admission that
+// ignores proxy headers, is the one these tests guard hardest.
 
 type localModeMutationFixture struct {
 	router  http.Handler
@@ -82,37 +84,55 @@ func (f localModeMutationFixture) serveFromLoopback(
 	return rec
 }
 
-func TestLocalModeRejectsProjectMutationWithoutAPIKey(t *testing.T) {
+// TestLocalModeAllowsProjectMutationWithoutAPIKey pins the maintainer's ruling:
+// a credential-free loopback caller can rename, rotate and delete. Status codes
+// alone would not prove the writes landed, so each step is confirmed against the
+// store.
+func TestLocalModeAllowsProjectMutationWithoutAPIKey(t *testing.T) {
 	fixture := newLocalModeMutationFixture(t)
 	projectPath := "/api/projects/" + fixture.project.ID.String()
+	ctx := context.Background()
 
-	mutations := []struct {
-		name   string
-		method string
-		target string
-		body   string
-	}{
-		{"rename", http.MethodPatch, projectPath, `{"name":"Renamed by an unauthenticated caller"}`},
-		{"rotate key", http.MethodPost, projectPath + "/rotate", ""},
-		{"delete", http.MethodDelete, projectPath, ""},
-	}
+	renamed := fixture.serveFromLoopback(
+		t,
+		http.MethodPatch,
+		projectPath,
+		`{"name":"Renamed without a key"}`,
+		"",
+	)
+	require.Equal(t, http.StatusOK, renamed.Code)
+	assert.Equal(t, "Renamed without a key", decodeJSONBody[Project](t, renamed).Name)
 
-	for _, mutation := range mutations {
-		t.Run(mutation.name, func(t *testing.T) {
-			rec := fixture.serveFromLoopback(t, mutation.method, mutation.target, mutation.body, "")
+	stored, err := fixture.store.GetProject(ctx, fixture.project.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Renamed without a key", stored.Name, "the rename must have reached the database")
 
-			require.Equal(t, http.StatusUnauthorized, rec.Code)
-			resp := decodeJSONBody[Error](t, rec)
-			assert.Equal(t, "missing_credentials", resp.Code)
-		})
-	}
+	rotated := fixture.serveFromLoopback(t, http.MethodPost, projectPath+"/rotate", "", "")
+	require.Equal(t, http.StatusOK, rotated.Code)
+	rotateResp := decodeJSONBody[ProjectWithKey](t, rotated)
+	assert.NotEmpty(t, rotateResp.ApiKey, "rotation must return the new plaintext key")
 
-	// Status codes alone would not prove the writes were refused, so confirm the
-	// project survived intact.
-	surviving, err := fixture.store.GetProject(context.Background(), fixture.project.ID)
-	require.NoError(t, err, "the project must not have been deleted")
-	assert.Equal(t, fixture.project.Name, surviving.Name, "the project must not have been renamed")
-	assert.Equal(t, fixture.project.ApiKeyHash, surviving.ApiKeyHash, "the API key must not have been rotated")
+	stored, err = fixture.store.GetProject(ctx, fixture.project.ID)
+	require.NoError(t, err)
+	require.NotEqual(
+		t,
+		fixture.project.ApiKeyHash,
+		stored.ApiKeyHash,
+		"the stored key hash must have changed",
+	)
+	assert.Equal(
+		t,
+		middleware.HashAPIKey(rotateResp.ApiKey),
+		stored.ApiKeyHash,
+		"the stored hash must match the returned key",
+	)
+
+	deleted := fixture.serveFromLoopback(t, http.MethodDelete, projectPath, "", "")
+	require.Equal(t, http.StatusNoContent, deleted.Code)
+
+	_, err = fixture.store.GetProject(ctx, fixture.project.ID)
+	require.Error(t, err, "the project row must be gone")
+	assert.True(t, store.IsNotFound(err), "expected a not-found error, got %v", err)
 }
 
 func TestLocalModeStillAllowsProjectBootstrap(t *testing.T) {
@@ -157,16 +177,62 @@ func TestProjectMutationStillWorksWithAPIKey(t *testing.T) {
 	assert.Equal(t, "Renamed with a valid key", stored.Name)
 }
 
-func TestLocalModeRejectsProjectDeleteFromSpoofedRemotePeer(t *testing.T) {
+// TestLocalModeRejectsProjectMutationFromRemotePeer is the load-bearing negative
+// case now that local mode can rename, rotate and delete without a key: the only
+// thing standing between a project and a remote caller is the loopback check.
+// These run through the production router so chi's RealIP really sits in the
+// stack, which is where the spoofing hazard lives — every header RealIP consults
+// is replayed against every mutation, and the project is checked afterwards to
+// prove nothing changed.
+func TestLocalModeRejectsProjectMutationFromRemotePeer(t *testing.T) {
 	fixture := newLocalModeMutationFixture(t)
+	projectPath := "/api/projects/" + fixture.project.ID.String()
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/projects/"+fixture.project.ID.String(), nil)
-	req.RemoteAddr = remoteNonLoopbackAddr
-	req.Header.Set("X-Forwarded-For", "127.0.0.1")
-	rec := httptest.NewRecorder()
-	fixture.router.ServeHTTP(rec, req)
+	mutations := []struct {
+		name   string
+		method string
+		target string
+		body   string
+	}{
+		{"rename", http.MethodPatch, projectPath, `{"name":"Renamed by a remote caller"}`},
+		{"rotate key", http.MethodPost, projectPath + "/rotate", ""},
+		{"delete", http.MethodDelete, projectPath, ""},
+	}
 
-	require.Equal(t, http.StatusUnauthorized, rec.Code)
-	_, err := fixture.store.GetProject(context.Background(), fixture.project.ID)
+	// nil headers is the plain remote caller; the rest are the spoofing attempts.
+	peers := map[string]map[string]string{"no headers": nil}
+	for header, value := range spoofedLoopbackHeaders() {
+		peers["spoofed "+header] = map[string]string{header: value}
+	}
+
+	for _, mutation := range mutations {
+		for peer, headers := range peers {
+			t.Run(mutation.name+"/"+peer, func(t *testing.T) {
+				req := httptest.NewRequest(mutation.method, mutation.target, strings.NewReader(mutation.body))
+				req.RemoteAddr = remoteNonLoopbackAddr
+				req.Header.Set("Content-Type", "application/json")
+				for name, value := range headers {
+					req.Header.Set(name, value)
+				}
+
+				rec := httptest.NewRecorder()
+				fixture.router.ServeHTTP(rec, req)
+
+				require.Equal(
+					t,
+					http.StatusUnauthorized,
+					rec.Code,
+					"a remote peer must not reach %s %s", mutation.method, mutation.target,
+				)
+				resp := decodeJSONBody[Error](t, rec)
+				assert.Equal(t, "missing_credentials", resp.Code)
+			})
+		}
+	}
+
+	// Status codes alone would not prove the writes were refused.
+	surviving, err := fixture.store.GetProject(context.Background(), fixture.project.ID)
 	require.NoError(t, err, "a remote caller must not be able to delete a project")
+	assert.Equal(t, fixture.project.Name, surviving.Name, "the project must not have been renamed")
+	assert.Equal(t, fixture.project.ApiKeyHash, surviving.ApiKeyHash, "the API key must not have been rotated")
 }

@@ -264,16 +264,13 @@ func (a *Authenticator) serveProjectBootstrap(next http.Handler, w http.Response
 // project is bound: the project_id query parameter selects the read scope, exactly
 // as it does for an operator. Returns true when it handled the request.
 //
-// The admission is limited to safe methods, which makes local mode read-only
-// across every composite route rather than only the project handlers. Any
-// process on the machine can reach this surface — including a browser tab on a
-// hostile page, which can issue cross-origin writes to localhost without ever
-// reading the response — so writes such as POST /v1/engine/runs and
-// POST /v1/engine/projections/backfill keep requiring an API key. The project
-// bootstrap (GET and POST /api/projects) is unaffected: serveProjectBootstrap
-// runs ahead of this and handles it, so first-run setup still works.
+// Reads, the project bootstrap and project management all run credential-free
+// here: the mode is an explicit opt-in on a machine its operator owns. Engine
+// writes are the one exception. They are execution control rather than
+// single-user console convenience, so POST /v1/engine/runs and
+// POST /v1/engine/projections/backfill keep requiring an API key.
 func (a *Authenticator) serveLocalSingleUser(next http.Handler, w http.ResponseWriter, r *http.Request) bool {
-	if !a.localSingleUserMode || !isSafeMethod(r.Method) || !IsLoopbackRequest(r) {
+	if !a.localSingleUserMode || isEngineWriteRoute(r.Method, r.URL.Path) || !IsLoopbackRequest(r) {
 		return false
 	}
 
@@ -417,6 +414,19 @@ func isPublicDemoAllowedRequest(method, path string) bool {
 
 func isProjectBootstrapRoute(method, path string) bool {
 	return path == "/api/projects" && (method == http.MethodGet || method == http.MethodPost)
+}
+
+// isEngineWriteRoute reports whether the request drives engine execution rather
+// than reading it. The composite route class is wider than the console's read
+// surface — isEngineConsoleRoute also covers POST /v1/engine/runs and
+// POST /v1/engine/projections/backfill — so these are named explicitly and kept
+// API-key-only even in local single-user mode.
+func isEngineWriteRoute(method, path string) bool {
+	if isSafeMethod(method) || !strings.HasPrefix(path, "/v1/engine") {
+		return false
+	}
+
+	return true
 }
 
 // isSafeMethod reports whether the method is read-only per RFC 9110 and so
