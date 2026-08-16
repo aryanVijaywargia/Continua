@@ -74,6 +74,17 @@ export function isAuthProviderEnabled(): boolean {
 }
 
 /**
+ * Missing credentials mean different things per deployment: with a sign-in
+ * provider configured the operator has to sign in, otherwise the local console
+ * is simply missing its project API key and no login exists to offer.
+ */
+function missingCredentialsError(): ApiError {
+  return authProviderEnabled
+    ? new ApiError(401, 'unauthorized', 'Sign in required')
+    : new ApiError(401, 'api_key_required', 'Project API key required');
+}
+
+/**
  * Toggle API-key-free single-user local mode. When active the client must issue
  * requests with no Authorization header and must not demand a stored API key.
  */
@@ -287,7 +298,7 @@ export async function fetchAPI<T>(
     !publicDemoModeEnabled &&
     !localSingleUserModeEnabled
   ) {
-    throw new ApiError(401, 'unauthorized', 'Sign in required');
+    throw missingCredentialsError();
   }
 
   let accessToken: string | null = localApiKey;
@@ -320,7 +331,7 @@ export async function fetchAPI<T>(
     !localSingleUserModeEnabled &&
     !allowUnauthenticated
   ) {
-    throw new ApiError(401, 'unauthorized', 'Sign in required');
+    throw missingCredentialsError();
   }
 
   const headers: Record<string, string> = {
@@ -966,7 +977,7 @@ async function fetchAPIEmpty(
     accessToken = null;
   }
   if (!accessToken && !publicDemoModeEnabled && !localSingleUserModeEnabled) {
-    throw new ApiError(401, 'unauthorized', 'Sign in required');
+    throw missingCredentialsError();
   }
 
   const requestUrl = buildRequestUrl(path);

@@ -853,6 +853,112 @@ test('opens the console with no API key and switches projects in local single-us
   });
 });
 
+// Auth0 disabled and no project API key in the browser: the rotate failure has
+// to name the missing project API key instead of pointing at a sign-in flow this
+// deployment does not have.
+test('explains a failed rotate as a missing project API key in local mode', async ({
+  page,
+}, testInfo) => {
+  const mutationRequests: string[] = [];
+  await bootstrapLocalSingleUserSession(page);
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+    if (method !== 'GET') {
+      mutationRequests.push(`${method} ${url.pathname}`);
+    }
+
+    if (url.pathname === '/api/auth/config') {
+      return fulfillJson(route, { enabled: false });
+    }
+
+    if (method === 'GET' && url.pathname === '/api/projects') {
+      return fulfillJson(route, {
+        projects: [
+          {
+            id: PRIMARY_PROJECT_ID,
+            name: 'Primary Project',
+            created_at: '2026-03-14T10:00:00.000Z',
+            updated_at: '2026-03-14T10:00:00.000Z',
+          },
+        ],
+      });
+    }
+
+    return fulfillJson(route, { code: 'not_found', message: 'Resource not found' }, 404);
+  });
+
+  await page.goto('/projects');
+
+  await page
+    .getByTestId(`project-row-${PRIMARY_PROJECT_ID}`)
+    .getByRole('button', { name: 'Rotate key' })
+    .click();
+  const rotateDialog = page.getByRole('dialog', { name: /Rotate key for/ });
+  await rotateDialog.getByRole('button', { name: 'Rotate key', exact: true }).click();
+
+  await expect(rotateDialog.getByRole('alert')).toContainText(
+    /project api key required/i
+  );
+  await expect(page.getByText(/sign in required/i)).toHaveCount(0);
+  // The wording change must not loosen the guard: no rotate ever left the browser.
+  expect(mutationRequests).toEqual([]);
+
+  await testInfo.attach(`${testInfo.project.name}-local-rotate-missing-key`, {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
+});
+
+// Regression guard for the wording change: with a project API key present the
+// rotate still reaches the server and reveals the new key.
+test('rotates a project key in local mode when an API key is present', async ({
+  page,
+}) => {
+  await bootstrapLocalApiKeySession(page);
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+
+    if (url.pathname === '/api/auth/config') {
+      return fulfillJson(route, { enabled: false });
+    }
+
+    const project = {
+      id: PRIMARY_PROJECT_ID,
+      name: 'Primary Project',
+      created_at: '2026-03-14T10:00:00.000Z',
+      updated_at: '2026-03-14T10:00:00.000Z',
+    };
+
+    if (url.pathname === `/api/projects/${PRIMARY_PROJECT_ID}/rotate`) {
+      expect(route.request().headers().authorization).toBe(
+        `Bearer ${PRIMARY_PROJECT_API_KEY}`
+      );
+      return fulfillJson(route, { ...project, api_key: 'pk_rotated' });
+    }
+
+    if (url.pathname === '/api/projects') {
+      return fulfillJson(route, {
+        authenticated_project_id: PRIMARY_PROJECT_ID,
+        projects: [project],
+      });
+    }
+
+    return fulfillJson(route, { code: 'not_found', message: 'Resource not found' }, 404);
+  });
+
+  await page.goto('/projects');
+
+  await page
+    .getByTestId(`project-row-${PRIMARY_PROJECT_ID}`)
+    .getByRole('button', { name: 'Rotate key' })
+    .click();
+  const rotateDialog = page.getByRole('dialog', { name: /Rotate key for/ });
+  await rotateDialog.getByRole('button', { name: 'Rotate key', exact: true }).click();
+
+  await expect(page.getByTestId('revealed-api-key')).toHaveText('pk_rotated');
+});
+
 test('captures overview, traces, sessions, and settings shells', async ({ page }, testInfo) => {
   const prefix = testInfo.project.name;
   await bootstrapOperatorSession(page);
