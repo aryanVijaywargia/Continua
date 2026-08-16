@@ -11,6 +11,7 @@ import {
   rememberProjectApiKey,
   setAccessTokenProvider,
   setLocalApiKeyMode,
+  setLocalSingleUserMode,
   setPublicDemoMode,
   setSelectedProjectIdProvider,
 } from './client';
@@ -26,6 +27,7 @@ beforeEach(() => {
   clearApiKey();
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
+  setLocalSingleUserMode(false);
   setSelectedProjectIdProvider(null);
 });
 
@@ -33,6 +35,7 @@ afterEach(() => {
   clearApiKey();
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
+  setLocalSingleUserMode(false);
   setSelectedProjectIdProvider(null);
   vi.unstubAllGlobals();
 });
@@ -65,6 +68,32 @@ describe('client', () => {
       'Content-Type': 'application/json',
       Authorization: 'Bearer operator-token',
     });
+  });
+
+  it('sends no Authorization header in local single-user mode', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ traces: [], total: 0 }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    );
+    setLocalSingleUserMode(true);
+    setSelectedProjectIdProvider(() => PROJECT_ID);
+
+    await expect(fetchAPI('/api/traces')).resolves.toBeDefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestUrl = new URL(
+      String(fetchMock.mock.calls[0]?.[0]),
+      'http://localhost'
+    );
+    expect(requestUrl.searchParams.get('project_id')).toBe(PROJECT_ID);
+    const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)
+      ?.headers as Record<string, string> | undefined;
+    expect(headers).toBeDefined();
+    expect(headers).not.toHaveProperty('Authorization');
   });
 
   it('sends the selected project_id on engine operator requests', async () => {

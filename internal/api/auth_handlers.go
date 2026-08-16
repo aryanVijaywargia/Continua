@@ -1,11 +1,21 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/continua-ai/continua/internal/api/middleware"
+)
 
 // GetAuthConfig returns the runtime Auth0 bootstrap configuration for the web debugger.
-func (s *Server) GetAuthConfig(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
 	response := AuthConfig{
 		Enabled: s.auth0Config.Enabled,
+	}
+
+	// Only ever advertise the credential-free bypass to a caller that could
+	// actually use it. A remote client must not learn the mode exists.
+	if s.localSingleUserMode && middleware.IsLoopbackRequest(r) {
+		response.LocalModeEnabled = boolValuePtr(true)
 	}
 
 	if s.publicDemoConfig.Enabled {

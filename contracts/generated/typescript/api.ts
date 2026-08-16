@@ -663,6 +663,8 @@ export interface components {
             public_demo_enabled?: boolean;
             /** @description Display label for the public demo banner shown in the debugger shell. */
             public_demo_label?: string;
+            /** @description Whether API-key-free single-user local mode is active for this connection. True only when the server has local single-user mode enabled and the requesting connection originates from loopback. */
+            local_mode_enabled?: boolean;
         };
         Error: {
             code: string;

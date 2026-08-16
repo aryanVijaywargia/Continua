@@ -30,6 +30,7 @@ let selectedProjectIdProvider: SelectedProjectIdProvider | null = null;
 let legacyTestToken: string | null = null;
 let publicDemoModeEnabled = false;
 let localApiKeyModeEnabled = false;
+let localSingleUserModeEnabled = false;
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -57,6 +58,18 @@ export function setPublicDemoMode(enabled: boolean): void {
 
 export function setLocalApiKeyMode(enabled: boolean): void {
   localApiKeyModeEnabled = enabled;
+}
+
+/**
+ * Toggle API-key-free single-user local mode. When active the client must issue
+ * requests with no Authorization header and must not demand a stored API key.
+ */
+export function setLocalSingleUserMode(enabled: boolean): void {
+  localSingleUserModeEnabled = enabled;
+}
+
+export function isLocalSingleUserMode(): boolean {
+  return localSingleUserModeEnabled;
 }
 
 export function getApiKey(): string | null {
@@ -222,6 +235,7 @@ export interface RuntimeAuthConfig {
   audience?: string;
   public_demo_enabled?: boolean;
   public_demo_label?: string;
+  local_mode_enabled?: boolean;
   console_available?: boolean;
 }
 
@@ -250,13 +264,15 @@ export async function fetchAPI<T>(
 ): Promise<T> {
   const { allowUnauthenticated = false, ...requestOptions } = options;
   const requestUrl = buildRequestUrl(path);
-  const localApiKey = publicDemoModeEnabled ? null : getApiKey();
+  const localApiKey =
+    publicDemoModeEnabled || localSingleUserModeEnabled ? null : getApiKey();
 
   if (
     !allowUnauthenticated &&
     !accessTokenProvider &&
     !localApiKey &&
-    !publicDemoModeEnabled
+    !publicDemoModeEnabled &&
+    !localSingleUserModeEnabled
   ) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
@@ -279,7 +295,18 @@ export async function fetchAPI<T>(
     accessToken = getKnownProjectApiKey(selectedProjectId) ?? accessToken;
   }
 
-  if (!accessToken && !publicDemoModeEnabled && !allowUnauthenticated) {
+  // Local single-user mode is API-key-free by design: the server scopes the read
+  // by project_id, so the request must carry no Authorization header at all.
+  if (localSingleUserModeEnabled) {
+    accessToken = null;
+  }
+
+  if (
+    !accessToken &&
+    !publicDemoModeEnabled &&
+    !localSingleUserModeEnabled &&
+    !allowUnauthenticated
+  ) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
 
@@ -916,12 +943,16 @@ async function fetchAPIEmpty(
   path: string,
   options: RequestInit = {}
 ): Promise<void> {
-  const localApiKey = publicDemoModeEnabled ? null : getApiKey();
+  const localApiKey =
+    publicDemoModeEnabled || localSingleUserModeEnabled ? null : getApiKey();
   let accessToken: string | null = localApiKey;
   if (accessTokenProvider) {
     accessToken = await accessTokenProvider();
   }
-  if (!accessToken && !publicDemoModeEnabled) {
+  if (localSingleUserModeEnabled) {
+    accessToken = null;
+  }
+  if (!accessToken && !publicDemoModeEnabled && !localSingleUserModeEnabled) {
     throw new ApiError(401, 'unauthorized', 'Sign in required');
   }
 

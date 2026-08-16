@@ -149,6 +149,58 @@ func TestLoad_NormalizesAuth0Configuration(t *testing.T) {
 	assert.Equal(t, []string{"operator@one.dev", "operator@two.dev"}, cfg.Auth0.AllowedEmails)
 }
 
+func TestLocalSingleUserModeDefaultsDisabled(t *testing.T) {
+	t.Run("unset environment leaves local single-user mode off", func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "postgres://example")
+		t.Setenv("LOCAL_SINGLE_USER_MODE", "")
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		assert.False(t, cfg.LocalSingleUserMode)
+	})
+
+	t.Run("explicit opt-in enables local single-user mode", func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "postgres://example")
+		t.Setenv("LOCAL_SINGLE_USER_MODE", "true")
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		assert.True(t, cfg.LocalSingleUserMode)
+	})
+}
+
+func TestLocalSingleUserModeRejectedWithAuth0(t *testing.T) {
+	// Fail closed: an unauthenticated loopback bypass must never coexist with
+	// hosted operator authentication, so the server refuses to boot.
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("LOCAL_SINGLE_USER_MODE", "true")
+	t.Setenv("AUTH0_DOMAIN", "continua.us.auth0.com")
+	t.Setenv("AUTH0_CLIENT_ID", "client-id")
+	t.Setenv("AUTH0_AUDIENCE", "https://continua/api")
+	t.Setenv("AUTH0_ALLOWED_EMAILS", "operator@example.com")
+
+	cfg, err := config.Load()
+	require.Error(t, err)
+	assert.Nil(t, cfg)
+	assert.Contains(t, err.Error(), "LOCAL_SINGLE_USER_MODE")
+	assert.Contains(t, err.Error(), "AUTH0")
+}
+
+func TestLocalSingleUserModeRejectedWithPublicDemo(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("LOCAL_SINGLE_USER_MODE", "true")
+	t.Setenv("PUBLIC_DEMO_ENABLED", "true")
+	t.Setenv("PUBLIC_DEMO_PROJECT_ID", "11111111-1111-1111-1111-111111111111")
+
+	cfg, err := config.Load()
+	require.Error(t, err)
+	assert.Nil(t, cfg)
+	assert.Contains(t, err.Error(), "LOCAL_SINGLE_USER_MODE")
+	assert.Contains(t, err.Error(), "PUBLIC_DEMO_ENABLED")
+}
+
 func TestLoad_RejectsPublicDemoWithoutProjectID(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("PUBLIC_DEMO_ENABLED", "true")

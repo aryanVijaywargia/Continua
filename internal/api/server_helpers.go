@@ -169,13 +169,20 @@ func scopeFromRequest(w http.ResponseWriter, r *http.Request, policy requestScop
 		return store.BoundScope(projectID), true
 	}
 
+	// Local single-user mode is unbound just like operator auth: the caller may see
+	// every project, and project_id selects which one this request reads.
 	authMode, ok := middleware.GetAuthMode(r.Context())
-	if !ok || authMode != middleware.AuthModeOperator {
+	if !ok || (authMode != middleware.AuthModeOperator && authMode != middleware.AuthModeLocalSingleUser) {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "Missing project context")
 		return store.Scope{}, false
 	}
 
-	projectID, selected, ok := projectIDSelectionFromRequest(w, r, policy == scopePolicyRequireProject)
+	// Local single-user mode has no cross-project aggregate view: the selected
+	// project_id is the only thing that scopes the read, so it is always required.
+	requireProject := policy == scopePolicyRequireProject ||
+		authMode == middleware.AuthModeLocalSingleUser
+
+	projectID, selected, ok := projectIDSelectionFromRequest(w, r, requireProject)
 	if !ok {
 		return store.Scope{}, false
 	}

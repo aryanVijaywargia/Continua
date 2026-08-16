@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"encoding/hex"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 
@@ -25,7 +26,21 @@ const (
 	AuthModeKey        contextKey = "auth_mode"
 	OperatorEmailKey   contextKey = "operator_email"
 	OperatorSubjectKey contextKey = "operator_subject"
+	// TransportPeerKey carries the connection's true peer address, captured
+	// before any middleware that rewrites RemoteAddr from proxy headers.
+	TransportPeerKey contextKey = "transport_peer"
 )
+
+// CaptureTransportPeer records the real transport peer address so later
+// middleware can make trust decisions about it. It MUST be mounted before
+// chi's RealIP middleware, which overwrites RemoteAddr with the value of the
+// attacker-controlled X-Forwarded-For / X-Real-IP headers.
+func CaptureTransportPeer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), TransportPeerKey, r.RemoteAddr)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 // AuthMode identifies how a request was authenticated.
 type AuthMode string
@@ -35,6 +50,10 @@ const (
 	AuthModeOperator   AuthMode = "operator"
 	AuthModePublicDemo AuthMode = "public_demo"
 	AuthModeBootstrap  AuthMode = "bootstrap"
+	// AuthModeLocalSingleUser marks a credential-free loopback request accepted
+	// because the deployment opted into local single-user mode. Requests in this
+	// mode carry no bound project; the project_id query parameter selects scope.
+	AuthModeLocalSingleUser AuthMode = "local_single_user"
 )
 
 type routeProtection int
@@ -50,6 +69,8 @@ type Authenticator struct {
 	store      *store.Store
 	auth0      *auth0Authenticator
 	publicDemo *publicDemoAccess
+	// localSingleUserMode mirrors config.Config.LocalSingleUserMode.
+	localSingleUserMode bool
 }
 
 type publicDemoAccess struct {
@@ -72,6 +93,9 @@ func NewAuthenticator(s *store.Store, cfg *config.Config) (*Authenticator, error
 		authenticator.publicDemo = &publicDemoAccess{
 			projectID: cfg.PublicDemo.ProjectID,
 		}
+	}
+	if cfg != nil {
+		authenticator.localSingleUserMode = cfg.LocalSingleUserMode
 	}
 	return authenticator, nil
 }
@@ -170,6 +194,9 @@ func (a *Authenticator) serveComposite(next http.Handler, w http.ResponseWriter,
 		if a.serveProjectBootstrap(next, w, r) {
 			return
 		}
+		if a.serveLocalSingleUser(next, w, r) {
+			return
+		}
 		writeAuthError(w, http.StatusUnauthorized, "missing_credentials", "Authentication required")
 		return
 	}
@@ -230,6 +257,51 @@ func (a *Authenticator) serveProjectBootstrap(next http.Handler, w http.Response
 	ctx := context.WithValue(r.Context(), AuthModeKey, AuthModeBootstrap)
 	next.ServeHTTP(w, r.WithContext(ctx))
 	return true
+}
+
+// serveLocalSingleUser admits a credential-free request when the deployment opted
+// into local single-user mode and the transport peer is the local machine. No
+// project is bound: the project_id query parameter selects the read scope, exactly
+// as it does for an operator. Returns true when it handled the request.
+//
+// Everything on the composite surface runs credential-free here: reads, the
+// project bootstrap, project management and engine writes alike. The mode is an
+// explicit opt-in on a machine its operator owns, so the trust boundary is the
+// loopback admission below rather than a per-route write gate. /v1/ingest is
+// unaffected — it is classified routeProtectionAPIKeyOnly and never reaches
+// this path.
+func (a *Authenticator) serveLocalSingleUser(next http.Handler, w http.ResponseWriter, r *http.Request) bool {
+	if !a.localSingleUserMode || !IsLoopbackRequest(r) {
+		return false
+	}
+
+	ctx := context.WithValue(r.Context(), AuthModeKey, AuthModeLocalSingleUser)
+	next.ServeHTTP(w, r.WithContext(ctx))
+	return true
+}
+
+// IsLoopbackRequest reports whether the request's transport peer is the local
+// machine. The peer address comes from the connection, never from proxy headers
+// such as X-Forwarded-For, which are attacker-controlled and must never
+// influence an authentication decision. CaptureTransportPeer stashes the real
+// peer before chi's RealIP middleware overwrites RemoteAddr with those headers;
+// without that middleware in the stack, RemoteAddr is still the raw peer.
+func IsLoopbackRequest(r *http.Request) bool {
+	remoteAddr, ok := r.Context().Value(TransportPeerKey).(string)
+	if !ok {
+		remoteAddr = r.RemoteAddr
+	}
+
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		// The peer address is not host:port (e.g. a Unix socket peer); treat it
+		// whole. It must stay the captured peer, never r.RemoteAddr, which RealIP
+		// may already have replaced with a header value.
+		host = remoteAddr
+	}
+
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
 }
 
 func (a *Authenticator) apiKeyContext(

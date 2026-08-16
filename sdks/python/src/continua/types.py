@@ -24,6 +24,10 @@ class AuthConfig(BaseModel):
         None,
         description="Display label for the public demo banner shown in the debugger shell.",
     )
+    local_mode_enabled: bool | None = Field(
+        None,
+        description="Whether API-key-free single-user local mode is active for this connection. True only when the server has local single-user mode enabled and the requesting connection originates from loopback.",
+    )
 
 
 class Error(BaseModel):
