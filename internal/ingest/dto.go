@@ -16,6 +16,16 @@ type IngestRequest struct {
 	Events   []EventInput `json:"events,omitempty"`
 }
 
+// SessionContextInput carries the session materialization fields an ingestion adapter
+// (today: OTLP) resolved from a producer's attributes. It is not part of the native
+// JSON ingest contract; native clients leave it zero and session rows keep the
+// identity-only behavior they have always had.
+type SessionContextInput struct {
+	Name     *string
+	UserID   *string
+	UserName *string
+}
+
 // TraceInput represents a trace in the ingest request.
 type TraceInput struct {
 	TraceID     string         `json:"trace_id"`
@@ -31,6 +41,8 @@ type TraceInput struct {
 	Status      *string        `json:"status,omitempty"`
 	StartTime   *time.Time     `json:"start_time,omitempty"`
 	EndTime     *time.Time     `json:"end_time,omitempty"`
+
+	SessionContext SessionContextInput `json:"-"`
 }
 
 // SpanInput represents a span in the ingest request.

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/google/uuid"
@@ -91,6 +92,40 @@ func (s *Store) ListSessionsWithTraceCount(ctx context.Context, scope Scope, lim
 // CountSessions returns the total number of sessions within the supplied scope.
 func (s *Store) CountSessions(ctx context.Context, scope Scope) (int64, error) {
 	return s.q.CountSessions(ctx, scope.nullableProjectFilter())
+}
+
+// SessionContextParams carries the session fields an ingestion adapter resolved for a
+// trace. Empty values must be passed as nil: they mean "the producer did not emit this".
+type SessionContextParams struct {
+	Name     *string
+	UserID   *string
+	UserName *string
+}
+
+// sessionUserNameKey is where a session's display user name lives inside sessions.metadata.
+const sessionUserNameKey = "user_name"
+
+// UpsertSessionContext resolves a session by (project_id, external_id) and materializes
+// the supplied context with first-non-empty-wins semantics: stored non-empty values are
+// never replaced, missing fields are filled, and metadata merges additively.
+func (t *Tx) UpsertSessionContext(
+	ctx context.Context,
+	projectID uuid.UUID,
+	externalID string,
+	params SessionContextParams,
+) (platform.Session, error) {
+	metadata := []byte("{}")
+	if params.UserName != nil {
+		metadata, _ = json.Marshal(map[string]string{sessionUserNameKey: *params.UserName})
+	}
+
+	return t.q.UpsertSessionContext(ctx, platform.UpsertSessionContextParams{
+		ProjectID:  projectID,
+		ExternalID: externalID,
+		Name:       params.Name,
+		UserID:     params.UserID,
+		Metadata:   metadata,
+	})
 }
 
 // GetOrCreateSessionByExternalIDTx upserts a session within a transaction.

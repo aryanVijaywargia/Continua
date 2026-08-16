@@ -37,6 +37,20 @@ SET name = $2, metadata = $3, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
+-- name: UpsertSessionContext :one
+-- Materialize session context by (project_id, external_id) with first-non-empty-wins
+-- conflict semantics: a stored non-empty value is never replaced, missing or empty
+-- fields are filled from the incoming trace, and metadata merges additively with the
+-- stored keys winning.
+INSERT INTO sessions (project_id, external_id, name, user_id, metadata)
+VALUES ($1, $2, sqlc.narg(name), sqlc.narg(user_id), sqlc.arg(metadata))
+ON CONFLICT (project_id, external_id) DO UPDATE
+SET name = COALESCE(NULLIF(sessions.name, ''), NULLIF(EXCLUDED.name, '')),
+    user_id = COALESCE(NULLIF(sessions.user_id, ''), NULLIF(EXCLUDED.user_id, '')),
+    metadata = EXCLUDED.metadata || COALESCE(sessions.metadata, '{}'::jsonb),
+    updated_at = NOW()
+RETURNING *;
+
 -- name: GetOrCreateSessionByExternalID :one
 -- Upsert a session by (project_id, external_id). Creates if not exists, refreshes updated_at if exists.
 INSERT INTO sessions (project_id, external_id)

@@ -1400,7 +1400,7 @@ export interface components {
              * @default default
              * @enum {string}
              */
-            type: "default" | "llm" | "tool" | "agent" | "chain" | "retrieval" | "embedding" | "generation";
+            type: "default" | "llm" | "tool" | "agent" | "chain" | "retrieval" | "embedding" | "generation" | "evaluator" | "guardrail";
             /**
              * @default running
              * @enum {string}

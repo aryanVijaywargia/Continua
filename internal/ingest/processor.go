@@ -297,7 +297,11 @@ func (p *Processor) upsertTrace(ctx context.Context, tx *store.Tx, projectID uui
 
 	var sessionID pgtype.UUID
 	if input.SessionID != nil && *input.SessionID != "" {
-		session, err := tx.GetOrCreateSessionByExternalID(ctx, projectID, *input.SessionID)
+		session, err := tx.UpsertSessionContext(ctx, projectID, *input.SessionID, store.SessionContextParams{
+			Name:     input.SessionContext.Name,
+			UserID:   input.SessionContext.UserID,
+			UserName: input.SessionContext.UserName,
+		})
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("resolve session: %w", err)
 		}

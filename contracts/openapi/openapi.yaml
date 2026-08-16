@@ -3248,7 +3248,7 @@ components:
           type: string
         type:
           type: string
-          enum: [default, llm, tool, agent, chain, retrieval, embedding, generation]
+          enum: [default, llm, tool, agent, chain, retrieval, embedding, generation, evaluator, guardrail]
           default: default
         status:
           type: string

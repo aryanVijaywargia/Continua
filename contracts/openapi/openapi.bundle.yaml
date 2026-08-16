@@ -3431,6 +3431,8 @@ components:
             - retrieval
             - embedding
             - generation
+            - evaluator
+            - guardrail
           default: default
         status:
           type: string

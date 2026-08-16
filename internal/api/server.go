@@ -49,6 +49,7 @@ func newConfiguredServer(
 	server.engineSharedControl = shared
 	if cfg != nil {
 		server.enginePublicAPIEnabled = cfg.Engine.PublicAPIEnabled
+		server.otlpIngestEnabled = cfg.Ingest.OTLPEnabled
 		server.engineControl.completionGrace = cfg.Engine.LeaseCompletionGrace
 		server.auth0Config = cfg.Auth0
 		server.publicDemoConfig = cfg.PublicDemo
