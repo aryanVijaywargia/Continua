@@ -31,6 +31,7 @@ let legacyTestToken: string | null = null;
 let publicDemoModeEnabled = false;
 let localApiKeyModeEnabled = false;
 let localSingleUserModeEnabled = false;
+let authProviderEnabled = false;
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -58,6 +59,18 @@ export function setPublicDemoMode(enabled: boolean): void {
 
 export function setLocalApiKeyMode(enabled: boolean): void {
   localApiKeyModeEnabled = enabled;
+}
+
+/**
+ * Record whether an interactive sign-in provider (Auth0) is configured for this
+ * deployment. Self-hosted local mode is the default, so this starts false.
+ */
+export function setAuthProviderEnabled(enabled: boolean): void {
+  authProviderEnabled = enabled;
+}
+
+export function isAuthProviderEnabled(): boolean {
+  return authProviderEnabled;
 }
 
 /**

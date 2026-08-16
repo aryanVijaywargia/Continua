@@ -3,6 +3,7 @@ import {
   ApiError,
   backfillEngineProjections,
   clearApiKey,
+  deleteProject,
   fetchAPI,
   fetchRuntimeAuthConfig,
   forgetProjectApiKey,
@@ -10,6 +11,7 @@ import {
   getKnownProjectApiKey,
   rememberProjectApiKey,
   setAccessTokenProvider,
+  setAuthProviderEnabled,
   setLocalApiKeyMode,
   setLocalSingleUserMode,
   setPublicDemoMode,
@@ -28,6 +30,7 @@ beforeEach(() => {
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
   setLocalSingleUserMode(false);
+  setAuthProviderEnabled(false);
   setSelectedProjectIdProvider(null);
 });
 
@@ -36,6 +39,7 @@ afterEach(() => {
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
   setLocalSingleUserMode(false);
+  setAuthProviderEnabled(false);
   setSelectedProjectIdProvider(null);
   vi.unstubAllGlobals();
 });
@@ -214,11 +218,120 @@ describe('client', () => {
   });
 
   it('fails fast when no operator token provider is installed', async () => {
+    setAuthProviderEnabled(true);
+
     await expect(fetchAPI('/api/traces')).rejects.toMatchObject({
       status: 401,
       code: 'unauthorized',
       message: 'Sign in required',
     } satisfies Partial<ApiError>);
+  });
+
+  it('reports missing credentials as a project API-key issue when no sign-in provider is configured', async () => {
+    setAuthProviderEnabled(false);
+
+    const rejection = await fetchAPI('/api/traces').then(
+      () => {
+        throw new Error('expected fetchAPI to reject');
+      },
+      (error: unknown) => error
+    );
+
+    expect(rejection).toBeInstanceOf(ApiError);
+    expect(rejection).toMatchObject({
+      status: 401,
+      code: 'api_key_required',
+      message: 'Project API key required',
+    } satisfies Partial<ApiError>);
+    expect((rejection as ApiError).message).not.toContain('Sign in');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps sign-in wording for missing credentials when a sign-in provider is configured', async () => {
+    setAuthProviderEnabled(true);
+
+    await expect(fetchAPI('/api/traces')).rejects.toMatchObject({
+      status: 401,
+      code: 'unauthorized',
+      message: 'Sign in required',
+    } satisfies Partial<ApiError>);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports an unresolved token as a project API-key issue when no sign-in provider is configured', async () => {
+    setAuthProviderEnabled(false);
+    setAccessTokenProvider(async () => null);
+
+    const rejection = await fetchAPI('/api/traces').then(
+      () => {
+        throw new Error('expected fetchAPI to reject');
+      },
+      (error: unknown) => error
+    );
+
+    expect(rejection).toMatchObject({
+      status: 401,
+      code: 'api_key_required',
+      message: 'Project API key required',
+    } satisfies Partial<ApiError>);
+    expect((rejection as ApiError).message).not.toContain('Sign in');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps sign-in wording for an unresolved token when a sign-in provider is configured', async () => {
+    setAuthProviderEnabled(true);
+    setAccessTokenProvider(async () => null);
+
+    await expect(fetchAPI('/api/traces')).rejects.toMatchObject({
+      status: 401,
+      code: 'unauthorized',
+      message: 'Sign in required',
+    } satisfies Partial<ApiError>);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a credential-free project delete as a project API-key issue in local mode', async () => {
+    setAuthProviderEnabled(false);
+
+    const rejection = await deleteProject('project-to-delete').then(
+      () => {
+        throw new Error('expected deleteProject to reject');
+      },
+      (error: unknown) => error
+    );
+
+    expect(rejection).toMatchObject({
+      status: 401,
+      code: 'api_key_required',
+      message: 'Project API key required',
+    } satisfies Partial<ApiError>);
+    expect((rejection as ApiError).message).not.toContain('Sign in');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps sign-in wording for a credential-free project delete when a sign-in provider is configured', async () => {
+    setAuthProviderEnabled(true);
+
+    await expect(deleteProject('project-to-delete')).rejects.toMatchObject({
+      status: 401,
+      code: 'unauthorized',
+      message: 'Sign in required',
+    } satisfies Partial<ApiError>);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('defaults to project API-key wording before any sign-in provider is announced', async () => {
+    // Import a pristine module instance so the assertion covers the module
+    // default, without the setter ever being called for it.
+    vi.resetModules();
+    const pristineClient = await import('./client');
+
+    await expect(pristineClient.fetchAPI('/api/traces')).rejects.toMatchObject({
+      status: 401,
+      code: 'api_key_required',
+      message: 'Project API key required',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('uses a stored local API key when no operator token provider is installed', async () => {
