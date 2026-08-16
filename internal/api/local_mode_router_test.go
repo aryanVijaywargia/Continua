@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -167,46 +168,70 @@ func newLocalModeAuthConfigRouter(t *testing.T) http.Handler {
 	return NewRouter(server, authenticator)
 }
 
-// Local single-user mode is read-only. The composite route class is broader than
-// the console's read surface — it also covers the engine write endpoints — so
-// these drive the production router and confirm a credential-free loopback
-// caller cannot start a run or trigger a backfill. That matters because any
-// process on the machine can reach this surface, including a browser tab on a
-// hostile page issuing a cross-origin POST to localhost.
-func TestLocalModeRouterRejectsCredentialFreeEngineWrites(t *testing.T) {
+// Local single-user mode is credential-free across the whole composite surface
+// on loopback, engine writes included. Execution control is deliberately part of
+// that: the mode is an explicit opt-in on a machine its operator owns. Loopback
+// admission is therefore the entire security boundary, so these drive the
+// production router — where chi's RealIP actually sits — and pin both halves:
+// a genuine loopback peer gets through, and a remote peer does not, however its
+// headers are dressed up.
+func TestLocalModeRouterAdmitsCredentialFreeEngineWritesFromLoopback(t *testing.T) {
 	router := newLocalModeEngineRouter(t)
 
-	writes := []struct {
-		name   string
-		method string
-		target string
-	}{
-		{"start run", http.MethodPost, "/v1/engine/runs"},
-		{"projection backfill", http.MethodPost, "/v1/engine/projections/backfill"},
-	}
+	for _, target := range engineWriteRoutes() {
+		t.Run(target, func(t *testing.T) {
+			rec := serveEngineWrite(t, router, target, "127.0.0.1:54321", nil)
 
-	for _, write := range writes {
-		t.Run(write.name, func(t *testing.T) {
-			req := httptest.NewRequest(write.method, write.target, http.NoBody)
-			req.RemoteAddr = "127.0.0.1:54321"
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
-
-			require.Equal(
+			// The handler rejects the empty body, which is exactly the point:
+			// reaching validation proves auth admitted the request.
+			require.NotEqual(
 				t,
 				http.StatusUnauthorized,
 				rec.Code,
-				"local single-user mode must not admit a credential-free write to %s", write.target,
+				"local mode must admit a credential-free loopback write to %s", target,
 			)
-			resp := decodeJSONBody[Error](t, rec)
-			assert.Equal(t, "missing_credentials", resp.Code)
+			assert.Equal(t, http.StatusBadRequest, rec.Code, "expected to reach handler validation")
 		})
 	}
 }
 
-// TestLocalModeRouterStillAllowsEngineReads pins the other half of the rule: the
-// read surface the console actually needs stays open, so the method restriction
-// above is not simply switching local mode off.
+func TestLocalModeRouterRejectsEngineWritesFromRemotePeer(t *testing.T) {
+	router := newLocalModeEngineRouter(t)
+
+	peers := map[string]map[string]string{"no headers": nil}
+	for header, value := range spoofedLoopbackHeaders() {
+		peers["spoofed "+header] = map[string]string{header: value}
+	}
+
+	for _, target := range engineWriteRoutes() {
+		for peer, headers := range peers {
+			t.Run(target+"/"+peer, func(t *testing.T) {
+				rec := serveEngineWrite(t, router, target, remoteNonLoopbackAddr, headers)
+
+				require.Equal(
+					t,
+					http.StatusUnauthorized,
+					rec.Code,
+					"a remote peer must not reach %s", target,
+				)
+				assert.Equal(t, "missing_credentials", decodeJSONBody[Error](t, rec).Code)
+			})
+		}
+	}
+}
+
+// TestLocalModeRouterKeepsIngestAPIKeyOnly pins the one route local mode must
+// never open: ingest is routeProtectionAPIKeyOnly, so even a loopback caller
+// needs a key.
+func TestLocalModeRouterKeepsIngestAPIKeyOnly(t *testing.T) {
+	router := newLocalModeEngineRouter(t)
+
+	rec := serveEngineWrite(t, router, "/v1/ingest", "127.0.0.1:54321", nil)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code, "ingest must still require an API key")
+	assert.Equal(t, "missing_api_key", decodeJSONBody[Error](t, rec).Code)
+}
+
 func TestLocalModeRouterStillAllowsEngineReads(t *testing.T) {
 	router := newLocalModeEngineRouter(t)
 
@@ -218,9 +243,34 @@ func TestLocalModeRouterStillAllowsEngineReads(t *testing.T) {
 	assert.NotEqual(t, http.StatusUnauthorized, rec.Code, "engine reads must stay open in local mode")
 }
 
+// engineWriteRoutes are the composite engine mutations: starting a run and
+// triggering a projection backfill.
+func engineWriteRoutes() []string {
+	return []string{"/v1/engine/runs", "/v1/engine/projections/backfill"}
+}
+
+func serveEngineWrite(
+	t *testing.T,
+	router http.Handler,
+	target, remoteAddr string,
+	headers map[string]string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader("{}"))
+	req.RemoteAddr = remoteAddr
+	req.Header.Set("Content-Type", "application/json")
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
 // newLocalModeEngineRouter builds the production router with local single-user
-// mode on and the engine public API mounted. Auth runs ahead of the handlers, so
-// the rejected requests never need a store.
+// mode on and the engine public API mounted.
 func newLocalModeEngineRouter(t *testing.T) http.Handler {
 	t.Helper()
 

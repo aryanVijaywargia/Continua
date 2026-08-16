@@ -264,13 +264,14 @@ func (a *Authenticator) serveProjectBootstrap(next http.Handler, w http.Response
 // project is bound: the project_id query parameter selects the read scope, exactly
 // as it does for an operator. Returns true when it handled the request.
 //
-// Reads, the project bootstrap and project management all run credential-free
-// here: the mode is an explicit opt-in on a machine its operator owns. Engine
-// writes are the one exception. They are execution control rather than
-// single-user console convenience, so POST /v1/engine/runs and
-// POST /v1/engine/projections/backfill keep requiring an API key.
+// Everything on the composite surface runs credential-free here: reads, the
+// project bootstrap, project management and engine writes alike. The mode is an
+// explicit opt-in on a machine its operator owns, so the trust boundary is the
+// loopback admission below rather than a per-route write gate. /v1/ingest is
+// unaffected — it is classified routeProtectionAPIKeyOnly and never reaches
+// this path.
 func (a *Authenticator) serveLocalSingleUser(next http.Handler, w http.ResponseWriter, r *http.Request) bool {
-	if !a.localSingleUserMode || isEngineWriteRoute(r.Method, r.URL.Path) || !IsLoopbackRequest(r) {
+	if !a.localSingleUserMode || !IsLoopbackRequest(r) {
 		return false
 	}
 
@@ -414,30 +415,6 @@ func isPublicDemoAllowedRequest(method, path string) bool {
 
 func isProjectBootstrapRoute(method, path string) bool {
 	return path == "/api/projects" && (method == http.MethodGet || method == http.MethodPost)
-}
-
-// isEngineWriteRoute reports whether the request drives engine execution rather
-// than reading it. The composite route class is wider than the console's read
-// surface — isEngineConsoleRoute also covers POST /v1/engine/runs and
-// POST /v1/engine/projections/backfill — so these are named explicitly and kept
-// API-key-only even in local single-user mode.
-func isEngineWriteRoute(method, path string) bool {
-	if isSafeMethod(method) || !strings.HasPrefix(path, "/v1/engine") {
-		return false
-	}
-
-	return true
-}
-
-// isSafeMethod reports whether the method is read-only per RFC 9110 and so
-// cannot change server state.
-func isSafeMethod(method string) bool {
-	switch method {
-	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return true
-	default:
-		return false
-	}
 }
 
 func matchesPathPattern(path, pattern string) bool {
