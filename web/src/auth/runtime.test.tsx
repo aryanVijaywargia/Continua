@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearApiKey,
   fetchAPI,
+  isAuthProviderEnabled,
   setAccessTokenProvider,
+  setAuthProviderEnabled,
   setLocalSingleUserMode,
   setPublicDemoMode,
 } from '../api/client';
@@ -80,6 +82,7 @@ beforeEach(() => {
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
   setLocalSingleUserMode(false);
+  setAuthProviderEnabled(false);
   auth0State.error = undefined;
   auth0State.isAuthenticated = true;
   auth0State.isLoading = false;
@@ -91,6 +94,7 @@ afterEach(() => {
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
   setLocalSingleUserMode(false);
+  setAuthProviderEnabled(false);
   vi.unstubAllGlobals();
 });
 
@@ -451,5 +455,84 @@ describe('runtime auth', () => {
       'href',
       '/'
     );
+  });
+
+  it('tells the API client whether an interactive sign-in provider is configured', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ traces: [], total: 0 }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    );
+
+    // Authenticated bridge: Auth0 is configured, so sign-in wording applies.
+    const auth0Deployment = render(
+      <MemoryRouter>
+        <Auth0RuntimeProvider
+          auth={{
+            status: 'ready',
+            enabled: true,
+            domain: 'continua.us.auth0.com',
+            client_id: 'client-id',
+            audience: 'https://continua/api',
+          }}
+        >
+          <div>Operator console</div>
+        </Auth0RuntimeProvider>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Operator console')).toBeInTheDocument();
+    expect(isAuthProviderEnabled()).toBe(true);
+    auth0Deployment.unmount();
+
+    // Unauthenticated bridge: no Auth0, so the client must fall back to
+    // project-API-key wording. Seed the opposite value first so the assertion
+    // cannot pass on the module default alone.
+    setAuthProviderEnabled(true);
+    const localDeployment = render(
+      <MemoryRouter>
+        <Auth0RuntimeProvider
+          auth={{
+            status: 'ready',
+            enabled: false,
+            local_mode_enabled: true,
+          }}
+        >
+          <div>Local console</div>
+        </Auth0RuntimeProvider>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Local console')).toBeInTheDocument();
+    expect(isAuthProviderEnabled()).toBe(false);
+    localDeployment.unmount();
+
+    // Public-demo bridge with Auth0 still configured: the demo reads are
+    // unauthenticated, but a sign-in provider exists, so the wording stays
+    // sign-in oriented.
+    setAuthProviderEnabled(false);
+    render(
+      <MemoryRouter>
+        <Auth0RuntimeProvider
+          auth={{
+            status: 'ready',
+            enabled: true,
+            domain: 'continua.us.auth0.com',
+            client_id: 'client-id',
+            audience: 'https://continua/api',
+            public_demo_enabled: true,
+            public_demo_label: 'Sample data',
+          }}
+        >
+          <div>Demo console</div>
+        </Auth0RuntimeProvider>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Demo console')).toBeInTheDocument();
+    expect(isAuthProviderEnabled()).toBe(true);
   });
 });

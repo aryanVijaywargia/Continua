@@ -8,6 +8,7 @@ import {
   clearApiKey,
   rememberProjectApiKey,
   setApiKey,
+  setAuthProviderEnabled,
 } from '../api/client';
 import { ProjectsPage } from './ProjectsPage';
 import { jsonResponse, mockClipboard, type RequestInput } from './testUtils';
@@ -44,11 +45,13 @@ function renderProjectsPage() {
 
 beforeEach(() => {
   window.localStorage.clear();
+  setAuthProviderEnabled(false);
   setApiKey('test-key');
 });
 
 afterEach(() => {
   clearApiKey();
+  setAuthProviderEnabled(false);
   vi.restoreAllMocks();
 });
 
@@ -549,4 +552,108 @@ describe('ProjectsPage', () => {
 
     expect(window.localStorage.getItem('continua_api_key')).toBe('pk_newkey789');
   });
+
+  it('explains a failed rotate as a missing project API key in local mode', async () => {
+    const user = userEvent.setup();
+    clearApiKey();
+    setAuthProviderEnabled(false);
+
+    const fetchMock = mockProjectListOnly();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderProjectsPage();
+
+    await openRotateDialogAndSubmit(user);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/project api key/i);
+    expect(screen.queryByText(/sign in required/i)).toBeNull();
+    expect(mutationRequests(fetchMock)).toEqual([]);
+  });
+
+  it('keeps sign-in wording for a failed rotate when Auth0 is enabled', async () => {
+    const user = userEvent.setup();
+    clearApiKey();
+    setAuthProviderEnabled(true);
+
+    const fetchMock = mockProjectListOnly();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderProjectsPage();
+
+    await openRotateDialogAndSubmit(user);
+
+    expect(await screen.findByText(/sign in required/i)).toBeInTheDocument();
+    expect(mutationRequests(fetchMock)).toEqual([]);
+  });
+
+  it('keeps rotate, rename, and delete protected when no project API key is available', async () => {
+    const user = userEvent.setup();
+    clearApiKey();
+    setAuthProviderEnabled(false);
+
+    const fetchMock = mockProjectListOnly();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderProjectsPage();
+
+    await openRotateDialogAndSubmit(user);
+    const rotateDialog = screen.getByRole('dialog', { name: /rotate key for/i });
+    expect(await within(rotateDialog).findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByTestId('revealed-api-key')).toBeNull();
+    await user.click(within(rotateDialog).getByRole('button', { name: /cancel/i }));
+
+    const row = screen.getByTestId(`project-row-${EXISTING_PROJECT.id}`);
+    await user.click(within(row).getByRole('button', { name: /^rename$/i }));
+    const renameDialog = await screen.findByRole('dialog', { name: /rename/i });
+    await user.clear(within(renameDialog).getByLabelText(/new name/i));
+    await user.type(within(renameDialog).getByLabelText(/new name/i), 'Renamed');
+    await user.click(within(renameDialog).getByRole('button', { name: /^save$/i }));
+    expect(await within(renameDialog).findByRole('alert')).toBeInTheDocument();
+    await user.click(within(renameDialog).getByRole('button', { name: /cancel/i }));
+
+    await user.click(within(row).getByRole('button', { name: /^delete$/i }));
+    const deleteDialog = await screen.findByRole('dialog', { name: /delete "/i });
+    await user.type(
+      within(deleteDialog).getByLabelText(/type the project name to confirm/i),
+      EXISTING_PROJECT.name
+    );
+    await user.click(
+      within(deleteDialog).getByRole('button', { name: /delete project/i })
+    );
+    expect(await within(deleteDialog).findByRole('alert')).toBeInTheDocument();
+
+    expect(mutationRequests(fetchMock)).toEqual([]);
+  });
 });
+
+function mockProjectListOnly() {
+  return vi.fn(async (input: RequestInput, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = (init?.method ?? 'GET').toUpperCase();
+    if (method === 'GET' && url.includes('/api/projects')) {
+      return jsonResponse({ projects: [EXISTING_PROJECT] });
+    }
+    throw new Error(`unexpected ${method} ${url}`);
+  });
+}
+
+function mutationRequests(fetchMock: ReturnType<typeof vi.fn>): string[] {
+  return fetchMock.mock.calls
+    .map(([input, init]) => {
+      const url = typeof input === 'string' ? input : String(input);
+      const method = ((init as RequestInit | undefined)?.method ?? 'GET').toUpperCase();
+      return `${method} ${url}`;
+    })
+    .filter((call) => !call.startsWith('GET '));
+}
+
+async function openRotateDialogAndSubmit(
+  user: ReturnType<typeof userEvent.setup>
+): Promise<void> {
+  await screen.findByText(EXISTING_PROJECT.name);
+  const row = screen.getByTestId(`project-row-${EXISTING_PROJECT.id}`);
+  await user.click(within(row).getByRole('button', { name: /rotate key/i }));
+  const rotateDialog = await screen.findByRole('dialog', { name: /rotate key for/i });
+  await user.click(within(rotateDialog).getByRole('button', { name: /^rotate key$/i }));
+}

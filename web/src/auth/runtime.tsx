@@ -18,6 +18,7 @@ import {
   LOCAL_API_KEY_CHANGED_EVENT,
   setAccessTokenProvider,
   setApiKey,
+  setAuthProviderEnabled,
   setLocalApiKeyMode,
   setLocalSingleUserMode,
   setPublicDemoMode,
@@ -146,6 +147,14 @@ export function Auth0RuntimeProvider({
   children: ReactNode;
 }) {
   const navigate = useNavigate();
+
+  // Whether a sign-in provider exists is a deployment fact, not a property of
+  // the bridge that ends up mounting: the public demo runs unauthenticated but
+  // may still sit in front of a configured Auth0 tenant. The API client uses it
+  // to word missing-credential failures.
+  useLayoutEffect(() => {
+    setAuthProviderEnabled(auth.enabled);
+  }, [auth.enabled]);
 
   let content = (
     <UnauthenticatedSessionBridge

@@ -31,6 +31,7 @@ let legacyTestToken: string | null = null;
 let publicDemoModeEnabled = false;
 let localApiKeyModeEnabled = false;
 let localSingleUserModeEnabled = false;
+let authProviderEnabled = false;
 
 export type { FetchTracesParams } from '../utils/tracesSearchParams';
 export type {
@@ -58,6 +59,29 @@ export function setPublicDemoMode(enabled: boolean): void {
 
 export function setLocalApiKeyMode(enabled: boolean): void {
   localApiKeyModeEnabled = enabled;
+}
+
+/**
+ * Record whether an interactive sign-in provider (Auth0) is configured for this
+ * deployment. Self-hosted local mode is the default, so this starts false.
+ */
+export function setAuthProviderEnabled(enabled: boolean): void {
+  authProviderEnabled = enabled;
+}
+
+export function isAuthProviderEnabled(): boolean {
+  return authProviderEnabled;
+}
+
+/**
+ * Missing credentials mean different things per deployment: with a sign-in
+ * provider configured the operator has to sign in, otherwise the local console
+ * is simply missing its project API key and no login exists to offer.
+ */
+function missingCredentialsError(): ApiError {
+  return authProviderEnabled
+    ? new ApiError(401, 'unauthorized', 'Sign in required')
+    : new ApiError(401, 'api_key_required', 'Project API key required');
 }
 
 /**
@@ -274,7 +298,7 @@ export async function fetchAPI<T>(
     !publicDemoModeEnabled &&
     !localSingleUserModeEnabled
   ) {
-    throw new ApiError(401, 'unauthorized', 'Sign in required');
+    throw missingCredentialsError();
   }
 
   let accessToken: string | null = localApiKey;
@@ -307,7 +331,7 @@ export async function fetchAPI<T>(
     !localSingleUserModeEnabled &&
     !allowUnauthenticated
   ) {
-    throw new ApiError(401, 'unauthorized', 'Sign in required');
+    throw missingCredentialsError();
   }
 
   const headers: Record<string, string> = {
@@ -953,7 +977,7 @@ async function fetchAPIEmpty(
     accessToken = null;
   }
   if (!accessToken && !publicDemoModeEnabled && !localSingleUserModeEnabled) {
-    throw new ApiError(401, 'unauthorized', 'Sign in required');
+    throw missingCredentialsError();
   }
 
   const requestUrl = buildRequestUrl(path);
