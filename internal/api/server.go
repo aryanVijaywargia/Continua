@@ -22,9 +22,12 @@ type Server struct {
 	engineControl          *engineControlService
 	engineSharedControl    *enginecontrol.Service
 	enginePublicAPIEnabled bool
-	auth0Config            config.Auth0Config
-	publicDemoConfig       config.PublicDemoConfig
-	localSingleUserMode    bool
+	// otlpIngestEnabled gates the preview OTLP/HTTP trace ingestion surface the same way
+	// enginePublicAPIEnabled gates /v1/engine: the route 404s while the flag is off.
+	otlpIngestEnabled   bool
+	auth0Config         config.Auth0Config
+	publicDemoConfig    config.PublicDemoConfig
+	localSingleUserMode bool
 }
 
 // NewServer creates a new API server with the given dependencies.
