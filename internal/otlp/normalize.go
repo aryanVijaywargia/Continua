@@ -97,20 +97,34 @@ var spanTypeByOpenInferenceKind = map[string]string{
 
 // Normalize converts an OTLP/HTTP export into a native ingest batch.
 func Normalize(export *coltracepb.ExportTraceServiceRequest, batchKey string) (*ingest.IngestRequest, error) {
+	// OTLP packs a span into roughly 50 bytes, an order of magnitude denser than the
+	// native JSON the shared 5MB body ceiling was calibrated for, so the ceiling alone
+	// admits six figures of sequential span upserts inside one open transaction.
+	if total := exportSpanCount(export); total > MaxSpansPerExport {
+		return nil, fmt.Errorf("%w: export carries %d spans, the limit is %d", ErrInvalidExport, total, MaxSpansPerExport)
+	}
+
 	req := &ingest.IngestRequest{BatchKey: batchKey}
 	traces := make(map[string]*traceContext)
 
 	for _, resourceSpans := range export.GetResourceSpans() {
+		resourceAttrs, err := attributeMap(resourceSpans.GetResource().GetAttributes())
+		if err != nil {
+			return nil, err
+		}
+		if err := checkStorableText("resource schema url", resourceSpans.GetSchemaUrl()); err != nil {
+			return nil, err
+		}
+
 		resource := map[string]any{
-			metaAttributesKey: boundedResourceAttributes(attributeMap(resourceSpans.GetResource().GetAttributes())),
+			metaAttributesKey: boundedResourceAttributes(resourceAttrs),
 			metaSchemaURLKey:  resourceSpans.GetSchemaUrl(),
 		}
 
 		for _, scopeSpans := range resourceSpans.GetScopeSpans() {
-			scope := map[string]any{
-				metaNameKey:      scopeSpans.GetScope().GetName(),
-				metaVersionKey:   scopeSpans.GetScope().GetVersion(),
-				metaSchemaURLKey: scopeSpans.GetSchemaUrl(),
+			scope, err := scopeMetadata(scopeSpans)
+			if err != nil {
+				return nil, err
 			}
 
 			for _, span := range scopeSpans.GetSpans() {
@@ -119,7 +133,11 @@ func Normalize(export *coltracepb.ExportTraceServiceRequest, batchKey string) (*
 					return nil, err
 				}
 
-				attrs := attributeMap(span.GetAttributes())
+				attrs, err := attributeMap(span.GetAttributes())
+				if err != nil {
+					return nil, err
+				}
+
 				spanInput, err := normalizeSpan(span, traceIDHex, attrs, resource, scope)
 				if err != nil {
 					return nil, err
@@ -143,10 +161,54 @@ func Normalize(export *coltracepb.ExportTraceServiceRequest, batchKey string) (*
 	}
 
 	for _, trace := range traces {
-		req.Traces[trace.index] = trace.traceInput()
+		input, err := trace.traceInput()
+		if err != nil {
+			return nil, err
+		}
+		req.Traces[trace.index] = input
 	}
 
 	return req, nil
+}
+
+func exportSpanCount(export *coltracepb.ExportTraceServiceRequest) int {
+	total := 0
+	for _, resourceSpans := range export.GetResourceSpans() {
+		for _, scopeSpans := range resourceSpans.GetScopeSpans() {
+			total += len(scopeSpans.GetSpans())
+		}
+	}
+	return total
+}
+
+func scopeMetadata(scopeSpans *tracepb.ScopeSpans) (map[string]any, error) {
+	name := scopeSpans.GetScope().GetName()
+	version := scopeSpans.GetScope().GetVersion()
+	schemaURL := scopeSpans.GetSchemaUrl()
+
+	if err := checkStorableText("scope metadata", name, version, schemaURL); err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		metaNameKey:      name,
+		metaVersionKey:   version,
+		metaSchemaURLKey: schemaURL,
+	}, nil
+}
+
+// checkStorableText rejects text Postgres cannot store. A NUL byte comes back from the
+// driver as `unsupported Unicode escape sequence: ... cannot be converted to text`,
+// which is not an ingest validation error, so it used to roll the whole batch back
+// behind a 500. Invalid UTF-8 is already rejected during protobuf decoding, which
+// leaves NUL as the only unstorable byte an export can carry.
+func checkStorableText(label string, values ...string) error {
+	for _, value := range values {
+		if strings.ContainsRune(value, 0) {
+			return fmt.Errorf("%w: %s contains a NUL byte", ErrInvalidExport, label)
+		}
+	}
+	return nil
 }
 
 // traceContext accumulates the session/user context contributed by every span of one trace.
@@ -185,18 +247,42 @@ func (t *traceContext) observe(span *tracepb.Span, attrs map[string]any) {
 	}
 }
 
-func (t *traceContext) traceInput() ingest.TraceInput {
+func (t *traceContext) traceInput() (ingest.TraceInput, error) {
+	sessionID := firstNonEmpty(t.native.sessionID, t.standard.sessionID)
+	userID := firstNonEmpty(t.native.userID, t.standard.userID)
+	userName := firstNonEmpty(t.native.userName, t.standard.userName)
+
+	// These are the only attacker-controlled values materialized onto a session row.
+	// sessions.user_id and sessions.external_id are both btree-indexed, and a Postgres
+	// btree tuple caps out at 2704 bytes, so an unbounded identity failed the whole
+	// batch with `index row size ... exceeds btree version 4 maximum`.
+	for _, bound := range []struct {
+		attribute string
+		value     string
+		limit     int
+	}{
+		{attrSessionID, sessionID, maxIdentityBytes},
+		{attrUserID, userID, maxIdentityBytes},
+		{attrContinuaSessionName, t.native.sessionName, maxDisplayNameBytes},
+		{attrUserName, userName, maxDisplayNameBytes},
+	} {
+		if len(bound.value) > bound.limit {
+			return ingest.TraceInput{}, fmt.Errorf("%w: %s is %d bytes, the limit is %d",
+				ErrInvalidExport, bound.attribute, len(bound.value), bound.limit)
+		}
+	}
+
 	return ingest.TraceInput{
 		TraceID:   t.traceID,
 		Name:      nonEmptyPtr(firstNonEmpty(t.workflow, t.rootName)),
-		SessionID: nonEmptyPtr(firstNonEmpty(t.native.sessionID, t.standard.sessionID)),
-		UserID:    nonEmptyPtr(firstNonEmpty(t.native.userID, t.standard.userID)),
+		SessionID: nonEmptyPtr(sessionID),
+		UserID:    nonEmptyPtr(userID),
 		SessionContext: ingest.SessionContextInput{
 			Name:     nonEmptyPtr(t.native.sessionName),
-			UserID:   nonEmptyPtr(firstNonEmpty(t.native.userID, t.standard.userID)),
-			UserName: nonEmptyPtr(firstNonEmpty(t.native.userName, t.standard.userName)),
+			UserID:   nonEmptyPtr(userID),
+			UserName: nonEmptyPtr(userName),
 		},
-	}
+	}, nil
 }
 
 func normalizeSpan(
@@ -205,6 +291,13 @@ func normalizeSpan(
 	attrs map[string]any,
 	resource, scope map[string]any,
 ) (ingest.SpanInput, error) {
+	if err := checkStorableText("span name", span.GetName()); err != nil {
+		return ingest.SpanInput{}, err
+	}
+	if err := checkStorableText("span status message", span.GetStatus().GetMessage()); err != nil {
+		return ingest.SpanInput{}, err
+	}
+
 	spanIDHex, err := encodeID(span.GetSpanId(), 8, "span id")
 	if err != nil {
 		return ingest.SpanInput{}, err
@@ -320,46 +413,61 @@ func boundedResourceAttributes(attrs map[string]any) map[string]any {
 	return bounded
 }
 
-func attributeMap(attributes []*commonpb.KeyValue) map[string]any {
+func attributeMap(attributes []*commonpb.KeyValue) (map[string]any, error) {
 	out := make(map[string]any, len(attributes))
 	for _, attribute := range attributes {
-		out[attribute.GetKey()] = attributeValue(attribute.GetValue())
+		if err := checkStorableText("attribute key", attribute.GetKey()); err != nil {
+			return nil, err
+		}
+
+		value, err := attributeValue(attribute.GetValue())
+		if err != nil {
+			return nil, err
+		}
+		out[attribute.GetKey()] = value
 	}
-	return out
+	return out, nil
 }
 
 // attributeValue converts an OTLP AnyValue into a JSON-serializable value, retaining
 // unrecognized attributes verbatim instead of assigning them semantics.
-func attributeValue(value *commonpb.AnyValue) any {
+func attributeValue(value *commonpb.AnyValue) (any, error) {
 	switch typed := value.GetValue().(type) {
 	case *commonpb.AnyValue_StringValue:
-		return typed.StringValue
+		if err := checkStorableText("attribute value", typed.StringValue); err != nil {
+			return nil, err
+		}
+		return typed.StringValue, nil
 	case *commonpb.AnyValue_BoolValue:
-		return typed.BoolValue
+		return typed.BoolValue, nil
 	case *commonpb.AnyValue_IntValue:
-		return typed.IntValue
+		return typed.IntValue, nil
 	case *commonpb.AnyValue_DoubleValue:
 		// json.Marshal rejects NaN and ±Inf, and metadata is marshaled as one document,
 		// so a single non-finite double would fail the whole span's metadata. OTLP
 		// doubles are attacker-controlled, so they are retained in string form instead.
 		if math.IsNaN(typed.DoubleValue) || math.IsInf(typed.DoubleValue, 0) {
-			return strconv.FormatFloat(typed.DoubleValue, 'g', -1, 64)
+			return strconv.FormatFloat(typed.DoubleValue, 'g', -1, 64), nil
 		}
-		return typed.DoubleValue
+		return typed.DoubleValue, nil
 	case *commonpb.AnyValue_BytesValue:
-		return base64.StdEncoding.EncodeToString(typed.BytesValue)
+		return base64.StdEncoding.EncodeToString(typed.BytesValue), nil
 	case *commonpb.AnyValue_ArrayValue:
 		values := typed.ArrayValue.GetValues()
 		out := make([]any, len(values))
 		for i, element := range values {
-			out[i] = attributeValue(element)
+			converted, err := attributeValue(element)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = converted
 		}
-		return out
+		return out, nil
 	case *commonpb.AnyValue_KvlistValue:
 		return attributeMap(typed.KvlistValue.GetValues())
 	default:
 		// A KeyValue with an unset or unknown value type; keep the key, drop the value.
-		return nil
+		return nil, nil
 	}
 }
 
