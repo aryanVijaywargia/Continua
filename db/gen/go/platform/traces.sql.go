@@ -1110,10 +1110,16 @@ ON CONFLICT (project_id, trace_id) DO UPDATE SET
     END,
     input = COALESCE(EXCLUDED.input, traces.input),
     output = COALESCE(EXCLUDED.output, traces.output),
-    -- Status protection: never downgrade from failed/error
+    -- Status protection: never downgrade from failed/error, and never let an upsert
+    -- that carries no completion signal reopen a settled trace. 'running' is the
+    -- processor's default for an input with no status, which is every OTLP export
+    -- (OTLP has no trace-completion concept), so without this a straggler export would
+    -- permanently flip an already-completed trace back to running. An explicit
+    -- terminal status still applies, so completed -> failed is unaffected.
     status = CASE
         WHEN traces.status IN ('failed', 'error') THEN traces.status
-        ELSE COALESCE(EXCLUDED.status, traces.status)
+        WHEN EXCLUDED.status = 'running' THEN traces.status
+        ELSE EXCLUDED.status
     END,
     start_time = COALESCE(
         LEAST(traces.start_time, EXCLUDED.start_time),
