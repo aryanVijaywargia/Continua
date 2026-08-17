@@ -148,6 +148,12 @@ Engine surface (preview: see [Roadmap](/roadmap) for status):
 | `ENGINE_PROJECTION_RETENTION_AFTER` | unset | How long to retain projection state after a run reaches terminal state |
 | `ENGINE_HISTORY_RETENTION_AFTER` | unset | Retention window for run history. Must be greater than `ENGINE_PROJECTION_RETENTION_AFTER` |
 
+OTLP trace ingestion (preview):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `INGEST_OTLP_ENABLED` | `false` | Expose `POST /v1/traces` for OTLP/HTTP trace exports. While off, the route returns `404` |
+
 Demo / operator login (optional):
 
 | Variable | Default | Purpose |

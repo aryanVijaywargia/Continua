@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -167,6 +168,13 @@ func Normalize(export *coltracepb.ExportTraceServiceRequest, batchKey string) (*
 		}
 		req.Traces[trace.index] = input
 	}
+
+	// Traces are upserted in slice order, so the order decides which rows a transaction
+	// locks first. Ordering by first-span appearance means two concurrent exports over
+	// an overlapping set of traces can take those locks in opposite orders and deadlock;
+	// OTLP ingest is synchronous, so nothing retries the loser. Sort by trace id, which
+	// every concurrent export agrees on.
+	sort.Slice(req.Traces, func(i, j int) bool { return req.Traces[i].TraceID < req.Traces[j].TraceID })
 
 	return req, nil
 }

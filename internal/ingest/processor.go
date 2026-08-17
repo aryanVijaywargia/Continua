@@ -1,10 +1,12 @@
 package ingest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -115,10 +117,14 @@ func (p *Processor) ProcessBatch(
 		affectedTraceIDs[traceUUID] = struct{}{}
 	}
 
+	// Go randomizes map iteration, and callers enqueue a rollup per id inside this same
+	// transaction, so an unsorted slice means two concurrent batches touching the same
+	// traces can take the rollup insert locks in opposite orders and deadlock.
 	traceIDs := make([]uuid.UUID, 0, len(affectedTraceIDs))
 	for traceID := range affectedTraceIDs {
 		traceIDs = append(traceIDs, traceID)
 	}
+	slices.SortFunc(traceIDs, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
 
 	traceCount := int32(len(req.Traces))
 	spanCount := int32(len(req.Spans))

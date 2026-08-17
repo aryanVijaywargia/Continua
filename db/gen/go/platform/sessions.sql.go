@@ -286,7 +286,11 @@ VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (project_id, external_id) DO UPDATE
 SET name = COALESCE(NULLIF(sessions.name, ''), NULLIF(EXCLUDED.name, '')),
     user_id = COALESCE(NULLIF(sessions.user_id, ''), NULLIF(EXCLUDED.user_id, '')),
-    metadata = EXCLUDED.metadata || COALESCE(sessions.metadata, '{}'::jsonb),
+    metadata = EXCLUDED.metadata || CASE
+        WHEN COALESCE(sessions.metadata, '{}'::jsonb) ->> 'user_name' = ''
+            THEN COALESCE(sessions.metadata, '{}'::jsonb) - 'user_name'
+        ELSE COALESCE(sessions.metadata, '{}'::jsonb)
+    END,
     updated_at = NOW()
 RETURNING id, project_id, name, user_id, metadata, created_at, updated_at, external_id
 `
@@ -303,6 +307,11 @@ type UpsertSessionContextParams struct {
 // conflict semantics: a stored non-empty value is never replaced, missing or empty
 // fields are filled from the incoming trace, and metadata merges additively with the
 // stored keys winning.
+//
+// user_name is the one display field materialized into metadata, so it needs the same
+// empty-check name and user_id get from COALESCE(NULLIF(...)): a stored empty string
+// is dropped before the merge, otherwise it would win forever and permanently block a
+// real name arriving later.
 func (q *Queries) UpsertSessionContext(ctx context.Context, arg UpsertSessionContextParams) (Session, error) {
 	row := q.db.QueryRow(ctx, upsertSessionContext,
 		arg.ProjectID,
