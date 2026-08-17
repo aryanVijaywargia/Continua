@@ -1,11 +1,15 @@
 package api
 
 import (
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/proto"
@@ -20,6 +24,12 @@ const OTLPTracesPath = "/v1/traces"
 
 // OTLPTracesContentType is the protobuf content type OTLP/HTTP exporters send.
 const OTLPTracesContentType = "application/x-protobuf"
+
+// Body-decoding failures the handler maps onto a status code.
+var (
+	errOTLPBodyTooLarge    = errors.New("otlp export exceeds 5MB limit")
+	errOTLPUnknownEncoding = errors.New("unsupported Content-Encoding")
+)
 
 // otlpRouteAvailabilityMiddleware gates the preview OTLP ingestion surface the same way
 // engineRouteAvailabilityMiddleware gates /v1/engine: the route 404s while the flag is
@@ -49,17 +59,19 @@ func (s *Server) OTLPTraces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.ContentLength > MaxBodySize {
-		write413Error(w, "otlp export exceeds 5MB limit")
+		write413Error(w, errOTLPBodyTooLarge.Error())
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, MaxBodySize)
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		if isMaxBytesError(err) {
-			write413Error(w, "otlp export exceeds 5MB limit")
-			return
-		}
+	body, err := readOTLPExportBody(w, r)
+	switch {
+	case errors.Is(err, errOTLPBodyTooLarge):
+		write413Error(w, errOTLPBodyTooLarge.Error())
+		return
+	case errors.Is(err, errOTLPUnknownEncoding):
+		writeError(w, http.StatusUnsupportedMediaType, "unsupported_content_encoding", err.Error())
+		return
+	case err != nil:
 		writeError(w, http.StatusBadRequest, "invalid_otlp_export", "Failed to read request body: "+err.Error())
 		return
 	}
@@ -90,6 +102,48 @@ func (s *Server) OTLPTraces(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", OTLPTracesContentType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(response)
+}
+
+// readOTLPExportBody reads the export bytes, decompressing the request body when the
+// exporter compressed it. The OTLP spec requires servers to support `none` and `gzip`,
+// and the Collector's otlphttp exporter gzips by default, so an undecompressed body is
+// total span loss: the resulting 400 is non-retryable per the spec.
+//
+// Decompression is a gzip-bomb vector, so the raw body and the decompressed stream are
+// bounded separately: MaxBytesReader only ever sees the compressed bytes, which a bomb
+// keeps tiny.
+func readOTLPExportBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+	r.Body = http.MaxBytesReader(w, r.Body, MaxBodySize)
+
+	reader := io.Reader(r.Body)
+	switch encoding := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); encoding {
+	case "", "identity":
+	case "gzip":
+		decompressed, err := gzip.NewReader(r.Body)
+		if err != nil {
+			return nil, fmt.Errorf("gzip: %w", err)
+		}
+		defer func() { _ = decompressed.Close() }()
+
+		// Read one byte past the limit so an over-long stream is detectable without
+		// expanding the rest of it.
+		reader = io.LimitReader(decompressed, MaxBodySize+1)
+	default:
+		return nil, fmt.Errorf("%w: %q", errOTLPUnknownEncoding, encoding)
+	}
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		if isMaxBytesError(err) {
+			return nil, errOTLPBodyTooLarge
+		}
+		return nil, err
+	}
+	if len(body) > MaxBodySize {
+		return nil, errOTLPBodyTooLarge
+	}
+
+	return body, nil
 }
 
 // otlpBatchKey derives the ingest idempotency key from the export bytes, so an OTLP
