@@ -58,6 +58,27 @@ Preview headers exist so we can ship surfaces under iteration without breaking
 non-preview clients. The engine header is no longer required and will be removed in a
 following release. See the [path to GA for `/v1/engine/*`](/concepts/engine-foundation#path-to-ga-for-v1engine).
 
+Two surfaces are gated server-side rather than by a header, and return `404` while their
+flag is off:
+
+| Endpoint | Server flag |
+| --- | --- |
+| `/v1/engine/*` | `ENGINE_PUBLIC_API_ENABLED=true` |
+| `POST /v1/traces` (OTLP/HTTP trace ingest) | `INGEST_OTLP_ENABLED=true` |
+
+`POST /v1/traces` follows the OTLP specification rather than Continua's JSON
+conventions: the request body is a protobuf `ExportTraceServiceRequest`
+(`application/x-protobuf`) or its OTLP/JSON form (`application/json`), `gzip` request
+encoding is supported, and the responses the OTLP handler itself writes - the `200` and
+its own errors - are protobuf. Those errors are a `google.rpc.Status`, not the JSON
+`Error` shape the rest of the API uses.
+
+`401` and the preview-gate `404` are the exceptions: they never reach the handler.
+Shared auth and route-gate middleware answer them ahead of it, so they keep the
+platform's standard shapes - a JSON `Error` body for `401`, the router's plain-text not
+found for `404`. Making that middleware speak protobuf for one path would change every
+other endpoint.
+
 ## Response codes
 
 Continua follows standard REST semantics:

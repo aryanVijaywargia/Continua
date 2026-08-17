@@ -1110,10 +1110,20 @@ ON CONFLICT (project_id, trace_id) DO UPDATE SET
     END,
     input = COALESCE(EXCLUDED.input, traces.input),
     output = COALESCE(EXCLUDED.output, traces.output),
-    -- Status protection: never downgrade from failed/error
+    -- Status protection: never downgrade from failed/error, and never let an upsert
+    -- that carries no status at all reopen a settled trace. Every OTLP export is such
+    -- an upsert -- OTLP has no trace-completion concept -- so without this a straggler
+    -- export would permanently flip an already-completed trace back to running.
+    --
+    -- Whether the caller supplied a status travels as its own flag rather than being
+    -- inferred from the value: traces.status is NOT NULL and the processor defaults an
+    -- absent status to 'running', so by the time it reaches EXCLUDED an omitted status
+    -- and an explicit 'running' are the same string. Branching on the value would
+    -- therefore also swallow a legitimate native completed -> running update.
     status = CASE
         WHEN traces.status IN ('failed', 'error') THEN traces.status
-        ELSE COALESCE(EXCLUDED.status, traces.status)
+        WHEN NOT $15::boolean THEN traces.status
+        ELSE EXCLUDED.status
     END,
     start_time = COALESCE(
         LEAST(traces.start_time, EXCLUDED.start_time),
@@ -1131,20 +1141,21 @@ RETURNING id, project_id, session_id, trace_id, name, user_id, tags, environment
 `
 
 type UpsertTraceParams struct {
-	ProjectID   uuid.UUID          `json:"project_id"`
-	SessionID   pgtype.UUID        `json:"session_id"`
-	TraceID     string             `json:"trace_id"`
-	Name        *string            `json:"name"`
-	UserID      *string            `json:"user_id"`
-	Tags        []string           `json:"tags"`
-	Environment *string            `json:"environment"`
-	Release     *string            `json:"release"`
-	Metadata    []byte             `json:"metadata"`
-	Input       []byte             `json:"input"`
-	Output      []byte             `json:"output"`
-	Status      string             `json:"status"`
-	StartTime   pgtype.Timestamptz `json:"start_time"`
-	EndTime     pgtype.Timestamptz `json:"end_time"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	SessionID      pgtype.UUID        `json:"session_id"`
+	TraceID        string             `json:"trace_id"`
+	Name           *string            `json:"name"`
+	UserID         *string            `json:"user_id"`
+	Tags           []string           `json:"tags"`
+	Environment    *string            `json:"environment"`
+	Release        *string            `json:"release"`
+	Metadata       []byte             `json:"metadata"`
+	Input          []byte             `json:"input"`
+	Output         []byte             `json:"output"`
+	Status         string             `json:"status"`
+	StartTime      pgtype.Timestamptz `json:"start_time"`
+	EndTime        pgtype.Timestamptz `json:"end_time"`
+	StatusSupplied bool               `json:"status_supplied"`
 }
 
 // Upsert trace with patch semantics: NULL values don't overwrite existing.
@@ -1165,6 +1176,7 @@ func (q *Queries) UpsertTrace(ctx context.Context, arg UpsertTraceParams) (Trace
 		arg.Status,
 		arg.StartTime,
 		arg.EndTime,
+		arg.StatusSupplied,
 	)
 	var i Trace
 	err := row.Scan(

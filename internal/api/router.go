@@ -32,6 +32,7 @@ func NewRouter(server *Server, auth *middleware.Authenticator) http.Handler {
 	// Protected: all OpenAPI routes
 	r.Group(func(r chi.Router) {
 		r.Use(engineRouteAvailabilityMiddleware(server))
+		r.Use(otlpRouteAvailabilityMiddleware(server))
 		r.Use(auth.Middleware())
 		r.Use(enginePreviewHeaderMiddleware())
 

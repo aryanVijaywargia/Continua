@@ -279,3 +279,60 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 	)
 	return i, err
 }
+
+const upsertSessionContext = `-- name: UpsertSessionContext :one
+INSERT INTO sessions (project_id, external_id, name, user_id, metadata)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (project_id, external_id) DO UPDATE
+SET name = COALESCE(NULLIF(sessions.name, ''), NULLIF(EXCLUDED.name, '')),
+    user_id = COALESCE(NULLIF(sessions.user_id, ''), NULLIF(EXCLUDED.user_id, '')),
+    metadata = EXCLUDED.metadata || CASE
+        WHEN COALESCE(COALESCE(sessions.metadata, '{}'::jsonb) ->> 'user_name', '') = ''
+            THEN COALESCE(sessions.metadata, '{}'::jsonb) - 'user_name'
+        ELSE COALESCE(sessions.metadata, '{}'::jsonb)
+    END,
+    updated_at = NOW()
+RETURNING id, project_id, name, user_id, metadata, created_at, updated_at, external_id
+`
+
+type UpsertSessionContextParams struct {
+	ProjectID  uuid.UUID `json:"project_id"`
+	ExternalID string    `json:"external_id"`
+	Name       *string   `json:"name"`
+	UserID     *string   `json:"user_id"`
+	Metadata   []byte    `json:"metadata"`
+}
+
+// Materialize session context by (project_id, external_id) with first-non-empty-wins
+// conflict semantics: a stored non-empty value is never replaced, missing or empty
+// fields are filled from the incoming trace, and metadata merges additively with the
+// stored keys winning.
+//
+// user_name is the one display field materialized into metadata, so it needs the same
+// empty-check name and user_id get from COALESCE(NULLIF(...)): a stored blank is
+// dropped before the merge, otherwise it would win forever and permanently block a
+// real name arriving later. `->>` yields SQL NULL both for a JSON null and for an
+// absent key, and CreateSession/UpdateSession take arbitrary metadata, so the outer
+// COALESCE is what makes a stored `"user_name": null` droppable too. Dropping an
+// absent key is a no-op.
+func (q *Queries) UpsertSessionContext(ctx context.Context, arg UpsertSessionContextParams) (Session, error) {
+	row := q.db.QueryRow(ctx, upsertSessionContext,
+		arg.ProjectID,
+		arg.ExternalID,
+		arg.Name,
+		arg.UserID,
+		arg.Metadata,
+	)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.UserID,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExternalID,
+	)
+	return i, err
+}

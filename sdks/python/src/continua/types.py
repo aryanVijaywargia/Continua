@@ -681,6 +681,8 @@ class Type1(Enum):
     retrieval = "retrieval"
     embedding = "embedding"
     generation = "generation"
+    evaluator = "evaluator"
+    guardrail = "guardrail"
 
 
 class Level(Enum):

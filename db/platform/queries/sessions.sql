@@ -37,6 +37,32 @@ SET name = $2, metadata = $3, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
+-- name: UpsertSessionContext :one
+-- Materialize session context by (project_id, external_id) with first-non-empty-wins
+-- conflict semantics: a stored non-empty value is never replaced, missing or empty
+-- fields are filled from the incoming trace, and metadata merges additively with the
+-- stored keys winning.
+--
+-- user_name is the one display field materialized into metadata, so it needs the same
+-- empty-check name and user_id get from COALESCE(NULLIF(...)): a stored blank is
+-- dropped before the merge, otherwise it would win forever and permanently block a
+-- real name arriving later. `->>` yields SQL NULL both for a JSON null and for an
+-- absent key, and CreateSession/UpdateSession take arbitrary metadata, so the outer
+-- COALESCE is what makes a stored `"user_name": null` droppable too. Dropping an
+-- absent key is a no-op.
+INSERT INTO sessions (project_id, external_id, name, user_id, metadata)
+VALUES ($1, $2, sqlc.narg(name), sqlc.narg(user_id), sqlc.arg(metadata))
+ON CONFLICT (project_id, external_id) DO UPDATE
+SET name = COALESCE(NULLIF(sessions.name, ''), NULLIF(EXCLUDED.name, '')),
+    user_id = COALESCE(NULLIF(sessions.user_id, ''), NULLIF(EXCLUDED.user_id, '')),
+    metadata = EXCLUDED.metadata || CASE
+        WHEN COALESCE(COALESCE(sessions.metadata, '{}'::jsonb) ->> 'user_name', '') = ''
+            THEN COALESCE(sessions.metadata, '{}'::jsonb) - 'user_name'
+        ELSE COALESCE(sessions.metadata, '{}'::jsonb)
+    END,
+    updated_at = NOW()
+RETURNING *;
+
 -- name: GetOrCreateSessionByExternalID :one
 -- Upsert a session by (project_id, external_id). Creates if not exists, refreshes updated_at if exists.
 INSERT INTO sessions (project_id, external_id)

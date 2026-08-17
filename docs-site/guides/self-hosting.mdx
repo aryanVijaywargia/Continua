@@ -63,6 +63,15 @@ The durable engine surface ships behind a preview flag. See
 | `ENGINE_PROJECTION_RETENTION_AFTER` | unset | How long to retain projection state after a run reaches terminal state |
 | `ENGINE_HISTORY_RETENTION_AFTER` | unset | Retention window for run history. Must be greater than `ENGINE_PROJECTION_RETENTION_AFTER` |
 
+### OTLP trace ingestion (preview)
+
+OTLP/HTTP trace ingestion ships behind its own preview flag. While it is off,
+`POST /v1/traces` returns `404`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `INGEST_OTLP_ENABLED` | `false` | Expose `POST /v1/traces` for OTLP/HTTP trace exports (protobuf or OTLP/JSON, optionally gzipped, 5MB max) |
+
 <Warning>
   Do not use `config.example.yaml` as the runtime contract. It is forward-looking and not
   the active config source. Env vars are authoritative.

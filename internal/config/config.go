@@ -44,6 +44,10 @@ type IngestConfig struct {
 	TrueAsyncDefault       bool
 	DependencyRetryWindow  time.Duration
 	FailedPayloadRetention time.Duration
+
+	// OTLPEnabled gates the preview OTLP/HTTP trace ingestion endpoint. Sourced from
+	// INGEST_OTLP_ENABLED; defaults to false, which makes POST /v1/traces 404.
+	OTLPEnabled bool
 }
 
 // JobsConfig holds River queue worker configuration.
@@ -103,6 +107,10 @@ func Load() (*Config, error) {
 	}
 
 	trueAsyncDefault, err := loadBool("INGEST_TRUE_ASYNC_DEFAULT")
+	if err != nil {
+		return nil, err
+	}
+	otlpEnabled, err := loadBool("INGEST_OTLP_ENABLED")
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +197,7 @@ func Load() (*Config, error) {
 			TrueAsyncDefault:       trueAsyncDefault,
 			DependencyRetryWindow:  dependencyRetryWindow,
 			FailedPayloadRetention: failedPayloadRetention,
+			OTLPEnabled:            otlpEnabled,
 		},
 		Engine: EngineConfig{
 			PublicAPIEnabled:         enginePublicAPIEnabled,

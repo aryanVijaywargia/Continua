@@ -27,6 +27,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest OTLP/HTTP trace exports (preview)
+         * @description Standard OTLP/HTTP trace ingestion endpoint. Accepts an
+         *     `ExportTraceServiceRequest` as protobuf (`application/x-protobuf`) or
+         *     OTLP/JSON (`application/json`), optionally `gzip`-encoded, and normalizes it
+         *     into Continua's canonical session -> trace -> span model through the shared
+         *     ingest write path.
+         *
+         *     Preview: the route 404s unless the server runs with `INGEST_OTLP_ENABLED=true`.
+         *
+         *     Per the OTLP specification, the responses this handler writes are protobuf-encoded:
+         *     success is an `ExportTraceServiceResponse` and its errors are a `google.rpc.Status`.
+         *     `401` and the preview-gate `404` never reach the handler -- shared auth and
+         *     route-gate middleware answer them with the platform's standard shapes (a JSON
+         *     `Error` body, and the router's plain-text not found). Maximum body size is 5MB,
+         *     before and after decompression.
+         *
+         */
+        post: operations["OTLPTraces"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ingest/batches/{id}": {
         parameters: {
             query?: never;
@@ -1400,7 +1434,7 @@ export interface components {
              * @default default
              * @enum {string}
              */
-            type: "default" | "llm" | "tool" | "agent" | "chain" | "retrieval" | "embedding" | "generation";
+            type: "default" | "llm" | "tool" | "agent" | "chain" | "retrieval" | "embedding" | "generation" | "evaluator" | "guardrail";
             /**
              * @default running
              * @enum {string}
@@ -1635,6 +1669,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SizeError"];
+                };
+            };
+        };
+    };
+    OTLPTraces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-protobuf": string;
+                "application/json": string;
+            };
+        };
+        responses: {
+            /** @description Export ingested; body is a protobuf ExportTraceServiceResponse */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-protobuf": string;
+                };
+            };
+            /** @description Malformed or unnormalizable export; body is a protobuf google.rpc.Status */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-protobuf": string;
+                };
+            };
+            /** @description Unauthorized - missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description OTLP ingestion is not enabled on this server */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Export exceeds the 5MB limit; body is a protobuf google.rpc.Status */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-protobuf": string;
+                };
+            };
+            /** @description Unsupported Content-Type or Content-Encoding; body is a protobuf google.rpc.Status */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-protobuf": string;
                 };
             };
         };

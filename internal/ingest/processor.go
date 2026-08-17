@@ -1,10 +1,12 @@
 package ingest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -115,10 +117,14 @@ func (p *Processor) ProcessBatch(
 		affectedTraceIDs[traceUUID] = struct{}{}
 	}
 
+	// Go randomizes map iteration, and callers enqueue a rollup per id inside this same
+	// transaction, so an unsorted slice means two concurrent batches touching the same
+	// traces can take the rollup insert locks in opposite orders and deadlock.
 	traceIDs := make([]uuid.UUID, 0, len(affectedTraceIDs))
 	for traceID := range affectedTraceIDs {
 		traceIDs = append(traceIDs, traceID)
 	}
+	slices.SortFunc(traceIDs, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
 
 	traceCount := int32(len(req.Traces))
 	spanCount := int32(len(req.Spans))
@@ -297,30 +303,38 @@ func (p *Processor) upsertTrace(ctx context.Context, tx *store.Tx, projectID uui
 
 	var sessionID pgtype.UUID
 	if input.SessionID != nil && *input.SessionID != "" {
-		session, err := tx.GetOrCreateSessionByExternalID(ctx, projectID, *input.SessionID)
+		session, err := tx.UpsertSessionContext(ctx, projectID, *input.SessionID, store.SessionContextParams{
+			Name:     input.SessionContext.Name,
+			UserID:   input.SessionContext.UserID,
+			UserName: input.SessionContext.UserName,
+		})
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("resolve session: %w", err)
 		}
 		sessionID = pgtype.UUID{Bytes: session.ID, Valid: true}
 	}
 
+	// A trace with no status starts 'running', but the upsert has to tell that default
+	// apart from an explicit 'running' so it can hold a settled trace's status against
+	// a status-less update (every OTLP export) without swallowing a real one.
 	status := defaultString(input.Status, "running")
 
 	trace, err := tx.UpsertTrace(ctx, &platform.UpsertTraceParams{
-		ProjectID:   projectID,
-		SessionID:   sessionID,
-		TraceID:     input.TraceID,
-		Name:        input.Name,
-		UserID:      input.UserID,
-		Tags:        input.Tags,
-		Environment: input.Environment,
-		Release:     input.Release,
-		Metadata:    metadata,
-		Input:       inputData,
-		Output:      outputData,
-		Status:      status,
-		StartTime:   startTime,
-		EndTime:     endTime,
+		ProjectID:      projectID,
+		SessionID:      sessionID,
+		TraceID:        input.TraceID,
+		Name:           input.Name,
+		UserID:         input.UserID,
+		Tags:           input.Tags,
+		Environment:    input.Environment,
+		Release:        input.Release,
+		Metadata:       metadata,
+		Input:          inputData,
+		Output:         outputData,
+		Status:         status,
+		StatusSupplied: input.Status != nil,
+		StartTime:      startTime,
+		EndTime:        endTime,
 	})
 	if err != nil {
 		return uuid.Nil, err
@@ -330,9 +344,13 @@ func (p *Processor) upsertTrace(ctx context.Context, tx *store.Tx, projectID uui
 }
 
 func (p *Processor) upsertSpan(ctx context.Context, tx *store.Tx, projectID, traceUUID uuid.UUID, input *SpanInput) error {
+	// Metadata goes through the same bounded path as input/output. It used to be
+	// marshaled raw with the error discarded, so an unmarshalable value (an OTLP NaN
+	// attribute) silently nulled the whole column and an adapter that copies a shared
+	// block onto every span could write unbounded jsonb in one transaction.
 	var metadata []byte
 	if input.Metadata != nil {
-		metadata, _ = json.Marshal(input.Metadata)
+		metadata, _, _, _ = processPayload(input.Metadata, truncation.DefaultMaxBytes)
 	}
 
 	inputData, inputTruncated, inputOrigSize, inputTruncReason := processPayload(input.Input, truncation.DefaultMaxBytes)
