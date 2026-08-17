@@ -96,9 +96,12 @@ paths:
 
         Preview: the route 404s unless the server runs with `INGEST_OTLP_ENABLED=true`.
 
-        Per the OTLP specification, both the success response and every error response
-        are protobuf-encoded: success is an `ExportTraceServiceResponse` and errors are
-        a `google.rpc.Status`. Maximum body size is 5MB, before and after decompression.
+        Per the OTLP specification, the responses this handler writes are protobuf-encoded:
+        success is an `ExportTraceServiceResponse` and its errors are a `google.rpc.Status`.
+        `401` and the preview-gate `404` never reach the handler -- shared auth and
+        route-gate middleware answer them with the platform's standard shapes (a JSON
+        `Error` body, and the router's plain-text not found). Maximum body size is 5MB,
+        before and after decompression.
       tags: [Ingest]
       security:
         - apiKey: []

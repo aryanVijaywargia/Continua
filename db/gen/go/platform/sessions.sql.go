@@ -287,7 +287,7 @@ ON CONFLICT (project_id, external_id) DO UPDATE
 SET name = COALESCE(NULLIF(sessions.name, ''), NULLIF(EXCLUDED.name, '')),
     user_id = COALESCE(NULLIF(sessions.user_id, ''), NULLIF(EXCLUDED.user_id, '')),
     metadata = EXCLUDED.metadata || CASE
-        WHEN COALESCE(sessions.metadata, '{}'::jsonb) ->> 'user_name' = ''
+        WHEN COALESCE(COALESCE(sessions.metadata, '{}'::jsonb) ->> 'user_name', '') = ''
             THEN COALESCE(sessions.metadata, '{}'::jsonb) - 'user_name'
         ELSE COALESCE(sessions.metadata, '{}'::jsonb)
     END,
@@ -309,9 +309,12 @@ type UpsertSessionContextParams struct {
 // stored keys winning.
 //
 // user_name is the one display field materialized into metadata, so it needs the same
-// empty-check name and user_id get from COALESCE(NULLIF(...)): a stored empty string
-// is dropped before the merge, otherwise it would win forever and permanently block a
-// real name arriving later.
+// empty-check name and user_id get from COALESCE(NULLIF(...)): a stored blank is
+// dropped before the merge, otherwise it would win forever and permanently block a
+// real name arriving later. `->>` yields SQL NULL both for a JSON null and for an
+// absent key, and CreateSession/UpdateSession take arbitrary metadata, so the outer
+// COALESCE is what makes a stored `"user_name": null` droppable too. Dropping an
+// absent key is a no-op.
 func (q *Queries) UpsertSessionContext(ctx context.Context, arg UpsertSessionContextParams) (Session, error) {
 	row := q.db.QueryRow(ctx, upsertSessionContext,
 		arg.ProjectID,

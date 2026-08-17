@@ -314,23 +314,27 @@ func (p *Processor) upsertTrace(ctx context.Context, tx *store.Tx, projectID uui
 		sessionID = pgtype.UUID{Bytes: session.ID, Valid: true}
 	}
 
+	// A trace with no status starts 'running', but the upsert has to tell that default
+	// apart from an explicit 'running' so it can hold a settled trace's status against
+	// a status-less update (every OTLP export) without swallowing a real one.
 	status := defaultString(input.Status, "running")
 
 	trace, err := tx.UpsertTrace(ctx, &platform.UpsertTraceParams{
-		ProjectID:   projectID,
-		SessionID:   sessionID,
-		TraceID:     input.TraceID,
-		Name:        input.Name,
-		UserID:      input.UserID,
-		Tags:        input.Tags,
-		Environment: input.Environment,
-		Release:     input.Release,
-		Metadata:    metadata,
-		Input:       inputData,
-		Output:      outputData,
-		Status:      status,
-		StartTime:   startTime,
-		EndTime:     endTime,
+		ProjectID:      projectID,
+		SessionID:      sessionID,
+		TraceID:        input.TraceID,
+		Name:           input.Name,
+		UserID:         input.UserID,
+		Tags:           input.Tags,
+		Environment:    input.Environment,
+		Release:        input.Release,
+		Metadata:       metadata,
+		Input:          inputData,
+		Output:         outputData,
+		Status:         status,
+		StatusSupplied: input.Status != nil,
+		StartTime:      startTime,
+		EndTime:        endTime,
 	})
 	if err != nil {
 		return uuid.Nil, err

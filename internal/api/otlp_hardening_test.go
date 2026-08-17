@@ -365,6 +365,31 @@ func TestOTLPTraces_DoesNotDowngradeCompletedTraceStatus(t *testing.T) {
 		"an OTLP export must never downgrade an already-terminal trace status")
 }
 
+// The guard above must key off "the caller supplied no status", not off the value
+// 'running', which is also what the processor defaults an absent status to. A native
+// client that explicitly reopens a settled trace is a supported update on the shared
+// ingest path and must not be collateral damage of the OTLP fix.
+func TestNativeIngest_ExplicitRunningStatusReopensACompletedTrace(t *testing.T) {
+	server, _, q, projectID := newOTLPServer(t)
+
+	traceIDHex := newTraceIDHex()
+	sync := true
+
+	complete := fmt.Sprintf(
+		`{"batch_key":"native-status-reopen-1","traces":[{"trace_id":%q,"status":"completed","end_time":%q}]}`,
+		traceIDHex, time.Now().UTC().Format(time.RFC3339Nano))
+	rec := invokeIngest(t, server, projectID, complete, IngestParams{Sync: &sync}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+	require.Equal(t, "completed", requireTraceByExternalID(t, q, projectID, traceIDHex).Status)
+
+	reopen := fmt.Sprintf(`{"batch_key":"native-status-reopen-2","traces":[{"trace_id":%q,"status":"running"}]}`, traceIDHex)
+	rec = invokeIngest(t, server, projectID, reopen, IngestParams{Sync: &sync}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	assert.Equal(t, "running", requireTraceByExternalID(t, q, projectID, traceIDHex).Status,
+		"an explicit native status:running must be honored on a settled trace")
+}
+
 // ---------------------------------------------------------------------------
 // M6: Content-Type
 // ---------------------------------------------------------------------------
@@ -417,6 +442,61 @@ func TestOTLPTraces_ErrorResponsesAreProtobufStatus(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(rec.Body.Bytes(), &status),
 		"OTLP error bodies must be a protobuf google.rpc.Status")
 	assert.NotEmpty(t, status.GetMessage(), "the Status carries the explanation the Collector logs")
+}
+
+// The protobuf claim only covers what the handler itself writes. Auth and the
+// preview route gate are shared middleware that answer before OTLPTraces runs, so
+// their 401/404 keep the platform's standard shapes -- making OTLP emit protobuf
+// there would change every other endpoint. The docs must scope the claim the same
+// way, or an operator debugging a 401 goes looking for a google.rpc.Status that
+// was never written.
+func TestOTLPTraces_MiddlewareErrorsKeepThePlatformShapeAndTheDocsSaySo(t *testing.T) {
+	server, _, _, _ := newOTLPServer(t)
+
+	export := rawExport(newRawTraceID(), nil, nil, 1, "root")
+
+	// No project ID in the context: the shared auth helper answers, not the handler.
+	req := httptest.NewRequest(http.MethodPost, OTLPTracesPath, bytes.NewReader(marshalExport(t, export)))
+	req.Header.Set("Content-Type", OTLPTracesContentType)
+	rec := httptest.NewRecorder()
+	server.OTLPTraces(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code, "body: %s", rec.Body.String())
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"),
+		"401 comes from shared auth middleware and keeps the JSON Error shape")
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Contains(t, body, "code", "the 401 body is the platform's JSON Error shape")
+	assert.Contains(t, body, "message", "the 401 body is the platform's JSON Error shape")
+
+	// The gated route 404s from otlpRouteAvailabilityMiddleware, also ahead of the handler.
+	server.otlpIngestEnabled = false
+	gated := httptest.NewRecorder()
+	otlpRouteAvailabilityMiddleware(server)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("the preview gate must answer before the OTLP handler runs")
+	})).ServeHTTP(gated, httptest.NewRequest(http.MethodPost, OTLPTracesPath, nil))
+
+	assert.Equal(t, http.StatusNotFound, gated.Code)
+	assert.NotEqual(t, OTLPTracesContentType, gated.Header().Get("Content-Type"),
+		"the preview gate answers with the router's standard not-found, not protobuf")
+
+	for _, path := range []string{
+		"../../contracts/openapi/openapi.yaml",
+		"../../contracts/openapi/openapi.bundle.yaml",
+		"../../docs-site/api-reference/openapi.yaml",
+		"../../docs-site/api-reference/auth-and-headers.mdx",
+	} {
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		text := string(raw)
+
+		assert.NotContains(t, text, "every error response",
+			"%s must not claim the middleware-produced errors are protobuf", path)
+		assert.NotContains(t, text, "**every** response",
+			"%s must not claim the middleware-produced errors are protobuf", path)
+		assert.Contains(t, text, "never reach the handler",
+			"%s must say 401 and the preview 404 are answered before the OTLP handler", path)
+	}
 }
 
 // errorMessageOf reads the human-readable message out of an OTLP error body,
@@ -500,6 +580,38 @@ func TestOTLPTraces_StoredEmptyUserNameIsFilledByALaterExport(t *testing.T) {
 	metadata := jsonObject(t, session.Metadata)
 	assert.Equal(t, "Aryan", metadata[sessionMetaUserNameKey],
 		"a stored empty user name must not block a real one")
+	assert.Equal(t, "acme", metadata["tenant"], "unrelated stored metadata still wins")
+}
+
+// UpdateSession and CreateSession take arbitrary metadata, so a stored JSON null
+// user_name is reachable. `metadata ->> 'user_name'` yields SQL NULL for it, so an
+// equality check against ” is never true and the null survives the merge -- blocking
+// a real name exactly like the empty string did.
+func TestOTLPTraces_StoredNullUserNameIsFilledByALaterExport(t *testing.T) {
+	server, _, q, projectID := newOTLPServer(t)
+
+	externalID := "null-username-session"
+	_, err := q.UpsertSessionContext(context.Background(), platform.UpsertSessionContextParams{
+		ProjectID:  projectID,
+		ExternalID: externalID,
+		Metadata:   []byte(`{"user_name": null, "tenant": "acme"}`),
+	})
+	require.NoError(t, err)
+
+	traceID := newRawTraceID()
+	export := rawExport(traceID, nil, []*commonpb.KeyValue{
+		stringKV(otelAttrSessionID, externalID),
+		stringKV(otelAttrUserName, "Aryan"),
+	}, 1, "root")
+
+	rec := postOTLP(t, server, projectID, marshalExport(t, export), nil)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	trace := requireTraceByExternalID(t, q, projectID, hex.EncodeToString(traceID))
+	session := requireSessionForTrace(t, q, trace)
+	metadata := jsonObject(t, session.Metadata)
+	assert.Equal(t, "Aryan", metadata[sessionMetaUserNameKey],
+		"a stored JSON null user name must not block a real one")
 	assert.Equal(t, "acme", metadata["tenant"], "unrelated stored metadata still wins")
 }
 
