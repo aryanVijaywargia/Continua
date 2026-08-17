@@ -334,9 +334,13 @@ func (p *Processor) upsertTrace(ctx context.Context, tx *store.Tx, projectID uui
 }
 
 func (p *Processor) upsertSpan(ctx context.Context, tx *store.Tx, projectID, traceUUID uuid.UUID, input *SpanInput) error {
+	// Metadata goes through the same bounded path as input/output. It used to be
+	// marshaled raw with the error discarded, so an unmarshalable value (an OTLP NaN
+	// attribute) silently nulled the whole column and an adapter that copies a shared
+	// block onto every span could write unbounded jsonb in one transaction.
 	var metadata []byte
 	if input.Metadata != nil {
-		metadata, _ = json.Marshal(input.Metadata)
+		metadata, _, _, _ = processPayload(input.Metadata, truncation.DefaultMaxBytes)
 	}
 
 	inputData, inputTruncated, inputOrigSize, inputTruncReason := processPayload(input.Input, truncation.DefaultMaxBytes)

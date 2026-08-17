@@ -7,9 +7,11 @@ package otlp
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/continua-ai/continua/internal/ingest"
+	"github.com/continua-ai/continua/pkg/truncation"
 )
 
 // Attributes carrying session/user context.
@@ -48,11 +51,33 @@ const (
 	metaSchemaURLKey  = "schema_url"
 	metaNameKey       = "name"
 	metaVersionKey    = "version"
+	metaTruncatedKey  = "_truncated"
 )
 
 const (
 	statusCompleted = "completed"
 	statusFailed    = "failed"
+)
+
+// Limits on one export. OTLP is far denser than native JSON ingest — a span costs
+// roughly 50 bytes on the wire — so the shared 5MB body ceiling admits an order of
+// magnitude more work than it was calibrated for, and the resource attribute block
+// is copied onto every span of its ResourceSpans. Both have to be bounded here.
+const (
+	// MaxSpansPerExport bounds the sequential span upserts one export can force into
+	// a single open transaction.
+	MaxSpansPerExport = 10000
+
+	// MaxResourceAttributesBytes bounds the resource attribute block. It is copied
+	// onto every span, so its cost is multiplied by the span count.
+	MaxResourceAttributesBytes = 8 * 1024
+
+	// maxIdentityBytes bounds attacker-controlled identity values that land in indexed
+	// session columns (Postgres btree tuples cap out at 2704 bytes).
+	maxIdentityBytes = 512
+
+	// maxDisplayNameBytes bounds the free-text display fields materialized onto a session.
+	maxDisplayNameBytes = 1024
 )
 
 // ErrInvalidExport marks an export the adapter cannot normalize; callers map it to 4xx.
@@ -77,7 +102,7 @@ func Normalize(export *coltracepb.ExportTraceServiceRequest, batchKey string) (*
 
 	for _, resourceSpans := range export.GetResourceSpans() {
 		resource := map[string]any{
-			metaAttributesKey: attributeMap(resourceSpans.GetResource().GetAttributes()),
+			metaAttributesKey: boundedResourceAttributes(attributeMap(resourceSpans.GetResource().GetAttributes())),
 			metaSchemaURLKey:  resourceSpans.GetSchemaUrl(),
 		}
 
@@ -276,6 +301,25 @@ func isZeroID(id []byte) bool {
 	return true
 }
 
+// boundedResourceAttributes caps the resource attribute block before it fans out.
+// Unlike span attributes, which are written once, the resource block is copied onto
+// every span of its ResourceSpans, so its size is multiplied by the span count: a 4MB
+// resource attribute in a single 5MB export used to amplify into tens of gigabytes of
+// jsonb written inside one transaction.
+func boundedResourceAttributes(attrs map[string]any) map[string]any {
+	// Values come from attributeValue, which is JSON-safe by construction.
+	raw, _ := json.Marshal(attrs)
+	if len(raw) <= MaxResourceAttributesBytes {
+		return attrs
+	}
+
+	bounded := map[string]any{}
+	if err := json.Unmarshal(truncation.TruncateWithLimit(raw, MaxResourceAttributesBytes).Data, &bounded); err != nil {
+		return map[string]any{metaTruncatedKey: true}
+	}
+	return bounded
+}
+
 func attributeMap(attributes []*commonpb.KeyValue) map[string]any {
 	out := make(map[string]any, len(attributes))
 	for _, attribute := range attributes {
@@ -295,6 +339,12 @@ func attributeValue(value *commonpb.AnyValue) any {
 	case *commonpb.AnyValue_IntValue:
 		return typed.IntValue
 	case *commonpb.AnyValue_DoubleValue:
+		// json.Marshal rejects NaN and ±Inf, and metadata is marshaled as one document,
+		// so a single non-finite double would fail the whole span's metadata. OTLP
+		// doubles are attacker-controlled, so they are retained in string form instead.
+		if math.IsNaN(typed.DoubleValue) || math.IsInf(typed.DoubleValue, 0) {
+			return strconv.FormatFloat(typed.DoubleValue, 'g', -1, 64)
+		}
 		return typed.DoubleValue
 	case *commonpb.AnyValue_BytesValue:
 		return base64.StdEncoding.EncodeToString(typed.BytesValue)
