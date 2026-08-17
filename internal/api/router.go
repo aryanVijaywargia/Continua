@@ -36,10 +36,6 @@ func NewRouter(server *Server, auth *middleware.Authenticator) http.Handler {
 		r.Use(auth.Middleware())
 		r.Use(enginePreviewHeaderMiddleware())
 
-		// OTLP/HTTP trace ingestion (preview): protobuf in, protobuf out, so it is
-		// routed directly rather than through the JSON OpenAPI handlers.
-		r.Post(OTLPTracesPath, server.OTLPTraces)
-
 		// Mount OpenAPI handlers
 		HandlerWithOptions(server, ChiServerOptions{
 			BaseRouter: r,

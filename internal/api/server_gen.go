@@ -1603,6 +1603,9 @@ type IngestParams struct {
 	XContinuaAsyncVersion *string `json:"X-Continua-Async-Version,omitempty"`
 }
 
+// OTLPTracesJSONBody defines parameters for OTLPTraces.
+type OTLPTracesJSONBody = openapi_types.File
+
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
 
@@ -1635,6 +1638,9 @@ type SignalEngineRunJSONRequestBody = EngineSignalRunRequest
 
 // IngestJSONRequestBody defines body for Ingest for application/json ContentType.
 type IngestJSONRequestBody = IngestRequest
+
+// OTLPTracesJSONRequestBody defines body for OTLPTraces for application/json ContentType.
+type OTLPTracesJSONRequestBody = OTLPTracesJSONBody
 
 // Getter for additional properties for EngineWaitState. Returns the specified
 // element and whether it was found
@@ -1904,6 +1910,9 @@ type ServerInterface interface {
 	// Get ingest batch status
 	// (GET /v1/ingest/batches/{id})
 	GetBatchStatus(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Ingest OTLP/HTTP trace exports (preview)
+	// (POST /v1/traces)
+	OTLPTraces(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -2123,6 +2132,12 @@ func (_ Unimplemented) Ingest(w http.ResponseWriter, r *http.Request, params Ing
 // Get ingest batch status
 // (GET /v1/ingest/batches/{id})
 func (_ Unimplemented) GetBatchStatus(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Ingest OTLP/HTTP trace exports (preview)
+// (POST /v1/traces)
+func (_ Unimplemented) OTLPTraces(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3923,6 +3938,26 @@ func (siw *ServerInterfaceWrapper) GetBatchStatus(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// OTLPTraces operation middleware
+func (siw *ServerInterfaceWrapper) OTLPTraces(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OTLPTraces(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -4143,6 +4178,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/ingest/batches/{id}", wrapper.GetBatchStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/traces", wrapper.OTLPTraces)
 	})
 
 	return r

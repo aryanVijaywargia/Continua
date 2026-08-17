@@ -77,6 +77,74 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SizeError'
+  /v1/traces:
+    post:
+      operationId: OTLPTraces
+      summary: Ingest OTLP/HTTP trace exports (preview)
+      description: |
+        Standard OTLP/HTTP trace ingestion endpoint. Accepts an
+        `ExportTraceServiceRequest` as protobuf (`application/x-protobuf`) or
+        OTLP/JSON (`application/json`), optionally `gzip`-encoded, and normalizes it
+        into Continua's canonical session -> trace -> span model through the shared
+        ingest write path.
+
+        Preview: the route 404s unless the server runs with `INGEST_OTLP_ENABLED=true`.
+
+        Per the OTLP specification, both the success response and every error response
+        are protobuf-encoded: success is an `ExportTraceServiceResponse` and errors are
+        a `google.rpc.Status`. Maximum body size is 5MB, before and after decompression.
+      tags:
+        - Ingest
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/x-protobuf:
+            schema:
+              type: string
+              format: binary
+          application/json:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Export ingested; body is a protobuf ExportTraceServiceResponse
+          content:
+            application/x-protobuf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Malformed or unnormalizable export; body is a protobuf google.rpc.Status
+          content:
+            application/x-protobuf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: OTLP ingestion is not enabled on this server
+        '413':
+          description: Export exceeds the 5MB limit; body is a protobuf google.rpc.Status
+          content:
+            application/x-protobuf:
+              schema:
+                type: string
+                format: binary
+        '415':
+          description: Unsupported Content-Type or Content-Encoding; body is a protobuf google.rpc.Status
+          content:
+            application/x-protobuf:
+              schema:
+                type: string
+                format: binary
   /v1/ingest/batches/{id}:
     get:
       operationId: getBatchStatus
