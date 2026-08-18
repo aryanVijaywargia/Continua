@@ -11,12 +11,12 @@ require (
 	github.com/golangci/golangci-lint v1.64.8
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgconn v1.14.3
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/oapi-codegen/oapi-codegen/v2 v2.5.1
 	github.com/oapi-codegen/runtime v1.1.1
-	github.com/riverqueue/river v0.30.0
-	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.30.0
-	github.com/riverqueue/river/rivertype v0.30.0
+	github.com/riverqueue/river v0.38.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.38.0
+	github.com/riverqueue/river/rivertype v0.38.0
 	github.com/spf13/cobra v1.9.1
 	github.com/sqlc-dev/sqlc v1.30.0
 	github.com/stretchr/testify v1.11.1
@@ -293,8 +293,8 @@ require (
 	github.com/quasilyte/stdinfo v0.0.0-20220114132959-f7386bf02567 // indirect
 	github.com/raeperd/recvcheck v0.2.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/riverqueue/river/riverdriver v0.30.0 // indirect
-	github.com/riverqueue/river/rivershared v0.30.0 // indirect
+	github.com/riverqueue/river/riverdriver v0.38.0 // indirect
+	github.com/riverqueue/river/rivershared v0.38.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/riza-io/grpc-go v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
@@ -330,7 +330,7 @@ require (
 	github.com/tdakkota/asciicheck v0.4.1 // indirect
 	github.com/tetafro/godot v1.5.0 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
@@ -379,19 +379,19 @@ require (
 	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250210185358-939b2ce775ac // indirect
-	golang.org/x/mod v0.32.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/telemetry v0.0.0-20251203150158-8fff8a5912fc // indirect
-	golang.org/x/term v0.38.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260409153401-be6f6cb8b1fa // indirect
+	golang.org/x/term v0.42.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
-	golang.org/x/tools v0.40.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	golang.org/x/tools/go/expect v0.1.1-deprecated // indirect
 	golang.org/x/tools/go/packages/packagestest v0.1.1-deprecated // indirect
 	golang.org/x/tools/godoc v0.1.0-deprecated // indirect
