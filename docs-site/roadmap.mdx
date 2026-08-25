@@ -4,9 +4,9 @@ description: "What's shippable today, what's preview, and what we'd reach for ne
 ---
 
 This page is the honest line between the parts of Continua you can rely on today, the
-parts that work but are still **preview**, and the parts that are **scaffolded**. If a
-feature lives in the scaffolded section, we may have endpoints, packages, or schema in the
-repo for it, but it isn't a supported product path yet.
+parts that work but are still **preview**, the parts that exist as **stubs** with real
+files in the repo, and the parts that are only **planned**. Nothing in the planned section
+has an implementation package in the repo yet.
 
 ## Shippable today
 
@@ -52,41 +52,47 @@ Preview caveats:
 
 See [Engine foundation](/concepts/engine-foundation) for the full picture.
 
-## Scaffolded: not yet a supported product path
+## Stubbed: real files, not yet a supported product path
 
-These exist in the repo as types, schemas, or partial implementations. Don't depend on
-them. Calls into them won't get production behaviour, and the surface may change before
-they ship.
+These have real files in the repo, but they are not feature-complete. Don't depend on
+them; the surface may change before they ship.
 
 ### TypeScript SDK
 
 [`sdks/typescript/`](https://github.com/aryanVijaywargia/Continua/tree/main/sdks/typescript)
-contains a stub `ContinuaClient` and the generated OpenAPI types. There is no batching,
-no decorators, no ingest helpers. The package today is suitable only as a typed
-fetch client over the contracts.
+has real build scaffolding: `package.json`, `tsconfig.json`, `.eslintrc.json`,
+`tsup.config.ts`, and one test file. The only source file is a placeholder
+[`src/index.ts`](https://github.com/aryanVijaywargia/Continua/tree/main/sdks/typescript/src/index.ts):
+it exports `VERSION` and a `ContinuaClient` whose only member is a `baseUrl` getter,
+preceded by a TODO comment. There are no generated OpenAPI types, no fetch calls, no batching,
+no decorators, and no ingest helpers yet.
 
 **Use the Python SDK** if you need real instrumentation today. TypeScript instrumentation
 is on the roadmap; tracking the work in the repo is the most reliable signal.
+
+## Planned: not implemented yet
+
+There is no implementation package for these capabilities in the repository. Tracking work
+on GitHub is the most reliable signal.
 
 ### Live WebSocket runtime
 
 The contract under [`contracts/websocket/events.ts`](https://github.com/aryanVijaywargia/Continua/tree/main/contracts/websocket)
 defines a live-update event schema. The debugger UI does **not** consume it today: trace
-detail is polling-based via `GET /api/traces/{id}/events`. Server-side WebSocket handlers
-are stubbed.
+detail is polling-based via `GET /api/traces/{id}/events`. There is no server-side
+WebSocket implementation yet.
 
 ### Proxy capture
 
-[`internal/proxy/`](https://github.com/aryanVijaywargia/Continua/tree/main/internal/proxy)
-is reserved for an HTTP-proxy capture mode that records LLM / tool calls without code
-changes to the agent. There is no production implementation. Instrument with the Python
+An HTTP-proxy capture mode that records LLM / tool calls without code changes to the agent
+is planned. It has no implementation in the repository today. Instrument with the Python
 SDK instead.
 
-### Replay execution
+### Trace-replay execution
 
-[`internal/replay/`](https://github.com/aryanVijaywargia/Continua/tree/main/internal/replay)
-is reserved for re-executing recorded runs against new code or model versions. Not
-implemented. Use [session compare](/debugger/session-compare) for offline diffing.
+Re-executing recorded runs against new code or model versions is planned. Not implemented.
+This is distinct from engine crash-recovery workflow replay, which is implemented. Use
+[session compare](/debugger/session-compare) for offline diffing.
 
 ## What we'd reach for next
 
@@ -96,7 +102,7 @@ Rough ordering, subject to change as feedback comes in:
 2. WebSocket runtime so the trace detail page can drop polling.
 3. Graduate the durable engine from preview: multi-tenant workflow definition loading, non-Go (TypeScript/Python) workflow authoring, and the [documented GA path for `/v1/engine/*`](/concepts/engine-foundation#path-to-ga-for-v1engine).
 4. Proxy capture for zero-code instrumentation.
-5. Replay execution as a layer on top of durable engine workflows.
+5. Platform trace-replay execution as a layer on top of durable engine workflows.
 
 If you have a strong opinion on the order, open an issue on
 [GitHub](https://github.com/aryanVijaywargia/Continua/issues): we read every one.

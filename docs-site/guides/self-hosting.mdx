@@ -149,11 +149,11 @@ make dev-server
 
 ## What is not in scope today
 
-Per the current [architecture baseline](/concepts/overview), these surfaces exist as
-scaffolds and **should not** be relied on in production:
+Per the current [architecture baseline](/concepts/overview), these surfaces are preview, stubbed, or
+planned and **should not** be relied on in production:
 
-- Durable engine workflow execution
-- Live WebSocket runtime
-- Proxy capture runtime
-- Replay execution runtime
-- The TypeScript SDK
+- Durable engine workflow execution (preview: Go-only authoring, preview-gated `/v1/engine/*`)
+- Live WebSocket runtime (planned)
+- Proxy capture runtime (planned)
+- Platform trace-replay execution (planned; engine crash-recovery workflow replay is implemented)
+- The TypeScript SDK (early stub with real files)

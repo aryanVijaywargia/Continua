@@ -117,10 +117,11 @@ Run `make generate` after changing any of the above.
 
 ## What is not implemented yet
 
-These surfaces are scaffolded: schema, types, or partial code exists, but they're not
-production-ready. See [Roadmap & status](/roadmap) for the full breakdown.
+These surfaces are planned, not implemented. See [Roadmap & status](/roadmap) for the full
+breakdown.
 
-- **Live WebSocket runtime** in `internal/ws`: trace detail is polling-based today.
-- **Proxy capture runtime** in `internal/proxy`.
-- **Replay execution runtime** in `internal/replay`.
-- **Feature-complete TypeScript SDK**: the package is currently a typed-fetch stub.
+- **Live WebSocket runtime**: trace detail is polling-based today.
+- **Proxy capture runtime**.
+- **Trace-replay execution**: re-running recorded traces against new code or model versions.
+  This is distinct from engine crash-recovery workflow replay, which is implemented.
+- **Feature-complete TypeScript SDK**: the package has build scaffolding and a placeholder client class whose only member is a `baseUrl` getter.

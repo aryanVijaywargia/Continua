@@ -25,7 +25,7 @@ Continua is a Go/React monorepo with two runtimes:
 1. **Observability platform** (production-shaped): authenticated REST ingest → Postgres storage → River workers (async ingest, rollups, cleanup) → REST read APIs → embedded React debugger UI for traces, sessions, span trees, payload inspection, and merged timelines.
 2. **Durable execution engine** (preview): the `continua-engine` worker runtime executes Go-defined workflows end-to-end — activities, timers, signals, child workflows, cancellation, continue-as-new — with event-sourced history and crash-recovery replay. It projects run state into the platform's tables for the engine-runs console.
 
-Engine caveats (keep these accurate): workflow authoring is Go-only, there's no production path for registering arbitrary user workflow definitions (the dark-launch runtime uses a fixed demo project), and the public `/v1/engine/*` REST control plane is preview-gated. Do not assume replay, WebSocket runtime, proxy capture, or a real TypeScript SDK are implemented — those are scaffolded only.
+Engine caveats (keep these accurate): workflow authoring is Go-only, there's no production path for registering arbitrary user workflow definitions (the dark-launch runtime uses a fixed demo project), and the public `/v1/engine/*` REST control plane is preview-gated. Engine crash-recovery workflow replay is implemented in `engine/internal/workflow/replay.go`. Not implemented anywhere in this tree: platform trace-replay execution (re-running recorded traces against new code or model versions), a live WebSocket runtime, and proxy capture. The TypeScript SDK is a stub.
 
 Start discovery from:
 - `AGENTS.md`
@@ -49,10 +49,9 @@ Use the checked-in code, contracts, and migrations as the authoritative current-
 - `engine/`: durable execution runtime (preview) — workflow/activity workers, event-sourced history, replay, projector; `continua-engine` CLI (`serve`, `start`, `signal`, `cancel`, `inspect`)
 
 ### Mostly scaffolded
-- `internal/proxy`
-- `internal/ws`
-- `internal/replay`
-- `sdks/typescript`
+- `sdks/typescript`: early stub package, not a feature-complete SDK
+
+There are no placeholder platform packages. Former scaffolds (`internal/proxy`, `internal/ws`, `internal/replay`, and the other empty `.gitkeep` directories) were deleted; if one of those capabilities is built later, create the package with real code.
 
 ## Discovery Rules
 
