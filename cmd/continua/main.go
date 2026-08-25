@@ -183,7 +183,7 @@ func runMigrationsDown(steps int) error {
 	}
 	defer closeMigrator(m)
 
-	if err := m.Steps(-steps); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+	if err := m.Steps(-steps); err != nil {
 		return fmt.Errorf("rollback migrations: %w", err)
 	}
 
