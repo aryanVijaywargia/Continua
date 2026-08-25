@@ -233,11 +233,6 @@ func (a *Authenticator) serveComposite(next http.Handler, w http.ResponseWriter,
 }
 
 func (a *Authenticator) servePublicDemoRead(next http.Handler, w http.ResponseWriter, r *http.Request) {
-	if a.publicDemo == nil {
-		a.serveComposite(next, w, r)
-		return
-	}
-
 	ctx := context.WithValue(r.Context(), ProjectIDKey, a.publicDemo.projectID)
 	ctx = context.WithValue(ctx, AuthModeKey, AuthModePublicDemo)
 	next.ServeHTTP(w, r.WithContext(ctx))

@@ -16,7 +16,7 @@ func engineRouteAvailabilityMiddleware(server *Server) func(http.Handler) http.H
 				return
 			}
 
-			if server == nil || !server.enginePublicAPIEnabled {
+			if !server.enginePublicAPIEnabled {
 				http.NotFound(w, r)
 				return
 			}
