@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -213,11 +215,15 @@ func startHTTPServer(lc fx.Lifecycle, cfg *config.Config, handler http.Handler) 
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			// Start server in a goroutine
+			listener, err := net.Listen("tcp", cfg.Server.Address())
+			if err != nil {
+				return fmt.Errorf("listen on %s: %w", cfg.Server.Address(), err)
+			}
+
+			fmt.Printf("Starting Continua server on %s\n", cfg.Server.Address())
 			go func() {
-				fmt.Printf("Starting Continua server on %s\n", cfg.Server.Address())
-				if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+				if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					slog.Error("http server stopped unexpectedly", "err", err)
 				}
 			}()
 

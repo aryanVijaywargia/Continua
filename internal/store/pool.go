@@ -36,7 +36,6 @@ func NewPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	// Apply defaults
 	defaults := DefaultPoolConfig()
 	poolCfg.MaxConns = defaults.MaxConns
 	poolCfg.MinConns = defaults.MinConns
