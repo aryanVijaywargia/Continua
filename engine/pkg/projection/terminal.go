@@ -1,6 +1,26 @@
 package projection
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+)
+
+// IsTerminalRunStatus reports whether an engine run has reached a state that
+// accepts no further control operations. continued_as_new is terminal for the
+// run that handed off, because its successor owns subsequent work.
+func IsTerminalRunStatus(status enginedb.EngineRunLifecycleStatus) bool {
+	switch status {
+	case enginedb.EngineRunLifecycleStatusCompleted,
+		enginedb.EngineRunLifecycleStatusFailed,
+		enginedb.EngineRunLifecycleStatusCancelled,
+		enginedb.EngineRunLifecycleStatusTerminated,
+		enginedb.EngineRunLifecycleStatusContinuedAsNew:
+		return true
+	default:
+		return false
+	}
+}
 
 func TerminalStatuses(runStatus string) (traceStatus, spanStatus string) {
 	switch runStatus {

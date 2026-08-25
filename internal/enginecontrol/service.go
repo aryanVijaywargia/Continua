@@ -16,7 +16,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	"github.com/continua-ai/continua/internal/store"
 )
@@ -138,7 +137,7 @@ func (s *Service) PurgeRun(
 	if err != nil {
 		return PurgeResult{}, err
 	}
-	if !isTerminalRun(locked.Run.Status) {
+	if !publicprojection.IsTerminalRunStatus(locked.Run.Status) {
 		return PurgeResult{}, &APIError{
 			Code:       "run_not_terminal",
 			Message:    "run has not reached a terminal state",
@@ -373,19 +372,6 @@ func normalizeBackfillProjectionState(value string) string {
 
 func isBackfillTargetProjectionState(value string) bool {
 	return strings.TrimSpace(value) == publicprojection.StateSummaryOnly.String()
-}
-
-func isTerminalRun(status enginedb.EngineRunLifecycleStatus) bool {
-	switch status {
-	case enginedb.EngineRunLifecycleStatusCompleted,
-		enginedb.EngineRunLifecycleStatusFailed,
-		enginedb.EngineRunLifecycleStatusCancelled,
-		enginedb.EngineRunLifecycleStatusTerminated,
-		enginedb.EngineRunLifecycleStatusContinuedAsNew:
-		return true
-	default:
-		return false
-	}
 }
 
 func notFoundError(resource string) error {

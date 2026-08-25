@@ -505,6 +505,70 @@ func TestSignalAndCancelRejectConcurrentTerminalization(t *testing.T) {
 	assertConcurrentTerminalizationRejectsControlCommand(t, store, db, "cancel-terminal-race", "cancel")
 }
 
+// A continued_as_new run hands ownership to its successor run, which always
+// carries a higher run_number, so loadLatestRunForUpdate can only observe this
+// state when run rows are forced directly. Normal transitions can never leave
+// continued_as_new as the latest run of an instance. The test forces the row
+// anyway to pin the guard that keeps signal and cancel aligned with the REST
+// surfaces.
+func TestSignalAndCancelRejectContinuedAsNewRun(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	configureRuntimeEnv(t, db.DatabaseURL)
+
+	for _, command := range []string{"signal", "cancel"} {
+		t.Run(command, func(t *testing.T) {
+			instanceKey := "continued-as-new-guard-" + command
+			startArgs := []string{
+				"start",
+				"--instance-key", instanceKey,
+				"--definition", darklaunch.DemoDefinitionName,
+				"--version", darklaunch.DemoDefinitionVersion,
+				"--request-key", "req-" + instanceKey,
+				"--input", `{"name":"ContinuedAsNewGuard","timer_at":"1970-01-01T00:00:00Z"}`,
+			}
+			stdout, stderr, err := executeCommand(t, startArgs...)
+			if err != nil {
+				t.Fatalf("start command error = %v stdout=%q stderr=%q", err, stdout, stderr)
+			}
+
+			ctx := context.Background()
+			instance, err := enginedb.New(db.Pool).GetInstanceByProjectAndKey(ctx, enginedb.GetInstanceByProjectAndKeyParams{
+				ProjectID:   darkLaunchProjectID,
+				InstanceKey: instanceKey,
+			})
+			if err != nil {
+				t.Fatalf("GetInstanceByProjectAndKey() error = %v", err)
+			}
+			runs, err := enginedb.New(db.Pool).ListRunsByInstance(ctx, enginedb.ListRunsByInstanceParams{
+				InstanceID: instance.ID,
+				Limit:      1,
+			})
+			if err != nil {
+				t.Fatalf("ListRunsByInstance() error = %v", err)
+			}
+			if len(runs) != 1 {
+				t.Fatalf("ListRunsByInstance() returned %d runs, want 1", len(runs))
+			}
+			if _, err := db.Pool.Exec(ctx,
+				`UPDATE engine.runs SET status = 'continued_as_new' WHERE id = $1`,
+				runs[0].ID,
+			); err != nil {
+				t.Fatalf("force continued_as_new status: %v", err)
+			}
+
+			args := []string{command, "--instance-key", instanceKey}
+			if command == "signal" {
+				args = append(args, "--signal-name", "late")
+			}
+			commandStdout, commandStderr, err := executeCommand(t, args...)
+			if err == nil {
+				t.Fatalf("expected %s command to fail on a continued_as_new run, stdout=%q stderr=%q", command, commandStdout, commandStderr)
+			}
+			assertJSONErrorCode(t, commandStdout, "run_terminal")
+		})
+	}
+}
+
 func TestEngineRuntimeRunReclaimedAfterRestartBeforeActivationCompletes(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	configureRuntimeEnv(t, db.DatabaseURL)
