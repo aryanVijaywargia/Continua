@@ -180,7 +180,9 @@ Shippable today: authenticated REST ingest, Postgres persistence, River backgrou
 
 Preview: durable engine workflow execution: the `continua-engine` worker runtime runs Go-defined workflows end-to-end with crash-recovery (event-sourced history + replay, activities, timers, signals, child workflows), but the public `/v1/engine/*` REST control plane is preview-gated, authoring is Go-only, and there's no production path for registering arbitrary workflow definitions yet.
 
-Scaffolded (don't rely on yet): live WebSocket runtime, proxy capture, replay execution, full TypeScript SDK.
+Planned (no implementation in the tree yet): live WebSocket runtime, proxy capture, and platform trace-replay execution against new code or model versions.
+
+Early stub (don't rely on yet): the TypeScript SDK (`sdks/typescript`) has real files but no batching, decorators, or ingest helpers.
 
 ## Documentation
 
@@ -191,7 +193,7 @@ The full documentation site lives under [`docs-site/`](./docs-site/) (Mintlify) 
 - **Debugger**: [tour of the UI](./docs-site/debugger/overview.mdx) plus per-page references for traces, trace detail, sessions, session compare, engine runs, command palette, and settings.
 - **Python SDK**: [overview](./docs-site/sdk/python/overview.mdx), tracing, sessions, span events, batching & ingest modes, exceptions.
 - **API Reference**: [auth & headers](./docs-site/api-reference/auth-and-headers.mdx) intro plus the auto-rendered OpenAPI playground.
-- **Roadmap**: [shippable, preview, and scaffolded status](./docs-site/roadmap.mdx).
+- **Roadmap**: [shippable, preview, stubbed, and planned status](./docs-site/roadmap.mdx).
 
 Related: [`engine/README.md`](./engine/README.md) for the engine binary's CLI commands, and [`sdks/python/README.md`](./sdks/python/README.md) for SDK-local development.
 

@@ -34,8 +34,8 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - Active frontend areas: `web/src/pages`, `web/src/components`, `web/src/utils`, `web/src/hooks`.
 - Active SDK: `sdks/python`.
 - Durable engine (`engine/`): a working preview runtime — workflow/activity workers, event-sourced history, replay, projector, and the `continua-engine` CLI. Caveats: Go-only workflow authoring, no production definition-loading path (dark-launch uses a fixed demo project), preview-gated `/v1/engine/*` REST.
-- Mostly scaffolded or placeholder today: `internal/proxy`, `internal/ws`, `internal/replay`, `internal/alerts`, `internal/export`, `internal/state`, `internal/telemetry`, `sdks/typescript`.
-- Do not describe WebSockets, proxy capture, replay, or framework adapters as implemented unless you have added that code in the current task. Describe the durable engine as a working preview — not as production-ready, and not as unimplemented.
+- Mostly scaffolded or placeholder today: `sdks/typescript` (early stub package, not feature-complete). There are no placeholder platform packages: the former empty `.gitkeep` directories (`internal/proxy`, `internal/ws`, `internal/replay`, and the rest) were deleted. If one of those capabilities is built later, create the package with real code.
+- Do not describe platform trace-replay execution (re-running recorded traces against new code or model versions), a live WebSocket runtime, proxy capture, or framework adapters as implemented unless you have added that code in the current task; no platform package exists for them. Do not confuse that with engine crash-recovery workflow replay, which is implemented in `engine/internal/workflow/replay.go`. Describe the durable engine as a working preview — not as production-ready, and not as unimplemented.
 
 ## Source Of Truth
 - REST contract: `contracts/openapi/openapi.yaml`.
