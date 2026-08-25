@@ -114,27 +114,9 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	enginePublicAPIEnabled, err := loadBool("ENGINE_PUBLIC_API_ENABLED")
+	engineConfig, err := loadEngineConfig()
 	if err != nil {
 		return nil, err
-	}
-	engineProjectionRetentionAfter, err := loadOptionalDuration("ENGINE_PROJECTION_RETENTION_AFTER")
-	if err != nil {
-		return nil, err
-	}
-	engineHistoryRetentionAfter, err := loadOptionalDuration("ENGINE_HISTORY_RETENTION_AFTER")
-	if err != nil {
-		return nil, err
-	}
-	engineLeaseCompletionGrace, err := loadDuration("ENGINE_LEASE_COMPLETION_GRACE", 0)
-	if err != nil {
-		return nil, err
-	}
-	if engineHistoryRetentionAfter > 0 && engineProjectionRetentionAfter <= 0 {
-		return nil, errors.New("ENGINE_HISTORY_RETENTION_AFTER requires ENGINE_PROJECTION_RETENTION_AFTER to be set and greater than zero")
-	}
-	if engineHistoryRetentionAfter > 0 && engineHistoryRetentionAfter <= engineProjectionRetentionAfter {
-		return nil, errors.New("ENGINE_HISTORY_RETENTION_AFTER must be greater than ENGINE_PROJECTION_RETENTION_AFTER")
 	}
 	dependencyRetryWindow, err := loadDuration("INGEST_DEPENDENCY_RETRY_WINDOW", 15*time.Minute)
 	if err != nil {
@@ -144,20 +126,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	ingestWorkers, err := loadInt("RIVER_QUEUE_INGEST_WORKERS", 4)
-	if err != nil {
-		return nil, err
-	}
-	rollupWorkers, err := loadInt("RIVER_QUEUE_ROLLUP_WORKERS", 10)
-	if err != nil {
-		return nil, err
-	}
-	maintenanceWorkers, err := loadInt("RIVER_QUEUE_MAINTENANCE_WORKERS", 1)
-	if err != nil {
-		return nil, err
-	}
-	defaultWorkers, err := loadInt("RIVER_QUEUE_DEFAULT_WORKERS", 1)
+	jobsConfig, err := loadJobsConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -199,21 +168,72 @@ func Load() (*Config, error) {
 			FailedPayloadRetention: failedPayloadRetention,
 			OTLPEnabled:            otlpEnabled,
 		},
-		Engine: EngineConfig{
-			PublicAPIEnabled:         enginePublicAPIEnabled,
-			ProjectionRetentionAfter: engineProjectionRetentionAfter,
-			HistoryRetentionAfter:    engineHistoryRetentionAfter,
-			LeaseCompletionGrace:     engineLeaseCompletionGrace,
-		},
-		Jobs: JobsConfig{
-			IngestWorkers:      ingestWorkers,
-			RollupWorkers:      rollupWorkers,
-			MaintenanceWorkers: maintenanceWorkers,
-			DefaultWorkers:     defaultWorkers,
-		},
+		Engine:              engineConfig,
+		Jobs:                jobsConfig,
 		Auth0:               auth0Config,
 		PublicDemo:          publicDemoConfig,
 		LocalSingleUserMode: localSingleUserMode,
+	}, nil
+}
+
+// loadEngineConfig reads the engine rollout settings. Retention windows are
+// validated as a pair because a history window without a projection window
+// would purge history the projector still needs.
+func loadEngineConfig() (EngineConfig, error) {
+	publicAPIEnabled, err := loadBool("ENGINE_PUBLIC_API_ENABLED")
+	if err != nil {
+		return EngineConfig{}, err
+	}
+	projectionRetentionAfter, err := loadOptionalDuration("ENGINE_PROJECTION_RETENTION_AFTER")
+	if err != nil {
+		return EngineConfig{}, err
+	}
+	historyRetentionAfter, err := loadOptionalDuration("ENGINE_HISTORY_RETENTION_AFTER")
+	if err != nil {
+		return EngineConfig{}, err
+	}
+	leaseCompletionGrace, err := loadDuration("ENGINE_LEASE_COMPLETION_GRACE", 0)
+	if err != nil {
+		return EngineConfig{}, err
+	}
+	if historyRetentionAfter > 0 && projectionRetentionAfter <= 0 {
+		return EngineConfig{}, errors.New("ENGINE_HISTORY_RETENTION_AFTER requires ENGINE_PROJECTION_RETENTION_AFTER to be set and greater than zero")
+	}
+	if historyRetentionAfter > 0 && historyRetentionAfter <= projectionRetentionAfter {
+		return EngineConfig{}, errors.New("ENGINE_HISTORY_RETENTION_AFTER must be greater than ENGINE_PROJECTION_RETENTION_AFTER")
+	}
+
+	return EngineConfig{
+		PublicAPIEnabled:         publicAPIEnabled,
+		ProjectionRetentionAfter: projectionRetentionAfter,
+		HistoryRetentionAfter:    historyRetentionAfter,
+		LeaseCompletionGrace:     leaseCompletionGrace,
+	}, nil
+}
+
+func loadJobsConfig() (JobsConfig, error) {
+	ingestWorkers, err := loadInt("RIVER_QUEUE_INGEST_WORKERS", 4)
+	if err != nil {
+		return JobsConfig{}, err
+	}
+	rollupWorkers, err := loadInt("RIVER_QUEUE_ROLLUP_WORKERS", 10)
+	if err != nil {
+		return JobsConfig{}, err
+	}
+	maintenanceWorkers, err := loadInt("RIVER_QUEUE_MAINTENANCE_WORKERS", 1)
+	if err != nil {
+		return JobsConfig{}, err
+	}
+	defaultWorkers, err := loadInt("RIVER_QUEUE_DEFAULT_WORKERS", 1)
+	if err != nil {
+		return JobsConfig{}, err
+	}
+
+	return JobsConfig{
+		IngestWorkers:      ingestWorkers,
+		RollupWorkers:      rollupWorkers,
+		MaintenanceWorkers: maintenanceWorkers,
+		DefaultWorkers:     defaultWorkers,
 	}, nil
 }
 
@@ -360,7 +380,7 @@ func loadBool(key string) (bool, error) {
 
 	value, err := strconv.ParseBool(raw)
 	if err != nil {
-		return false, fmt.Errorf("%s must be a valid boolean", key)
+		return false, fmt.Errorf("%s must be a valid boolean: %w", key, err)
 	}
 	return value, nil
 }
@@ -373,7 +393,7 @@ func loadInt(key string, defaultValue int) (int, error) {
 
 	value, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, fmt.Errorf("%s must be a valid integer", key)
+		return 0, fmt.Errorf("%s must be a valid integer: %w", key, err)
 	}
 	if value < 0 {
 		return 0, fmt.Errorf("%s must be non-negative", key)
@@ -389,7 +409,7 @@ func loadDuration(key string, defaultValue time.Duration) (time.Duration, error)
 
 	value, err := time.ParseDuration(raw)
 	if err != nil {
-		return 0, errors.New(key + " must be a valid duration")
+		return 0, fmt.Errorf("%s must be a valid duration: %w", key, err)
 	}
 	if value < 0 {
 		return 0, errors.New(key + " must be non-negative")
@@ -405,7 +425,7 @@ func loadOptionalDuration(key string) (time.Duration, error) {
 
 	value, err := time.ParseDuration(raw)
 	if err != nil {
-		return 0, errors.New(key + " must be a valid duration")
+		return 0, fmt.Errorf("%s must be a valid duration: %w", key, err)
 	}
 	if value < 0 {
 		return 0, errors.New(key + " must be non-negative")

@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -135,180 +136,219 @@ func Load() (*Config, error) {
 
 	cfg := Defaults(databaseURL)
 
-	dbMaxConns, err := int32FromEnv("ENGINE_DB_MAX_CONNS", cfg.Database.MaxConns)
-	if err != nil {
+	if err := loadDatabaseConfig(&cfg.Database); err != nil {
 		return nil, err
 	}
-	if dbMaxConns < 1 {
-		return nil, errors.New("ENGINE_DB_MAX_CONNS must be at least 1")
-	}
-	dbMinConns, err := int32FromEnv("ENGINE_DB_MIN_CONNS", cfg.Database.MinConns)
-	if err != nil {
+	if err := loadPollingConfig(&cfg.Runtime); err != nil {
 		return nil, err
 	}
-	if dbMinConns < 0 {
-		return nil, errors.New("ENGINE_DB_MIN_CONNS must be non-negative")
-	}
-	if dbMinConns > dbMaxConns {
-		return nil, errors.New("ENGINE_DB_MIN_CONNS must not exceed ENGINE_DB_MAX_CONNS")
-	}
-	dbMaxConnLifetime, err := durationFromEnv("ENGINE_DB_MAX_CONN_LIFETIME", cfg.Database.MaxConnLifetime)
-	if err != nil {
+	if err := loadLeaseConfig(&cfg.Runtime); err != nil {
 		return nil, err
 	}
-	if dbMaxConnLifetime <= 0 {
-		return nil, errors.New("ENGINE_DB_MAX_CONN_LIFETIME must be positive")
-	}
-	dbMaxConnIdleTime, err := durationFromEnv("ENGINE_DB_MAX_CONN_IDLE_TIME", cfg.Database.MaxConnIdleTime)
-	if err != nil {
+	if err := loadLimitConfig(&cfg.Runtime); err != nil {
 		return nil, err
-	}
-	if dbMaxConnIdleTime <= 0 {
-		return nil, errors.New("ENGINE_DB_MAX_CONN_IDLE_TIME must be positive")
-	}
-	dbHealthCheckPeriod, err := durationFromEnv("ENGINE_DB_HEALTHCHECK_PERIOD", cfg.Database.HealthCheckPeriod)
-	if err != nil {
-		return nil, err
-	}
-	if dbHealthCheckPeriod <= 0 {
-		return nil, errors.New("ENGINE_DB_HEALTHCHECK_PERIOD must be positive")
-	}
-	notifyEnabled, err := boolFromEnv("ENGINE_NOTIFY_ENABLED", cfg.Runtime.NotifyEnabled)
-	if err != nil {
-		return nil, err
-	}
-	notifyFallbackInterval, err := durationFromEnv("ENGINE_NOTIFY_FALLBACK_INTERVAL", cfg.Runtime.NotifyFallbackInterval)
-	if err != nil {
-		return nil, err
-	}
-	if notifyFallbackInterval <= 0 {
-		return nil, errors.New("ENGINE_NOTIFY_FALLBACK_INTERVAL must be positive")
-	}
-	workflowPollInterval, err := durationFromEnv("ENGINE_WORKFLOW_POLL_INTERVAL", cfg.Runtime.WorkflowPollInterval)
-	if err != nil {
-		return nil, err
-	}
-	activityPollInterval, err := durationFromEnv("ENGINE_ACTIVITY_POLL_INTERVAL", cfg.Runtime.ActivityPollInterval)
-	if err != nil {
-		return nil, err
-	}
-	maintenancePollInterval, err := durationFromEnv("ENGINE_MAINTENANCE_POLL_INTERVAL", cfg.Runtime.MaintenancePollInterval)
-	if err != nil {
-		return nil, err
-	}
-	metricsSampleInterval, err := durationFromEnv("ENGINE_METRICS_SAMPLE_INTERVAL", cfg.Runtime.MetricsSampleInterval)
-	if err != nil {
-		return nil, err
-	}
-	runLeaseTTL, err := durationFromEnv("ENGINE_RUN_LEASE_TTL", cfg.Runtime.RunLeaseTTL)
-	if err != nil {
-		return nil, err
-	}
-	activityLeaseTTL, err := durationFromEnv("ENGINE_ACTIVITY_LEASE_TTL", cfg.Runtime.ActivityLeaseTTL)
-	if err != nil {
-		return nil, err
-	}
-	shutdownGrace, err := durationFromEnv("ENGINE_SHUTDOWN_GRACE", cfg.Runtime.ShutdownGrace)
-	if err != nil {
-		return nil, err
-	}
-	if shutdownGrace < 0 {
-		return nil, errors.New("ENGINE_SHUTDOWN_GRACE must be non-negative")
-	}
-	leaseCompletionGrace, err := durationFromEnv("ENGINE_LEASE_COMPLETION_GRACE", cfg.Runtime.LeaseCompletionGrace)
-	if err != nil {
-		return nil, err
-	}
-	if leaseCompletionGrace < 0 {
-		return nil, errors.New("ENGINE_LEASE_COMPLETION_GRACE must be non-negative")
-	}
-	requestDedupeTTL, err := durationFromEnv("ENGINE_REQUEST_DEDUPE_TTL", cfg.Runtime.RequestDedupeTTL)
-	if err != nil {
-		return nil, err
-	}
-	retentionTerminalRuns, err := durationFromEnv("ENGINE_RETENTION_TERMINAL_RUNS", cfg.Runtime.RetentionTerminalRuns)
-	if err != nil {
-		return nil, err
-	}
-	if retentionTerminalRuns < 0 {
-		return nil, errors.New("ENGINE_RETENTION_TERMINAL_RUNS must be non-negative")
-	}
-	retentionDedupeGrace, err := durationFromEnv("ENGINE_RETENTION_DEDUPE_GRACE", cfg.Runtime.RetentionDedupeGrace)
-	if err != nil {
-		return nil, err
-	}
-	if retentionDedupeGrace < 0 {
-		return nil, errors.New("ENGINE_RETENTION_DEDUPE_GRACE must be non-negative")
-	}
-	retentionBatchSize, err := int32FromEnv("ENGINE_RETENTION_BATCH_SIZE", cfg.Runtime.RetentionBatchSize)
-	if err != nil {
-		return nil, err
-	}
-	if retentionBatchSize < 1 {
-		return nil, errors.New("ENGINE_RETENTION_BATCH_SIZE must be at least 1")
-	}
-	projectorBatchSize, err := int32FromEnv("ENGINE_PROJECTOR_BATCH_SIZE", cfg.Runtime.ProjectorBatchSize)
-	if err != nil {
-		return nil, err
-	}
-	if projectorBatchSize < 1 {
-		return nil, errors.New("ENGINE_PROJECTOR_BATCH_SIZE must be at least 1")
-	}
-	maxChildDepth, err := int32FromEnv("ENGINE_MAX_CHILD_DEPTH", cfg.Runtime.MaxChildDepth)
-	if err != nil {
-		return nil, err
-	}
-	if maxChildDepth < 1 {
-		return nil, errors.New("ENGINE_MAX_CHILD_DEPTH must be at least 1")
-	}
-	maxContinuationFollowDepth, err := int32FromEnv("ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH", cfg.Runtime.MaxContinuationFollowDepth)
-	if err != nil {
-		return nil, err
-	}
-	if maxContinuationFollowDepth < 1 {
-		return nil, errors.New("ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH must be at least 1")
 	}
 	projectIDFilter, err := runtimeProjectIDFromEnv()
 	if err != nil {
 		return nil, err
 	}
-	logLevel, err := logLevelFromEnv("ENGINE_LOG_LEVEL", cfg.Logging.Level)
-	if err != nil {
-		return nil, err
-	}
-	logFormat, err := logFormatFromEnv("ENGINE_LOG_FORMAT", cfg.Logging.Format)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.Database.MaxConns = dbMaxConns
-	cfg.Database.MinConns = dbMinConns
-	cfg.Database.MaxConnLifetime = dbMaxConnLifetime
-	cfg.Database.MaxConnIdleTime = dbMaxConnIdleTime
-	cfg.Database.HealthCheckPeriod = dbHealthCheckPeriod
-	cfg.Runtime.NotifyEnabled = notifyEnabled
-	cfg.Runtime.NotifyFallbackInterval = notifyFallbackInterval
-	cfg.Runtime.WorkflowPollInterval = workflowPollInterval
-	cfg.Runtime.ActivityPollInterval = activityPollInterval
-	cfg.Runtime.MaintenancePollInterval = maintenancePollInterval
-	cfg.Runtime.MetricsSampleInterval = metricsSampleInterval
-	cfg.Runtime.RunLeaseTTL = runLeaseTTL
-	cfg.Runtime.ActivityLeaseTTL = activityLeaseTTL
-	cfg.Runtime.ShutdownGrace = shutdownGrace
-	cfg.Runtime.LeaseCompletionGrace = leaseCompletionGrace
-	cfg.Runtime.RequestDedupeTTL = requestDedupeTTL
-	cfg.Runtime.RetentionTerminalRuns = retentionTerminalRuns
-	cfg.Runtime.RetentionDedupeGrace = retentionDedupeGrace
-	cfg.Runtime.RetentionBatchSize = retentionBatchSize
-	cfg.Runtime.ProjectorBatchSize = projectorBatchSize
-	cfg.Runtime.MaxChildDepth = maxChildDepth
-	cfg.Runtime.MaxContinuationFollowDepth = maxContinuationFollowDepth
 	cfg.Runtime.ProjectIDFilter = projectIDFilter
 	cfg.Runtime.MetricsAddr = os.Getenv("ENGINE_METRICS_ADDR")
 	cfg.Runtime.HTTPAddr = os.Getenv("ENGINE_HTTP_ADDR")
-	cfg.Logging.Level = logLevel
-	cfg.Logging.Format = logFormat
+	if err := loadLoggingConfig(&cfg.Logging); err != nil {
+		return nil, err
+	}
 	return cfg, nil
+}
+
+func loadDatabaseConfig(db *DatabaseConfig) error {
+	maxConns, err := int32FromEnv("ENGINE_DB_MAX_CONNS", db.MaxConns)
+	if err != nil {
+		return err
+	}
+	if maxConns < 1 {
+		return errors.New("ENGINE_DB_MAX_CONNS must be at least 1")
+	}
+	minConns, err := int32FromEnv("ENGINE_DB_MIN_CONNS", db.MinConns)
+	if err != nil {
+		return err
+	}
+	if minConns < 0 {
+		return errors.New("ENGINE_DB_MIN_CONNS must be non-negative")
+	}
+	if minConns > maxConns {
+		return errors.New("ENGINE_DB_MIN_CONNS must not exceed ENGINE_DB_MAX_CONNS")
+	}
+	maxConnLifetime, err := durationFromEnv("ENGINE_DB_MAX_CONN_LIFETIME", db.MaxConnLifetime)
+	if err != nil {
+		return err
+	}
+	if maxConnLifetime <= 0 {
+		return errors.New("ENGINE_DB_MAX_CONN_LIFETIME must be positive")
+	}
+	maxConnIdleTime, err := durationFromEnv("ENGINE_DB_MAX_CONN_IDLE_TIME", db.MaxConnIdleTime)
+	if err != nil {
+		return err
+	}
+	if maxConnIdleTime <= 0 {
+		return errors.New("ENGINE_DB_MAX_CONN_IDLE_TIME must be positive")
+	}
+	healthCheckPeriod, err := durationFromEnv("ENGINE_DB_HEALTHCHECK_PERIOD", db.HealthCheckPeriod)
+	if err != nil {
+		return err
+	}
+	if healthCheckPeriod <= 0 {
+		return errors.New("ENGINE_DB_HEALTHCHECK_PERIOD must be positive")
+	}
+
+	db.MaxConns = maxConns
+	db.MinConns = minConns
+	db.MaxConnLifetime = maxConnLifetime
+	db.MaxConnIdleTime = maxConnIdleTime
+	db.HealthCheckPeriod = healthCheckPeriod
+	return nil
+}
+
+func loadPollingConfig(rt *RuntimeConfig) error {
+	notifyEnabled, err := boolFromEnv("ENGINE_NOTIFY_ENABLED", rt.NotifyEnabled)
+	if err != nil {
+		return err
+	}
+	notifyFallbackInterval, err := durationFromEnv("ENGINE_NOTIFY_FALLBACK_INTERVAL", rt.NotifyFallbackInterval)
+	if err != nil {
+		return err
+	}
+	if notifyFallbackInterval <= 0 {
+		return errors.New("ENGINE_NOTIFY_FALLBACK_INTERVAL must be positive")
+	}
+	workflowPollInterval, err := durationFromEnv("ENGINE_WORKFLOW_POLL_INTERVAL", rt.WorkflowPollInterval)
+	if err != nil {
+		return err
+	}
+	activityPollInterval, err := durationFromEnv("ENGINE_ACTIVITY_POLL_INTERVAL", rt.ActivityPollInterval)
+	if err != nil {
+		return err
+	}
+	maintenancePollInterval, err := durationFromEnv("ENGINE_MAINTENANCE_POLL_INTERVAL", rt.MaintenancePollInterval)
+	if err != nil {
+		return err
+	}
+	metricsSampleInterval, err := durationFromEnv("ENGINE_METRICS_SAMPLE_INTERVAL", rt.MetricsSampleInterval)
+	if err != nil {
+		return err
+	}
+
+	rt.NotifyEnabled = notifyEnabled
+	rt.NotifyFallbackInterval = notifyFallbackInterval
+	rt.WorkflowPollInterval = workflowPollInterval
+	rt.ActivityPollInterval = activityPollInterval
+	rt.MaintenancePollInterval = maintenancePollInterval
+	rt.MetricsSampleInterval = metricsSampleInterval
+	return nil
+}
+
+func loadLeaseConfig(rt *RuntimeConfig) error {
+	runLeaseTTL, err := durationFromEnv("ENGINE_RUN_LEASE_TTL", rt.RunLeaseTTL)
+	if err != nil {
+		return err
+	}
+	activityLeaseTTL, err := durationFromEnv("ENGINE_ACTIVITY_LEASE_TTL", rt.ActivityLeaseTTL)
+	if err != nil {
+		return err
+	}
+	shutdownGrace, err := durationFromEnv("ENGINE_SHUTDOWN_GRACE", rt.ShutdownGrace)
+	if err != nil {
+		return err
+	}
+	if shutdownGrace < 0 {
+		return errors.New("ENGINE_SHUTDOWN_GRACE must be non-negative")
+	}
+	leaseCompletionGrace, err := durationFromEnv("ENGINE_LEASE_COMPLETION_GRACE", rt.LeaseCompletionGrace)
+	if err != nil {
+		return err
+	}
+	if leaseCompletionGrace < 0 {
+		return errors.New("ENGINE_LEASE_COMPLETION_GRACE must be non-negative")
+	}
+	requestDedupeTTL, err := durationFromEnv("ENGINE_REQUEST_DEDUPE_TTL", rt.RequestDedupeTTL)
+	if err != nil {
+		return err
+	}
+
+	rt.RunLeaseTTL = runLeaseTTL
+	rt.ActivityLeaseTTL = activityLeaseTTL
+	rt.ShutdownGrace = shutdownGrace
+	rt.LeaseCompletionGrace = leaseCompletionGrace
+	rt.RequestDedupeTTL = requestDedupeTTL
+	return nil
+}
+
+func loadLimitConfig(rt *RuntimeConfig) error {
+	retentionTerminalRuns, err := durationFromEnv("ENGINE_RETENTION_TERMINAL_RUNS", rt.RetentionTerminalRuns)
+	if err != nil {
+		return err
+	}
+	if retentionTerminalRuns < 0 {
+		return errors.New("ENGINE_RETENTION_TERMINAL_RUNS must be non-negative")
+	}
+	retentionDedupeGrace, err := durationFromEnv("ENGINE_RETENTION_DEDUPE_GRACE", rt.RetentionDedupeGrace)
+	if err != nil {
+		return err
+	}
+	if retentionDedupeGrace < 0 {
+		return errors.New("ENGINE_RETENTION_DEDUPE_GRACE must be non-negative")
+	}
+	retentionBatchSize, err := int32FromEnv("ENGINE_RETENTION_BATCH_SIZE", rt.RetentionBatchSize)
+	if err != nil {
+		return err
+	}
+	if retentionBatchSize < 1 {
+		return errors.New("ENGINE_RETENTION_BATCH_SIZE must be at least 1")
+	}
+	projectorBatchSize, err := int32FromEnv("ENGINE_PROJECTOR_BATCH_SIZE", rt.ProjectorBatchSize)
+	if err != nil {
+		return err
+	}
+	if projectorBatchSize < 1 {
+		return errors.New("ENGINE_PROJECTOR_BATCH_SIZE must be at least 1")
+	}
+	maxChildDepth, err := int32FromEnv("ENGINE_MAX_CHILD_DEPTH", rt.MaxChildDepth)
+	if err != nil {
+		return err
+	}
+	if maxChildDepth < 1 {
+		return errors.New("ENGINE_MAX_CHILD_DEPTH must be at least 1")
+	}
+	maxContinuationFollowDepth, err := int32FromEnv("ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH", rt.MaxContinuationFollowDepth)
+	if err != nil {
+		return err
+	}
+	if maxContinuationFollowDepth < 1 {
+		return errors.New("ENGINE_MAX_CONTINUATION_FOLLOW_DEPTH must be at least 1")
+	}
+
+	rt.RetentionTerminalRuns = retentionTerminalRuns
+	rt.RetentionDedupeGrace = retentionDedupeGrace
+	rt.RetentionBatchSize = retentionBatchSize
+	rt.ProjectorBatchSize = projectorBatchSize
+	rt.MaxChildDepth = maxChildDepth
+	rt.MaxContinuationFollowDepth = maxContinuationFollowDepth
+	return nil
+}
+
+func loadLoggingConfig(lg *LoggingConfig) error {
+	logLevel, err := logLevelFromEnv("ENGINE_LOG_LEVEL", lg.Level)
+	if err != nil {
+		return err
+	}
+	logFormat, err := logFormatFromEnv("ENGINE_LOG_FORMAT", lg.Format)
+	if err != nil {
+		return err
+	}
+
+	lg.Level = logLevel
+	lg.Format = logFormat
+	return nil
 }
 
 // NewLogger constructs an engine structured logger.
@@ -332,7 +372,7 @@ func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) 
 
 	parsed, err := time.ParseDuration(value)
 	if err != nil {
-		return 0, errors.New(key + " must be a valid duration: " + err.Error())
+		return 0, fmt.Errorf("%s must be a valid duration: %w", key, err)
 	}
 	return parsed, nil
 }
@@ -345,7 +385,7 @@ func int32FromEnv(key string, fallback int32) (int32, error) {
 
 	parsed, err := strconv.ParseInt(value, 10, 32)
 	if err != nil {
-		return 0, errors.New(key + " must be a valid integer: " + err.Error())
+		return 0, fmt.Errorf("%s must be a valid integer: %w", key, err)
 	}
 	return int32(parsed), nil
 }
@@ -358,7 +398,7 @@ func boolFromEnv(key string, fallback bool) (bool, error) {
 
 	parsed, err := strconv.ParseBool(value)
 	if err != nil {
-		return false, errors.New(key + " must be a valid boolean: " + err.Error())
+		return false, fmt.Errorf("%s must be a valid boolean: %w", key, err)
 	}
 	return parsed, nil
 }
@@ -410,7 +450,7 @@ func runtimeProjectIDFromEnv() (*uuid.UUID, error) {
 func parseUUIDEnv(key, value string) (*uuid.UUID, error) {
 	parsed, err := uuid.Parse(value)
 	if err != nil {
-		return nil, errors.New(key + " must be a valid UUID: " + err.Error())
+		return nil, fmt.Errorf("%s must be a valid UUID: %w", key, err)
 	}
 	return &parsed, nil
 }
