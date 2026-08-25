@@ -581,7 +581,7 @@ func (s *engineControlService) GetRunResult(
 		return engineRunSummary{}, err
 	}
 
-	if !isTerminalEngineRun(summary.Status) {
+	if !publicprojection.IsTerminalRunStatus(summary.Status) {
 		return engineRunSummary{}, &engineAPIError{
 			Code:       "run_not_terminal",
 			Message:    "run has not reached a terminal state",
@@ -768,7 +768,7 @@ func (s *engineControlService) SignalRun(
 		}
 		return engineControlResult{}, err
 	}
-	if isTerminalEngineRun(run.Status) {
+	if publicprojection.IsTerminalRunStatus(run.Status) {
 		return engineControlResult{}, &engineAPIError{
 			Code:       "run_terminal",
 			Message:    "cannot signal a terminal run",
@@ -856,7 +856,7 @@ func (s *engineControlService) TerminateRun(
 		return engineRunSummary{}, err
 	}
 
-	if isTerminalEngineRun(run.Status) {
+	if publicprojection.IsTerminalRunStatus(run.Status) {
 		if err := tx.Commit(ctx); err != nil {
 			return engineRunSummary{}, err
 		}
@@ -951,7 +951,7 @@ func (s *engineControlService) SuspendRun(
 			HTTPStatus: 409,
 		}
 	}
-	if isTerminalEngineRun(run.Status) {
+	if publicprojection.IsTerminalRunStatus(run.Status) {
 		return engineRunSummary{}, &engineAPIError{
 			Code:       "run_terminal",
 			Message:    "cannot suspend a terminal run",
@@ -1102,7 +1102,7 @@ func (s *engineControlService) ResumeRun(
 		return engineRunSummary{}, err
 	}
 
-	if isTerminalEngineRun(run.Status) {
+	if publicprojection.IsTerminalRunStatus(run.Status) {
 		return engineRunSummary{}, &engineAPIError{
 			Code:       "run_terminal",
 			Message:    "cannot resume a terminal run",
@@ -1184,7 +1184,7 @@ func (s *engineControlService) CancelRun(
 		}
 		return engineControlResult{}, err
 	}
-	if isTerminalEngineRun(run.Status) {
+	if publicprojection.IsTerminalRunStatus(run.Status) {
 		return engineControlResult{}, &engineAPIError{
 			Code:       "run_terminal",
 			Message:    "cannot cancel a terminal run",
@@ -1549,19 +1549,6 @@ func syncProjectedTraceSummary(
 		EnginePendingInboxItems:    int64Ptr(pendingInboxItems),
 	})
 	return err
-}
-
-func isTerminalEngineRun(status enginedb.EngineRunLifecycleStatus) bool {
-	switch status {
-	case enginedb.EngineRunLifecycleStatusCompleted,
-		enginedb.EngineRunLifecycleStatusFailed,
-		enginedb.EngineRunLifecycleStatusCancelled,
-		enginedb.EngineRunLifecycleStatusTerminated,
-		enginedb.EngineRunLifecycleStatusContinuedAsNew:
-		return true
-	default:
-		return false
-	}
 }
 
 func terminalRunSummaryFromRun(run *enginedb.EngineRun) engineRunSummary {

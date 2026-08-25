@@ -2,7 +2,16 @@ package projection
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"testing"
+
+	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 )
 
 func TestTerminalStatuses(t *testing.T) {
@@ -27,6 +36,90 @@ func TestTerminalStatuses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsTerminalRunStatus(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		constant string
+		status   enginedb.EngineRunLifecycleStatus
+		want     bool
+	}{
+		{constant: "EngineRunLifecycleStatusQueued", status: enginedb.EngineRunLifecycleStatusQueued, want: false},
+		{constant: "EngineRunLifecycleStatusRunning", status: enginedb.EngineRunLifecycleStatusRunning, want: false},
+		{constant: "EngineRunLifecycleStatusCompleted", status: enginedb.EngineRunLifecycleStatusCompleted, want: true},
+		{constant: "EngineRunLifecycleStatusFailed", status: enginedb.EngineRunLifecycleStatusFailed, want: true},
+		{constant: "EngineRunLifecycleStatusCancelled", status: enginedb.EngineRunLifecycleStatusCancelled, want: true},
+		{constant: "EngineRunLifecycleStatusWaiting", status: enginedb.EngineRunLifecycleStatusWaiting, want: false},
+		{constant: "EngineRunLifecycleStatusTerminated", status: enginedb.EngineRunLifecycleStatusTerminated, want: true},
+		{constant: "EngineRunLifecycleStatusSuspended", status: enginedb.EngineRunLifecycleStatusSuspended, want: false},
+		{constant: "EngineRunLifecycleStatusQuarantined", status: enginedb.EngineRunLifecycleStatusQuarantined, want: false},
+		{constant: "EngineRunLifecycleStatusContinuedAsNew", status: enginedb.EngineRunLifecycleStatusContinuedAsNew, want: true},
+	}
+
+	covered := make(map[string]bool, len(testCases))
+	for _, tc := range testCases {
+		covered[tc.constant] = true
+		t.Run(string(tc.status), func(t *testing.T) {
+			t.Parallel()
+			if got := IsTerminalRunStatus(tc.status); got != tc.want {
+				t.Fatalf("IsTerminalRunStatus(%q) = %v, want %v", tc.status, got, tc.want)
+			}
+		})
+	}
+
+	generated, err := os.ReadFile(filepath.Join("..", "..", "db", "gen", "go", "models.go"))
+	if err != nil {
+		t.Fatalf("read generated enum models: %v", err)
+	}
+	constantRe := regexp.MustCompile(`EngineRunLifecycleStatus([A-Za-z0-9_]+)\s+EngineRunLifecycleStatus\s*=`)
+	extracted := map[string]bool{}
+	for _, match := range constantRe.FindAllStringSubmatch(string(generated), -1) {
+		extracted["EngineRunLifecycleStatus"+match[1]] = true
+	}
+	declared := declaredRunStatusConstants(t, generated)
+	if len(extracted) != len(declared) {
+		t.Fatalf("constant extraction mismatch in generated models: regexp captured %d distinct constants, parser found %d; some constants escape the extraction and would silently default to non-terminal, so fix the extraction before trusting this table", len(extracted), len(declared))
+	}
+	for _, constant := range declared {
+		if !covered[constant] {
+			t.Errorf("generated enum constant %s is missing from this table; add it with an explicit expectation so a new status cannot silently default", constant)
+		}
+	}
+}
+
+func declaredRunStatusConstants(t *testing.T, source []byte) []string {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "models.go", source, 0)
+	if err != nil {
+		t.Fatalf("parse generated enum models: %v", err)
+	}
+	var names []string
+	inheritedType := ""
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		inheritedType = ""
+		for _, spec := range gen.Specs {
+			valueSpec, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			if id, ok := valueSpec.Type.(*ast.Ident); ok {
+				inheritedType = id.Name
+			}
+			if inheritedType == "EngineRunLifecycleStatus" {
+				for _, name := range valueSpec.Names {
+					names = append(names, name.Name)
+				}
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func TestTerminalOutputPayload(t *testing.T) {

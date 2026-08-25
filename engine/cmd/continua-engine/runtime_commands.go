@@ -375,7 +375,7 @@ func signalCmd() *cobra.Command {
 				if err != nil {
 					return commandErrorFromStore(cmd.OutOrStdout(), err)
 				}
-				if isTerminalRun(run.Status) {
+				if publicprojection.IsTerminalRunStatus(run.Status) {
 					return writeJSONError(cmd.OutOrStdout(), "run_terminal", "cannot signal a terminal run")
 				}
 
@@ -466,7 +466,7 @@ func cancelCmd() *cobra.Command {
 				if err != nil {
 					return commandErrorFromStore(cmd.OutOrStdout(), err)
 				}
-				if isTerminalRun(run.Status) {
+				if publicprojection.IsTerminalRunStatus(run.Status) {
 					return writeJSONError(cmd.OutOrStdout(), "run_terminal", "cannot cancel a terminal run")
 				}
 
@@ -814,13 +814,6 @@ func parseOptionalJSON(value string) (json.RawMessage, error) {
 		return nil, fmt.Errorf("invalid JSON payload")
 	}
 	return json.RawMessage(value), nil
-}
-
-func isTerminalRun(status enginedb.EngineRunLifecycleStatus) bool {
-	return status == enginedb.EngineRunLifecycleStatusCompleted ||
-		status == enginedb.EngineRunLifecycleStatusFailed ||
-		status == enginedb.EngineRunLifecycleStatusCancelled ||
-		status == enginedb.EngineRunLifecycleStatusTerminated
 }
 
 func stringPtrOrNil(value string) *string {
