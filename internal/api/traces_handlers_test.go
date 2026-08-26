@@ -964,37 +964,49 @@ func TestListTraces_OperatorUnboundedListsAcrossProjects(t *testing.T) {
 	projectAID := testutil.CreateTestProject(t, ctx, q)
 	projectBID := testutil.CreateTestProject(t, ctx, q)
 
-	// Far-future start times keep these traces on the first unbounded page in
-	// a shared test database.
 	traceA := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
 		ProjectID: projectAID,
 		TraceID:   testutil.UniqueID("operator-unbounded-a"),
 		Name:      testutil.StrPtr("Operator Unbounded Trace A"),
 		Status:    "completed",
-		StartTime: testutil.PgtypeTimestamptz(time.Date(2999, 2, 1, 0, 1, 0, 0, time.UTC)),
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)),
 	})
 	traceB := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
 		ProjectID: projectBID,
 		TraceID:   testutil.UniqueID("operator-unbounded-b"),
 		Name:      testutil.StrPtr("Operator Unbounded Trace B"),
 		Status:    "completed",
-		StartTime: testutil.PgtypeTimestamptz(time.Date(2999, 2, 1, 0, 0, 0, 0, time.UTC)),
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)),
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
-	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
-	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
-	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
-	rec := httptest.NewRecorder()
+	// Shared test databases accumulate older rows that sort ahead of this
+	// run's rows, so page through the whole operator listing instead of
+	// assuming the seeded traces land on the first page.
+	var listedIDs []uuid.UUID
+	var total int
+	walkLimit := operatorListWalkPage
+	for offset := 0; ; offset += operatorListWalkPage {
+		req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
+		reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
+		reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
+		reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+		rec := httptest.NewRecorder()
 
-	server.ListTraces(rec, req.WithContext(reqCtx), ListTracesParams{})
-	require.Equal(t, http.StatusOK, rec.Code)
+		pageOffset := offset
+		server.ListTraces(rec, req.WithContext(reqCtx), ListTracesParams{Limit: &walkLimit, Offset: &pageOffset})
+		require.Equal(t, http.StatusOK, rec.Code)
 
-	resp := decodeJSONBody[TraceList](t, rec)
-	assert.GreaterOrEqual(t, resp.Total, 2)
-	ids := apiTraceIDs(resp.Traces)
-	assert.Contains(t, ids, traceA.ID)
-	assert.Contains(t, ids, traceB.ID)
+		resp := decodeJSONBody[TraceList](t, rec)
+		total = resp.Total
+		listedIDs = append(listedIDs, apiTraceIDs(resp.Traces)...)
+		if len(resp.Traces) < operatorListWalkPage {
+			break
+		}
+	}
+
+	assert.GreaterOrEqual(t, total, 2)
+	assert.Contains(t, listedIDs, traceA.ID)
+	assert.Contains(t, listedIDs, traceB.ID)
 }
 
 func TestListTraces_PublicDemoIgnoresProjectIDQueryParam(t *testing.T) {
@@ -1228,6 +1240,11 @@ func findTraceByID(t *testing.T, traces []Trace, traceID uuid.UUID) Trace {
 	t.Fatalf("trace %s not found in response", traceID)
 	return Trace{}
 }
+
+// operatorListWalkPage is the page size used to walk the full operator trace
+// listing when asserting membership by identity. It equals maxPageLimit
+// because the handler clamps larger limits.
+const operatorListWalkPage = int(maxPageLimit)
 
 func apiTraceIDs(traces []Trace) []uuid.UUID {
 	ids := make([]uuid.UUID, len(traces))
