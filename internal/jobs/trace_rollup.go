@@ -3,7 +3,7 @@ package jobs
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,7 +24,7 @@ type TraceRollupWorker struct {
 }
 
 // NewTraceRollupWorker creates a new trace rollup worker.
-// Used for testing purposes - in production the worker is created by NewClient.
+// Test helper: production wiring in jobs.NewClient builds the struct directly.
 func NewTraceRollupWorker(s *store.Store) *TraceRollupWorker {
 	return &TraceRollupWorker{store: s}
 }
@@ -46,12 +46,19 @@ func (w *TraceRollupWorker) Work(ctx context.Context, job *river.Job[TraceRollup
 		versionBefore, err := w.store.GetTraceVersion(ctx, traceID)
 		versionTracked := err == nil && versionBefore > 0
 		if err != nil {
-			log.Printf("Warning: could not get trace version before rollup: %v", err)
+			slog.Warn("could not get trace version before rollup",
+				"trace_id", traceID,
+				"err", err,
+			)
 		}
 
 		// Compute and update rollups.
 		if err := w.store.ComputeAndUpdateTraceRollups(ctx, traceID); err != nil {
-			log.Printf("Error computing rollups for trace %s: %v", traceID, err)
+			// River logs returned job errors below the default logger's threshold.
+			slog.Error("trace_rollup_failed",
+				"trace_id", traceID,
+				"err", err,
+			)
 			return err
 		}
 
@@ -62,41 +69,33 @@ func (w *TraceRollupWorker) Work(ctx context.Context, job *river.Job[TraceRollup
 
 		versionAfter, err := w.store.GetTraceVersion(ctx, traceID)
 		if err != nil {
-			log.Printf("Warning: could not get trace version after rollup: %v", err)
+			slog.Warn("could not get trace version after rollup",
+				"trace_id", traceID,
+				"err", err,
+			)
 			return nil
 		}
 		if versionAfter <= versionBefore {
 			return nil
 		}
 
-		log.Printf("Trace %s modified during rollup (v%d -> v%d), rerunning in same job", traceID, versionBefore, versionAfter)
+		slog.Info("trace modified during rollup, rerunning in same job",
+			"trace_id", traceID,
+			"version_before", versionBefore,
+			"version_after", versionAfter,
+		)
 	}
 
-	log.Printf("Trace %s changed repeatedly during rollup; deferring remaining updates to follow-up enqueue", traceID)
+	slog.Info("trace changed repeatedly during rollup, deferring remaining updates to follow-up enqueue",
+		"trace_id", traceID,
+	)
 	return nil
 }
 
 // ProcessRollup computes and updates trace rollups.
 // Exposed for direct testing without River job wrapper.
 func (w *TraceRollupWorker) ProcessRollup(ctx context.Context, traceID uuid.UUID) error {
-	if err := w.store.ComputeAndUpdateTraceRollups(ctx, traceID); err != nil {
-		log.Printf("Error computing rollups for trace %s: %v", traceID, err)
-		return err
-	}
-	return nil
-}
-
-// EnqueueRollup enqueues a rollup job for the given trace.
-// Returns inserted=false when a unique duplicate was coalesced.
-func EnqueueRollup(ctx context.Context, client *river.Client[pgx.Tx], traceID uuid.UUID) (bool, error) {
-	if client == nil {
-		return false, errors.New("river client is nil")
-	}
-	res, err := client.Insert(ctx, jobargs.TraceRollupArgs{TraceID: traceID}, nil)
-	if err != nil {
-		return false, err
-	}
-	return !res.UniqueSkippedAsDuplicate, nil
+	return w.store.ComputeAndUpdateTraceRollups(ctx, traceID)
 }
 
 // EnqueueRollupInTx enqueues a rollup job within an existing transaction.

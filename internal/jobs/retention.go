@@ -2,7 +2,7 @@ package jobs
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -47,10 +47,6 @@ func (w *RetentionWorker) Timeout(*river.Job[jobargs.RetentionArgs]) time.Durati
 }
 
 func (w *RetentionWorker) Work(ctx context.Context, _ *river.Job[jobargs.RetentionArgs]) error {
-	if w == nil || w.store == nil || w.control == nil {
-		return nil
-	}
-
 	lockConn, err := w.store.Pool().Acquire(ctx)
 	if err != nil {
 		return err
@@ -104,32 +100,31 @@ func (w *RetentionWorker) Work(ctx context.Context, _ *river.Job[jobargs.Retenti
 		}
 	}
 
-	log.Printf(
-		"event=engine_retention_completed projection_count=%d history_count=%d duration_ms=%d",
-		projectionCount,
-		historyCount,
-		time.Since(startedAt).Milliseconds(),
+	slog.Info("engine_retention_completed",
+		"projection_count", projectionCount,
+		"history_count", historyCount,
+		"duration_ms", time.Since(startedAt).Milliseconds(),
 	)
 	return nil
 }
 
+// tryAdvisoryLock takes the process-wide retention advisory lock on the given
+// session. conn must be a connection returned by Pool().Acquire and held for
+// the duration of the run; the lock dies with that session.
 func (w *RetentionWorker) tryAdvisoryLock(ctx context.Context, conn *pgxpool.Conn) (bool, error) {
 	var locked bool
-	if conn == nil {
-		return false, nil
-	}
 	if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", retentionAdvisoryLockKey).Scan(&locked); err != nil {
 		return false, err
 	}
 	return locked, nil
 }
 
+// Postgres binds advisory locks to the session that took them, so releasing
+// must happen on the same connection. Dropping it would leave the lock held
+// until that session returns to the pool.
 func (w *RetentionWorker) unlockAdvisoryLock(ctx context.Context, conn *pgxpool.Conn) {
-	if w == nil || conn == nil {
-		return
-	}
 	var unlocked bool
 	if err := conn.QueryRow(ctx, "SELECT pg_advisory_unlock($1)", retentionAdvisoryLockKey).Scan(&unlocked); err != nil {
-		log.Printf("event=engine_retention_unlock_failed err=%v", err)
+		slog.Warn("engine_retention_unlock_failed", "err", err)
 	}
 }

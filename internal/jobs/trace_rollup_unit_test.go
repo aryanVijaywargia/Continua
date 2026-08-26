@@ -1,10 +1,8 @@
 package jobs_test
 
 import (
-	"context"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/riverqueue/river/rivertype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,10 +31,4 @@ func TestTraceRollupArgs_InsertOpts_UsesActiveUniqueStates(t *testing.T) {
 	assert.NotContains(t, opts.UniqueOpts.ByState, rivertype.JobStateCompleted)
 	assert.NotContains(t, opts.UniqueOpts.ByState, rivertype.JobStateCancelled)
 	assert.NotContains(t, opts.UniqueOpts.ByState, rivertype.JobStateDiscarded)
-}
-
-func TestEnqueueRollup_NilClientReturnsError(t *testing.T) {
-	inserted, err := jobs.EnqueueRollup(context.Background(), nil, uuid.New())
-	require.Error(t, err)
-	assert.False(t, inserted)
 }
