@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -84,7 +84,7 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 				writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 				return
 			}
-			log.Printf("ingest true async acceptance failed: %v", err)
+			slog.Error("ingest true async acceptance failed", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal_error", "An internal error occurred")
 			return
 		}
@@ -99,7 +99,7 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 			return
 		}
-		log.Printf("ingest inline mode failed: %v", err)
+		slog.Error("ingest inline mode failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "An internal error occurred")
 		return
 	}
