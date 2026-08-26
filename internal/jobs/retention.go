@@ -110,7 +110,7 @@ func (w *RetentionWorker) Work(ctx context.Context, _ *river.Job[jobargs.Retenti
 
 // tryAdvisoryLock takes the process-wide retention advisory lock on the given
 // session. conn must be a connection returned by Pool().Acquire and held for
-// the duration of the run; the lock dies with that session.
+// the duration of the run, and the caller must release the lock explicitly.
 func (w *RetentionWorker) tryAdvisoryLock(ctx context.Context, conn *pgxpool.Conn) (bool, error) {
 	var locked bool
 	if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", retentionAdvisoryLockKey).Scan(&locked); err != nil {
@@ -120,8 +120,10 @@ func (w *RetentionWorker) tryAdvisoryLock(ctx context.Context, conn *pgxpool.Con
 }
 
 // Postgres binds advisory locks to the session that took them, so releasing
-// must happen on the same connection. Dropping it would leave the lock held
-// until that session returns to the pool.
+// must happen on the same connection. A session-level lock lives until
+// pg_advisory_unlock runs or the session ends. Returning the connection to the
+// pool does not end the session, so skipping this call would leave the lock
+// held and hand it to whichever caller borrows that connection next.
 func (w *RetentionWorker) unlockAdvisoryLock(ctx context.Context, conn *pgxpool.Conn) {
 	var unlocked bool
 	if err := conn.QueryRow(ctx, "SELECT pg_advisory_unlock($1)", retentionAdvisoryLockKey).Scan(&unlocked); err != nil {
