@@ -14,6 +14,7 @@ import (
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
 	"github.com/continua-ai/continua/engine/internal/store"
+	publicjsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 )
 
@@ -103,7 +104,7 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 					ErrorMessage: fmt.Sprintf("definition %s@%s is not registered", instance.DefinitionName, run.DefinitionVersion),
 				}),
 			}},
-			CustomStatus:   cloneRaw(run.CustomStatus),
+			CustomStatus:   publicjsonraw.Clone(run.CustomStatus),
 			FailureCode:    "definition_version_mismatch",
 			FailureMessage: fmt.Sprintf("definition %s@%s is not registered", instance.DefinitionName, run.DefinitionVersion),
 		}
@@ -412,7 +413,7 @@ func (a *Activator) commitContinuationDecision(
 		DefinitionName:    instance.DefinitionName,
 		DefinitionVersion: run.DefinitionVersion,
 		InstanceKey:       instance.InstanceKey,
-		Input:             cloneRaw(decision.ContinuationInput),
+		Input:             publicjsonraw.Clone(decision.ContinuationInput),
 	})
 	if err != nil {
 		return err
@@ -602,7 +603,7 @@ func (a *Activator) createOrAttachChildExecution(
 		DefinitionName:    child.Scheduled.DefinitionName,
 		DefinitionVersion: child.Scheduled.DefinitionVersion,
 		InstanceKey:       child.Scheduled.ChildInstanceKey,
-		Input:             cloneRaw(child.Scheduled.Input),
+		Input:             publicjsonraw.Clone(child.Scheduled.Input),
 	})
 	if err != nil {
 		return enginedb.EngineInstance{}, enginedb.EngineRun{}, nil, false, err

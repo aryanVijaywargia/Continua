@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	publicjsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 	publicworkflow "github.com/continua-ai/continua/engine/pkg/workflow"
 )
 
@@ -67,22 +68,22 @@ func SimulateActivation(
 	out := SimDecision{
 		Kind:              string(decision.Kind),
 		NextSequence:      decision.NextSequence,
-		WaitingFor:        cloneRaw(decision.WaitingFor),
-		CustomStatus:      cloneRaw(decision.CustomStatus),
-		Result:            cloneRaw(decision.Result),
-		ContinuationInput: cloneRaw(decision.ContinuationInput),
+		WaitingFor:        publicjsonraw.Clone(decision.WaitingFor),
+		CustomStatus:      publicjsonraw.Clone(decision.CustomStatus),
+		Result:            publicjsonraw.Clone(decision.Result),
+		ContinuationInput: publicjsonraw.Clone(decision.ContinuationInput),
 		ConsumedInboxIDs:  append([]uuid.UUID(nil), decision.ConsumedInboxIDs...),
 		FailureCode:       decision.FailureCode,
 		FailureMessage:    decision.FailureMessage,
 	}
 	for _, event := range decision.Events {
-		out.Events = append(out.Events, SimEvent{EventType: event.EventType, Payload: cloneRaw(event.Payload)})
+		out.Events = append(out.Events, SimEvent{EventType: event.EventType, Payload: publicjsonraw.Clone(event.Payload)})
 	}
 	if decision.NewActivity != nil {
 		out.NewActivity = &SimActivity{
 			Key:   decision.NewActivity.Scheduled.ActivityKey,
 			Type:  decision.NewActivity.Scheduled.ActivityType,
-			Input: cloneRaw(decision.NewActivity.Scheduled.Input),
+			Input: publicjsonraw.Clone(decision.NewActivity.Scheduled.Input),
 		}
 	}
 	if decision.NewTimer != nil {
@@ -98,7 +99,7 @@ func SimulateActivation(
 			DefinitionName:    decision.NewChildWorkflow.Scheduled.DefinitionName,
 			DefinitionVersion: decision.NewChildWorkflow.Scheduled.DefinitionVersion,
 			ChildInstanceKey:  decision.NewChildWorkflow.Scheduled.ChildInstanceKey,
-			Input:             cloneRaw(decision.NewChildWorkflow.Scheduled.Input),
+			Input:             publicjsonraw.Clone(decision.NewChildWorkflow.Scheduled.Input),
 		}
 	}
 	return out, nil

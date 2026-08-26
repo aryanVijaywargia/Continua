@@ -14,6 +14,7 @@ import (
 	platformdb "github.com/continua-ai/continua/db/gen/go/platform"
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	publichistory "github.com/continua-ai/continua/engine/pkg/history"
+	publicjsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	"github.com/continua-ai/continua/internal/store"
@@ -377,7 +378,7 @@ func (s *engineControlService) StartRun(
 		DefinitionName:    req.DefinitionName,
 		DefinitionVersion: req.DefinitionVersion,
 		InstanceKey:       req.InstanceKey,
-		Input:             cloneRaw(req.Input),
+		Input:             publicjsonraw.Clone(req.Input),
 	})
 	if err != nil {
 		return engineStartRunResult{}, err
@@ -439,7 +440,7 @@ func (s *engineControlService) StartRun(
 		Environment:                  stringPtr(req.TraceEnvironment()),
 		Release:                      stringPtr(req.TraceRelease()),
 		Metadata:                     traceMetadata,
-		Input:                        cloneRaw(req.Input),
+		Input:                        publicjsonraw.Clone(req.Input),
 		Output:                       nil,
 		Status:                       "running",
 		StartTime:                    pgtype.Timestamptz{Time: now, Valid: true},
@@ -476,7 +477,7 @@ func (s *engineControlService) StartRun(
 		Status:    "running",
 		Level:     "default",
 		StartTime: now,
-		Input:     cloneRaw(req.Input),
+		Input:     publicjsonraw.Clone(req.Input),
 		Metadata:  nil,
 		Depth:     int32Pointer(0),
 	}); err != nil {
@@ -629,7 +630,7 @@ func (s *engineControlService) GetRunPendingWork(
 
 	result := enginePendingWorkResult{
 		RunID:       run.ID,
-		CurrentWait: cloneRaw(run.WaitingFor),
+		CurrentWait: publicjsonraw.Clone(run.WaitingFor),
 		Activities:  make([]enginePendingActivityItem, 0, len(activities)),
 		Timers:      make([]enginePendingTimerItem, 0, len(timers)),
 		Signals:     make([]enginePendingSignalItem, 0, len(signals)),
@@ -783,7 +784,7 @@ func (s *engineControlService) SignalRun(
 
 	payload, err := publichistory.MarshalPayload(publichistory.SignalReceivedPayload{
 		SignalName: req.SignalName,
-		Payload:    cloneRaw(req.Payload),
+		Payload:    publicjsonraw.Clone(req.Payload),
 	})
 	if err != nil {
 		return engineControlResult{}, err
@@ -1309,11 +1310,11 @@ func (s *engineControlService) buildRunSummary(
 		CreatedAt:            run.CreatedAt,
 		UpdatedAt:            run.UpdatedAt,
 		CompletedAt:          pgTimePtr(run.CompletedAt),
-		CustomStatus:         cloneRaw(run.CustomStatus),
-		WaitState:            cloneRaw(run.WaitingFor),
+		CustomStatus:         publicjsonraw.Clone(run.CustomStatus),
+		WaitState:            publicjsonraw.Clone(run.WaitingFor),
 		PendingActivityTasks: pendingActivityTasks,
 		PendingInboxItems:    pendingInboxItems,
-		Result:               cloneRaw(run.Result),
+		Result:               publicjsonraw.Clone(run.Result),
 		LastErrorCode:        run.LastErrorCode,
 		LastErrorMessage:     run.LastErrorMessage,
 	}, nil
@@ -1543,8 +1544,8 @@ func syncProjectedTraceSummary(
 	_, err = tx.UpdateEngineTraceSummary(ctx, &platformdb.UpdateEngineTraceSummaryParams{
 		EngineRunID:                pgtype.UUID{Bytes: run.ID, Valid: true},
 		EngineRunStatus:            stringPtr(string(run.Status)),
-		EngineCustomStatus:         cloneRaw(run.CustomStatus),
-		EngineWaitState:            cloneRaw(run.WaitingFor),
+		EngineCustomStatus:         publicjsonraw.Clone(run.CustomStatus),
+		EngineWaitState:            publicjsonraw.Clone(run.WaitingFor),
 		EnginePendingActivityTasks: int64Ptr(pendingActivityTasks),
 		EnginePendingInboxItems:    int64Ptr(pendingInboxItems),
 	})
@@ -1570,7 +1571,7 @@ func terminalRunSummaryFromRun(run *enginedb.EngineRun) engineRunSummary {
 		ContinuedFromTraceID: engineTraceIDPtr(continuedFromRunID),
 		ContinuedToTraceID:   engineTraceIDPtr(continuedToRunID),
 		Status:               run.Status,
-		Result:               cloneRaw(run.Result),
+		Result:               publicjsonraw.Clone(run.Result),
 		LastErrorCode:        run.LastErrorCode,
 		LastErrorMessage:     run.LastErrorMessage,
 		PendingActivityTasks: 0,

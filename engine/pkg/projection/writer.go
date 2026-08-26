@@ -38,6 +38,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	jsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 )
 
 // Sentinel errors surfaced by Writer reads that guard writes.
@@ -277,7 +278,7 @@ func (w *Writer) SyncRunSummary(ctx context.Context, run *enginedb.EngineRun) er
 		    updated_at = NOW(),
 		    version = COALESCE(version, 1) + 1
 		WHERE engine_run_id = $1
-	`, run.ID, string(run.Status), cloneRaw(run.CustomStatus), cloneRaw(run.WaitingFor), pendingActivityTasks, pendingInboxItems)
+	`, run.ID, string(run.Status), jsonraw.Clone(run.CustomStatus), jsonraw.Clone(run.WaitingFor), pendingActivityTasks, pendingInboxItems)
 	if err != nil {
 		return err
 	}

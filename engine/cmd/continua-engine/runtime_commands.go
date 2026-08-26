@@ -21,6 +21,7 @@ import (
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
+	publicjsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 	engineruntime "github.com/continua-ai/continua/engine/pkg/runtime"
 
@@ -551,9 +552,9 @@ func inspectCmd() *cobra.Command {
 					RunID:             run.ID.String(),
 					RunNumber:         run.RunNumber,
 					Status:            string(run.Status),
-					Result:            cloneRaw(run.Result),
-					CustomStatus:      cloneRaw(run.CustomStatus),
-					WaitingFor:        cloneRaw(run.WaitingFor),
+					Result:            publicjsonraw.Clone(run.Result),
+					CustomStatus:      publicjsonraw.Clone(run.CustomStatus),
+					WaitingFor:        publicjsonraw.Clone(run.WaitingFor),
 					History:           make([]inspectHistoryEvent, 0, len(historyRows)),
 				}
 
@@ -562,7 +563,7 @@ func inspectCmd() *cobra.Command {
 					response.History = append(response.History, inspectHistoryEvent{
 						SequenceNo: historyRow.SequenceNo,
 						EventType:  historyRow.EventType,
-						Payload:    cloneRaw(historyRow.Payload),
+						Payload:    publicjsonraw.Clone(historyRow.Payload),
 						CreatedAt:  historyRow.CreatedAt,
 					})
 				}
@@ -828,11 +829,4 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
-}
-
-func cloneRaw(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return nil
-	}
-	return append(json.RawMessage(nil), raw...)
 }

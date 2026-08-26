@@ -199,13 +199,6 @@ func int32Pointer(value int32) *int32 {
 	return &value
 }
 
-func cloneRaw(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return nil
-	}
-	return append(json.RawMessage(nil), raw...)
-}
-
 func derefString(value *string) string {
 	if value == nil {
 		return ""

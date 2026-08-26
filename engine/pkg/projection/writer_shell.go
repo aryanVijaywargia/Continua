@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	jsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 )
 
 // TraceShellSeed carries the trace attributes inherited by continuation and
@@ -149,7 +150,7 @@ func (w *Writer) CreateTraceShell(
 		seed.Environment,
 		seed.Release,
 		cloneBytes(seed.Metadata),
-		cloneRaw(input),
+		jsonraw.Clone(input),
 		nil,
 		startedEvent.CreatedAt,
 		run.ID,
@@ -196,7 +197,7 @@ func (w *Writer) CreateTraceShell(
 		RootSpanExternalID(run.ID),
 		rootSpanName,
 		startedEvent.CreatedAt,
-		cloneRaw(input),
+		jsonraw.Clone(input),
 	); err != nil {
 		return err
 	}
@@ -274,7 +275,7 @@ func (w *Writer) EnsureStartShell(
 		    $12,
 		    $6::timestamptz
 		)
-	`, traceUUID, run.ProjectID, traceID, definitionName, cloneRaw(input), now, run.ID, instance.InstanceKey, definitionName, definitionVersion, run.ID, startedHistoryID); err != nil {
+	`, traceUUID, run.ProjectID, traceID, definitionName, jsonraw.Clone(input), now, run.ID, instance.InstanceKey, definitionName, definitionVersion, run.ID, startedHistoryID); err != nil {
 		return err
 	}
 
@@ -292,7 +293,7 @@ func (w *Writer) EnsureStartShell(
 		    depth
 		)
 		VALUES ($1, $2, $3, $4, 'chain', 'running', 'default', $5::timestamptz, $6::jsonb, 0)
-	`, run.ProjectID, traceUUID, RootSpanExternalID(run.ID), definitionName, now, cloneRaw(input))
+	`, run.ProjectID, traceUUID, RootSpanExternalID(run.ID), definitionName, now, jsonraw.Clone(input))
 	return spanErr
 }
 

@@ -13,6 +13,7 @@ import (
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	internalworkflow "github.com/continua-ai/continua/engine/internal/workflow"
 	"github.com/continua-ai/continua/engine/pkg/history"
+	"github.com/continua-ai/continua/engine/pkg/jsonraw"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
 )
 
@@ -168,7 +169,7 @@ func newSimulation(env *Environment, def workflow.Definition, input json.RawMess
 		DefinitionName:    def.Name,
 		DefinitionVersion: def.Version,
 		InstanceKey:       uuid.NewString(),
-		Input:             cloneRaw(input),
+		Input:             jsonraw.Clone(input),
 	})
 	return &simulation{
 		env:       env,
@@ -231,11 +232,11 @@ func (s *simulation) run(remaining int) (*Result, error) {
 
 func (s *simulation) resultFromDecision(decision *internalworkflow.SimDecision) *Result {
 	r := &Result{
-		CustomStatus:      cloneRaw(decision.CustomStatus),
-		ContinuationInput: cloneRaw(decision.ContinuationInput),
+		CustomStatus:      jsonraw.Clone(decision.CustomStatus),
+		ContinuationInput: jsonraw.Clone(decision.ContinuationInput),
 		ErrorCode:         decision.FailureCode,
 		ErrorMessage:      decision.FailureMessage,
-		result:            cloneRaw(decision.Result),
+		result:            jsonraw.Clone(decision.Result),
 		history:           append([]enginedb.EngineHistory(nil), s.history...),
 	}
 	switch decision.Kind {
@@ -264,7 +265,7 @@ func (s *simulation) resolveActivity(activity *internalworkflow.SimActivity) (bo
 	if handler == nil {
 		return false, nil
 	}
-	output, err := handler(cloneRaw(activity.Input))
+	output, err := handler(jsonraw.Clone(activity.Input))
 	now := time.Now().UTC()
 	task := enginedb.EngineActivityTask{
 		ID:           uuid.New(),
@@ -273,7 +274,7 @@ func (s *simulation) resolveActivity(activity *internalworkflow.SimActivity) (bo
 		RunID:        s.engineRun.ID,
 		ActivityKey:  activity.Key,
 		ActivityType: activity.Type,
-		Input:        cloneRaw(activity.Input),
+		Input:        jsonraw.Clone(activity.Input),
 		AttemptCount: 1,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -320,7 +321,7 @@ func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining in
 	}
 	s.history = append(s.history, s.historyRow(nextSequence(s.history), history.EventChildWorkflowStarted, startedPayload))
 
-	childSim := newSimulation(s.env, def, cloneRaw(child.Input))
+	childSim := newSimulation(s.env, def, jsonraw.Clone(child.Input))
 	childSim.engineRun.ProjectID = s.engineRun.ProjectID
 	childSim.engineRun.RootRunID = s.engineRun.RootRunID
 	childSim.engineRun.ChildDepth = s.engineRun.ChildDepth + 1
@@ -339,7 +340,7 @@ func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining in
 			return false, nil, fmt.Errorf("workflowtest: activation cap %d exceeded", activationCap)
 		}
 		remaining--
-		childSim = newSimulation(s.env, def, cloneRaw(childResult.ContinuationInput))
+		childSim = newSimulation(s.env, def, jsonraw.Clone(childResult.ContinuationInput))
 		childSim.engineRun.ProjectID = s.engineRun.ProjectID
 		childSim.engineRun.RootRunID = s.engineRun.RootRunID
 		childSim.engineRun.ChildDepth = s.engineRun.ChildDepth + 1
@@ -393,7 +394,7 @@ func (s *simulation) resolveChild(child *internalworkflow.SimChild, remaining in
 		RootRunID:                  s.engineRun.RootRunID,
 		ChildDepth:                 s.engineRun.ChildDepth + 1,
 		Status:                     status,
-		TerminalResult:             cloneRaw(childResult.result),
+		TerminalResult:             jsonraw.Clone(childResult.result),
 		TerminalLastErrorCode:      stringPtr(code),
 		TerminalLastErrorMessage:   stringPtr(message),
 		TerminalRunStatus:          enginedb.NullEngineRunLifecycleStatus{EngineRunLifecycleStatus: runStatus, Valid: true},
@@ -417,7 +418,7 @@ func (s *simulation) historyRow(sequence int32, eventType string, payload json.R
 		RunID:      s.engineRun.ID,
 		SequenceNo: sequence,
 		EventType:  eventType,
-		Payload:    cloneRaw(payload),
+		Payload:    jsonraw.Clone(payload),
 		CreatedAt:  time.Now().UTC(),
 	}
 }
@@ -429,7 +430,7 @@ func (s *simulation) inboxRow(kind string, payload json.RawMessage) enginedb.Eng
 		InstanceID:  s.engineRun.InstanceID,
 		RunID:       pgtype.UUID{Bytes: s.engineRun.ID, Valid: true},
 		Kind:        kind,
-		Payload:     cloneRaw(payload),
+		Payload:     jsonraw.Clone(payload),
 		Status:      enginedb.EngineInboxStatusPending,
 		AvailableAt: time.Now().UTC(),
 		CreatedAt:   time.Now().UTC(),
@@ -442,7 +443,7 @@ func (e *Environment) materializeInbox(sim *simulation) []enginedb.EngineInbox {
 	for _, signal := range e.signals {
 		payload, _ := history.MarshalPayload(history.SignalReceivedPayload{
 			SignalName: signal.name,
-			Payload:    cloneRaw(signal.payload),
+			Payload:    jsonraw.Clone(signal.payload),
 		})
 		rows = append(rows, sim.inboxRow("signal", payload))
 	}
@@ -519,13 +520,6 @@ func nextSequence(rows []enginedb.EngineHistory) int32 {
 		return 1
 	}
 	return rows[len(rows)-1].SequenceNo + 1
-}
-
-func cloneRaw(raw json.RawMessage) json.RawMessage {
-	if raw == nil {
-		return nil
-	}
-	return append(json.RawMessage(nil), raw...)
 }
 
 func stringPtr(value string) *string {
