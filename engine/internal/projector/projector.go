@@ -22,6 +22,7 @@ import (
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	publichistory "github.com/continua-ai/continua/engine/pkg/history"
+	publicjsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
 )
 
@@ -142,7 +143,7 @@ func projectHistoryRow(
 	case *publichistory.WorkflowCompletedPayload:
 		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
 			RunStatus: enginedb.EngineRunLifecycleStatusCompleted,
-			Result:    cloneRaw(typed.Result),
+			Result:    publicjsonraw.Clone(typed.Result),
 		})
 	case *publichistory.WorkflowFailedPayload:
 		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
@@ -348,7 +349,7 @@ func projectActivityScheduled(
 		ActivityType: payload.ActivityType,
 		Status:       "running",
 		StartTime:    row.CreatedAt,
-		Input:        cloneRaw(payload.Input),
+		Input:        publicjsonraw.Clone(payload.Input),
 	}); err != nil {
 		return err
 	}
@@ -402,7 +403,7 @@ func projectActivityCompleted(
 		ActivityType: payload.ActivityType,
 		Status:       "completed",
 		EndTime:      &row.CreatedAt,
-		Output:       cloneRaw(payload.Output),
+		Output:       publicjsonraw.Clone(payload.Output),
 	}); err != nil {
 		return err
 	}
@@ -721,13 +722,6 @@ func stringPtr(value string) *string {
 		return nil
 	}
 	return &value
-}
-
-func cloneRaw(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return nil
-	}
-	return append(json.RawMessage(nil), raw...)
 }
 
 type pgtypeTimestamptz struct {

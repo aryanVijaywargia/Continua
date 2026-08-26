@@ -15,6 +15,7 @@ import (
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
+	publicjsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 	publicworkflow "github.com/continua-ai/continua/engine/pkg/workflow"
 )
 
@@ -307,7 +308,7 @@ func newWorkflowRunner(
 	}
 
 	runner := &workflowRunner{
-		input:                      cloneRaw(startedPayload.Input),
+		input:                      publicjsonraw.Clone(startedPayload.Input),
 		nextSequence:               historyRows[len(historyRows)-1].SequenceNo + 1,
 		maxChildDepth:              maxChildDepth,
 		maxContinuationFollowDepth: maxContinuationFollowDepth,
@@ -335,7 +336,7 @@ func newWorkflowRunner(
 			continue
 		}
 		if statusPayload, ok := payload.(*enginehistory.CustomStatusUpdatedPayload); ok {
-			runner.customStatus = cloneRaw(statusPayload.Status)
+			runner.customStatus = publicjsonraw.Clone(statusPayload.Status)
 		}
 
 		runner.replayEvents = append(runner.replayEvents, decodedEvent{
@@ -352,7 +353,7 @@ func newWorkflowRunner(
 				completed: &enginehistory.ActivityCompletedPayload{
 					ActivityKey:  task.ActivityKey,
 					ActivityType: task.ActivityType,
-					Output:       cloneRaw(task.Output),
+					Output:       publicjsonraw.Clone(task.Output),
 				},
 			}
 		case enginedb.EngineActivityTaskStatusFailed:
@@ -462,7 +463,7 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 		}
 		if errors.Is(runErr, publicworkflow.ErrContinueAsNew) {
 			continuationInput, _ := publicworkflow.ContinueAsNewInput(runErr)
-			continuedAsNew := enginehistory.WorkflowContinuedAsNewPayload{Input: cloneRaw(continuationInput)}
+			continuedAsNew := enginehistory.WorkflowContinuedAsNewPayload{Input: publicjsonraw.Clone(continuationInput)}
 			if next, ok := r.peek(); ok {
 				recorded, ok := next.Payload.(*enginehistory.WorkflowContinuedAsNewPayload)
 				if !ok {
@@ -516,7 +517,7 @@ func (r *workflowRunner) execute(definition publicworkflow.Definition) (decision
 		return r.failedDecision(failure), nil
 	}
 
-	completed := enginehistory.WorkflowCompletedPayload{Result: cloneRaw(r.result)}
+	completed := enginehistory.WorkflowCompletedPayload{Result: publicjsonraw.Clone(r.result)}
 	if next, ok := r.peek(); ok {
 		recorded, ok := next.Payload.(*enginehistory.WorkflowCompletedPayload)
 		if !ok {
@@ -636,7 +637,7 @@ func (r *workflowRunner) ActivityWithOptions(
 	scheduled := enginehistory.ActivityScheduledPayload{
 		ActivityKey:  key,
 		ActivityType: activityType,
-		Input:        cloneRaw(inputRaw),
+		Input:        publicjsonraw.Clone(inputRaw),
 	}
 	r.newActivity = &newActivityTask{
 		Scheduled: scheduled,
@@ -769,7 +770,7 @@ func (r *workflowRunner) ChildWorkflowWithOptions(
 		ChildKey:          childKey,
 		DefinitionName:    definitionName,
 		DefinitionVersion: definitionVersion,
-		Input:             cloneRaw(inputRaw),
+		Input:             publicjsonraw.Clone(inputRaw),
 		ChildInstanceKey:  instanceKey,
 	}
 	if r.validateNewChild != nil {
@@ -920,7 +921,7 @@ func (r *workflowRunner) SideEffect(key string, fn func() (any, error), out any)
 	}
 	recorded := enginehistory.WorkflowSideEffectRecordedPayload{
 		SideEffectKey: key,
-		Value:         cloneRaw(valueRaw),
+		Value:         publicjsonraw.Clone(valueRaw),
 	}
 	r.queueEvent(enginehistory.EventWorkflowSideEffectRecorded, recorded)
 	return unmarshalOptional(recorded.Value, out)
@@ -1016,14 +1017,14 @@ func (r *workflowRunner) SetCustomStatus(value any) error {
 		if !equal {
 			r.replayMismatch(enginehistory.EventCustomStatusUpdated, "", next, "custom status update did not match recorded history")
 		}
-		r.customStatus = cloneRaw(statusRaw)
+		r.customStatus = publicjsonraw.Clone(statusRaw)
 		r.cursor++
 		return nil
 	}
 
-	r.customStatus = cloneRaw(statusRaw)
+	r.customStatus = publicjsonraw.Clone(statusRaw)
 	r.queueEvent(enginehistory.EventCustomStatusUpdated, enginehistory.CustomStatusUpdatedPayload{
-		Status: cloneRaw(statusRaw),
+		Status: publicjsonraw.Clone(statusRaw),
 	})
 	return nil
 }
@@ -1034,7 +1035,7 @@ func (r *workflowRunner) SetResult(value any) error {
 	if err != nil {
 		return err
 	}
-	r.result = cloneRaw(resultRaw)
+	r.result = publicjsonraw.Clone(resultRaw)
 	return nil
 }
 
@@ -1165,8 +1166,8 @@ func (r *workflowRunner) waitingDecision() activationDecision {
 		Kind:              decisionWaiting,
 		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
 		NextSequence:      r.nextSequence,
-		WaitingFor:        cloneRaw(r.waitingFor),
-		CustomStatus:      cloneRaw(r.customStatus),
+		WaitingFor:        publicjsonraw.Clone(r.waitingFor),
+		CustomStatus:      publicjsonraw.Clone(r.customStatus),
 		NewActivity:       r.newActivity,
 		NewTimer:          r.newTimer,
 		NewChildWorkflow:  r.newChildWorkflow,
@@ -1180,8 +1181,8 @@ func (r *workflowRunner) completedDecision() activationDecision {
 		Kind:              decisionCompleted,
 		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
 		NextSequence:      r.nextSequence,
-		CustomStatus:      cloneRaw(r.customStatus),
-		Result:            cloneRaw(r.result),
+		CustomStatus:      publicjsonraw.Clone(r.customStatus),
+		Result:            publicjsonraw.Clone(r.result),
 		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
 		ChildWaitFailures: append([]childWaitFailure(nil), r.childWaitFailures...),
 	}
@@ -1192,7 +1193,7 @@ func (r *workflowRunner) failedDecision(failure enginehistory.WorkflowFailedPayl
 		Kind:              decisionFailed,
 		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
 		NextSequence:      r.nextSequence,
-		CustomStatus:      cloneRaw(r.customStatus),
+		CustomStatus:      publicjsonraw.Clone(r.customStatus),
 		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
 		FailureCode:       failure.ErrorCode,
 		FailureMessage:    failure.ErrorMessage,
@@ -1217,8 +1218,8 @@ func (r *workflowRunner) quarantinedDecision(mismatch *replayMismatchPanic) acti
 	return activationDecision{
 		Kind:           decisionQuarantined,
 		NextSequence:   r.nextSequence,
-		WaitingFor:     cloneRaw(waitingFor),
-		CustomStatus:   cloneRaw(r.customStatus),
+		WaitingFor:     publicjsonraw.Clone(waitingFor),
+		CustomStatus:   publicjsonraw.Clone(r.customStatus),
 		FailureCode:    failureCode,
 		FailureMessage: payload.Detail,
 	}
@@ -1232,8 +1233,8 @@ func (r *workflowRunner) invariantQuarantinedDecision(detail string) activationD
 	return activationDecision{
 		Kind:           decisionQuarantined,
 		NextSequence:   r.nextSequence,
-		WaitingFor:     cloneRaw(waitingFor),
-		CustomStatus:   cloneRaw(r.customStatus),
+		WaitingFor:     publicjsonraw.Clone(waitingFor),
+		CustomStatus:   publicjsonraw.Clone(r.customStatus),
 		FailureCode:    "engine_invariant",
 		FailureMessage: detail,
 	}
@@ -1244,7 +1245,7 @@ func (r *workflowRunner) cancelledDecision() activationDecision {
 		Kind:              decisionCancelled,
 		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
 		NextSequence:      r.nextSequence,
-		CustomStatus:      cloneRaw(r.customStatus),
+		CustomStatus:      publicjsonraw.Clone(r.customStatus),
 		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
 		FailureCode:       "cancelled",
 		FailureMessage:    "workflow cancelled",
@@ -1257,8 +1258,8 @@ func (r *workflowRunner) continuedAsNewDecision(input json.RawMessage) activatio
 		Kind:              decisionContinuedAsNew,
 		Events:            append([]queuedHistoryEvent(nil), r.queuedEvents...),
 		NextSequence:      r.nextSequence,
-		CustomStatus:      cloneRaw(r.customStatus),
-		ContinuationInput: cloneRaw(input),
+		CustomStatus:      publicjsonraw.Clone(r.customStatus),
+		ContinuationInput: publicjsonraw.Clone(input),
 		ConsumedInboxIDs:  append([]uuid.UUID(nil), r.consumedInboxIDs...),
 		ChildWaitFailures: append([]childWaitFailure(nil), r.childWaitFailures...),
 	}
@@ -1315,7 +1316,7 @@ func childWorkflowOutcomeFromRow(row *enginedb.ListChildWorkflowOutcomesByParent
 		parentWaitFailed:           row.ParentWaitFailedAt.Valid,
 		parentWaitErrorCode:        stringValue(row.ParentWaitErrorCode),
 		parentWaitErrorMessage:     stringValue(row.ParentWaitErrorMessage),
-		terminalResult:             cloneRaw(row.TerminalResult),
+		terminalResult:             publicjsonraw.Clone(row.TerminalResult),
 		terminalLastErrorCode:      stringValue(row.TerminalLastErrorCode),
 		terminalLastErrorMessage:   stringValue(row.TerminalLastErrorMessage),
 	}
@@ -1394,7 +1395,7 @@ func (r *workflowRunner) applyPendingChildWorkflowOutcome(outcome *childWorkflow
 			ChildKey:           outcome.childKey,
 			ChildInstanceID:    outcome.childInstanceID.String(),
 			TerminalChildRunID: outcome.terminalChildRunID.String(),
-			Result:             cloneRaw(outcome.terminalResult),
+			Result:             publicjsonraw.Clone(outcome.terminalResult),
 		})
 		return unmarshalOptional(outcome.terminalResult, out)
 	case enginedb.EngineChildWorkflowStatusFailed:
@@ -1534,13 +1535,6 @@ func decodeJSONValue(raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return value, nil
-}
-
-func cloneRaw(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return nil
-	}
-	return append(json.RawMessage(nil), raw...)
 }
 
 func stringValue(value *string) string {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	jsonraw "github.com/continua-ai/continua/engine/pkg/jsonraw"
 )
 
 // IsTerminalRunStatus reports whether an engine run has reached a state that
@@ -44,7 +45,7 @@ func TerminalOutputPayload(
 	errorMessage *string,
 ) (json.RawMessage, error) {
 	if runStatus == "completed" {
-		return cloneRaw(result), nil
+		return jsonraw.Clone(result), nil
 	}
 	if runStatus == "continued_as_new" {
 		return nil, nil
@@ -54,13 +55,6 @@ func TerminalOutputPayload(
 		"error_message": derefString(errorMessage),
 		"status":        runStatus,
 	})
-}
-
-func cloneRaw(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return nil
-	}
-	return append(json.RawMessage(nil), raw...)
 }
 
 func derefString(value *string) string {
