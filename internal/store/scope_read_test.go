@@ -113,22 +113,30 @@ func TestListReadsEnforceProjectScope(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Far-future start times keep these traces on the first unbounded
-	// DESC-ordered page even in a shared test database.
 	traceA := upsertScopedListTrace(ctx, t, q, projectAID, sessionA.ID, token+"-trace-a",
-		time.Date(2999, 1, 1, 0, 1, 0, 0, time.UTC))
+		time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC))
 	traceB := upsertScopedListTrace(ctx, t, q, projectBID, sessionB.ID, token+"-trace-b",
-		time.Date(2999, 1, 1, 0, 0, 0, 0, time.UTC))
+		time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC))
 
 	// ListTraces: a bound scope sees exactly its own project's rows.
 	boundTraces, err := s.ListTraces(ctx, store.BoundScope(projectAID), 10, 0, store.SortDirectionDesc)
 	require.NoError(t, err)
 	assert.Equal(t, []uuid.UUID{traceA.ID}, traceReadIDs(boundTraces))
 
-	// ListTraces: an unbounded scope lists across projects.
-	unboundedTraces, err := s.ListTraces(ctx, store.UnboundedScope(), 20, 0, store.SortDirectionDesc)
-	require.NoError(t, err)
-	assert.Subset(t, traceReadIDs(unboundedTraces), []uuid.UUID{traceA.ID, traceB.ID})
+	// ListTraces: an unbounded scope lists across projects. Shared test
+	// databases accumulate older rows that sort ahead of this run's rows,
+	// so look the seeded traces up across the whole listing instead of
+	// assuming they land on the first page.
+	var unboundedTraceIDs []uuid.UUID
+	for offset := int32(0); ; offset += scopedListWalkPage {
+		page, err := s.ListTraces(ctx, store.UnboundedScope(), scopedListWalkPage, offset, store.SortDirectionDesc)
+		require.NoError(t, err)
+		unboundedTraceIDs = append(unboundedTraceIDs, traceReadIDs(page)...)
+		if len(page) < scopedListWalkPage {
+			break
+		}
+	}
+	assert.Subset(t, unboundedTraceIDs, []uuid.UUID{traceA.ID, traceB.ID})
 
 	// Counts follow the same scope semantics.
 	boundCount, err := s.CountTraces(ctx, store.BoundScope(projectAID))
@@ -243,6 +251,10 @@ func TestFilteredListReadsEnforceProjectScope(t *testing.T) {
 		assert.Equal(t, int64(1), sess.TraceCount)
 	}
 }
+
+// scopedListWalkPage is the page size used to walk the full unbounded trace
+// listing when asserting membership by identity.
+const scopedListWalkPage = 500
 
 func traceReadIDs(traces []store.TraceRead) []uuid.UUID {
 	ids := make([]uuid.UUID, len(traces))
