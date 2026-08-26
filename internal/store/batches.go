@@ -117,7 +117,10 @@ func (t *Tx) DeleteBatchPayload(ctx context.Context, batchID uuid.UUID) error {
 	return t.q.DeleteBatchPayload(ctx, batchID)
 }
 
-// MarkBatchProcessingIfQueued transitions a queued batch to processing.
+// MarkBatchProcessingIfQueued transitions a queued batch to processing and
+// increments its attempt count. It returns ErrNotFound when no row matches:
+// the batch may not exist or may have left the queued state, and callers
+// cannot distinguish the two. A claim holder treats both as a lost claim race.
 func (s *Store) MarkBatchProcessingIfQueued(ctx context.Context, batchID uuid.UUID) (platform.IngestBatch, error) {
 	batch, err := s.q.MarkBatchProcessingIfQueued(ctx, batchID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -135,7 +138,8 @@ func (t *Tx) MarkBatchProcessingIfQueued(ctx context.Context, batchID uuid.UUID)
 	return batch, err
 }
 
-// MarkBatchCompleted records a completed batch.
+// MarkBatchCompleted records a completed batch together with its final trace,
+// span, event, accepted, and rejected counts.
 func (s *Store) MarkBatchCompleted(ctx context.Context, params platform.MarkBatchCompletedParams) error {
 	return s.q.MarkBatchCompleted(ctx, params)
 }

@@ -6,7 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"io"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -117,11 +118,10 @@ func (s *Service) Ingest(ctx context.Context, projectID uuid.UUID, req *IngestRe
 	}
 
 	if !claim.Inserted {
-		log.Printf(
-			"event=batch_duplicate batch_id=%s batch_key=%s project_id=%s",
-			claim.Batch.ID,
-			claim.Batch.BatchKey,
-			projectID,
+		slog.Info("batch_duplicate",
+			"batch_id", claim.Batch.ID,
+			"batch_key", claim.Batch.BatchKey,
+			"project_id", projectID,
 		)
 		return &IngestResponse{
 			Status:   string(IngestStatusDuplicate),
@@ -158,11 +158,12 @@ func (s *Service) Ingest(ctx context.Context, projectID uuid.UUID, req *IngestRe
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	log.Printf(
-		"event=batch_processing_completed batch_id=%s batch_key=%s project_id=%s attempt_count=0 duration_ms=0",
-		claim.Batch.ID,
-		req.BatchKey,
-		projectID,
+	slog.Info("batch_processing_completed",
+		"batch_id", claim.Batch.ID,
+		"batch_key", req.BatchKey,
+		"project_id", projectID,
+		"attempt_count", 0,
+		"duration_ms", 0,
 	)
 
 	return &IngestResponse{
@@ -200,11 +201,10 @@ func (s *Service) AcceptAsync(
 	}
 
 	if !claim.Inserted {
-		log.Printf(
-			"event=batch_duplicate batch_id=%s batch_key=%s project_id=%s",
-			claim.Batch.ID,
-			claim.Batch.BatchKey,
-			projectID,
+		slog.Info("batch_duplicate",
+			"batch_id", claim.Batch.ID,
+			"batch_key", claim.Batch.BatchKey,
+			"project_id", projectID,
 		)
 		return &IngestResponse{
 			Status:   string(IngestStatusDuplicate),
@@ -236,11 +236,10 @@ func (s *Service) AcceptAsync(
 		return nil, fmt.Errorf("failed to commit async acceptance transaction: %w", err)
 	}
 
-	log.Printf(
-		"event=batch_accepted batch_id=%s batch_key=%s project_id=%s",
-		claim.Batch.ID,
-		req.BatchKey,
-		projectID,
+	slog.Info("batch_accepted",
+		"batch_id", claim.Batch.ID,
+		"batch_key", req.BatchKey,
+		"project_id", projectID,
 	)
 
 	return &IngestResponse{
@@ -309,7 +308,11 @@ func DecompressPayload(compressedPayload []byte) ([]byte, error) {
 	}
 	defer func() { _ = reader.Close() }()
 
-	return ioReadAll(reader)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func batchStatusFromModel(batch *platform.IngestBatch) (*BatchStatus, error) {
@@ -358,15 +361,8 @@ func timestamptzPtr(value pgtype.Timestamptz) *time.Time {
 	return &value.Time
 }
 
-func ioReadAll(reader *gzip.Reader) ([]byte, error) {
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(reader); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-// IsValidationError checks if an error is a validation error.
+// IsValidationError reports whether err, or any error it wraps, is a
+// *ValidationError. Handlers use it to choose 400 over 500.
 func IsValidationError(err error) bool {
 	var ve *ValidationError
 	return errors.As(err, &ve)
