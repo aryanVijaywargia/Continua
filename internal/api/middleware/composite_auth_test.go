@@ -3,11 +3,9 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -86,154 +84,6 @@ func TestCompositeAuthRejectsMissingCredentialsOnDebuggerRoutes(t *testing.T) {
 
 	resp := decodeAuthErrorBody(t, rec)
 	assert.Equal(t, "missing_credentials", resp["code"])
-}
-
-func TestCompositeAuthRejectsInvalidJWTOnDebuggerRoutes(t *testing.T) {
-	authenticator := &Authenticator{
-		auth0: &auth0Authenticator{
-			validateToken: func(context.Context, string) (any, error) {
-				return nil, errors.New("invalid token")
-			},
-			allowedEmails: map[string]struct{}{},
-		},
-	}
-	protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Fatal("unexpected handler invocation")
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
-	req.Header.Set("Authorization", "Bearer header.payload.signature")
-	rec := httptest.NewRecorder()
-
-	protectedHandler.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusUnauthorized, rec.Code)
-
-	resp := decodeAuthErrorBody(t, rec)
-	assert.Equal(t, "invalid_token", resp["code"])
-}
-
-func TestCompositeAuthRejectsNonAllowlistedOperatorOnDebuggerRoutes(t *testing.T) {
-	authenticator := &Authenticator{
-		auth0: &auth0Authenticator{
-			validateToken: func(context.Context, string) (any, error) {
-				return validatedAuth0Claims("outside@example.com", time.Now().Add(time.Hour)), nil
-			},
-			allowedEmails: map[string]struct{}{"operator@example.com": {}},
-		},
-	}
-	protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Fatal("unexpected handler invocation")
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
-	req.Header.Set("Authorization", "Bearer header.payload.signature")
-	rec := httptest.NewRecorder()
-
-	protectedHandler.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusForbidden, rec.Code)
-
-	resp := decodeAuthErrorBody(t, rec)
-	assert.Equal(t, "forbidden_operator", resp["code"])
-}
-
-func TestCompositeAuthAcceptsAllowlistedOperatorBearerOnDebuggerRoutes(t *testing.T) {
-	authenticator := &Authenticator{
-		auth0: &auth0Authenticator{
-			validateToken: func(context.Context, string) (any, error) {
-				return validatedAuth0Claims("Operator@Example.com", time.Now().Add(time.Hour)), nil
-			},
-			allowedEmails: map[string]struct{}{"operator@example.com": {}},
-		},
-	}
-
-	var receivedMode AuthMode
-	var receivedEmail string
-	var receivedSubject string
-	protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var ok bool
-		receivedMode, ok = GetAuthMode(r.Context())
-		require.True(t, ok)
-		receivedEmail, ok = GetOperatorEmail(r.Context())
-		require.True(t, ok)
-		receivedSubject, ok = GetOperatorSubject(r.Context())
-		require.True(t, ok)
-		w.WriteHeader(http.StatusNoContent)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/api/traces", nil)
-	req.Header.Set("Authorization", "Bearer header.payload.signature")
-	rec := httptest.NewRecorder()
-
-	protectedHandler.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusNoContent, rec.Code)
-	assert.Equal(t, AuthModeOperator, receivedMode)
-	assert.Equal(t, "operator@example.com", receivedEmail)
-	assert.Equal(t, "google-oauth2|operator", receivedSubject)
-}
-
-func TestCompositeAuthAcceptsAllowlistedOperatorBearerOnEngineProjectionBackfill(t *testing.T) {
-	authenticator := &Authenticator{
-		auth0: &auth0Authenticator{
-			validateToken: func(context.Context, string) (any, error) {
-				return validatedAuth0Claims("Operator@Example.com", time.Now().Add(time.Hour)), nil
-			},
-			allowedEmails: map[string]struct{}{"operator@example.com": {}},
-		},
-	}
-
-	var receivedMode AuthMode
-	protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var ok bool
-		receivedMode, ok = GetAuthMode(r.Context())
-		require.True(t, ok)
-		w.WriteHeader(http.StatusNoContent)
-	}))
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/engine/projections/backfill", nil)
-	req.Header.Set("Authorization", "Bearer header.payload.signature")
-	rec := httptest.NewRecorder()
-
-	protectedHandler.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusNoContent, rec.Code)
-	assert.Equal(t, AuthModeOperator, receivedMode)
-}
-
-func TestCompositeAuthAcceptsAllowlistedOperatorBearerOnEngineConsoleRoutes(t *testing.T) {
-	authenticator := &Authenticator{
-		auth0: &auth0Authenticator{
-			validateToken: func(context.Context, string) (any, error) {
-				return validatedAuth0Claims("Operator@Example.com", time.Now().Add(time.Hour)), nil
-			},
-			allowedEmails: map[string]struct{}{"operator@example.com": {}},
-		},
-	}
-
-	for _, tc := range []struct {
-		name   string
-		method string
-		path   string
-	}{
-		{name: "start run", method: http.MethodPost, path: "/v1/engine/runs"},
-		{name: "instance lookup", method: http.MethodGet, path: "/v1/engine/instances/customer-123"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var receivedMode AuthMode
-			protectedHandler := authenticator.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var ok bool
-				receivedMode, ok = GetAuthMode(r.Context())
-				require.True(t, ok)
-				w.WriteHeader(http.StatusNoContent)
-			}))
-
-			req := httptest.NewRequest(tc.method, tc.path, nil)
-			req.Header.Set("Authorization", "Bearer header.payload.signature")
-			rec := httptest.NewRecorder()
-
-			protectedHandler.ServeHTTP(rec, req)
-			require.Equal(t, http.StatusNoContent, rec.Code)
-			assert.Equal(t, AuthModeOperator, receivedMode)
-		})
-	}
 }
 
 func TestCompositeAuthAcceptsLegacyAPIKeyBearerFallbackOnDebuggerRoutes(t *testing.T) {

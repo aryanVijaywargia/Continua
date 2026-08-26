@@ -25,7 +25,6 @@ type Server struct {
 	// otlpIngestEnabled gates the preview OTLP/HTTP trace ingestion surface the same way
 	// enginePublicAPIEnabled gates /v1/engine: the route 404s while the flag is off.
 	otlpIngestEnabled   bool
-	auth0Config         config.Auth0Config
 	publicDemoConfig    config.PublicDemoConfig
 	localSingleUserMode bool
 }
@@ -51,7 +50,6 @@ func newConfiguredServer(
 		server.enginePublicAPIEnabled = cfg.Engine.PublicAPIEnabled
 		server.otlpIngestEnabled = cfg.Ingest.OTLPEnabled
 		server.engineControl.completionGrace = cfg.Engine.LeaseCompletionGrace
-		server.auth0Config = cfg.Auth0
 		server.publicDemoConfig = cfg.PublicDemo
 		server.localSingleUserMode = cfg.LocalSingleUserMode
 	}
