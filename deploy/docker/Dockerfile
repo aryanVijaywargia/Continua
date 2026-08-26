@@ -15,7 +15,7 @@ COPY web/ web/
 RUN pnpm --filter web build
 
 # Go build stage
-FROM golang:1.24-alpine AS go-builder
+FROM golang:1.25.12-alpine AS go-builder
 WORKDIR /app
 
 RUN apk add --no-cache git
@@ -36,6 +36,8 @@ RUN CGO_ENABLED=0 go build \
 # Runtime stage
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata
+
+ENV HOST=0.0.0.0
 
 COPY --from=go-builder /continua /usr/local/bin/continua
 

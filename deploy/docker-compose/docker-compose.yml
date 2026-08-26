@@ -7,6 +7,7 @@ services:
       - "8080:8080"
     environment:
       - DATABASE_URL=postgres://continua:continua@postgres:5432/continua?sslmode=disable
+      - HOST=0.0.0.0
       - PUBLIC_DEMO_ENABLED=1
       - PUBLIC_DEMO_PROJECT_ID=11111111-1111-4111-8111-111111111111
       - PUBLIC_DEMO_LABEL=Sample data

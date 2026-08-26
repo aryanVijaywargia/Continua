@@ -78,7 +78,7 @@ func (s ServerConfig) Address() string {
 
 // Load loads configuration from environment variables.
 // Required: DATABASE_URL
-// Optional: HOST (default: 0.0.0.0), PORT (default: 8080)
+// Optional: HOST (default: 127.0.0.1), PORT (default: 8080)
 func Load() (*Config, error) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -87,7 +87,7 @@ func Load() (*Config, error) {
 
 	host := os.Getenv("HOST")
 	if host == "" {
-		host = "0.0.0.0"
+		host = "127.0.0.1"
 	}
 
 	port := os.Getenv("PORT")

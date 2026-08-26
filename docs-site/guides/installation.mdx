@@ -128,7 +128,7 @@ Common optional variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `HOST` | `0.0.0.0` | Server bind host |
+| `HOST` | `127.0.0.1` | Server bind host |
 | `PORT` | `8080` | Server bind port |
 | `INGEST_TRUE_ASYNC_DEFAULT` | `false` | Server default async ingest behavior |
 | `INGEST_DEPENDENCY_RETRY_WINDOW` | `15m` | Retry window for async batches waiting on dependencies |
@@ -137,6 +137,8 @@ Common optional variables:
 | `RIVER_QUEUE_ROLLUP_WORKERS` | `10` | Rollup job concurrency |
 | `RIVER_QUEUE_MAINTENANCE_WORKERS` | `1` | Cleanup / maintenance job concurrency |
 | `RIVER_QUEUE_DEFAULT_WORKERS` | `1` | Catch-all queue concurrency |
+
+Set `HOST=0.0.0.0` explicitly to listen on all network interfaces.
 
 Engine surface (preview: see [Roadmap](/roadmap) for status):
 

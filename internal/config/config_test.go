@@ -10,6 +10,16 @@ import (
 	"github.com/continua-ai/continua/internal/config"
 )
 
+func TestLoad_DefaultsHostToLoopback(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("HOST", "")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Equal(t, "127.0.0.1", cfg.Server.Host)
+}
+
 func TestLoad_RejectsInvalidTrueAsyncDefault(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("INGEST_TRUE_ASYNC_DEFAULT", "definitely")

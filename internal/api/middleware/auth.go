@@ -202,14 +202,11 @@ func (a *Authenticator) servePublicDemoRead(next http.Handler, w http.ResponseWr
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
+// serveProjectBootstrap admits loopback project list and creation requests
+// without credentials. Creating a project returns a working API key, so this
+// recovery path must stay closed on non-loopback interfaces.
 func (a *Authenticator) serveProjectBootstrap(next http.Handler, w http.ResponseWriter, r *http.Request) bool {
-	// Local-mode bootstrap: when the public demo is disabled, the deployment is
-	// single-tenant and the operator owns the box. We let unauthenticated callers
-	// list and create projects on /api/projects so a fresh install (or an operator
-	// who has lost their API key) can always self-recover without wiping the
-	// database. The public demo disables this path so anonymous visitors stay
-	// read-only inside their one scoped project.
-	if a.publicDemo != nil || !isProjectBootstrapRoute(r.Method, r.URL.Path) {
+	if a.publicDemo != nil || !isProjectBootstrapRoute(r.Method, r.URL.Path) || !IsLoopbackRequest(r) {
 		return false
 	}
 
