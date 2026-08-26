@@ -265,12 +265,8 @@ func (s *Service) enqueueRollupsInTx(ctx context.Context, tx pgx.Tx, traceIDs []
 	}
 
 	for _, traceID := range traceIDs {
-		res, err := s.riverClient.InsertTx(ctx, tx, jobargs.TraceRollupArgs{TraceID: traceID}, nil)
-		if err != nil {
+		if _, err := s.riverClient.InsertTx(ctx, tx, jobargs.TraceRollupArgs{TraceID: traceID}, nil); err != nil {
 			return err
-		}
-		if res.UniqueSkippedAsDuplicate {
-			continue
 		}
 	}
 

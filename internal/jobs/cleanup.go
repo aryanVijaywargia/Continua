@@ -2,7 +2,7 @@ package jobs
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -33,10 +33,9 @@ func (w *CleanupWorker) Work(ctx context.Context, _ *river.Job[jobargs.CleanupAr
 		return err
 	}
 
-	log.Printf(
-		"event=batch_cleanup_completed deleted_count=%d duration_ms=%d",
-		len(deletedBatchIDs),
-		time.Since(startedAt).Milliseconds(),
+	slog.Info("batch_cleanup_completed",
+		"deleted_count", len(deletedBatchIDs),
+		"duration_ms", time.Since(startedAt).Milliseconds(),
 	)
 	return nil
 }

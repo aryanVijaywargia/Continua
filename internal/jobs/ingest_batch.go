@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -85,13 +85,12 @@ func (w *IngestBatchWorker) Work(ctx context.Context, job *river.Job[IngestBatch
 		return w.resolveCommitOutcome(ctx, &batch, startedAt, err)
 	}
 
-	log.Printf(
-		"event=batch_processing_completed batch_id=%s batch_key=%s project_id=%s attempt_count=%d duration_ms=%d",
-		batch.ID,
-		batch.BatchKey,
-		batch.ProjectID,
-		batch.AttemptCount,
-		time.Since(startedAt).Milliseconds(),
+	slog.Info("batch_processing_completed",
+		"batch_id", batch.ID,
+		"batch_key", batch.BatchKey,
+		"project_id", batch.ProjectID,
+		"attempt_count", batch.AttemptCount,
+		"duration_ms", time.Since(startedAt).Milliseconds(),
 	)
 	return nil
 }
@@ -108,13 +107,12 @@ func (w *IngestBatchWorker) resolveCommitOutcome(
 		payloadMissing := store.IsNotFound(payloadErr)
 
 		if persistedBatch.Status == "completed" && payloadMissing {
-			log.Printf(
-				"event=batch_processing_commit_reconciled batch_id=%s batch_key=%s project_id=%s attempt_count=%d duration_ms=%d",
-				batch.ID,
-				batch.BatchKey,
-				batch.ProjectID,
-				persistedBatch.AttemptCount,
-				time.Since(startedAt).Milliseconds(),
+			slog.Info("batch_processing_commit_reconciled",
+				"batch_id", batch.ID,
+				"batch_key", batch.BatchKey,
+				"project_id", batch.ProjectID,
+				"attempt_count", persistedBatch.AttemptCount,
+				"duration_ms", time.Since(startedAt).Milliseconds(),
 			)
 			return nil
 		}
@@ -124,13 +122,14 @@ func (w *IngestBatchWorker) resolveCommitOutcome(
 		}
 	}
 
-	log.Printf(
-		"event=batch_processing_commit_ambiguous batch_id=%s batch_key=%s project_id=%s attempt_count=%d duration_ms=%d error_code=commit_uncertain",
-		batch.ID,
-		batch.BatchKey,
-		batch.ProjectID,
-		batch.AttemptCount,
-		time.Since(startedAt).Milliseconds(),
+	slog.Warn("batch_processing_commit_ambiguous",
+		"batch_id", batch.ID,
+		"batch_key", batch.BatchKey,
+		"project_id", batch.ProjectID,
+		"attempt_count", batch.AttemptCount,
+		"duration_ms", time.Since(startedAt).Milliseconds(),
+		"error_code", "commit_uncertain",
+		"err", commitErr,
 	)
 	return commitErr
 }
@@ -148,12 +147,11 @@ func (w *IngestBatchWorker) claimBatch(ctx context.Context, batchID uuid.UUID) (
 	case "completed", "failed", "accepted":
 		return batch, false, nil
 	case "processing":
-		log.Printf(
-			"event=batch_processing_resumed batch_id=%s batch_key=%s project_id=%s attempt_count=%d",
-			batch.ID,
-			batch.BatchKey,
-			batch.ProjectID,
-			batch.AttemptCount,
+		slog.Info("batch_processing_resumed",
+			"batch_id", batch.ID,
+			"batch_key", batch.BatchKey,
+			"project_id", batch.ProjectID,
+			"attempt_count", batch.AttemptCount,
 		)
 		return batch, true, nil
 	case "queued":
@@ -164,12 +162,11 @@ func (w *IngestBatchWorker) claimBatch(ctx context.Context, batchID uuid.UUID) (
 			}
 			return platform.IngestBatch{}, false, err
 		}
-		log.Printf(
-			"event=batch_processing_started batch_id=%s batch_key=%s project_id=%s attempt_count=%d",
-			claimed.ID,
-			claimed.BatchKey,
-			claimed.ProjectID,
-			claimed.AttemptCount,
+		slog.Info("batch_processing_started",
+			"batch_id", claimed.ID,
+			"batch_key", claimed.BatchKey,
+			"project_id", claimed.ProjectID,
+			"attempt_count", claimed.AttemptCount,
 		)
 		return claimed, true, nil
 	default:
@@ -261,14 +258,14 @@ func (w *IngestBatchWorker) finishTerminalFailure(
 		return statusErr
 	}
 
-	log.Printf(
-		"event=batch_processing_failed batch_id=%s batch_key=%s project_id=%s attempt_count=%d duration_ms=%d error_code=%s",
-		batch.ID,
-		batch.BatchKey,
-		batch.ProjectID,
-		batch.AttemptCount,
-		time.Since(startedAt).Milliseconds(),
-		terminalErr.Code,
+	slog.Error("batch_processing_failed",
+		"batch_id", batch.ID,
+		"batch_key", batch.BatchKey,
+		"project_id", batch.ProjectID,
+		"attempt_count", batch.AttemptCount,
+		"duration_ms", time.Since(startedAt).Milliseconds(),
+		"error_code", terminalErr.Code,
+		"err", terminalErr,
 	)
 	return nil
 }
@@ -289,14 +286,13 @@ func (w *IngestBatchWorker) retryBatch(
 		return statusErr
 	}
 
-	log.Printf(
-		"event=batch_processing_retried batch_id=%s batch_key=%s project_id=%s attempt_count=%d duration_ms=%d error_code=%s",
-		batch.ID,
-		batch.BatchKey,
-		batch.ProjectID,
-		batch.AttemptCount,
-		time.Since(startedAt).Milliseconds(),
-		errorCode,
+	slog.Warn("batch_processing_retried",
+		"batch_id", batch.ID,
+		"batch_key", batch.BatchKey,
+		"project_id", batch.ProjectID,
+		"attempt_count", batch.AttemptCount,
+		"duration_ms", time.Since(startedAt).Milliseconds(),
+		"error_code", errorCode,
 	)
 	return err
 }
