@@ -13,17 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countSpansByTrace = `-- name: CountSpansByTrace :one
-SELECT COUNT(*) FROM spans WHERE trace_id = $1
-`
-
-func (q *Queries) CountSpansByTrace(ctx context.Context, traceID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countSpansByTrace, traceID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createSpan = `-- name: CreateSpan :one
 INSERT INTO spans (
     project_id, trace_id, span_id, parent_span_id, name, type,
@@ -170,55 +159,6 @@ func (q *Queries) DeleteSpanEventsByTrace(ctx context.Context, traceID uuid.UUID
 	return err
 }
 
-const getSpan = `-- name: GetSpan :one
-SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at, search_vector FROM spans WHERE id = $1
-`
-
-func (q *Queries) GetSpan(ctx context.Context, id uuid.UUID) (Span, error) {
-	row := q.db.QueryRow(ctx, getSpan, id)
-	var i Span
-	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.TraceID,
-		&i.SpanID,
-		&i.ParentSpanID,
-		&i.Name,
-		&i.Type,
-		&i.Status,
-		&i.StatusMessage,
-		&i.Level,
-		&i.StartTime,
-		&i.EndTime,
-		&i.ServerReceivedAt,
-		&i.DurationMs,
-		&i.Input,
-		&i.InputTruncated,
-		&i.InputOriginalSizeBytes,
-		&i.InputTruncationReason,
-		&i.Output,
-		&i.OutputTruncated,
-		&i.OutputOriginalSizeBytes,
-		&i.OutputTruncationReason,
-		&i.Thinking,
-		&i.ThinkingTruncated,
-		&i.Model,
-		&i.Provider,
-		&i.PromptTokens,
-		&i.CompletionTokens,
-		&i.TotalTokens,
-		&i.TotalCost,
-		&i.Metadata,
-		&i.Sequence,
-		&i.Depth,
-		&i.Version,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.SearchVector,
-	)
-	return i, err
-}
-
 const getSpanByExternalID = `-- name: GetSpanByExternalID :one
 SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at, search_vector FROM spans WHERE trace_id = $1 AND span_id = $2
 `
@@ -332,73 +272,6 @@ func (q *Queries) ListSpansByTrace(ctx context.Context, arg ListSpansByTracePara
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SearchVector,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSpansSummaryByTrace = `-- name: ListSpansSummaryByTrace :many
-SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status,
-       start_time, end_time, duration_ms, model, total_tokens, total_cost,
-       input_truncated, output_truncated, depth
-FROM spans
-WHERE trace_id = $1
-ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST
-`
-
-type ListSpansSummaryByTraceRow struct {
-	ID              uuid.UUID          `json:"id"`
-	ProjectID       uuid.UUID          `json:"project_id"`
-	TraceID         uuid.UUID          `json:"trace_id"`
-	SpanID          string             `json:"span_id"`
-	ParentSpanID    *string            `json:"parent_span_id"`
-	Name            string             `json:"name"`
-	Type            string             `json:"type"`
-	Status          string             `json:"status"`
-	StartTime       time.Time          `json:"start_time"`
-	EndTime         pgtype.Timestamptz `json:"end_time"`
-	DurationMs      *int64             `json:"duration_ms"`
-	Model           *string            `json:"model"`
-	TotalTokens     *int64             `json:"total_tokens"`
-	TotalCost       pgtype.Numeric     `json:"total_cost"`
-	InputTruncated  *bool              `json:"input_truncated"`
-	OutputTruncated *bool              `json:"output_truncated"`
-	Depth           *int32             `json:"depth"`
-}
-
-func (q *Queries) ListSpansSummaryByTrace(ctx context.Context, traceID uuid.UUID) ([]ListSpansSummaryByTraceRow, error) {
-	rows, err := q.db.Query(ctx, listSpansSummaryByTrace, traceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListSpansSummaryByTraceRow{}
-	for rows.Next() {
-		var i ListSpansSummaryByTraceRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ProjectID,
-			&i.TraceID,
-			&i.SpanID,
-			&i.ParentSpanID,
-			&i.Name,
-			&i.Type,
-			&i.Status,
-			&i.StartTime,
-			&i.EndTime,
-			&i.DurationMs,
-			&i.Model,
-			&i.TotalTokens,
-			&i.TotalCost,
-			&i.InputTruncated,
-			&i.OutputTruncated,
-			&i.Depth,
 		); err != nil {
 			return nil, err
 		}

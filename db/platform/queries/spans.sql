@@ -1,6 +1,3 @@
--- name: GetSpan :one
-SELECT * FROM spans WHERE id = $1;
-
 -- name: GetSpanByExternalID :one
 SELECT * FROM spans WHERE trace_id = $1 AND span_id = $2;
 
@@ -9,17 +6,6 @@ SELECT * FROM spans
 WHERE trace_id = sqlc.arg(trace_id)
   AND (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST;
-
--- name: ListSpansSummaryByTrace :many
-SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status,
-       start_time, end_time, duration_ms, model, total_tokens, total_cost,
-       input_truncated, output_truncated, depth
-FROM spans
-WHERE trace_id = $1
-ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST;
-
--- name: CountSpansByTrace :one
-SELECT COUNT(*) FROM spans WHERE trace_id = $1;
 
 -- name: CreateSpan :one
 INSERT INTO spans (

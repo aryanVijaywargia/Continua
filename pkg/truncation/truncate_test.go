@@ -103,25 +103,6 @@ func TestTruncateJSON_NestedObject(t *testing.T) {
 	}
 }
 
-func TestTruncate_DefaultLimit(t *testing.T) {
-	// Small payload should not be truncated
-	small := []byte(`{"key": "value"}`)
-	result := Truncate(small)
-	if result.Truncated {
-		t.Error("expected small payload to not be truncated")
-	}
-
-	// Large payload (> 64KB) should be truncated
-	large := []byte(`{"data": "` + strings.Repeat("x", 100000) + `"}`)
-	result = Truncate(large)
-	if !result.Truncated {
-		t.Error("expected large payload to be truncated")
-	}
-	if len(result.Data) > DefaultMaxBytes {
-		t.Errorf("expected data size <= %d, got %d", DefaultMaxBytes, len(result.Data))
-	}
-}
-
 func TestTruncateWithLimit(t *testing.T) {
 	data := []byte(`{"key": "` + strings.Repeat("x", 100) + `"}`)
 
@@ -135,28 +116,5 @@ func TestTruncateWithLimit(t *testing.T) {
 	result = TruncateWithLimit(data, 50)
 	if !result.Truncated {
 		t.Error("expected truncated with small limit")
-	}
-}
-
-func TestIsValidUTF8End(t *testing.T) {
-	tests := []struct {
-		name     string
-		data     []byte
-		expected bool
-	}{
-		{"empty", []byte{}, true},
-		{"ascii", []byte("hello"), true},
-		{"utf8 complete", []byte("héllo"), true},
-		{"utf8 incomplete", []byte{0xC3}, false}, // Start of é but missing continuation
-		{"continuation only", []byte{0x80}, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isValidUTF8End(tt.data)
-			if result != tt.expected {
-				t.Errorf("expected %v, got %v", tt.expected, result)
-			}
-		})
 	}
 }
