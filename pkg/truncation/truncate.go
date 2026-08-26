@@ -172,56 +172,6 @@ func rawTruncate(_ []byte, maxBytes int) []byte {
 	return fallback
 }
 
-// isValidUTF8End checks if the byte slice ends at a valid UTF-8 boundary.
-// Returns false if the slice ends in the middle of a multi-byte UTF-8 sequence.
-func isValidUTF8End(b []byte) bool {
-	if len(b) == 0 {
-		return true
-	}
-
-	// Work backwards to find the start of the last character
-	i := len(b) - 1
-
-	// Skip continuation bytes (10xxxxxx)
-	for i >= 0 && (b[i]&0xC0) == 0x80 {
-		i--
-	}
-
-	if i < 0 {
-		// All bytes were continuation bytes - invalid
-		return false
-	}
-
-	// Now b[i] should be the start of a character
-	startByte := b[i]
-	remainingBytes := len(b) - 1 - i
-
-	// Determine expected sequence length from start byte
-	var expectedLen int
-	switch {
-	case startByte < 0x80:
-		expectedLen = 1 // ASCII
-	case startByte < 0xC0:
-		return false // Continuation byte as start - invalid
-	case startByte < 0xE0:
-		expectedLen = 2
-	case startByte < 0xF0:
-		expectedLen = 3
-	case startByte < 0xF8:
-		expectedLen = 4
-	default:
-		return false // Invalid UTF-8 start byte
-	}
-
-	// Check if we have all the continuation bytes we need
-	return remainingBytes == expectedLen-1
-}
-
-// Truncate is a convenience function that truncates a payload with the default max size.
-func Truncate(data []byte) TruncateResult {
-	return TruncateJSON(data, DefaultMaxBytes)
-}
-
 // TruncateWithLimit truncates a payload with a custom max size.
 func TruncateWithLimit(data []byte, maxBytes int) TruncateResult {
 	return TruncateJSON(data, maxBytes)

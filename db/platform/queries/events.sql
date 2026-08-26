@@ -20,29 +20,8 @@ WHERE project_id = $1
   AND $13 IS NOT NULL
 LIMIT 1;
 
--- name: GetSpanEvent :one
-SELECT * FROM span_events WHERE id = $1;
-
--- name: ListSpanEventsBySpan :many
-SELECT * FROM span_events
-WHERE trace_id = $1 AND span_id = $2
-ORDER BY COALESCE(event_ts, server_ingested_at) ASC, sequence NULLS LAST;
-
 -- name: ListSpanEventsByTrace :many
 SELECT * FROM span_events
 WHERE trace_id = sqlc.arg(trace_id)
   AND (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(event_ts, server_ingested_at) ASC, sequence NULLS LAST;
-
--- name: CountOrphanEvents :one
--- Returns count of events whose span_id doesn't exist in spans table
-SELECT COUNT(*) FROM span_events e
-LEFT JOIN spans s ON s.trace_id = e.trace_id AND s.span_id = e.span_id
-WHERE e.trace_id = $1 AND s.id IS NULL;
-
--- name: ListOrphanEvents :many
--- Returns events whose span_id doesn't exist in spans table
-SELECT e.* FROM span_events e
-LEFT JOIN spans s ON s.trace_id = e.trace_id AND s.span_id = e.span_id
-WHERE e.trace_id = $1 AND s.id IS NULL
-ORDER BY COALESCE(e.event_ts, e.server_ingested_at) ASC;
