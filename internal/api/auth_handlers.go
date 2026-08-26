@@ -6,10 +6,12 @@ import (
 	"github.com/continua-ai/continua/internal/api/middleware"
 )
 
-// GetAuthConfig returns the runtime Auth0 bootstrap configuration for the web debugger.
+// GetAuthConfig returns the runtime bootstrap configuration for the web debugger.
+// Hosted operator login was removed, so the Auth0 fields are always empty; the
+// response shape stays so existing debuggers keep parsing it.
 func (s *Server) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
 	response := AuthConfig{
-		Enabled: s.auth0Config.Enabled,
+		Enabled: false,
 	}
 
 	// Only ever advertise the credential-free bypass to a caller that could
@@ -19,17 +21,8 @@ func (s *Server) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.publicDemoConfig.Enabled {
-		response.Enabled = false
 		response.PublicDemoEnabled = boolValuePtr(true)
 		response.PublicDemoLabel = &s.publicDemoConfig.Label
-		writeJSON(w, http.StatusOK, response)
-		return
-	}
-
-	if s.auth0Config.Enabled {
-		response.Domain = &s.auth0Config.Domain
-		response.ClientId = &s.auth0Config.ClientID
-		response.Audience = &s.auth0Config.Audience
 	}
 
 	writeJSON(w, http.StatusOK, response)

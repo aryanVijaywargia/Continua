@@ -106,49 +106,6 @@ func TestLoad_LeaseCompletionGrace(t *testing.T) {
 	})
 }
 
-func TestLoad_RejectsPartialAuth0Configuration(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://example")
-	t.Setenv("AUTH0_DOMAIN", "continua.us.auth0.com")
-	t.Setenv("AUTH0_CLIENT_ID", "client-id")
-
-	cfg, err := config.Load()
-	require.Error(t, err)
-	assert.Nil(t, cfg)
-	assert.Contains(t, err.Error(), "partial Auth0 configuration")
-	assert.Contains(t, err.Error(), "AUTH0_AUDIENCE")
-	assert.Contains(t, err.Error(), "AUTH0_ALLOWED_EMAILS")
-}
-
-func TestLoad_PublicDemoIgnoresPartialAuth0Configuration(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://example")
-	t.Setenv("PUBLIC_DEMO_ENABLED", "true")
-	t.Setenv("PUBLIC_DEMO_PROJECT_ID", "11111111-1111-1111-1111-111111111111")
-	t.Setenv("AUTH0_DOMAIN", "continua.us.auth0.com")
-
-	cfg, err := config.Load()
-	require.NoError(t, err)
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.PublicDemo.Enabled)
-	assert.False(t, cfg.Auth0.Enabled)
-}
-
-func TestLoad_NormalizesAuth0Configuration(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://example")
-	t.Setenv("AUTH0_DOMAIN", "https://continua.us.auth0.com/")
-	t.Setenv("AUTH0_CLIENT_ID", "client-id")
-	t.Setenv("AUTH0_AUDIENCE", "https://continua/api")
-	t.Setenv("AUTH0_ALLOWED_EMAILS", "Operator@One.dev, operator@two.dev")
-
-	cfg, err := config.Load()
-	require.NoError(t, err)
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.Auth0.Enabled)
-	assert.Equal(t, "continua.us.auth0.com", cfg.Auth0.Domain)
-	assert.Equal(t, "client-id", cfg.Auth0.ClientID)
-	assert.Equal(t, "https://continua/api", cfg.Auth0.Audience)
-	assert.Equal(t, []string{"operator@one.dev", "operator@two.dev"}, cfg.Auth0.AllowedEmails)
-}
-
 func TestLocalSingleUserModeDefaultsDisabled(t *testing.T) {
 	t.Run("unset environment leaves local single-user mode off", func(t *testing.T) {
 		t.Setenv("DATABASE_URL", "postgres://example")
@@ -169,23 +126,6 @@ func TestLocalSingleUserModeDefaultsDisabled(t *testing.T) {
 		require.NotNil(t, cfg)
 		assert.True(t, cfg.LocalSingleUserMode)
 	})
-}
-
-func TestLocalSingleUserModeRejectedWithAuth0(t *testing.T) {
-	// Fail closed: an unauthenticated loopback bypass must never coexist with
-	// hosted operator authentication, so the server refuses to boot.
-	t.Setenv("DATABASE_URL", "postgres://example")
-	t.Setenv("LOCAL_SINGLE_USER_MODE", "true")
-	t.Setenv("AUTH0_DOMAIN", "continua.us.auth0.com")
-	t.Setenv("AUTH0_CLIENT_ID", "client-id")
-	t.Setenv("AUTH0_AUDIENCE", "https://continua/api")
-	t.Setenv("AUTH0_ALLOWED_EMAILS", "operator@example.com")
-
-	cfg, err := config.Load()
-	require.Error(t, err)
-	assert.Nil(t, cfg)
-	assert.Contains(t, err.Error(), "LOCAL_SINGLE_USER_MODE")
-	assert.Contains(t, err.Error(), "AUTH0")
 }
 
 func TestLocalSingleUserModeRejectedWithPublicDemo(t *testing.T) {

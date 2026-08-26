@@ -18,12 +18,9 @@ const (
 )
 
 // ListProjects returns every project in the deployment.
-// Project management is an operator-equivalent concern: in local-first mode the API-key
-// holder IS the operator. When Auth0 is enabled, only operator tokens may enumerate.
+// Project management is an operator-equivalent concern: in local-first mode the
+// API-key holder IS the operator.
 func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOperatorWhenAuth0Enabled(w, r) {
-		return
-	}
 	var authenticatedProjectID *openapi_types.UUID
 	if projectID, ok := middleware.GetProjectID(r.Context()); ok {
 		authenticatedProjectID = &projectID
@@ -51,9 +48,6 @@ func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request) {
 
 // CreateProject generates a fresh API key and returns it once.
 func (s *Server) CreateProject(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOperatorWhenAuth0Enabled(w, r) {
-		return
-	}
 	var req CreateProjectRequest
 	if !decodeJSONRequest(w, r, &req) {
 		return
@@ -81,9 +75,6 @@ func (s *Server) CreateProject(w http.ResponseWriter, r *http.Request) {
 
 // UpdateProject renames an existing project.
 func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	if !s.requireOperatorWhenAuth0Enabled(w, r) {
-		return
-	}
 	var req UpdateProjectRequest
 	if !decodeJSONRequest(w, r, &req) {
 		return
@@ -105,9 +96,6 @@ func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, id openap
 
 // RotateProjectAPIKey replaces the project's API key and returns the new plaintext key once.
 func (s *Server) RotateProjectAPIKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	if !s.requireOperatorWhenAuth0Enabled(w, r) {
-		return
-	}
 	plaintextKey, err := middleware.GenerateAPIKey()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to generate API key")
@@ -125,42 +113,12 @@ func (s *Server) RotateProjectAPIKey(w http.ResponseWriter, r *http.Request, id 
 
 // DeleteProject removes a project and cascades its data via FK.
 func (s *Server) DeleteProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	if !s.requireOperatorWhenAuth0Enabled(w, r) {
-		return
-	}
-
 	if err := s.store.DeleteProject(r.Context(), id); err != nil {
 		writeProjectMutationError(w, err, "Failed to delete project")
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// requireOperatorWhenAuth0Enabled restricts project management to operator (Auth0) auth
-// when Auth0 is configured. In local-first mode (Auth0 disabled) the API-key holder is
-// the operator and is allowed through.
-//
-// Deliberate trade-off: in Auth0-disabled local mode, *any* valid project API key
-// can list, create, rename, rotate, and delete any
-// project. This is acceptable because local mode is single-tenant: the key holder
-// owns the box. Deployments that need cross-tenant isolation must enable Auth0,
-// which causes API-key callers to receive 403 on every endpoint guarded here.
-func (s *Server) requireOperatorWhenAuth0Enabled(w http.ResponseWriter, r *http.Request) bool {
-	if !s.auth0Config.Enabled {
-		return true
-	}
-	mode, _ := middleware.GetAuthMode(r.Context())
-	if mode == middleware.AuthModeOperator {
-		return true
-	}
-	writeError(
-		w,
-		http.StatusForbidden,
-		"operator_required",
-		"Project management requires operator authentication on this deployment",
-	)
-	return false
 }
 
 func validateProjectName(w http.ResponseWriter, name string) bool {

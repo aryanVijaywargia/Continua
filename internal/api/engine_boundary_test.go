@@ -249,8 +249,6 @@ func invokeEngineBoundaryReadAsOperator(
 
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
-	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
-	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
 	rec := httptest.NewRecorder()
 
 	switch read {

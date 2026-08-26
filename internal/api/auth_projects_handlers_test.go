@@ -33,45 +33,11 @@ func TestGetAuthConfig_DisabledReturnsOnlyEnabledFalse(t *testing.T) {
 	assert.Nil(t, resp.PublicDemoLabel)
 }
 
-func TestGetAuthConfig_EnabledReturnsRuntimeBootstrapFields(t *testing.T) {
-	server := NewServer(nil, nil)
-	server.auth0Config = config.Auth0Config{
-		Enabled:  true,
-		Domain:   "continua.us.auth0.com",
-		ClientID: "operator-client-id",
-		Audience: "https://continua/operator",
-		AllowedEmails: []string{
-			"operator@example.com",
-		},
-	}
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/config", nil)
-
-	server.GetAuthConfig(rec, req)
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	resp := decodeJSONBody[AuthConfig](t, rec)
-	require.True(t, resp.Enabled)
-	require.NotNil(t, resp.Domain)
-	require.NotNil(t, resp.ClientId)
-	require.NotNil(t, resp.Audience)
-	assert.Equal(t, server.auth0Config.Domain, *resp.Domain)
-	assert.Equal(t, server.auth0Config.ClientID, *resp.ClientId)
-	assert.Equal(t, server.auth0Config.Audience, *resp.Audience)
-}
-
 func TestGetAuthConfig_PublicDemoReturnsDemoFields(t *testing.T) {
 	server := NewServer(nil, nil)
 	server.publicDemoConfig = config.PublicDemoConfig{
 		Enabled: true,
 		Label:   "Portfolio demo",
-	}
-	server.auth0Config = config.Auth0Config{
-		Enabled:  true,
-		Domain:   "continua.us.auth0.com",
-		ClientID: "operator-client-id",
-		Audience: "https://continua/operator",
 	}
 
 	rec := httptest.NewRecorder()
@@ -128,7 +94,7 @@ func TestAuthConfigHidesLocalModeOffLoopback(t *testing.T) {
 	}
 }
 
-func TestListProjects_OperatorReturnsAllVisibleProjects(t *testing.T) {
+func TestListProjects_BootstrapReturnsAllVisibleProjects(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	platformStore := store.New(pool)
@@ -147,9 +113,9 @@ func TestListProjects_OperatorReturnsAllVisibleProjects(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/projects", nil)
-	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeOperator)
-	reqCtx = context.WithValue(reqCtx, middleware.OperatorEmailKey, "operator@example.com")
-	reqCtx = context.WithValue(reqCtx, middleware.OperatorSubjectKey, "google-oauth2|operator")
+	// The bootstrap mode is the reachable credential-free caller for this
+	// surface since hosted operator login was removed.
+	reqCtx := context.WithValue(req.Context(), middleware.AuthModeKey, middleware.AuthModeBootstrap)
 	rec := httptest.NewRecorder()
 
 	server.ListProjects(rec, req.WithContext(reqCtx))
@@ -166,8 +132,7 @@ func TestListProjects_OperatorReturnsAllVisibleProjects(t *testing.T) {
 func TestListProjects_APIKeyContextSeesAllProjects(t *testing.T) {
 	// Local-first design: an authenticated caller — including one bound to a single
 	// project via API key — can enumerate every project so the management UI works
-	// with just a locally created project key. In remote multi-tenant deployments, this
-	// surface should be gated by operator auth (Auth0).
+	// with just a locally created project key.
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	platformStore := store.New(pool)

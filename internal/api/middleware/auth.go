@@ -22,8 +22,11 @@ type contextKey string
 
 // Context keys used by auth middleware.
 const (
-	ProjectIDKey       contextKey = "project_id"
-	AuthModeKey        contextKey = "auth_mode"
+	ProjectIDKey contextKey = "project_id"
+	AuthModeKey  contextKey = "auth_mode"
+	// OperatorEmailKey and OperatorSubjectKey have no writer since hosted
+	// operator login was removed. They survive because scoping tests inject
+	// them as inert context values next to AuthModeOperator.
 	OperatorEmailKey   contextKey = "operator_email"
 	OperatorSubjectKey contextKey = "operator_subject"
 	// TransportPeerKey carries the connection's true peer address, captured
@@ -56,6 +59,10 @@ const (
 	AuthModeLocalSingleUser AuthMode = "local_single_user"
 )
 
+// AuthModeOperator has no producer since hosted operator login was removed.
+// It survives only as a context value that scoping tests inject to drive the
+// unbound-read branch of scopeFromRequest; no request can carry it anymore.
+
 type routeProtection int
 
 const (
@@ -64,10 +71,10 @@ const (
 	routeProtectionComposite
 )
 
-// Authenticator validates API keys and Auth0 bearer tokens for incoming routes.
+// Authenticator validates API keys for incoming routes and admits the
+// credential-free public-demo and local bootstrap modes.
 type Authenticator struct {
 	store      *store.Store
-	auth0      *auth0Authenticator
 	publicDemo *publicDemoAccess
 	// localSingleUserMode mirrors config.Config.LocalSingleUserMode.
 	localSingleUserMode bool
@@ -81,13 +88,6 @@ type publicDemoAccess struct {
 func NewAuthenticator(s *store.Store, cfg *config.Config) (*Authenticator, error) {
 	authenticator := &Authenticator{
 		store: s,
-	}
-	if cfg != nil && cfg.Auth0.Enabled {
-		auth0Authenticator, err := newAuth0Authenticator(&cfg.Auth0)
-		if err != nil {
-			return nil, err
-		}
-		authenticator.auth0 = auth0Authenticator
 	}
 	if cfg != nil && cfg.PublicDemo.Enabled {
 		authenticator.publicDemo = &publicDemoAccess{
@@ -152,18 +152,6 @@ func GetAuthMode(ctx context.Context) (AuthMode, bool) {
 	return "", false
 }
 
-// GetOperatorEmail extracts the authenticated operator email from the request context.
-func GetOperatorEmail(ctx context.Context) (string, bool) {
-	email, ok := ctx.Value(OperatorEmailKey).(string)
-	return email, ok
-}
-
-// GetOperatorSubject extracts the authenticated operator subject from the request context.
-func GetOperatorSubject(ctx context.Context) (string, bool) {
-	subject, ok := ctx.Value(OperatorSubjectKey).(string)
-	return subject, ok
-}
-
 func (a *Authenticator) serveAPIKeyOnly(next http.Handler, w http.ResponseWriter, r *http.Request) {
 	apiKey := extractAPIKey(r)
 	if apiKey == "" {
@@ -201,34 +189,10 @@ func (a *Authenticator) serveComposite(next http.Handler, w http.ResponseWriter,
 		return
 	}
 
-	if !looksLikeJWT(bearerToken) {
-		ctx, ok := a.apiKeyContext(r.Context(), bearerToken, w)
-		if !ok {
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(ctx))
+	ctx, ok := a.apiKeyContext(r.Context(), bearerToken, w)
+	if !ok {
 		return
 	}
-
-	if a.auth0 == nil {
-		writeAuthError(
-			w,
-			http.StatusServiceUnavailable,
-			"operator_auth_unavailable",
-			"Operator authentication is not configured",
-		)
-		return
-	}
-
-	identity, authErr := a.auth0.Authenticate(r.Context(), bearerToken)
-	if authErr != nil {
-		writeAuthError(w, authErr.Status, authErr.Code, authErr.Message)
-		return
-	}
-
-	ctx := context.WithValue(r.Context(), AuthModeKey, AuthModeOperator)
-	ctx = context.WithValue(ctx, OperatorEmailKey, identity.Email)
-	ctx = context.WithValue(ctx, OperatorSubjectKey, identity.Subject)
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
@@ -239,13 +203,13 @@ func (a *Authenticator) servePublicDemoRead(next http.Handler, w http.ResponseWr
 }
 
 func (a *Authenticator) serveProjectBootstrap(next http.Handler, w http.ResponseWriter, r *http.Request) bool {
-	// Local-mode bootstrap: when Auth0 and the public demo are both disabled, the
-	// deployment is single-tenant and the operator owns the box. We let
-	// unauthenticated callers list and create projects on /api/projects so a fresh
-	// install (or an operator who has lost their API key) can always self-recover
-	// without wiping the database. Deployments that need cross-tenant isolation
-	// must enable Auth0, which closes this path entirely.
-	if a.auth0 != nil || a.publicDemo != nil || !isProjectBootstrapRoute(r.Method, r.URL.Path) {
+	// Local-mode bootstrap: when the public demo is disabled, the deployment is
+	// single-tenant and the operator owns the box. We let unauthenticated callers
+	// list and create projects on /api/projects so a fresh install (or an operator
+	// who has lost their API key) can always self-recover without wiping the
+	// database. The public demo disables this path so anonymous visitors stay
+	// read-only inside their one scoped project.
+	if a.publicDemo != nil || !isProjectBootstrapRoute(r.Method, r.URL.Path) {
 		return false
 	}
 
@@ -448,10 +412,6 @@ func extractBearerToken(r *http.Request) string {
 		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 	}
 	return ""
-}
-
-func looksLikeJWT(token string) bool {
-	return strings.Count(token, ".") == 2
 }
 
 // hashAPIKey hashes an API key using SHA-256.
