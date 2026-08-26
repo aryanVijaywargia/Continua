@@ -129,6 +129,7 @@ func (w *IngestBatchWorker) resolveCommitOutcome(
 		"attempt_count", batch.AttemptCount,
 		"duration_ms", time.Since(startedAt).Milliseconds(),
 		"error_code", "commit_uncertain",
+		"err", commitErr,
 	)
 	return commitErr
 }
@@ -264,6 +265,7 @@ func (w *IngestBatchWorker) finishTerminalFailure(
 		"attempt_count", batch.AttemptCount,
 		"duration_ms", time.Since(startedAt).Milliseconds(),
 		"error_code", terminalErr.Code,
+		"err", terminalErr,
 	)
 	return nil
 }
