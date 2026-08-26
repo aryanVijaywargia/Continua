@@ -32,6 +32,15 @@ type localModeMutationFixture struct {
 }
 
 func newLocalModeMutationFixture(t *testing.T) localModeMutationFixture {
+	return newLocalModeMutationFixtureWithConfig(t, &config.Config{
+		LocalSingleUserMode: true,
+	})
+}
+
+func newLocalModeMutationFixtureWithConfig(
+	t *testing.T,
+	cfg *config.Config,
+) localModeMutationFixture {
 	t.Helper()
 
 	pool := testutil.TestDB(t)
@@ -44,9 +53,7 @@ func newLocalModeMutationFixture(t *testing.T) localModeMutationFixture {
 	})
 	require.NoError(t, err)
 
-	authenticator, err := middleware.NewAuthenticator(platformStore, &config.Config{
-		LocalSingleUserMode: true,
-	})
+	authenticator, err := middleware.NewAuthenticator(platformStore, cfg)
 	require.NoError(t, err)
 
 	return localModeMutationFixture{
@@ -135,8 +142,8 @@ func TestLocalModeAllowsProjectMutationWithoutAPIKey(t *testing.T) {
 	assert.True(t, store.IsNotFound(err), "expected a not-found error, got %v", err)
 }
 
-func TestLocalModeStillAllowsProjectBootstrap(t *testing.T) {
-	fixture := newLocalModeMutationFixture(t)
+func TestProjectBootstrapRequiresLoopback(t *testing.T) {
+	fixture := newLocalModeMutationFixtureWithConfig(t, &config.Config{})
 
 	listed := fixture.serveFromLoopback(t, http.MethodGet, "/api/projects", "", "")
 	require.Equal(t, http.StatusOK, listed.Code)
@@ -147,13 +154,34 @@ func TestLocalModeStillAllowsProjectBootstrap(t *testing.T) {
 		t,
 		http.MethodPost,
 		"/api/projects",
-		`{"name":"Bootstrapped in local mode"}`,
+		`{"name":"Bootstrapped on loopback"}`,
 		"",
 	)
 	require.Equal(t, http.StatusCreated, created.Code)
 	createResp := decodeJSONBody[ProjectWithKey](t, created)
-	assert.Equal(t, "Bootstrapped in local mode", createResp.Name)
+	assert.Equal(t, "Bootstrapped on loopback", createResp.Name)
 	assert.NotEmpty(t, createResp.ApiKey)
+
+	for _, route := range []struct {
+		name   string
+		method string
+		body   string
+	}{
+		{name: "list", method: http.MethodGet},
+		{name: "create", method: http.MethodPost, body: `{"name":"Remote bootstrap"}`},
+	} {
+		t.Run(route.name+" from remote peer", func(t *testing.T) {
+			req := httptest.NewRequest(route.method, "/api/projects", strings.NewReader(route.body))
+			req.RemoteAddr = remoteNonLoopbackAddr
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			fixture.router.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusUnauthorized, rec.Code)
+			assert.Equal(t, "missing_credentials", decodeJSONBody[Error](t, rec).Code)
+		})
+	}
 }
 
 func TestProjectMutationStillWorksWithAPIKey(t *testing.T) {

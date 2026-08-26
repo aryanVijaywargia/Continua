@@ -19,7 +19,7 @@ The server reads configuration from environment variables (see
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `HOST` | `0.0.0.0` | Server bind host |
+| `HOST` | `127.0.0.1` | Server bind host |
 | `PORT` | `8080` | Server bind port |
 | `INGEST_TRUE_ASYNC_DEFAULT` | `false` | Server default async ingest behavior |
 | `INGEST_DEPENDENCY_RETRY_WINDOW` | `15m` | Retry window for async ingest dependency resolution |
@@ -28,6 +28,8 @@ The server reads configuration from environment variables (see
 | `RIVER_QUEUE_ROLLUP_WORKERS` | `10` | Rollup job concurrency |
 | `RIVER_QUEUE_MAINTENANCE_WORKERS` | `1` | Cleanup / maintenance job concurrency |
 | `RIVER_QUEUE_DEFAULT_WORKERS` | `1` | Catch-all queue concurrency |
+
+Set `HOST=0.0.0.0` explicitly when you intend to expose the server on all network interfaces. If a reverse proxy forwards to `127.0.0.1:8080`, every request appears to come from a loopback peer, which exposes anonymous project bootstrap through the proxy.
 
 ### Demo mode
 
