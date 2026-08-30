@@ -47,7 +47,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.1.0",
     "mypy>=2.1.0",
-    "datamodel-code-generator>=0.25.0",
+    "datamodel-code-generator>=0.75.1",
 ]
 
 [build-system]
