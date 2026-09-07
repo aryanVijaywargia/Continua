@@ -1,29 +1,32 @@
 import {
   Activity,
-  ArrowRight,
-  Ban,
+  ArrowUpRight,
   Check,
+  ChevronDown,
   ChevronRight,
-  Clock3,
-  Copy,
+  CircleAlert,
+  Code2,
   GitBranch,
   Github,
+  Layers,
   Moon,
-  Pause,
-  Play,
-  Radio,
   RotateCcw,
-  Star,
   Sun,
   Terminal,
-  Workflow,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { Link } from 'react-router-dom';
 import { useRuntimeAuth } from '../auth/runtime';
-import { BrandMark } from '../components/BrandMark';
-import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useTheme } from '../hooks/useTheme';
+import { CopyButton } from '../components/CopyButton';
+import repoStats from '../data/repo-stats.json';
+import '../styles/landing.css';
 
 const GITHUB_REPO_URL = 'https://github.com/aryanVijaywargia/Continua';
 const DOCS_URL = 'https://www.continua.in/docs';
@@ -33,151 +36,847 @@ const PYTHON_SDK_DOCS_URL = `${DOCS_URL}/sdk/python/overview`;
 const ARCHITECTURE_DOCS_URL = `${DOCS_URL}/concepts/overview`;
 const RUN_LOCALLY_DOCS_URL = `${DOCS_URL}/guides/installation`;
 
-type SpanTone = 'ok' | 'fail' | 'run';
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
-
-const HERO_SPANS = [
-  { name: 'resilient_agent', kind: 'TRACE', depth: 0, start: 0, dur: 100, tone: 'run' },
-  { name: 'plan_research', kind: 'LLM', depth: 1, start: 2, dur: 18, tone: 'ok' },
-  { name: 'fetch_corpus', kind: 'TOOL', depth: 1, start: 20, dur: 11, tone: 'fail' },
-  { name: 'fetch_corpus', kind: 'TOOL', depth: 1, start: 31, dur: 9, tone: 'ok', retry: true },
-  { name: 'classify', kind: 'LLM', depth: 1, start: 40, dur: 24, tone: 'run' },
-  { name: 'rank', kind: 'CHAIN', depth: 2, start: 43, dur: 14, tone: 'ok' },
-  { name: 'tool.search', kind: 'TOOL', depth: 3, start: 45, dur: 7, tone: 'ok' },
-  { name: 'tool.dedupe', kind: 'TOOL', depth: 3, start: 52, dur: 3, tone: 'ok' },
-  { name: 'summarize', kind: 'LLM', depth: 2, start: 57, dur: 7, tone: 'ok' },
-  { name: 'finalize', kind: 'CHAIN', depth: 1, start: 64, dur: 30, tone: 'run' },
-  { name: 'render_output', kind: 'TOOL', depth: 2, start: 68, dur: 16, tone: 'ok' },
-  { name: 'persist', kind: 'TOOL', depth: 2, start: 84, dur: 8, tone: 'ok' },
-] as const;
-
-const AFTER_SPANS = [
-  { name: 'resilient_agent', kind: 'TRACE', depth: 0, start: 0, dur: 100, tone: 'ok' },
-  { name: 'plan_research', kind: 'LLM', depth: 1, start: 2, dur: 18, tone: 'ok' },
-  { name: 'fetch_corpus', kind: 'TOOL', depth: 1, start: 20, dur: 11, tone: 'fail' },
-  { name: 'fetch_corpus', kind: 'TOOL', depth: 1, start: 31, dur: 9, tone: 'ok', retry: true },
-  { name: 'classify', kind: 'LLM', depth: 1, start: 41, dur: 24, tone: 'ok' },
-  { name: 'rank', kind: 'CHAIN', depth: 2, start: 44, dur: 14, tone: 'ok' },
-  { name: 'finalize', kind: 'CHAIN', depth: 1, start: 65, dur: 32, tone: 'ok' },
-] as const;
-
-const LOG_LINES = [
-  ['gray', '[2026-05-16 14:22:18.041] INFO  agent:run starting'],
-  ['gray', '[2026-05-16 14:22:18.044] DEBUG llm.openai calling gpt-4 model="gpt-4"'],
-  ['gray', '[2026-05-16 14:22:18.987] DEBUG llm.openai response 200 tokens_out=100'],
-  ['gray', '[2026-05-16 14:22:18.990] INFO  tool.fetch calling fetch_data q="docs"'],
-  ['gray', '[2026-05-16 14:22:19.001] DEBUG http GET https://api.corpus.local/v1/...'],
-  ['red', '[2026-05-16 14:22:24.012] ERROR TimeoutError: read timed out (5.0s)'],
-  ['red', 'Traceback (most recent call last):'],
-  ['red', '  File "agent.py", line 42, in run'],
-  ['red', '    data = fetch_data(query)'],
-  ['red', '  File "tools/fetch.py", line 18, in fetch_data'],
-  ['red', '    return requests.get(url, timeout=5).json()'],
-  ['gray', '[2026-05-16 14:22:24.013] WARN  retrying fetch_data attempt=2/3'],
-  ['gray', '[2026-05-16 14:22:25.107] DEBUG http 200 OK size=18KB'],
-  ['gray', '[2026-05-16 14:22:25.108] INFO  tool.fetch ok rows=124'],
-  ['gray', '[2026-05-16 14:22:26.860] INFO  agent:done duration_ms=8819'],
-] as const;
-
-const TICKER_ITEMS = [
-  ['trc_3a91c1', 'research_agent', '4.2s', 'ok'],
-  ['trc_8f2a91', 'resilient_agent', '6.8s', 'retry'],
-  ['trc_1d0432', 'code_review', '8.9s', 'ok'],
-  ['trc_b2e1c7', 'planner_agent', '2.1s', 'ok'],
-  ['trc_99af0c', 'data_ingest', '0.8s', 'fail'],
-  ['trc_4c7e1b', 'summarizer', '1.4s', 'ok'],
-  ['trc_e7d211', 'classifier_v2', '3.6s', 'ok'],
-  ['trc_223de4', 'query_planner', '5.2s', 'ok'],
-  ['trc_5a8b12', 'rag_pipeline', '12.4s', 'ok'],
-  ['trc_c91f0a', 'tool_executor', '0.9s', 'retry'],
-] as const;
-
-const LANDING_SECTION_IDS = ['engine', 'observability', 'sdk', 'open-source'] as const;
-
 const CODE_TABS = [
   {
     label: 'Basic agent',
     file: 'agent.py',
     rows: [
-      ['k', 'from '], ['m', 'continua'], ['k', ' import '], ['_', 'Continua, span, trace\n\n'],
-      ['t', 'client'], ['_', ' = Continua.init(\n    api_key='], ['s', '"<project-api-key>"'], ['_', ',\n    endpoint='], ['s', '"http://localhost:8080"'], ['_', ',\n)\n\n'],
-      ['d', '@trace'], ['_', '(name='], ['s', '"research_agent"'], ['_', ')\n'],
-      ['k', 'def '], ['fn', 'run'], ['_', '(query):\n    '],
-      ['k', 'with '], ['_', 'span('], ['s', '"plan"'], ['_', ', kind='], ['s', '"llm"'], ['_', ') '], ['k', 'as '], ['_', 's:\n        s.set_input({'], ['s', '"query"'], ['_', ': query})\n        result = call_llm(query)\n        s.set_llm_response('], ['s', '"gpt-4"'], ['_', ', query, result)\n\n    '],
-      ['k', 'return '], ['_', '{'], ['s', '"answer"'], ['_', ': result}'],
+      ['k', 'from '],
+      ['m', 'continua'],
+      ['k', ' import '],
+      ['_', 'Continua, span, trace\n\n'],
+      ['_', 'Continua.init(api_key='],
+      ['s', '"<project-api-key>"'],
+      ['_', ', endpoint='],
+      ['s', '"http://localhost:8080"'],
+      ['_', ')\n\n'],
+      ['c', '# call_llm is supplied by your application\n'],
+      ['d', '@trace'],
+      ['_', '(name='],
+      ['s', '"research_agent"'],
+      ['_', ')\n'],
+      ['k', 'def '],
+      ['fn', 'run'],
+      ['_', '(query):\n    '],
+      ['k', 'with '],
+      ['_', 'span('],
+      ['s', '"plan"'],
+      ['_', ', kind='],
+      ['s', '"llm"'],
+      ['_', ') '],
+      ['k', 'as '],
+      ['_', 's:\n        s.set_input({'],
+      ['s', '"query"'],
+      [
+        '_',
+        ': query})\n        result = call_llm(query)\n        s.set_llm_response(',
+      ],
+      ['s', '"gpt-4"'],
+      ['_', ', query, result)\n\n    '],
+      ['k', 'return '],
+      ['_', '{'],
+      ['s', '"answer"'],
+      ['_', ': result}'],
     ],
   },
   {
     label: 'With retries',
     file: 'resilient.py',
     rows: [
-      ['c', '# Re-ingestion is deduped by span_id\n'],
-      ['k', 'from '], ['m', 'continua'], ['k', ' import '], ['_', 'span, trace\n\n'],
-      ['d', '@trace'], ['_', '(name='], ['s', '"resilient_agent"'], ['_', ')\n'],
-      ['k', 'def '], ['fn', 'run'], ['_', '(task_id):\n    '],
-      ['k', 'for '], ['_', 'attempt '], ['k', 'in '], ['_', 'range('], ['n', '1'], ['_', ', '], ['n', '4'], ['_', '):\n        '],
-      ['k', 'with '], ['_', 'span('], ['s', '"fetch"'], ['_', ', kind='], ['s', '"tool"'], ['_', ') '], ['k', 'as '], ['_', 's:\n            '],
-      ['k', 'try'], ['_', ':\n                '], ['k', 'return '], ['_', 'fetch_data(task_id)\n            '],
-      ['k', 'except '], ['_', 'TimeoutError '], ['k', 'as '], ['_', 'exc:\n                s.exception(exc, payload={'], ['s', '"attempt"'], ['_', ': attempt})\n                '],
-      ['k', 'if '], ['_', 'attempt == '], ['n', '3'], ['_', ': '], ['k', 'raise'],
+      ['c', '# fetch_data is supplied by your application\n'],
+      ['k', 'from '],
+      ['m', 'continua'],
+      ['k', ' import '],
+      ['_', 'span, trace\n\n'],
+      ['d', '@trace'],
+      ['_', '(name='],
+      ['s', '"resilient_agent"'],
+      ['_', ')\n'],
+      ['k', 'def '],
+      ['fn', 'run'],
+      ['_', '(task_id):\n    '],
+      ['k', 'for '],
+      ['_', 'attempt '],
+      ['k', 'in '],
+      ['_', 'range('],
+      ['n', '1'],
+      ['_', ', '],
+      ['n', '4'],
+      ['_', '):\n        '],
+      ['k', 'with '],
+      ['_', 'span('],
+      ['s', '"fetch"'],
+      ['_', ', kind='],
+      ['s', '"tool"'],
+      ['_', ') '],
+      ['k', 'as '],
+      ['_', 's:\n            '],
+      ['k', 'try'],
+      ['_', ':\n                '],
+      ['k', 'return '],
+      ['_', 'fetch_data(task_id)\n            '],
+      ['k', 'except '],
+      ['_', 'TimeoutError '],
+      ['k', 'as '],
+      ['_', 'exc:\n                s.exception(exc, payload={'],
+      ['s', '"attempt"'],
+      ['_', ': attempt})\n                '],
+      ['k', 'if '],
+      ['_', 'attempt == '],
+      ['n', '3'],
+      ['_', ': '],
+      ['k', 'raise'],
     ],
   },
   {
     label: 'Sessions',
     file: 'review.py',
     rows: [
-      ['c', '# Group nested runs under a session\n'],
-      ['k', 'from '], ['m', 'continua'], ['k', ' import '], ['_', 'session, span\n\n'],
-      ['k', 'with '], ['_', 'session('], ['s', '"demo-review"'], ['_', ', user_id='], ['s', '"u_123"'], ['_', ') '], ['k', 'as '], ['_', 's:\n    s.set_metadata({'], ['s', '"app"'], ['_', ': '], ['s', '"docs"'], ['_', '})\n\n    '],
-      ['k', 'with '], ['_', 'span('], ['s', '"parse"'], ['_', ', kind='], ['s', '"tool"'], ['_', '):\n        parsed = parse_code(code)\n\n    '],
-      ['k', 'with '], ['_', 'span('], ['s', '"review"'], ['_', ', kind='], ['s', '"llm"'], ['_', '):\n        review = call_llm({'], ['s', '"parsed"'], ['_', ': parsed})\n        '],
-      ['k', 'return '], ['_', '{'], ['s', '"review"'], ['_', ': review}'],
+      ['c', '# parse_code and call_llm belong to your application\n'],
+      ['k', 'from '],
+      ['m', 'continua'],
+      ['k', ' import '],
+      ['_', 'session, span\n\n'],
+      ['k', 'def '],
+      ['fn', 'review'],
+      ['_', '(code):\n    '],
+      ['k', 'with '],
+      ['_', 'session('],
+      ['s', '"demo-review"'],
+      ['_', ', user_id='],
+      ['s', '"u_123"'],
+      ['_', ') '],
+      ['k', 'as '],
+      ['_', 's:\n        s.set_metadata({'],
+      ['s', '"app"'],
+      ['_', ': '],
+      ['s', '"docs"'],
+      ['_', '})\n\n        '],
+      ['k', 'with '],
+      ['_', 'span('],
+      ['s', '"parse"'],
+      ['_', ', kind='],
+      ['s', '"tool"'],
+      ['_', '):\n            parsed = parse_code(code)\n\n        '],
+      ['k', 'with '],
+      ['_', 'span('],
+      ['s', '"review"'],
+      ['_', ', kind='],
+      ['s', '"llm"'],
+      ['_', '):\n            review = call_llm({'],
+      ['s', '"parsed"'],
+      ['_', ': parsed})\n        '],
+      ['k', 'return '],
+      ['_', '{'],
+      ['s', '"review"'],
+      ['_', ': review}'],
     ],
   },
 ] as const;
 
+const LANDING_SECTION_IDS = [
+  'observability',
+  'sdk',
+  'engine',
+  'open-source',
+] as const;
+const INSTALL_COMMAND =
+  'git clone https://github.com/aryanVijaywargia/Continua.git\ncd Continua\nmake demo';
+const SAMPLE_SPANS = [
+  {
+    name: 'research_agent',
+    kind: 'Workflow',
+    start: 0,
+    width: 100,
+    duration: '4.20s',
+    status: 'Completed',
+    input: '{ "query": "How do agents recover?" }',
+    output: '{ "answer": "Resume from saved history." }',
+  },
+  {
+    name: 'plan_research',
+    kind: 'LLM',
+    start: 3,
+    width: 19,
+    duration: '798ms',
+    status: 'Completed',
+    input: '{ "task": "Build a research plan" }',
+    output: '{ "steps": ["retrieve", "summarize"] }',
+  },
+  {
+    name: 'fetch_sources',
+    kind: 'Tool',
+    start: 24,
+    width: 31,
+    duration: '1.30s',
+    status: 'Failed',
+    input: '{ "query": "agent recovery", "limit": 5 }',
+    output: '{ "error": "TimeoutError", "attempt": 1 }',
+  },
+  {
+    name: 'fetch_sources',
+    kind: 'Retry',
+    start: 56,
+    width: 15,
+    duration: '630ms',
+    status: 'Completed',
+    input: '{ "query": "agent recovery", "limit": 5 }',
+    output: '{ "documents": 5, "attempt": 2 }',
+  },
+  {
+    name: 'summarize',
+    kind: 'LLM',
+    start: 73,
+    width: 20,
+    duration: '840ms',
+    status: 'Completed',
+    input: '{ "documents": 5, "format": "summary" }',
+    output: '{ "answer": "Resume from saved history." }',
+  },
+  {
+    name: 'save_answer',
+    kind: 'Tool',
+    start: 94,
+    width: 6,
+    duration: '252ms',
+    status: 'Completed',
+    input: '{ "session_id": "research-42" }',
+    output: '{ "saved": true }',
+  },
+] as const;
+
 export function LandingPage() {
-  const runtimeAuth = useRuntimeAuth();
+  const auth = useRuntimeAuth();
   const { resolvedTheme, toggleTheme } = useTheme();
-
-  const isPublicDemo = runtimeAuth.public_demo_enabled === true;
-  const isConsoleAvailable = runtimeAuth.console_available !== false;
-  const consoleLabel = isPublicDemo ? 'Open Demo' : isConsoleAvailable ? 'Open Console' : 'Run Locally';
-
+  const available = auth.console_available !== false;
+  const demo = auth.public_demo_enabled === true;
+  const label = !available
+    ? 'Run Locally'
+    : demo
+      ? 'Open Demo'
+      : 'Open Console';
   useLandingSectionHashSync();
 
   return (
-    <div className="landing-theme min-h-screen overflow-x-hidden bg-[var(--c-app-bg)] text-[var(--c-text-primary)]">
-      <StatusBanner isPublicDemo={isPublicDemo} />
-      <Nav
-        consoleLabel={consoleLabel}
-        isConsoleAvailable={isConsoleAvailable}
-        theme={resolvedTheme}
-        toggleTheme={toggleTheme}
-      />
-      <main>
-        <Hero
-          consoleLabel={consoleLabel}
-          isConsoleAvailable={isConsoleAvailable}
-          isPublicDemo={isPublicDemo}
-        />
-        <TraceTicker />
-        <StatsStrip />
-        <Manifesto />
-        <EngineSection />
-        <LogsVsTraces />
-        <AnatomySection />
-        <StackDiagram />
-        <SdkSection isConsoleAvailable={isConsoleAvailable} />
-        <OpenSourceSection
-          consoleLabel={consoleLabel}
-          isConsoleAvailable={isConsoleAvailable}
-          isPublicDemo={isPublicDemo}
-        />
+    <div className="continua-landing" id="top">
+      <a href="#landing-main" className="cl-skip">
+        Skip to content
+      </a>
+      <header className="cl-header cl-wrap">
+        <a className="cl-brand" href="#top">
+          <Logo />
+          <span>Continua</span>
+        </a>
+        <nav aria-label="Landing sections" className="cl-nav">
+          <a href="#observability">Observability</a>
+          <a href="#engine">Engine</a>
+          <a href="#sdk">SDK</a>
+          <ExternalLink href={DOCS_URL}>Docs</ExternalLink>
+        </nav>
+        <div className="cl-nav-actions">
+          <button
+            className="cl-icon-button"
+            aria-label="Toggle theme"
+            onClick={toggleTheme}
+          >
+            {resolvedTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <ConsoleLink
+            available={available}
+            label={label}
+            className="cl-button cl-button-small"
+          />
+        </div>
+      </header>
+      <main id="landing-main">
+        <section className="cl-hero cl-wrap" aria-labelledby="hero-title">
+          <div className="cl-hero-copy">
+            <a className="cl-preview-note" href="#engine">
+              <span className="cl-status-dot" /> Open source. Built for agent
+              builders.
+              <ChevronRight size={14} />
+            </a>
+            <h1 id="hero-title">Know what your agent actually did.</h1>
+            <p className="cl-lead">
+              Every call, retry, and unexpected turn.
+              <br className="cl-desktop-break" /> Trace your agents, inspect
+              their state, and find out where things went wrong.
+            </p>
+            <div className="cl-actions">
+              <ConsoleLink available={available} label={label} />
+              <ExternalLink
+                href={RUN_LOCALLY_DOCS_URL}
+                className="cl-text-link"
+              >
+                <Terminal size={16} /> Run locally
+              </ExternalLink>
+            </div>
+            <p className="cl-hero-footnote">
+              <Check size={14} /> Self-hosted. MIT licensed. Your data stays
+              yours.
+            </p>
+            {demo ? (
+              <p className="cl-hosting-note">
+                This hosted debugger uses seeded sample traces only. Run locally
+                to inspect your own traces and sessions.
+              </p>
+            ) : !available ? (
+              <p className="cl-hosting-note">
+                Run Continua locally to inspect your own traces and sessions.
+              </p>
+            ) : null}
+          </div>
+          <TracePreview />
+        </section>
+        <div className="cl-facts cl-wrap">
+          <span>Built to make agent runs understandable.</span>
+          <div>
+            <span>
+              <GitBranch size={16} /> Trace the execution
+            </span>
+            <span>
+              <Code2 size={16} /> Inspect the payload
+            </span>
+            <span>
+              <Layers size={16} /> Follow the session
+            </span>
+          </div>
+        </div>
+
+        <section id="observability" className="cl-section cl-wrap">
+          <div className="cl-section-intro">
+            <h2>See the failure, the input, and the retry.</h2>
+            <p>
+              Start with the request that timed out. Then read the data it saw,
+              the exception it recorded, and the retry that completed.
+            </p>
+          </div>
+          <div className="cl-feature-grid">
+            <article className="cl-feature">
+              <div
+                className="cl-payload-visual"
+                aria-label="Example span payload"
+              >
+                <div className="cl-mini-heading">
+                  <Code2 size={16} /> fetch_sources <span>Input → Output</span>
+                </div>
+                <div className="cl-payload-line">
+                  <span>query</span>
+                  <code>"agent recovery"</code>
+                </div>
+                <div className="cl-payload-line">
+                  <span>attempt</span>
+                  <code>1</code>
+                </div>
+                <div className="cl-error-message">
+                  <CircleAlert size={16} />
+                  <div>
+                    <strong>TimeoutError</strong>
+                    <span>Source request exceeded 1,300ms.</span>
+                  </div>
+                </div>
+                <div className="cl-retry-note">
+                  <RotateCcw size={14} /> Next attempt completed in 630ms.
+                </div>
+              </div>
+              <h3>The failed request has a record.</h3>
+              <p>
+                Open a span to inspect inputs, outputs, exceptions, and state
+                changes. Follow a failed call through to its next attempt.
+              </p>
+            </article>
+            <article className="cl-feature">
+              <div
+                className="cl-session-visual"
+                aria-label="Example session with three related traces"
+              >
+                <div className="cl-mini-heading">
+                  <Layers size={16} /> research-session-42 <span>3 traces</span>
+                </div>
+                {[
+                  ['Find sources', '4.20s', '6 spans'],
+                  ['Refine the answer', '2.18s', '4 spans'],
+                  ['Add citations', '1.06s', '3 spans'],
+                ].map(([name, duration, count]) => (
+                  <div className="cl-session-row" key={name}>
+                    <span className="cl-session-node">
+                      <Check size={12} />
+                    </span>
+                    <div>
+                      <strong>{name}</strong>
+                      <span>{count}</span>
+                    </div>
+                    <code>{duration}</code>
+                  </div>
+                ))}
+              </div>
+              <h3>Keep related runs in one session.</h3>
+              <p>
+                Group related runs into sessions. Move between traces and
+                compare executions with their shared context in view.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section id="sdk" className="cl-sdk-section">
+          <div className="cl-wrap cl-split">
+            <div className="cl-section-copy">
+              <span className="cl-section-marker">
+                <Terminal size={18} /> Python SDK
+              </span>
+              <h2>Trace the call you need to explain.</h2>
+              <p>
+                Put a trace around the agent entry point and spans around the
+                work inside it. Continua records the inputs, outputs, and errors.
+              </p>
+              <p className="cl-small-copy">
+                The Python SDK batches spans, polls async ingest, and includes
+                helpers for traces, spans, and sessions.
+              </p>
+              <ExternalLink href={PYTHON_SDK_DOCS_URL} className="cl-text-link">
+                Read the SDK guide <ArrowUpRight size={16} />
+              </ExternalLink>
+            </div>
+            <SdkExample />
+          </div>
+        </section>
+
+        <section id="engine" className="cl-section cl-wrap cl-split">
+          <div
+            className="cl-engine-visual"
+            aria-label="Workflow recovery example"
+          >
+            <div className="cl-mini-heading">
+              <GitBranch size={17} /> research_workflow{' '}
+              <span className="cl-badge">Preview</span>
+            </div>
+            <ol className="cl-event-list">
+              <li>
+                <Check size={15} />
+                <div>
+                  <strong>Sources fetched</strong>
+                  <span>Activity result saved</span>
+                </div>
+                <code>10:42:01</code>
+              </li>
+              <li className="cl-event-interrupted">
+                <CircleAlert size={15} />
+                <div>
+                  <strong>Worker disconnected</strong>
+                  <span>Execution history retained</span>
+                </div>
+                <code>10:42:03</code>
+              </li>
+              <li>
+                <RotateCcw size={15} />
+                <div>
+                  <strong>Workflow resumed</strong>
+                  <span>Completed activity restored from history</span>
+                </div>
+                <code>10:42:08</code>
+              </li>
+              <li>
+                <Check size={15} />
+                <div>
+                  <strong>Summary completed</strong>
+                  <span>Continued with the next activity</span>
+                </div>
+                <code>10:42:09</code>
+              </li>
+            </ol>
+            <div className="cl-engine-caption">
+              The process stopped. The work carried on.
+            </div>
+          </div>
+          <div className="cl-section-copy">
+            <span className="cl-section-marker">
+              <Activity size={18} /> Durable engine{' '}
+              <span className="cl-badge">Preview</span>
+            </span>
+            <h2>Resume work after the worker stops.</h2>
+            <p>
+              Run Go-defined workflows that resume from persisted history after
+              a process restart. Inspect their execution in the same debugger.
+            </p>
+            <ul className="cl-capabilities">
+              <li>Activities + retries</li>
+              <li>Timers + signals</li>
+              <li>Child workflows</li>
+              <li>Continue-as-new</li>
+            </ul>
+            <ExternalLink href={ARCHITECTURE_DOCS_URL} className="cl-text-link">
+              Explore the architecture <ArrowUpRight size={16} />
+            </ExternalLink>
+            <p className="cl-small-copy cl-engine-boundary">
+              The engine is a working preview. Workflow authoring is Go-only;
+              the built-in runtime uses a fixed demo project.
+            </p>
+          </div>
+        </section>
+
+        <section id="open-source" className="cl-open-source">
+          <div className="cl-wrap">
+            <Github size={30} strokeWidth={1.5} />
+            <h2>Run the debugger with your own data.</h2>
+            <p>
+              Run Continua on your own stack. Read the code, follow the
+              development, and help build what comes next.
+            </p>
+            <div className="cl-actions">
+              <ExternalLink href={GITHUB_REPO_URL} className="cl-button">
+                <Github size={17} /> Star on GitHub
+              </ExternalLink>
+              <ExternalLink
+                href={RUN_LOCALLY_DOCS_URL}
+                className="cl-text-link"
+              >
+                Get started locally <ArrowUpRight size={16} />
+              </ExternalLink>
+            </div>
+            <div className="cl-install">
+              <div>
+                <Terminal size={15} />
+                <span>Start the local demo</span>
+                <CopyButton
+                  value={INSTALL_COMMAND}
+                  aria-label="Copy local setup commands"
+                />
+              </div>
+              <pre>
+                <code>{INSTALL_COMMAND}</code>
+              </pre>
+            </div>
+            <p className="cl-repo-note">
+              {repoStats.commitTotal} commits
+              {repoStats.firstCommitAt
+                ? ` · since ${new Date(repoStats.firstCommitAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })}`
+                : ''}
+              <span>MIT licensed</span>
+              <span>Alpha</span>
+            </p>
+          </div>
+        </section>
       </main>
-      <Footer
-        isConsoleAvailable={isConsoleAvailable}
+      <footer className="cl-footer cl-wrap">
+        <div>
+          <a href="#top" className="cl-brand">
+            <Logo />
+            <span>Continua</span>
+          </a>
+          <p>Open-source observability for AI agents.</p>
+        </div>
+        <nav aria-label="Footer">
+          <a href="#open-source">Open source</a>
+          <ExternalLink href={DOCS_URL}>Docs</ExternalLink>
+          <ExternalLink href={API_REFERENCE_URL}>API reference</ExternalLink>
+          <ExternalLink href={GITHUB_LICENSE_URL}>License</ExternalLink>
+          {available ? (
+            <Link to="/dashboard">Console</Link>
+          ) : (
+            <ExternalLink href={RUN_LOCALLY_DOCS_URL}>Console</ExternalLink>
+          )}
+        </nav>
+        <a className="cl-back-top" href="#top">
+          Back to top ↑
+        </a>
+      </footer>
+    </div>
+  );
+}
+
+function Logo() {
+  return (
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 32 32"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M24 6H13a10 10 0 0 0 0 20h11M24 12H13a4 4 0 0 0 0 8h11"
+        stroke="currentColor"
+        strokeWidth="3.2"
+        strokeLinecap="round"
       />
+      <circle cx="24" cy="6" r="2.2" fill="currentColor" />
+      <circle cx="24" cy="20" r="2.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ConsoleLink({
+  available,
+  label,
+  className = 'cl-button',
+}: {
+  available: boolean;
+  label: string;
+  className?: string;
+}) {
+  return available ? (
+    <Link to="/dashboard" className={className}>
+      {label}
+      <ArrowUpRight size={16} />
+    </Link>
+  ) : (
+    <ExternalLink href={RUN_LOCALLY_DOCS_URL} className={className}>
+      {label}
+      <ArrowUpRight size={16} />
+    </ExternalLink>
+  );
+}
+
+function TracePreview() {
+  const [selected, setSelected] = useState(2);
+  const [view, setView] = useState('Payload');
+  const views = ['Payload', 'Timeline', 'State'];
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const span = SAMPLE_SPANS[selected];
+  return (
+    <div className="cl-trace-stage">
+      <div className="cl-trace-window">
+        <div className="cl-window-header">
+          <div>
+            <Logo />
+            <span>research_agent</span>
+            <ChevronDown size={13} />
+          </div>
+          <span className="cl-sample-label">Sample trace</span>
+        </div>
+        <div className="cl-trace-summary">
+          <div>
+            <span className="cl-complete">
+              <Check size={12} /> Completed
+            </span>
+            <span>1 recovered error</span>
+          </div>
+          <code>4.20s</code>
+        </div>
+        <div className="cl-waterfall" aria-label="Interactive example trace">
+          <div className="cl-waterfall-scale">
+            <span>Execution</span>
+            <div>
+              <span>0s</span>
+              <span>2s</span>
+              <span>4.2s</span>
+            </div>
+          </div>
+          {SAMPLE_SPANS.map((item, index) => (
+            <button
+              key={`${item.name}-${index}`}
+              type="button"
+              className={`cl-span-row ${item.status === 'Failed' ? 'cl-span-failed' : ''} ${item.kind === 'Retry' ? 'cl-span-retry' : ''}`}
+              aria-pressed={selected === index}
+              aria-label={`Inspect ${item.name}${item.kind === 'Retry' ? ' retry' : ''}`}
+              onClick={() => setSelected(index)}
+            >
+              <span
+                className={`cl-span-name ${index > 0 ? 'cl-span-child' : ''}`}
+              >
+                {index === 0 ? (
+                  <GitBranch size={13} />
+                ) : item.kind === 'Retry' ? (
+                  <RotateCcw size={12} />
+                ) : (
+                  <span className="cl-tree-elbow" />
+                )}
+                <span>{item.name}</span>
+              </span>
+              <span className="cl-span-track">
+                <span
+                  className="cl-span-bar"
+                  style={{ left: `${item.start}%`, width: `${item.width}%` }}
+                />
+                <span className="cl-span-duration">{item.duration}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="cl-inspector">
+          <div className="cl-inspector-title">
+            <span>
+              {span.status === 'Failed' ? (
+                <CircleAlert size={15} />
+              ) : (
+                <Check size={15} />
+              )}
+              <strong>{span.name}</strong>
+              <span className="cl-kind">{span.kind}</span>
+            </span>
+            <code>{span.duration}</code>
+          </div>
+          <div
+            className="cl-preview-tabs"
+            role="tablist"
+            aria-label="Sample span inspection"
+          >
+            {views.map((item, index) => (
+              <button
+                key={item}
+                ref={(el) => {
+                  tabRefs.current[index] = el;
+                }}
+                id={`preview-tab-${item}`}
+                role="tab"
+                aria-selected={view === item}
+                aria-controls={`preview-panel-${item}`}
+                tabIndex={view === item ? 0 : -1}
+                onClick={() => setView(item)}
+                onKeyDown={(event) => {
+                  let next = index;
+                  if (event.key === 'ArrowRight')
+                    next = (index + 1) % views.length;
+                  else if (event.key === 'ArrowLeft')
+                    next = (index + views.length - 1) % views.length;
+                  else if (event.key === 'Home') next = 0;
+                  else if (event.key === 'End') next = views.length - 1;
+                  else return;
+                  event.preventDefault();
+                  setView(views[next]);
+                  tabRefs.current[next]?.focus();
+                }}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <div
+            className="cl-preview-panel"
+            role="tabpanel"
+            id={`preview-panel-${view}`}
+            aria-labelledby={`preview-tab-${view}`}
+            tabIndex={0}
+          >
+            {view === 'Payload' ? (
+              <>
+                <div>
+                  <span>Input</span>
+                  <code>{span.input}</code>
+                </div>
+                <div
+                  className={span.status === 'Failed' ? 'cl-output-error' : ''}
+                >
+                  <span>
+                    {span.status === 'Failed' ? 'Exception' : 'Output'}
+                  </span>
+                  <code>{span.output}</code>
+                </div>
+              </>
+            ) : view === 'Timeline' ? (
+              <>
+                <div>
+                  <span>Started</span>
+                  <code>
+                    {((span.start / 100) * 4.2).toFixed(3)}s after trace start
+                  </code>
+                </div>
+                <div>
+                  <span>{span.status}</span>
+                  <code>
+                    {span.duration} elapsed
+                    {span.status === 'Failed' ? ' · retry follows' : ''}
+                  </code>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <span>Status</span>
+                  <code>{span.status.toLowerCase()}</code>
+                </div>
+                <div>
+                  <span>Attempt</span>
+                  <code>
+                    {span.kind === 'Retry' ? '2 · recovered' : '1'}
+                    {span.status === 'Failed' ? ' · exception recorded' : ''}
+                  </code>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="cl-window-footer">
+          <span>
+            <span className="cl-status-dot" /> All 6 spans captured
+          </span>
+          <span>research-session-42</span>
+        </div>
+      </div>
+      <div className="cl-trace-caption">
+        <span className="cl-caption-line" />
+        <span>A timeout, a retry, and the whole story.</span>
+      </div>
+      <p className="cl-interaction-hint">
+        Select a span to take a closer look.
+      </p>
+    </div>
+  );
+}
+
+function SdkExample() {
+  const [active, setActive] = useState(0);
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  return (
+    <div className="cl-code-window">
+      <div
+        className="cl-code-tabs"
+        role="tablist"
+        aria-label="Python SDK examples"
+      >
+        {CODE_TABS.map((tab, index) => (
+          <button
+            ref={(el) => {
+              refs.current[index] = el;
+            }}
+            type="button"
+            key={tab.file}
+            role="tab"
+            id={`sdk-tab-${index}`}
+            aria-selected={active === index}
+            aria-controls={`sdk-panel-${index}`}
+            tabIndex={active === index ? 0 : -1}
+            onClick={() => setActive(index)}
+            onKeyDown={(event) => {
+              let next = index;
+              if (event.key === 'ArrowRight')
+                next = (index + 1) % CODE_TABS.length;
+              else if (event.key === 'ArrowLeft')
+                next = (index + CODE_TABS.length - 1) % CODE_TABS.length;
+              else if (event.key === 'Home') next = 0;
+              else if (event.key === 'End') next = CODE_TABS.length - 1;
+              else return;
+              event.preventDefault();
+              setActive(next);
+              refs.current[next]?.focus();
+            }}
+          >
+            {tab.file}
+          </button>
+        ))}
+      </div>
+      <pre
+        role="tabpanel"
+        id={`sdk-panel-${active}`}
+        aria-labelledby={`sdk-tab-${active}`}
+        tabIndex={0}
+      >
+        <code>
+          {CODE_TABS[active].rows.map(([tag, text], index) => (
+            <span className={`cl-code-${tag}`} key={index}>
+              {text}
+            </span>
+          ))}
+        </code>
+      </pre>
+      <div className="cl-code-footer">
+        <span>Python instrumentation pattern</span>
+        <CopyButton
+          value={CODE_TABS[active].rows.map(([, text]) => text).join('')}
+          aria-label="Copy Python example"
+        />
+      </div>
     </div>
   );
 }
@@ -188,9 +887,9 @@ function useLandingSectionHashSync() {
       return;
     }
 
-    const sections = LANDING_SECTION_IDS.map((id) => document.getElementById(id)).filter(
-      (section): section is HTMLElement => Boolean(section)
-    );
+    const sections = LANDING_SECTION_IDS.map((id) =>
+      document.getElementById(id),
+    ).filter((section): section is HTMLElement => Boolean(section));
     if (sections.length === 0) {
       return;
     }
@@ -205,7 +904,7 @@ function useLandingSectionHashSync() {
       window.history.replaceState(
         window.history.state,
         '',
-        `${window.location.pathname}${window.location.search}#${sectionId}`
+        `${window.location.pathname}${window.location.search}#${sectionId}`,
       );
     };
 
@@ -213,7 +912,9 @@ function useLandingSectionHashSync() {
       (entries) => {
         const visibleEntry = entries
           .filter((entry) => entry.isIntersecting)
-          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+          .sort(
+            (left, right) => right.intersectionRatio - left.intersectionRatio,
+          )[0];
 
         if (visibleEntry?.target.id) {
           updateHash(visibleEntry.target.id);
@@ -222,7 +923,7 @@ function useLandingSectionHashSync() {
       {
         rootMargin: '-35% 0px -50% 0px',
         threshold: [0, 0.2, 0.5, 0.8],
-      }
+      },
     );
 
     sections.forEach((section) => observer.observe(section));
@@ -231,1577 +932,13 @@ function useLandingSectionHashSync() {
   }, []);
 }
 
-function StatusBanner({ isPublicDemo }: { isPublicDemo: boolean }) {
-  return (
-    <div className="border-b bg-[var(--c-app-bg)]" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-1.5 text-[10.5px]">
-        <div className="flex items-center gap-2 font-mono text-[var(--c-text-muted)]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)] shadow-[0_0_0_3px_var(--c-green-faint)]" />
-          <span>{isPublicDemo ? 'Public demo · engine + observability' : 'Durable engine preview · observability live'}</span>
-          <span className="text-[var(--c-border-strong)]">·</span>
-          <span>docs at continua.in/docs</span>
-        </div>
-        <div className="hidden items-center gap-4 sm:flex">
-          <ExternalLink href={`${GITHUB_REPO_URL}/blob/main/CHANGELOG.md`} className="font-mono text-[var(--c-text-muted)] hover:text-[var(--c-text-primary)]">
-            changelog
-          </ExternalLink>
-          <ExternalLink href={DOCS_URL} className="font-mono text-[var(--c-text-muted)] hover:text-[var(--c-text-primary)]">
-            docs
-          </ExternalLink>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Nav({
-  consoleLabel,
-  isConsoleAvailable,
-  theme,
-  toggleTheme,
-}: {
-  consoleLabel: string;
-  isConsoleAvailable: boolean;
-  theme: 'light' | 'dark';
-  toggleTheme: () => void;
-}) {
-  const compactLinks = [
-    ['Engine', '#engine'],
-    ['Observability', '#observability'],
-    ['SDK', '#sdk'],
-    ['Open source', '#open-source'],
-  ] as const;
-
-  return (
-    <header
-      className="sticky top-0 z-40 border-b backdrop-blur"
-      style={{
-        background: 'color-mix(in srgb, var(--c-app-bg) 88%, transparent)',
-        borderColor: 'var(--c-border)',
-      }}
-    >
-      <div className="mx-auto flex min-h-13 max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
-        <a href="#" className="flex shrink-0 items-center gap-2.5">
-          <BrandMark />
-          <span className="text-[14px] font-semibold tracking-tight">Continua</span>
-        </a>
-        <nav className="hidden items-center gap-7 text-[12.5px] font-medium text-[var(--c-text-secondary)] md:flex">
-          <a href="#engine" className="transition hover:text-[var(--c-text-primary)]">Engine</a>
-          <a href="#observability" className="transition hover:text-[var(--c-text-primary)]">Observability</a>
-          <a href="#sdk" className="transition hover:text-[var(--c-text-primary)]">SDK</a>
-          <a href="#open-source" className="transition hover:text-[var(--c-text-primary)]">Open source</a>
-        </nav>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            aria-label="Toggle theme"
-            onClick={toggleTheme}
-            className="flex h-7 w-7 items-center justify-center rounded-md border bg-[var(--c-surface)] text-[var(--c-text-secondary)] transition"
-            style={{ borderColor: 'var(--c-border)' }}
-          >
-            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
-          </button>
-          <ExternalLink
-            href={DOCS_URL}
-            className="hidden h-7 items-center gap-1.5 rounded-md border bg-[var(--c-surface)] px-2.5 text-[12px] font-medium text-[var(--c-text-primary)] sm:inline-flex"
-            style={{ borderColor: 'var(--c-border)' }}
-          >
-            Docs
-          </ExternalLink>
-          <ExternalLink
-            href={GITHUB_REPO_URL}
-            className="hidden h-7 items-center gap-1.5 rounded-md border bg-[var(--c-surface)] px-2.5 text-[12px] font-medium text-[var(--c-text-primary)] transition hover:bg-[var(--c-accent-faint)] hover:text-[var(--c-accent-text)] sm:inline-flex"
-            style={{ borderColor: 'var(--c-border)' }}
-          >
-            <Star size={13} className="fill-current text-[var(--c-accent-text)]" />
-            <span>Star on GitHub</span>
-          </ExternalLink>
-          {isConsoleAvailable ? (
-            <Link
-              to="/dashboard"
-              className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold"
-              style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
-            >
-              {consoleLabel}
-              <ArrowRight size={12} />
-            </Link>
-          ) : (
-            <ExternalLink
-              href={RUN_LOCALLY_DOCS_URL}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold"
-              style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
-            >
-              {consoleLabel}
-              <ArrowRight size={12} />
-            </ExternalLink>
-          )}
-        </div>
-      </div>
-      <nav
-        aria-label="Landing sections"
-        className="flex gap-1 overflow-x-auto border-t px-4 py-2 md:hidden"
-        style={{ borderColor: 'var(--c-border)' }}
-      >
-        {compactLinks.map(([label, href]) => (
-          <a
-            key={href}
-            href={href}
-            className="shrink-0 rounded-md border bg-[var(--c-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--c-text-primary)]"
-            style={{ borderColor: 'var(--c-border)' }}
-          >
-            {label}
-          </a>
-        ))}
-        <ExternalLink
-          href={DOCS_URL}
-          className="shrink-0 rounded-md border bg-[var(--c-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--c-text-primary)]"
-          style={{ borderColor: 'var(--c-border)' }}
-        >
-          Docs
-        </ExternalLink>
-      </nav>
-    </header>
-  );
-}
-
-function Hero({
-  consoleLabel,
-  isConsoleAvailable,
-  isPublicDemo,
-}: {
-  consoleLabel: string;
-  isConsoleAvailable: boolean;
-  isPublicDemo: boolean;
-}) {
-  return (
-    <section className="relative isolate overflow-hidden">
-      <div
-        className="landing-hero-grid absolute inset-0 -z-10"
-        style={{ maskImage: 'linear-gradient(to bottom, black 0%, transparent 90%)' }}
-      />
-      <div className="landing-hero-aura absolute inset-0 -z-10" aria-hidden="true" />
-      <div className="mx-auto max-w-7xl px-6 pb-20 pt-16 sm:pt-20">
-        <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_580px]">
-          <div className="min-w-0 max-w-2xl">
-            <SpanEyebrow idx={0} kind="ENGINE · TRACE" name="introducing_continua" dur="alpha" status="ok" />
-            <h1
-              aria-label="Built to survive. Open to inspect."
-              className="landing-display mt-6 text-[52px] font-bold tracking-[-0.035em] text-[var(--c-text-primary)] sm:text-[68px] lg:text-[76px]"
-            >
-              <span className="block">Built to survive.</span>
-              <span
-                className="landing-serif inline-block rounded-[2px] bg-[var(--c-accent)] px-[0.2em] pb-[0.08em] pt-[0.04em] text-[#17100a]"
-                style={{ transform: 'rotate(-0.6deg) translateY(2px)' }}
-              >
-                Open to inspect.
-              </span>
-            </h1>
-            <p className="mt-6 max-w-xl text-[15.5px] leading-relaxed text-[var(--c-text-secondary)]">
-              Open-source durable execution and observability for AI agents. Run workflows that
-              survive restarts, timers, and external signals — then inspect every activity, retry,
-              payload, and state transition from the same self-hosted console.
-            </p>
-            {isPublicDemo ? (
-              <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">
-                This hosted debugger uses seeded sample traces only. Run locally to inspect your
-                own traces and sessions.
-              </p>
-            ) : !isConsoleAvailable ? (
-              <p className="mt-3 max-w-xl text-[13px] leading-6 text-[var(--c-text-muted)]">
-                This hosted Pages deployment is static. Run locally to inspect your own traces
-                and sessions.
-              </p>
-            ) : null}
-            <div className="mt-7 flex flex-wrap items-center gap-2">
-              {isConsoleAvailable ? (
-                <Link
-                  to="/dashboard"
-                  className="inline-flex h-9 items-center gap-2 rounded-md px-3.5 text-[13px] font-semibold"
-                  style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
-                >
-                  {consoleLabel} <ArrowRight size={14} />
-                </Link>
-              ) : (
-                <ExternalLink
-                  href={RUN_LOCALLY_DOCS_URL}
-                  className="inline-flex h-9 items-center gap-2 rounded-md px-3.5 text-[13px] font-semibold"
-                  style={{ background: 'var(--c-text-primary)', color: 'var(--c-app-bg)' }}
-                >
-                  {consoleLabel} <ArrowRight size={14} />
-                </ExternalLink>
-              )}
-              <ExternalLink
-                href={RUN_LOCALLY_DOCS_URL}
-                className="inline-flex h-9 items-center gap-2 rounded-md border bg-[var(--c-surface)] px-3.5 text-[13px] font-medium text-[var(--c-text-primary)]"
-                style={{ borderColor: 'var(--c-border)' }}
-              >
-                <Terminal size={13} />
-                Run locally
-              </ExternalLink>
-            </div>
-            <InstallSnippet />
-          </div>
-          <div className="relative min-w-0">
-            <div
-              className="absolute -inset-6 -z-10 rounded-3xl"
-              style={{ background: 'radial-gradient(60% 50% at 50% 30%, var(--c-accent-faint), transparent 70%)' }}
-            />
-            <Reveal>
-              <HeroWaterfall />
-            </Reveal>
-            <div className="mt-3 flex items-center justify-between gap-3 font-mono text-[10px] text-[var(--c-text-muted)]">
-              <span>fig.01 · resilient_agent · live</span>
-              <span className="text-right">retries deduped by ingest key</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function InstallSnippet() {
-  const [copied, setCopied] = useState(false);
-  const cmd = 'git clone https://github.com/aryanVijaywargia/Continua.git\ncd Continua\nmake demo';
-
-  return (
-    <div className="mt-7 w-full max-w-md overflow-hidden rounded-md border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="flex items-center justify-between border-b px-3 py-1.5" style={{ borderColor: 'var(--c-border)' }}>
-        <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
-          local demo
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            void navigator.clipboard?.writeText(cmd);
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1500);
-          }}
-          className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px]"
-          style={{ color: copied ? 'var(--c-green-text)' : 'var(--c-text-muted)' }}
-        >
-          {copied ? <Check size={10} /> : <Copy size={10} />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      <pre className="overflow-x-auto px-3 py-2 font-mono text-[12px] leading-[1.7] text-[var(--c-text-primary)]">
-        <span className="text-[var(--c-text-muted)]">$</span> git clone https://github.com/aryanVijaywargia/Continua.git{'\n'}
-        <span className="text-[var(--c-text-muted)]">$</span> cd Continua{'\n'}
-        <span className="text-[var(--c-text-muted)]">$</span> make demo{'\n'}
-        <span className="text-[var(--c-green-text)]">✓</span> <span className="text-[var(--c-text-secondary)]">seeded console ready at</span> <span className="text-[var(--c-accent-text)]">localhost:8080</span>
-      </pre>
-    </div>
-  );
-}
-
-function HeroWaterfall() {
-  const [t, setT] = useState(0);
-  const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
-
-  useEffect(() => {
-    if (prefersReducedMotion) {
-      setT(72);
-      return;
-    }
-    let raf = 0;
-    let last = performance.now();
-    const loop = (now: number) => {
-      const dt = Math.min(now - last, 60);
-      last = now;
-      setT((prev) => (prev + dt * 0.012) % 130);
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [prefersReducedMotion]);
-
-  const playhead = Math.min(100, t);
-  const elapsedStr = `${Math.min((t / 100) * 4.2, 4.2).toFixed(2)}s`;
-
-  return (
-    <div className="relative w-full min-w-0 overflow-hidden rounded-xl border bg-[var(--c-surface)] shadow-[0_24px_48px_-20px_rgba(15,23,42,0.18)]" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="flex items-center justify-between border-b bg-[var(--c-sidebar-bg)] px-3 py-2" style={{ borderColor: 'var(--c-border)' }}>
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="font-mono text-[10px] font-semibold tracking-[0.06em] text-[var(--c-text-primary)]">trc_8f2a91c4</span>
-          <span className="text-[var(--c-text-muted)]">·</span>
-          <span className="truncate text-[11px] text-[var(--c-text-secondary)]">resilient_agent</span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="font-mono text-[10px] tabular-nums text-[var(--c-text-muted)]">{elapsedStr}</span>
-          <span
-            className="inline-flex items-center gap-1 rounded-[3px] border px-1 py-px text-[9.5px] font-medium"
-            style={{
-              background: playhead >= 100 ? 'var(--c-green-faint)' : 'var(--c-accent-faint)',
-              borderColor: playhead >= 100 ? 'var(--c-green-border)' : 'var(--c-accent-border)',
-              color: playhead >= 100 ? 'var(--c-green-text)' : 'var(--c-accent-text)',
-            }}
-          >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: playhead >= 100 ? 'var(--c-green)' : 'var(--c-accent)' }} />
-            <span className="font-mono uppercase tracking-[0.06em]">{playhead >= 100 ? 'Completed' : 'Running'}</span>
-          </span>
-        </div>
-      </div>
-      <div className="relative border-b bg-[var(--c-app-bg)] px-3" style={{ borderColor: 'var(--c-border)' }}>
-        <div className="grid h-5" style={{ gridTemplateColumns: '128px minmax(0, 1fr)' }}>
-          <div />
-          <div className="relative min-w-0 overflow-hidden">
-            {[0, 1, 2, 3, 4].map((s) => (
-              <span
-                key={s}
-                className="absolute top-1.5 font-mono text-[9px] tabular-nums text-[var(--c-text-muted)]"
-                style={{ left: `${Math.min(100, (s / 4.2) * 100)}%`, transform: 'translateX(-50%)' }}
-              >
-                {s}.0s
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="relative">
-        {HERO_SPANS.map((span) => (
-          <WaterfallBar key={`${span.name}-${span.start}`} {...span} playhead={playhead} />
-        ))}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-0 top-0 w-px bg-[var(--c-accent)] transition-opacity"
-          style={{
-            left: `calc(138px + ${playhead}% * (100% - 138px) / 100)`,
-            opacity: playhead < 100 ? 0.6 : 0,
-          }}
-        >
-          <div className="absolute -left-[3px] -top-1 h-1.5 w-1.5 rounded-full bg-[var(--c-accent)]" />
-        </div>
-      </div>
-      <div className="grid grid-cols-4 border-t font-mono text-[10px]" style={{ borderColor: 'var(--c-border)' }}>
-        <Kpi label="Spans" value={HERO_SPANS.length} />
-        <Kpi label="Tokens" value="3.1k" border />
-        <Kpi label="Cost" value="$0.04" border />
-        <Kpi label="Retries" value="1" border tone="amber" />
-      </div>
-    </div>
-  );
-}
-
-function WaterfallBar({
-  name,
-  kind,
-  depth,
-  start,
-  dur,
-  tone,
-  retry,
-  playhead,
-}: {
-  name: string;
-  kind: string;
-  depth: number;
-  start: number;
-  dur: number;
-  tone: SpanTone;
-  retry?: boolean;
-  playhead: number;
-}) {
-  const colors = toneColors(tone);
-  const fillWidth = Math.max(0, Math.max(start, Math.min(start + dur, playhead)) - start);
-  const isRunning = playhead >= start && playhead < start + dur;
-
-  return (
-    <div
-      className="grid items-center gap-2 px-3"
-      style={{
-        gridTemplateColumns: '128px 1fr',
-        borderBottom: '1px solid var(--c-border-subtle)',
-        background: isRunning ? 'var(--c-row-hover-bg)' : 'transparent',
-        height: 22,
-      }}
-    >
-      <div className="flex min-w-0 items-center gap-1.5">
-        <ChevronRight size={9} className="shrink-0 text-[var(--c-text-muted)]" style={{ opacity: depth === 0 ? 0 : 0.8, transform: 'rotate(90deg)' }} />
-        <span className="w-8 shrink-0 font-mono text-[9px] uppercase tracking-[0.04em] text-[var(--c-text-muted)]">{kind}</span>
-        <span
-          className="truncate font-mono text-[11px]"
-          style={{
-            color: tone === 'fail' ? 'var(--c-red-text)' : 'var(--c-text-primary)',
-            paddingLeft: depth * 8,
-            fontWeight: depth === 0 ? 600 : 500,
-          }}
-        >
-          {name}
-          {retry ? <span className="ml-1 text-[9.5px] text-[var(--c-amber-text)]">↻</span> : null}
-        </span>
-      </div>
-      <div className="relative h-full">
-        <div
-          className="absolute top-1/2 rounded-[3px]"
-          style={{
-            left: `${start}%`,
-            width: `${dur}%`,
-            height: 9,
-            background: colors.bg,
-            border: `1px solid ${colors.border}`,
-            transform: 'translateY(-50%)',
-          }}
-        />
-        <div
-          className="absolute top-1/2 rounded-[3px] transition-[width]"
-          style={{
-            left: `${start}%`,
-            width: `${fillWidth}%`,
-            height: 9,
-            background: colors.fill,
-            opacity: isRunning ? 0.92 : 1,
-            transform: 'translateY(-50%)',
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function TraceTicker() {
-  return (
-    <div className="overflow-hidden border-y bg-[var(--c-surface-muted)]" style={{ borderColor: 'var(--c-border)', contain: 'layout paint' }}>
-      <div className="flex items-stretch">
-        <div className="flex shrink-0 items-center gap-1.5 border-r px-4 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]" style={{ borderColor: 'var(--c-border)' }}>
-          <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)] shadow-[0_0_0_3px_var(--c-green-faint)]" />
-          Sample traces
-        </div>
-        <div className="relative h-9 min-w-0 flex-1 overflow-hidden">
-          <div className="landing-marquee-track absolute left-0 top-0 flex w-max items-center gap-6 whitespace-nowrap py-2.5">
-            {[...TICKER_ITEMS, ...TICKER_ITEMS].map(([id, name, dur, kind], i) => {
-              const d = tickerTone(kind);
-              return (
-                <span key={`${id}-${i}`} className="inline-flex items-center gap-2 font-mono text-[11px]">
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: d.dot }} />
-                  <span className="text-[var(--c-text-muted)]">{id}</span>
-                  <span className="text-[var(--c-text-primary)]">{name}</span>
-                  <span className="text-[var(--c-text-muted)]">·</span>
-                  <span className="tabular-nums text-[var(--c-text-secondary)]">{dur}</span>
-                  <span className="text-[9.5px] uppercase tracking-[0.08em]" style={{ color: d.text }}>{d.label}</span>
-                  <span className="text-[var(--c-text-muted)]">·</span>
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatsStrip() {
-  const [ref, inView] = useInView<HTMLDivElement>();
-  const items = [
-    { value: 'Workflows', label: 'Durable execution', hint: 'Activities, timers, signals, child workflows, and cancellation', pct: 92 },
-    { value: 'History', label: 'Crash recovery', hint: 'Event-sourced replay resumes work after process restarts', pct: 84 },
-    { value: 'Traces', label: 'Built-in observability', hint: 'Runs project into the same trace, span, session, and event model', pct: 92 },
-    { value: 'Postgres', label: 'One durable core', hint: 'Engine history, async ingest, projections, and debugger state', pct: 100, zero: true },
-  ];
-
-  return (
-    <section ref={ref} className="border-y bg-[var(--c-surface-muted)]" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-px md:grid-cols-4">
-        {items.map((it, i) => (
-          <div
-            key={it.label}
-            className="relative overflow-hidden bg-[var(--c-app-bg)] px-6 py-7"
-            style={{ borderLeft: i > 0 ? '1px solid var(--c-border)' : undefined }}
-          >
-            <div className="font-mono text-[36px] font-semibold tracking-[-0.02em] text-[var(--c-text-primary)] sm:text-[44px]">
-              {it.value}
-            </div>
-            <div className="mt-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-accent-text)]">
-              {it.label}
-            </div>
-            <div className="mt-1.5 text-[11.5px] leading-5 text-[var(--c-text-muted)]">{it.hint}</div>
-            <div
-              className="absolute bottom-0 left-0 h-[2px] transition-[width] duration-1000"
-              style={{
-                width: inView ? `${it.pct}%` : '0%',
-                background: it.zero ? 'var(--c-green)' : 'var(--c-accent)',
-              }}
-            />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function Manifesto() {
-  return (
-    <section className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-5xl px-6 py-28 sm:py-32">
-        <div className="flex items-start gap-5 sm:gap-7">
-          <span className="select-none pt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--c-text-muted)]">¶ 02</span>
-          <div className="flex-1">
-            <h2 className="landing-display text-[36px] font-semibold tracking-[-0.03em] text-[var(--c-text-primary)] sm:text-[52px]">
-              Execution that remembers.
-              <br />
-              <span className="text-[var(--c-text-muted)]">Observability that explains.</span>
-            </h2>
-            <div className="mt-7 grid gap-x-10 gap-y-3 text-[14.5px] leading-7 text-[var(--c-text-secondary)] sm:grid-cols-2">
-              <p>
-                The engine persists decisions as history, leases work durably, and replays from the
-                last known state after a crash. A restart becomes another event, not a lost run.
-              </p>
-              <p>
-                The observability platform projects that same run into traces, spans, sessions, and
-                events, so operators can explain what happened without reconstructing it from logs.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function EngineSection() {
-  const primitives = [
-    {
-      icon: <Activity size={15} />,
-      title: 'Activities + retries',
-      copy: 'Lease-backed tasks retry with durable backoff instead of disappearing with a worker.',
-    },
-    {
-      icon: <Clock3 size={15} />,
-      title: 'Timers + signals',
-      copy: 'Sleep for minutes or days, then wake on time or on an external event.',
-    },
-    {
-      icon: <GitBranch size={15} />,
-      title: 'Child workflows',
-      copy: 'Spawn durable children and keep parent-child lineage visible in the debugger.',
-    },
-    {
-      icon: <Ban size={15} />,
-      title: 'Lifecycle control',
-      copy: 'Suspend, resume, cancel, or terminate a run through the preview control plane.',
-    },
-    {
-      icon: <Workflow size={15} />,
-      title: 'Continue-as-new',
-      copy: 'Roll long-lived work into a fresh run without losing the logical workflow.',
-    },
-    {
-      icon: <RotateCcw size={15} />,
-      title: 'History replay',
-      copy: 'Recover workflow and activity progress across process restarts from event history.',
-    },
-  ];
-
-  return (
-    <section id="engine" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-7xl px-6 py-24">
-        <SectionHeader
-          eyebrow={<SpanEyebrow idx={2} kind="ENGINE" name="durable execution" status="run" />}
-          title={<>Crash the process.<br /><span className="text-[var(--c-text-muted)]">Not the workflow.</span></>}
-          copy="Continua's preview engine executes Go-defined workflows end to end, persists every decision, and resumes from history after a worker or process restart."
-        />
-
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)] lg:items-start">
-          <Reveal>
-            <EngineRunVisual />
-          </Reveal>
-          <div className="grid gap-px overflow-hidden border-y sm:grid-cols-2 lg:grid-cols-1" style={{ borderColor: 'var(--c-border)', background: 'var(--c-border)' }}>
-            {primitives.map((item) => (
-              <div key={item.title} className="bg-[var(--c-app-bg)] px-4 py-4">
-                <div className="flex items-center gap-2 text-[var(--c-accent-text)]">
-                  {item.icon}
-                  <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em]">{item.title}</h3>
-                </div>
-                <p className="mt-2 text-[12px] leading-5 text-[var(--c-text-secondary)]">{item.copy}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <Reveal>
-          <div className="mt-12 grid gap-px overflow-hidden rounded-lg border md:grid-cols-3" style={{ borderColor: 'var(--c-border)', background: 'var(--c-border)' }}>
-            {[
-              ['Run lifecycle', 'Start · inspect · signal · suspend · resume · cancel · terminate'],
-              ['Worker surface', 'Go workflow worker · local activities · remote Python activities'],
-              ['Engine operations', 'Pending work · projection state · dry-run · backfill · repair'],
-            ].map(([label, value]) => (
-              <div key={label} className="bg-[var(--c-surface)] px-5 py-4">
-                <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-accent-text)]">{label}</div>
-                <div className="mt-2 text-[12px] leading-5 text-[var(--c-text-secondary)]">{value}</div>
-              </div>
-            ))}
-          </div>
-        </Reveal>
-
-        <p className="mt-5 max-w-3xl font-mono text-[10px] leading-5 text-[var(--c-text-muted)]">
-          Preview boundary: workflow authoring is Go-only and the built-in runtime currently uses a fixed dark-launch demo project. The engine REST surface is preview-gated.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function EngineRunVisual() {
-  const events = [
-    ['00', 'WORKFLOW', 'research_agent started', 'complete'],
-    ['01', 'ACTIVITY', 'fetch_corpus completed', 'complete'],
-    ['02', 'TIMER', 'backoff · 30s', 'waiting'],
-    ['03', 'RESTART', 'worker process replaced', 'recovered'],
-    ['04', 'REPLAY', 'history restored · 18 events', 'complete'],
-    ['05', 'SIGNAL', 'approval.received', 'complete'],
-    ['06', 'CHILD', 'synthesize_report completed', 'complete'],
-    ['07', 'CONTINUE', 'generation 2 scheduled', 'running'],
-  ] as const;
-
-  return (
-    <div className="overflow-hidden rounded-xl border bg-[var(--c-surface)] shadow-[0_28px_64px_-42px_rgba(0,0,0,0.8)]" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-[var(--c-sidebar-bg)] px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
-        <div>
-          <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--c-text-muted)]">engine run</div>
-          <div className="mt-1 font-mono text-[11px] font-semibold text-[var(--c-text-primary)]">research_agent@v3 · run_8f2a91c4</div>
-        </div>
-        <span className="inline-flex items-center gap-1.5 rounded-[3px] border bg-[var(--c-green-faint)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--c-green-text)]" style={{ borderColor: 'var(--c-green-border)' }}>
-          <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)]" /> recovered
-        </span>
-      </div>
-
-      <div className="relative px-4 py-2">
-        <div className="absolute bottom-5 left-[31px] top-5 w-px bg-[var(--c-border-strong)]" aria-hidden="true" />
-        {events.map(([idx, kind, label, state]) => {
-          const isRestart = kind === 'RESTART';
-          const isRunning = state === 'running';
-          const dot = isRestart ? 'var(--c-red)' : isRunning ? 'var(--c-accent)' : state === 'waiting' ? 'var(--c-amber)' : 'var(--c-green)';
-          return (
-            <div key={idx} className="relative grid min-h-11 items-center gap-2 border-b py-2 last:border-b-0" style={{ gridTemplateColumns: '26px 72px minmax(0,1fr) auto', borderColor: 'var(--c-border-subtle)' }}>
-              <span className="z-10 flex h-4 w-4 items-center justify-center rounded-full border bg-[var(--c-surface)] font-mono text-[7px] text-[var(--c-text-muted)]" style={{ borderColor: dot }}>{idx}</span>
-              <span className="font-mono text-[8.5px] font-semibold tracking-[0.08em]" style={{ color: isRestart ? 'var(--c-red-text)' : 'var(--c-text-muted)' }}>{kind}</span>
-              <span className="truncate font-mono text-[10.5px] text-[var(--c-text-primary)]">{label}</span>
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-5 gap-px border-t bg-[var(--c-border)]" style={{ borderColor: 'var(--c-border)' }}>
-        {[
-          [<Radio size={12} />, 'Signal'],
-          [<Pause size={12} />, 'Suspend'],
-          [<Play size={12} />, 'Resume'],
-          [<Ban size={12} />, 'Cancel'],
-          [<RotateCcw size={12} />, 'Replay'],
-        ].map(([icon, label]) => (
-          <div key={String(label)} className="flex items-center justify-center gap-1.5 bg-[var(--c-surface-muted)] px-2 py-2.5 font-mono text-[9px] text-[var(--c-text-secondary)]">
-            {icon}{label}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LogsVsTraces() {
-  return (
-    <section id="observability" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-7xl px-6 py-24">
-        <SectionHeader
-          eyebrow={<SpanEyebrow idx={1} kind="SECTION" name="before / after" status="ok" />}
-          title={<>Stop scrolling logs.<br /><span className="text-[var(--c-text-muted)]">Read the trace.</span></>}
-          copy="The same agent run, two ways. On the left, a legacy stdout dump. On the right, the same execution captured as a structured Continua trace."
-        />
-        <Reveal>
-          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border md:grid-cols-2" style={{ borderColor: 'var(--c-border)', background: 'var(--c-border)' }}>
-            <BeforeTerminal />
-            <AfterTrace />
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-function BeforeTerminal() {
-  const ref = useRef<HTMLDivElement>(null);
-  const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
-
-  useEffect(() => {
-    if (prefersReducedMotion) return;
-    const el = ref.current;
-    if (!el) return;
-    let scroll = 0;
-    const id = window.setInterval(() => {
-      scroll = (scroll + 0.4) % el.scrollHeight;
-      el.scrollTop = scroll;
-    }, 60);
-    return () => window.clearInterval(id);
-  }, [prefersReducedMotion]);
-
-  return (
-    <div className="relative bg-[#0a0b0f]">
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-rose-400">stdout</span>
-          <span className="text-[10px] text-zinc-500">$ python agent.py</span>
-        </div>
-        <span className="inline-flex items-center gap-1 rounded-[3px] border border-rose-300/30 bg-rose-400/10 px-1.5 py-0.5 text-[9.5px] font-medium text-rose-300">
-          <span className="h-1 w-1 rounded-full bg-rose-400" />
-          root cause unclear
-        </span>
-      </div>
-      <div ref={ref} className="overflow-hidden px-4 py-3 font-mono text-[10.5px] leading-[1.7] text-zinc-400" style={{ height: 340 }}>
-        {[...LOG_LINES, ...LOG_LINES, ...LOG_LINES].map(([tone, line], i) => (
-          <div key={`${line}-${i}`} className={tone === 'red' ? 'text-rose-300' : 'text-slate-400'} style={{ whiteSpace: 'pre' }}>
-            {line}
-          </div>
-        ))}
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-[#0a0b0f]" />
-    </div>
-  );
-}
-
-function AfterTrace() {
-  return (
-    <div className="bg-[var(--c-app-bg)]">
-      <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: 'var(--c-border)' }}>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--c-accent-text)]">trace</span>
-          <span className="font-mono text-[10px] text-[var(--c-text-muted)]">trc_8f2a91c4</span>
-        </div>
-        <span className="inline-flex items-center gap-1 rounded-[3px] border bg-[var(--c-green-faint)] px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--c-green-text)]" style={{ borderColor: 'var(--c-green-border)' }}>
-          <span className="h-1 w-1 rounded-full bg-[var(--c-green)]" />
-          retry recovered
-        </span>
-      </div>
-      <div className="py-2" style={{ height: 340 }}>
-        {AFTER_SPANS.map((span, i) => {
-          const colors = toneColors(span.tone);
-          return (
-            <div
-              key={`${span.name}-${span.start}`}
-              className="grid items-center gap-2 px-4"
-              style={{
-                gridTemplateColumns: 'minmax(116px,152px) 1fr 44px',
-                height: 30,
-                borderBottom: '1px solid var(--c-border-subtle)',
-                background: i === 3 ? 'var(--c-row-hover-bg)' : 'transparent',
-              }}
-            >
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="w-8 shrink-0 font-mono text-[9px] uppercase tracking-wide text-[var(--c-text-muted)]">{span.kind}</span>
-                <span
-                  className="truncate font-mono text-[11px]"
-                  style={{
-                    color: span.tone === 'fail' ? 'var(--c-red-text)' : 'var(--c-text-primary)',
-                    paddingLeft: span.depth * 8,
-                    fontWeight: span.depth === 0 ? 600 : 500,
-                  }}
-                >
-                  {span.name}
-                  {'retry' in span && span.retry ? <span className="ml-1 text-[var(--c-amber-text)]">↻</span> : null}
-                </span>
-              </div>
-              <div className="relative h-2">
-                <div className="absolute top-1/2 rounded-[2px]" style={{ left: `${span.start}%`, width: `${span.dur}%`, height: 8, background: colors.bg, border: `1px solid ${colors.border}`, transform: 'translateY(-50%)' }} />
-                <div className="absolute top-1/2 rounded-[2px]" style={{ left: `${span.start}%`, width: `${span.dur}%`, height: 8, background: colors.fill, transform: 'translateY(-50%)' }} />
-              </div>
-              <span className="text-right font-mono text-[10px] tabular-nums text-[var(--c-text-muted)]">{Math.round(span.dur * 88)}ms</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function AnatomySection() {
-  const cards = [
-    { eyebrow: 'Span tree', title: 'Drill any depth', copy: 'Nested chains, parallel calls, retried tools, and the whole call graph inline.', visual: <SpanTreeVisual /> },
-    { eyebrow: 'Payload inspector', title: 'See every byte', copy: 'Inputs, outputs, errors, and JSON payloads stay attached to the span.', visual: <PayloadVisual /> },
-    { eyebrow: 'Failure summary', title: 'Get to root cause', copy: 'The first failing span, retry chain, and stack are already wired together.', visual: <FailureVisual /> },
-  ];
-
-  return (
-    <section className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-7xl px-6 py-24">
-        <SectionHeader
-          eyebrow={<SpanEyebrow idx={4} kind="SECTION" name="anatomy" status="ok" />}
-          title={<>Everything an operator needs,<br /><span className="text-[var(--c-text-muted)]">on one screen.</span></>}
-        />
-        <div className="grid gap-6 lg:grid-cols-3">
-          {cards.map((card) => (
-            <Reveal key={card.title}>
-              <div className="overflow-hidden rounded-lg border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
-                <div className="border-b bg-[var(--c-surface-muted)]" style={{ borderColor: 'var(--c-border)' }}>{card.visual}</div>
-                <div className="p-5">
-                  <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-accent-text)]">{card.eyebrow}</div>
-                  <h3 className="mt-2 text-[15px] font-semibold tracking-[-0.01em] text-[var(--c-text-primary)]">{card.title}</h3>
-                  <p className="mt-1.5 text-[12.5px] leading-5 text-[var(--c-text-secondary)]">{card.copy}</p>
-                </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function StackDiagram() {
-  return (
-    <section className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-7xl px-6 py-24">
-        <div className="grid gap-12 md:grid-cols-2">
-          <div>
-            <SpanEyebrow idx={3} kind="SECTION" name="what's in the box" status="ok" />
-            <h2 className="landing-display mt-4 text-[32px] font-semibold tracking-[-0.025em] text-[var(--c-text-primary)] sm:text-[40px]">
-              Two runtimes,
-              <br />
-              one operational story.
-            </h2>
-            <p className="mt-4 max-w-md text-[14px] leading-6 text-[var(--c-text-secondary)]">
-              The production-shaped observability service and preview durable engine share
-              Postgres. The projector turns engine history into the same traces your operators
-              already inspect.
-            </p>
-            <ul className="mt-6 space-y-2">
-              {[
-                ['Engine runtime', 'Workflow, activity, maintenance, projector workers'],
-                ['Platform runtime', 'REST ingest, read APIs, River jobs'],
-                ['Projection bridge', 'Run state mirrored into public traces'],
-                ['Postgres', 'Engine history and observability data'],
-                ['React console', 'Runs, traces, sessions, controls, repair tools'],
-              ].map(([k, v]) => (
-                <li key={k} className="flex items-baseline gap-3 text-[12.5px]">
-                  <span className="w-[110px] shrink-0 font-mono font-medium text-[var(--c-text-primary)]">{k}</span>
-                  <span className="text-[var(--c-text-secondary)]">{v}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <Reveal>
-            <div className="relative rounded-xl border bg-[var(--c-surface-muted)] p-6" style={{ borderColor: 'var(--c-border)' }}>
-              <Layer label="Your agent" sub="Go workflows · Python instrumentation" tone="muted" />
-              <Connector label="workflow commands + REST ingest" />
-              <Layer label="Continua runtimes" sub="execution + explanation" tone="primary" split={[['Durable engine', 'history + workers'], ['Observability', 'ingest + River']]} />
-              <Connector label="persist + project" />
-              <Layer label="Postgres" sub="engine schema · public trace model" tone="muted" />
-              <Connector label="projected run state + read APIs" />
-              <Layer label="Operator console · React" sub="engine runs · traces · sessions · repair" tone="accent" />
-            </div>
-          </Reveal>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function SdkSection({ isConsoleAvailable }: { isConsoleAvailable: boolean }) {
-  const [active, setActive] = useState(0);
-  const panelId = `sdk-tabpanel-${CODE_TABS[active].file.replace('.', '-')}`;
-
-  const selectAdjacentTab = (direction: -1 | 1) => {
-    setActive((current) => (current + direction + CODE_TABS.length) % CODE_TABS.length);
-  };
-
-  return (
-    <section id="sdk" className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-7xl px-6 py-24">
-        <SectionHeader
-          eyebrow={<SpanEyebrow idx={5} kind="SECTION" name="sdk" status="ok" />}
-          title={<>Two decorators<br /><span className="text-[var(--c-text-muted)]">and you're traced.</span></>}
-          copy="The Python SDK batches spans, polls async ingest, and ships helpers for traces, spans, and sessions."
-        />
-        <Reveal>
-          <div className="overflow-hidden rounded-xl border bg-[var(--c-surface)]" style={{ borderColor: 'var(--c-border)' }}>
-            <div className="flex items-center justify-between border-b bg-[var(--c-surface-muted)] px-1" style={{ borderColor: 'var(--c-border)' }}>
-              <div
-                role="tablist"
-                aria-label="Python SDK examples"
-                className="flex overflow-x-auto"
-                onKeyDown={(event) => {
-                  if (event.key === 'ArrowRight') {
-                    event.preventDefault();
-                    selectAdjacentTab(1);
-                  }
-                  if (event.key === 'ArrowLeft') {
-                    event.preventDefault();
-                    selectAdjacentTab(-1);
-                  }
-                }}
-              >
-                {CODE_TABS.map((tab, i) => (
-                  <button
-                    key={tab.file}
-                    type="button"
-                    role="tab"
-                    id={`sdk-tab-${tab.file.replace('.', '-')}`}
-                    aria-controls={`sdk-tabpanel-${tab.file.replace('.', '-')}`}
-                    aria-selected={active === i}
-                    tabIndex={active === i ? 0 : -1}
-                    onClick={() => setActive(i)}
-                    className="inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 font-mono text-[11px] font-medium transition"
-                    style={{
-                      borderColor: active === i ? 'var(--c-accent)' : 'transparent',
-                      color: active === i ? 'var(--c-text-primary)' : 'var(--c-text-muted)',
-                      background: active === i ? 'var(--c-surface)' : 'transparent',
-                    }}
-                  >
-                    <Terminal size={11} />
-                    {tab.file}
-                  </button>
-                ))}
-              </div>
-              <span className="hidden px-3 font-mono text-[9.5px] uppercase tracking-[0.12em] text-[var(--c-text-muted)] sm:block">Python · 3.11</span>
-            </div>
-            <div className="grid lg:grid-cols-[1fr_360px]">
-              <pre
-                role="tabpanel"
-                id={panelId}
-                aria-labelledby={`sdk-tab-${CODE_TABS[active].file.replace('.', '-')}`}
-                className="overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-[1.75] text-[var(--c-text-primary)]"
-              >
-                {CODE_TABS[active].rows.map(([tag, text], i) => (
-                  <span key={`${tag}-${i}`} style={{ color: codeColor(tag) }}>{text}</span>
-                ))}
-              </pre>
-              <aside className="border-t bg-[var(--c-surface-muted)] lg:border-l lg:border-t-0" style={{ borderColor: 'var(--c-border)' }}>
-                <div className="px-4 pb-2 pt-4">
-                  <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Renders to console</div>
-                  <div className="mt-1 text-[11px] text-[var(--c-text-secondary)]">What the operator sees after this code runs.</div>
-                </div>
-                <CodeOutputPanel variant={active} isConsoleAvailable={isConsoleAvailable} />
-              </aside>
-            </div>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-function OpenSourceSection({
-  consoleLabel,
-  isConsoleAvailable,
-  isPublicDemo,
-}: {
-  consoleLabel: string;
-  isConsoleAvailable: boolean;
-  isPublicDemo: boolean;
-}) {
-  return (
-    <section
-      id="open-source"
-      className="relative overflow-hidden border-t px-4 py-14 sm:px-6 sm:py-20"
-      style={{ borderColor: 'var(--c-border)' }}
-    >
-      <div
-        className="landing-hero-grid absolute inset-0 -z-10 opacity-70"
-        style={{ maskImage: 'linear-gradient(to bottom, transparent 0%, black 20%, black 85%, transparent 100%)' }}
-      />
-      <div className="mx-auto max-w-[1360px]">
-        <div
-          className="grid min-h-[820px] items-center gap-12 overflow-hidden rounded-[2px] border px-6 py-12 shadow-[0_18px_44px_-32px_rgba(15,23,42,0.48)] sm:px-10 lg:grid-cols-[minmax(0,1fr)_404px] lg:px-16 xl:px-20"
-          style={{
-            background: 'var(--c-app-bg)',
-            borderColor: 'var(--c-border)',
-            color: 'var(--c-text-primary)',
-          }}
-        >
-          <div className="max-w-[660px] lg:pl-0">
-            <div
-              className="inline-flex items-center gap-2 rounded-md border bg-[var(--c-surface)] px-2.5 py-1 font-mono text-[11px] text-[var(--c-text-muted)]"
-              style={{ borderColor: 'var(--c-border)' }}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)] shadow-[0_0_0_3px_var(--c-green-faint)]" />
-              {isPublicDemo ? 'demo_ready' : 'ready_to_run'}
-            </div>
-            <h2 className="landing-display mt-7 text-[44px] font-bold tracking-[-0.03em] text-[var(--c-text-primary)] sm:text-[54px]">
-              Run your first durable agent
-              <br />
-              with <span className="text-[var(--c-accent)]">the whole story attached</span>.
-            </h2>
-            <p className="mt-6 max-w-[480px] text-[15px] leading-7 text-[var(--c-text-secondary)]">
-              Start the engine, observability service, and debugger on infrastructure you control.
-              One Postgres keeps workflow history and the projected trace together.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center gap-2.5">
-              {isConsoleAvailable ? (
-                <Link
-                  to="/dashboard"
-                  className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-[14px] font-semibold transition hover:opacity-90"
-                  style={{ background: 'var(--c-accent)', color: 'var(--c-text-inverse)' }}
-                >
-                  {consoleLabel} <ArrowRight size={14} />
-                </Link>
-              ) : (
-                <ExternalLink
-                  href={RUN_LOCALLY_DOCS_URL}
-                  className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-[14px] font-semibold transition hover:opacity-90"
-                  style={{ background: 'var(--c-accent)', color: 'var(--c-text-inverse)' }}
-                >
-                  {consoleLabel} <ArrowRight size={14} />
-                </ExternalLink>
-              )}
-              <ExternalLink
-                href={GITHUB_REPO_URL}
-                className="inline-flex h-10 items-center gap-2 rounded-md border bg-[var(--c-surface)] px-4 text-[14px] font-medium text-[var(--c-text-primary)] transition hover:bg-[var(--c-surface-muted)]"
-                style={{ borderColor: 'var(--c-border)' }}
-              >
-                <Github size={14} />
-                Star on GitHub
-              </ExternalLink>
-            </div>
-          </div>
-          <RepoCard />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Footer({
-  isConsoleAvailable,
-}: {
-  isConsoleAvailable: boolean;
-}) {
-  const columns = [
-    { label: 'Product', links: [['Console', '/dashboard'], ['Engine runs', '/engine/runs'], ['Traces', '/traces'], ['Sessions', '/sessions']] },
-    { label: 'Develop', links: [['Docs', DOCS_URL], ['API reference', API_REFERENCE_URL], ['Python SDK', PYTHON_SDK_DOCS_URL], ['Run locally', RUN_LOCALLY_DOCS_URL]] },
-    { label: 'Open source', links: [['GitHub', GITHUB_REPO_URL], ['License', GITHUB_LICENSE_URL], ['Contributing', `${GITHUB_REPO_URL}/blob/main/CONTRIBUTING.md`], ['Architecture', ARCHITECTURE_DOCS_URL]] },
-  ];
-
-  return (
-    <footer className="border-t" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="mx-auto max-w-7xl px-6 py-14">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <BrandMark />
-              <span className="text-[14px] font-semibold tracking-tight">Continua</span>
-            </div>
-            <p className="mt-4 max-w-xs text-[12px] leading-5 text-[var(--c-text-muted)]">Durable execution engine for AI agents, with built-in observability. MIT licensed.</p>
-            <div className="mt-5 font-mono text-[10px] text-[var(--c-text-muted)]">© 2026 · alpha</div>
-          </div>
-          {columns.map((col) => (
-            <div key={col.label}>
-              <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">{col.label}</div>
-              <ul className="mt-3 space-y-2">
-                {col.links.map(([label, href]) => (
-                  <li key={label}>
-                    {href.startsWith('http') ? (
-                      <ExternalLink href={href} className="text-[12.5px] text-[var(--c-text-secondary)] transition hover:text-[var(--c-text-primary)]">{label}</ExternalLink>
-                    ) : !isConsoleAvailable ? (
-                      <ExternalLink href={RUN_LOCALLY_DOCS_URL} className="text-[12.5px] text-[var(--c-text-secondary)] transition hover:text-[var(--c-text-primary)]">{label}</ExternalLink>
-                    ) : (
-                      <Link to={href} className="text-[12.5px] text-[var(--c-text-secondary)] transition hover:text-[var(--c-text-primary)]">{label}</Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t pt-6 text-[11px] text-[var(--c-text-muted)] sm:flex-row sm:items-center" style={{ borderColor: 'var(--c-border)' }}>
-          <span className="inline-flex items-center gap-2 font-mono">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-green)]" />
-            All systems operational
-          </span>
-          <span className="font-mono">trc_landing · 2026-05-16</span>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
-function SpanEyebrow({
-  idx,
-  name,
-  kind,
-  status = 'ok',
-  dur,
-}: {
-  idx: number;
-  name: string;
-  kind: string;
-  status?: SpanTone;
-  dur?: string;
-}) {
-  const c = status === 'fail'
-    ? { dot: 'var(--c-red)', text: 'var(--c-red-text)', label: 'failed' }
-    : status === 'run'
-      ? { dot: 'var(--c-accent)', text: 'var(--c-accent-text)', label: 'running' }
-      : { dot: 'var(--c-green)', text: 'var(--c-green-text)', label: 'ok' };
-
-  return (
-    <div className="inline-flex items-center gap-2 rounded-[4px] border bg-[var(--c-surface)] px-2 py-1 font-mono text-[10px] text-[var(--c-text-muted)]" style={{ borderColor: 'var(--c-border)' }}>
-      <span className="tabular-nums">[{String(idx).padStart(2, '0')}]</span>
-      <span>·</span>
-      <span className="uppercase tracking-[0.04em] text-[var(--c-text-secondary)]">{kind}</span>
-      <span className="font-semibold text-[var(--c-text-primary)]">{name}</span>
-      {dur ? <><span>·</span><span className="tabular-nums">{dur}</span></> : null}
-      <span>·</span>
-      <span className="inline-flex items-center gap-1" style={{ color: c.text }}>
-        <span className="h-1 w-1 rounded-full" style={{ background: c.dot }} />
-        {c.label}
-      </span>
-    </div>
-  );
-}
-
-function SectionHeader({
-  eyebrow,
-  title,
-  copy,
-}: {
-  eyebrow: ReactNode;
-  title: ReactNode;
-  copy?: string;
-}) {
-  return (
-    <div className="mb-10 max-w-3xl">
-      {eyebrow}
-      <h2 className="landing-display mt-4 text-[32px] font-semibold tracking-[-0.025em] text-[var(--c-text-primary)] sm:text-[44px]">{title}</h2>
-      {copy ? <p className="mt-4 max-w-2xl text-[14px] leading-6 text-[var(--c-text-secondary)]">{copy}</p> : null}
-    </div>
-  );
-}
-
-function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (typeof IntersectionObserver !== 'function') {
-      el.classList.add('in');
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          window.setTimeout(() => entry.target.classList.add('in'), delay);
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.08 });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [delay]);
-
-  return <div ref={ref} className="landing-reveal">{children}</div>;
-}
-
-function useInView<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [inView, setInView] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (typeof IntersectionObserver !== 'function') {
-      setInView(true);
-      return;
-    }
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting) {
-        setInView(true);
-        observer.unobserve(el);
-      }
-    }, { threshold: 0.2 });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, inView] as const;
-}
-
-function Kpi({ label, value, border, tone }: { label: string; value: ReactNode; border?: boolean; tone?: 'amber' }) {
-  return (
-    <div className="px-3 py-2" style={{ borderLeft: border ? '1px solid var(--c-border)' : undefined }}>
-      <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--c-text-muted)]">{label}</div>
-      <div className="mt-0.5 font-mono text-[12.5px] font-semibold tabular-nums" style={{ color: tone === 'amber' ? 'var(--c-amber-text)' : 'var(--c-text-primary)' }}>{value}</div>
-    </div>
-  );
-}
-
-function SpanTreeVisual() {
-  const rows = [
-    ['agent.run', 'TRACE', 0, '#10b981'],
-    ['plan', 'LLM', 1, '#10b981'],
-    ['tools', 'CHAIN', 1, '#10b981'],
-    ['search', 'TOOL', 2, '#10b981'],
-    ['fetch', 'TOOL', 2, '#ef4444'],
-    ['fetch ↻', 'TOOL', 2, '#10b981'],
-    ['compose', 'LLM', 1, '#3b82f6'],
-  ] as const;
-  return (
-    <div className="px-3 py-3" style={{ height: 180 }}>
-      {rows.map(([name, kind, depth, dot]) => (
-        <div key={`${name}-${depth}`} className="flex items-center gap-1.5 py-1 text-[10.5px]" style={{ paddingLeft: depth * 10 }}>
-          <ChevronRight size={9} className="text-[var(--c-text-muted)]" style={{ transform: depth < 2 ? 'rotate(90deg)' : 'none', opacity: depth < 2 ? 0.8 : 0 }} />
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: dot }} />
-          <span className="w-[28px] shrink-0 font-mono text-[8.5px] uppercase tracking-wide text-[var(--c-text-muted)]">{kind}</span>
-          <span className="truncate font-mono" style={{ color: dot === '#ef4444' ? 'var(--c-red-text)' : 'var(--c-text-primary)' }}>{name}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function PayloadVisual() {
-  return (
-    <div className="px-3 py-3" style={{ height: 180 }}>
-      <div className="font-mono text-[10px] leading-[1.7] text-[var(--c-text-secondary)]">
-        <div>{'{'}</div>
-        <div className="pl-3"><span className="text-[var(--c-amber-text)]">"model"</span>: <span className="text-[var(--c-green-text)]">"gpt-4"</span>,</div>
-        <div className="pl-3"><span className="text-[var(--c-amber-text)]">"prompt"</span>: <span className="text-[var(--c-green-text)]">"summarize the corpus..."</span>,</div>
-        <div className="pl-3"><span className="text-[var(--c-amber-text)]">"tokens"</span>: {'{'}</div>
-        <div className="pl-6"><span className="text-[var(--c-amber-text)]">"in"</span>: <span className="text-[var(--c-accent-text)]">50</span>,</div>
-        <div className="pl-6"><span className="text-[var(--c-amber-text)]">"out"</span>: <span className="text-[var(--c-accent-text)]">312</span></div>
-        <div className="pl-3">{'}'},</div>
-        <div className="pl-3"><span className="text-[var(--c-amber-text)]">"latency_ms"</span>: <span className="text-[var(--c-accent-text)]">1843</span></div>
-        <div>{'}'}</div>
-      </div>
-    </div>
-  );
-}
-
-function FailureVisual() {
-  return (
-    <div className="px-3 py-3" style={{ height: 180 }}>
-      <div className="mb-2 inline-flex items-center gap-1.5 rounded-[3px] border bg-[var(--c-red-faint)] px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--c-red-text)]" style={{ borderColor: 'var(--c-red-border)' }}>
-        <span className="h-1 w-1 rounded-full bg-[var(--c-red)]" />
-        TimeoutError · attempt 1
-      </div>
-      <div className="mt-2 rounded-md border bg-[var(--c-app-bg)] p-2 font-mono text-[10px]" style={{ borderColor: 'var(--c-border)' }}>
-        <div className="text-[var(--c-red-text)]">requests.exceptions.TimeoutError</div>
-        <div className="text-[var(--c-text-muted)]">at tools/fetch.py:18 in fetch_data</div>
-        <div className="mt-2 text-[var(--c-text-secondary)]">→ <span className="text-[var(--c-green-text)]">retry succeeded</span> at 14:22:25</div>
-      </div>
-      <div className="mt-3 flex items-center justify-between font-mono text-[9.5px] text-[var(--c-text-muted)]">
-        <span>span_id · spn_4a7c</span>
-        <span className="text-[var(--c-accent-text)]">open span →</span>
-      </div>
-    </div>
-  );
-}
-
-function Layer({
-  label,
-  sub,
-  tone,
-  split,
-}: {
-  label: string;
-  sub: string;
-  tone: 'muted' | 'accent' | 'primary';
-  split?: readonly (readonly [string, string])[];
-}) {
-  const styles = {
-    muted: { bg: 'var(--c-surface)', border: 'var(--c-border)', label: 'var(--c-text-primary)' },
-    accent: { bg: 'var(--c-accent-faint)', border: 'var(--c-accent-border)', label: 'var(--c-accent-text)' },
-    primary: { bg: 'var(--c-text-primary)', border: 'var(--c-text-primary)', label: 'var(--c-app-bg)' },
-  }[tone];
-
-  return (
-    <div className="rounded-md border" style={{ background: styles.bg, borderColor: styles.border, color: styles.label }}>
-      <div className="px-3 py-2.5">
-        <div className="font-mono text-[11.5px] font-semibold">{label}</div>
-        <div className="mt-0.5 font-mono text-[10px] opacity-70">{sub}</div>
-      </div>
-      {split ? (
-        <div className="grid grid-cols-2 gap-px border-t border-white/10 bg-white/10">
-          {split.map(([splitLabel, splitSub]) => (
-            <div key={splitLabel} className="px-3 py-2" style={{ background: styles.bg }}>
-              <div className="font-mono text-[10.5px] font-semibold">{splitLabel}</div>
-              <div className="mt-0.5 font-mono text-[9.5px] opacity-70">{splitSub}</div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function Connector({ label }: { label: string }) {
-  return (
-    <div className="my-1.5 flex items-center justify-center gap-2">
-      <span className="block h-2 w-px bg-[var(--c-border-strong)]" />
-      <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--c-text-muted)]">{label}</span>
-      <span className="block h-2 w-px bg-[var(--c-border-strong)]" />
-    </div>
-  );
-}
-
-function CodeOutputPanel({
-  variant,
-  isConsoleAvailable,
-}: {
-  variant: number;
-  isConsoleAvailable: boolean;
-}) {
-  const variants = [
-    [['research_agent', 0, '#10b981', 'TRACE'], ['plan', 1, '#10b981', 'LLM']],
-    [['resilient_agent', 0, '#10b981', 'TRACE'], ['fetch', 1, '#ef4444', 'TOOL'], ['fetch ↻', 1, '#f59e0b', 'TOOL'], ['fetch ↻', 1, '#10b981', 'TOOL']],
-    [['demo-review', 0, '#3b82f6', 'SESSION'], ['parse', 1, '#10b981', 'TOOL'], ['review', 1, '#10b981', 'LLM']],
-  ] as const;
-  return (
-    <div className="px-4 pb-5">
-      <div className="rounded-md border bg-[var(--c-app-bg)]" style={{ borderColor: 'var(--c-border)' }}>
-        {variants[variant].map(([name, depth, dot, kind], i, arr) => (
-          <div key={`${name}-${i}`} className="flex items-center gap-1.5 px-2.5 py-1 text-[10.5px]" style={{ paddingLeft: 10 + depth * 10, borderBottom: i < arr.length - 1 ? '1px solid var(--c-border-subtle)' : undefined }}>
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: dot }} />
-            <span className="w-11 shrink-0 font-mono text-[8.5px] uppercase tracking-wide text-[var(--c-text-muted)]">{kind}</span>
-            <span className="truncate font-mono" style={{ color: dot === '#ef4444' ? 'var(--c-red-text)' : 'var(--c-text-primary)' }}>{name}</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 flex items-center justify-between text-[10px] text-[var(--c-text-muted)]">
-        <span className="font-mono">→ /traces</span>
-        {isConsoleAvailable ? (
-          <Link to="/dashboard" className="font-mono text-[var(--c-accent-text)]">open console ↗</Link>
-        ) : (
-          <ExternalLink href={RUN_LOCALLY_DOCS_URL} className="font-mono text-[var(--c-accent-text)]">run locally ↗</ExternalLink>
-        )}
-      </div>
-    </div>
-  );
-}
-
-import repoStatsJson from '../data/repo-stats.json';
-
-interface RepoStatsWeek {
-  weekStart: string;
-  total: number;
-  days: number[];
-}
-
-interface RepoStatsFile {
-  generatedAt: string;
-  branch: string | null;
-  commitTotal: number;
-  firstCommitAt: string | null;
-  weeks: RepoStatsWeek[];
-}
-
-interface RepoActivity {
-  weeks: RepoStatsWeek[];
-  commitTotal: number;
-  sinceLabel: string;
-  monthLabels: string[];
-}
-
-const MAX_HEATMAP_WEEKS = 52;
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function buildRepoActivity(): RepoActivity {
-  const stats = repoStatsJson as RepoStatsFile;
-  const raw = Array.isArray(stats.weeks) ? stats.weeks : [];
-
-  // Drop leading zero-commit weeks so the heatmap starts on the first real week of activity.
-  let start = 0;
-  while (start < raw.length && raw[start].total === 0) start += 1;
-  let trimmed = raw.slice(start);
-
-  // Cap window so very old repos don't blow out the row width.
-  if (trimmed.length > MAX_HEATMAP_WEEKS) {
-    trimmed = trimmed.slice(trimmed.length - MAX_HEATMAP_WEEKS);
-  }
-
-  const commitTotal = trimmed.reduce((acc, w) => acc + (w.total ?? 0), 0);
-
-  let sinceLabel = '—';
-  const monthLabels: string[] = [];
-  if (trimmed.length > 0) {
-    const first = new Date(`${trimmed[0].weekStart}T00:00:00Z`);
-    sinceLabel = `${MONTH_NAMES[first.getUTCMonth()]} ${first.getUTCFullYear()}`;
-
-    let prevMonth = -1;
-    let prevYear = -1;
-    for (const w of trimmed) {
-      const d = new Date(`${w.weekStart}T00:00:00Z`);
-      const m = d.getUTCMonth();
-      const y = d.getUTCFullYear();
-      if (m !== prevMonth || y !== prevYear) {
-        monthLabels.push(MONTH_NAMES[m]);
-        prevMonth = m;
-        prevYear = y;
-      }
-    }
-  }
-
-  return { weeks: trimmed, commitTotal, sinceLabel, monthLabels };
-}
-
-const REPO_ACTIVITY: RepoActivity = buildRepoActivity();
-
-function commitLevel(count: number): 0 | 1 | 2 | 3 | 4 {
-  if (count <= 0) return 0;
-  if (count <= 2) return 1;
-  if (count <= 5) return 2;
-  if (count <= 10) return 3;
-  return 4;
-}
-
-function CommitHeatmap({ activity }: { activity: RepoActivity }) {
-  return (
-    <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
-      <div className="flex items-center justify-between">
-        <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">
-          Commit activity
-        </div>
-        <span className="font-mono text-[10px] text-[var(--c-text-muted)]">
-          <span className="text-[var(--c-text-primary)]">{activity.commitTotal}</span> commits · since {activity.sinceLabel}
-        </span>
-      </div>
-      <div className="mt-2.5 flex gap-[3px]" aria-hidden="true">
-        {activity.weeks.map((week, wi) => (
-          <div key={`${week.weekStart}-${wi}`} className="flex flex-col gap-[3px]">
-            {week.days.map((c, di) => {
-              const level = commitLevel(c);
-              const bg =
-                level === 0
-                  ? 'var(--c-app-bg)'
-                  : level === 1
-                    ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)'
-                    : level === 2
-                      ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)'
-                      : level === 3
-                        ? 'color-mix(in srgb, var(--c-accent) 75%, transparent)'
-                        : 'var(--c-accent)';
-              return (
-                <div
-                  key={di}
-                  className="h-[9px] w-[9px] rounded-[2px] border"
-                  style={{ background: bg, borderColor: 'var(--c-border)' }}
-                />
-              );
-            })}
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 flex items-center justify-between text-[9.5px] font-mono text-[var(--c-text-muted)]">
-        <div className="flex gap-2">
-          {activity.monthLabels.map((m, i) => (
-            <span key={`${m}-${i}`}>{m}</span>
-          ))}
-        </div>
-        <div className="flex items-center gap-1">
-          <span>less</span>
-          {[0, 1, 2, 3, 4].map((lvl) => (
-            <span
-              key={lvl}
-              className="inline-block h-[8px] w-[8px] rounded-[2px] border"
-              style={{
-                borderColor: 'var(--c-border)',
-                background:
-                  lvl === 0
-                    ? 'var(--c-app-bg)'
-                    : lvl === 1
-                      ? 'color-mix(in srgb, var(--c-accent) 25%, transparent)'
-                      : lvl === 2
-                        ? 'color-mix(in srgb, var(--c-accent) 50%, transparent)'
-                        : lvl === 3
-                          ? 'color-mix(in srgb, var(--c-accent) 75%, transparent)'
-                          : 'var(--c-accent)',
-              }}
-            />
-          ))}
-          <span>more</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RepoCard() {
-  const activity = REPO_ACTIVITY;
-  const repoFacts = [
-    ['License', 'MIT'],
-    ['Release', 'Alpha'],
-    ['Commits', String(activity.commitTotal)],
-  ] as const;
-
-  return (
-    <Reveal>
-      <div className="flex min-h-[704px] flex-col rounded-xl border bg-[var(--c-surface)] shadow-[0_24px_56px_-36px_rgba(15,23,42,0.5)]" style={{ borderColor: 'var(--c-border)' }}>
-        <div
-          className="flex items-center justify-between gap-2 border-b px-4 py-3"
-          style={{ borderColor: 'var(--c-border)' }}
-        >
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="flex min-w-0 items-center gap-2 transition hover:text-[var(--c-accent-text)]"
-          >
-            <Github size={14} className="text-[var(--c-text-secondary)]" />
-            <span className="truncate font-mono text-[12px] text-[var(--c-text-primary)]">aryanVijaywargia/Continua</span>
-          </a>
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--c-accent-text)] transition hover:bg-[var(--c-accent-faint)]"
-            style={{ borderColor: 'var(--c-accent-border)' }}
-            aria-label="Star this repo on GitHub"
-          >
-            <Star size={11} className="fill-current" />
-            Star repo
-          </a>
-        </div>
-        <CommitHeatmap activity={activity} />
-        <div className="border-b px-4 py-3" style={{ borderColor: 'var(--c-border)' }}>
-          <div className="flex items-center justify-between">
-            <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Current surface</div>
-            <ExternalLink href={DOCS_URL} className="font-mono text-[10px] text-[var(--c-accent-text)]">docs ↗</ExternalLink>
-          </div>
-          <div className="mt-3 grid gap-2">
-            {[
-              ['Observability', 'REST ingest, Postgres persistence, async River jobs, trace/session read APIs'],
-              ['Debugger console', 'Embedded React operator workspace for traces, sessions, payloads, and comparisons'],
-              ['Durable engine', 'Preview runtime that executes Go workflows end-to-end: activities, timers, signals, replay'],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-md border bg-[var(--c-app-bg)] px-3 py-2" style={{ borderColor: 'var(--c-border)' }}>
-                <div className="font-mono text-[10.5px] font-semibold text-[var(--c-text-primary)]">{label}</div>
-                <div className="mt-0.5 text-[11px] leading-4 text-[var(--c-text-secondary)]">{value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex-1 px-4 py-3">
-          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--c-text-muted)]">Repository facts</div>
-          <div className="mt-2.5 space-y-1.5">
-            {[
-              ['Runtime', 'Go server + Postgres + River workers'],
-              ['Frontend', 'Vite React console embedded in the Go binary'],
-              ['SDK', 'Python SDK is functional; TypeScript package is an early stub'],
-              ['Docs', 'Hosted at continua.in/docs'],
-            ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between gap-2 text-[11px]">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="shrink-0 font-mono text-[var(--c-accent-text)]">{label}</span>
-                  <span className="truncate text-[var(--c-text-secondary)]">{value}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-px border-t bg-[var(--c-border)]" style={{ borderColor: 'var(--c-border)' }}>
-          {repoFacts.map(([label, value]) => (
-            <div key={label} className="bg-[var(--c-surface)] px-3 py-2.5">
-              <div className="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--c-text-muted)]">{label}</div>
-              <div className="mt-0.5 font-mono text-[14px] font-semibold tabular-nums text-[var(--c-text-primary)]">{value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </Reveal>
-  );
-}
-
 function isSameOriginHref(href: string): boolean {
   if (typeof window === 'undefined') return false;
   if (href.startsWith('/') || href.startsWith('#')) return true;
   try {
-    return new URL(href, window.location.href).origin === window.location.origin;
+    return (
+      new URL(href, window.location.href).origin === window.location.origin
+    );
   } catch {
     return false;
   }
@@ -1829,38 +966,4 @@ function ExternalLink({
       {children}
     </a>
   );
-}
-
-function toneColors(tone: SpanTone) {
-  if (tone === 'fail') {
-    return { fill: '#ef4444', bg: 'rgba(239, 68, 68, 0.16)', border: 'rgba(239, 68, 68, 0.35)' };
-  }
-  if (tone === 'run') {
-    return { fill: '#3b82f6', bg: 'rgba(59, 130, 246, 0.18)', border: 'rgba(59, 130, 246, 0.35)' };
-  }
-  return { fill: '#10b981', bg: 'rgba(16, 185, 129, 0.16)', border: 'rgba(16, 185, 129, 0.35)' };
-}
-
-function tickerTone(kind: string) {
-  if (kind === 'fail') return { dot: 'var(--c-red)', text: 'var(--c-red-text)', label: 'failed' };
-  if (kind === 'retry') return { dot: 'var(--c-amber)', text: 'var(--c-amber-text)', label: 'retried' };
-  return { dot: 'var(--c-green)', text: 'var(--c-green-text)', label: 'completed' };
-}
-
-function codeColor(tag: string) {
-  switch (tag) {
-    case 'k':
-    case 'n':
-      return 'var(--c-accent-text)';
-    case 'd':
-      return 'var(--c-amber-text)';
-    case 's':
-      return 'var(--c-green-text)';
-    case 'c':
-      return 'var(--c-text-muted)';
-    case 'fn':
-      return '#a855f7';
-    default:
-      return 'var(--c-text-primary)';
-  }
 }

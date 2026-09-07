@@ -2,22 +2,30 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Continua",
-  "description": "Self-hosted durable execution engine with built-in observability for AI agent runs. Run agent workflows durably, then inspect every run as traces, spans, sessions, and events.",
+  "description": "Self-hosted observability for AI agent runs: capture traces, spans, sessions, and events, then investigate them in the debugger. Continua's durable workflow engine is available as a preview.",
   "colors": {
-    "primary": "#c96a26",
-    "light": "#efa051",
-    "dark": "#9b4e18"
+    "primary": "#7864a7",
+    "light": "#b5a2d8",
+    "dark": "#7864a7"
   },
   "background": {
     "color": {
-      "light": "#f3eee5",
-      "dark": "#0d0b08"
+      "light": "#fafaf8",
+      "dark": "#202124"
     }
   },
   "fonts": {
-    "family": "Inter"
+    "family": "Manrope",
+    "weight": 500,
+    "heading": {
+      "family": "Manrope",
+      "weight": 700
+    }
   },
-  "favicon": "/continua-favicon.svg",
+  "favicon": {
+    "light": "/brand/continua-mark-light.svg",
+    "dark": "/brand/continua-mark-dark.svg"
+  },
   "appearance": {
     "default": "system"
   },
@@ -210,6 +218,63 @@
   "footer": {
     "socials": {
       "github": "https://github.com/aryanVijaywargia/Continua"
+    },
+    "links": [
+      {
+        "header": "Explore",
+        "items": [
+          {
+            "label": "Quickstart",
+            "href": "/guides/quickstart"
+          },
+          {
+            "label": "Architecture",
+            "href": "/concepts/overview"
+          },
+          {
+            "label": "Roadmap",
+            "href": "/roadmap"
+          }
+        ]
+      },
+      {
+        "header": "Project",
+        "items": [
+          {
+            "label": "Continua",
+            "href": "https://www.continua.in"
+          },
+          {
+            "label": "GitHub",
+            "href": "https://github.com/aryanVijaywargia/Continua"
+          },
+          {
+            "label": "Issues",
+            "href": "https://github.com/aryanVijaywargia/Continua/issues"
+          }
+        ]
+      }
+    ]
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs",
+    "codeblocks": {
+      "theme": {
+        "light": "github-light",
+        "dark": "github-dark"
+      }
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Continua",
+        "href": "https://www.continua.in"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/aryanVijaywargia/Continua"
     }
   }
 }

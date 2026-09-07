@@ -1,7 +1,10 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RuntimeAuthStateProvider, type RuntimeAuthState } from '../auth/runtime';
+import {
+  RuntimeAuthStateProvider,
+  type RuntimeAuthState,
+} from '../auth/runtime';
 import { ThemeProvider } from '../hooks/ThemeProvider';
 import { LandingPage } from './LandingPage';
 
@@ -42,7 +45,7 @@ function renderLandingPage(auth?: Partial<RuntimeAuthState>) {
           <LandingPage />
         </MemoryRouter>
       </RuntimeAuthStateProvider>
-    </ThemeProvider>
+    </ThemeProvider>,
   );
 }
 
@@ -73,51 +76,83 @@ describe('LandingPage', () => {
 
     expect(screen.getAllByRole('link', { name: 'Engine' })[0]).toHaveAttribute(
       'href',
-      '#engine'
+      '#engine',
     );
     expect(
-      screen.getAllByRole('link', { name: 'SDK' }).some((link) => link.getAttribute('href') === '#sdk')
+      screen
+        .getAllByRole('link', { name: 'SDK' })
+        .some((link) => link.getAttribute('href') === '#sdk'),
     ).toBe(true);
-    expect(screen.getAllByRole('link', { name: 'Observability' }).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole('link', { name: 'Observability' }).length,
+    ).toBeGreaterThan(0);
     expect(
       screen
         .getAllByRole('link', { name: 'Open source' })
-        .some((link) => link.getAttribute('href') === '#open-source')
+        .some((link) => link.getAttribute('href') === '#open-source'),
     ).toBe(true);
     for (const link of screen.getAllByRole('link', { name: 'Open Console' })) {
       expect(link).toHaveAttribute('href', '/dashboard');
     }
-    expect(screen.getAllByRole('link', { name: /Star on GitHub/i })[0]).toHaveAttribute(
-      'href',
-      GITHUB_REPO_URL
-    );
-    expect(screen.getByRole('link', { name: 'License' })).not.toHaveAttribute('href', '#');
     expect(
-      screen.getAllByRole('link', { name: 'Docs' }).some((link) => link.getAttribute('href') !== '#')
+      screen.getAllByRole('link', { name: /Star on GitHub/i })[0],
+    ).toHaveAttribute('href', GITHUB_REPO_URL);
+    expect(screen.getByRole('link', { name: 'License' })).not.toHaveAttribute(
+      'href',
+      '#',
+    );
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Docs' })
+        .some((link) => link.getAttribute('href') !== '#'),
     ).toBe(true);
-    expect(screen.getByText(/The Python SDK batches spans/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/The Python SDK batches spans/i),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/TypeScript SDK/i)).not.toBeInTheDocument();
-    expect(document.body).toHaveTextContent(/from continua import Continua, span, trace/i);
-    expect(screen.getByRole('heading', { name: /Built to survive\. Open to inspect\./i })).toBeInTheDocument();
-    expect(document.body).toHaveTextContent(/Open-source durable execution and observability for AI agents/i);
-    expect(screen.getByRole('heading', { name: /Crash the process\. Not the workflow\./i })).toBeInTheDocument();
+    expect(document.body).toHaveTextContent(
+      /from continua import Continua, span, trace/i,
+    );
+    expect(
+      screen.getByRole('heading', {
+        name: 'Know what your agent actually did.',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        name: 'Resume work after the worker stops.',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        name: 'See the failure, the input, and the retry.',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        name: 'Trace the call you need to explain.',
+      }),
+    ).toBeInTheDocument();
+    expect(document.body).toHaveTextContent(/engine is a working preview/i);
     expect(document.body).toHaveTextContent(/Activities \+ retries/i);
     expect(document.body).toHaveTextContent(/Timers \+ signals/i);
     expect(document.body).toHaveTextContent(/Child workflows/i);
     expect(document.body).toHaveTextContent(/Continue-as-new/i);
-    expect(document.body).toHaveTextContent(/remote Python activities/i);
-    expect(document.body).toHaveTextContent(/projection state · dry-run · backfill · repair/i);
-    expect(screen.getByRole('tablist', { name: 'Python SDK examples' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'agent.py' })).toHaveAttribute('aria-selected', 'true');
+    expect(
+      screen.getByRole('tablist', { name: 'Python SDK examples' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'agent.py' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(document.body).toHaveTextContent(/MIT licensed/i);
-    expect(screen.getByText('Release')).toBeInTheDocument();
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/Apache 2\.0/i);
     expect(document.body).not.toHaveTextContent(/1,247/i);
     expect(document.body).not.toHaveTextContent(/pip install continua/i);
     expect(document.body).not.toHaveTextContent(/continua serve --port 8080/i);
     expect(document.body).toHaveTextContent(/make demo/i);
-    expect(document.body).toHaveTextContent(/Sample traces/i);
+    expect(document.body).toHaveTextContent(/Sample trace/i);
     expect(document.body).not.toHaveTextContent(/Live ingest/i);
     expect(document.body).not.toHaveTextContent(/99\.97%/i);
   });
@@ -128,20 +163,22 @@ describe('LandingPage', () => {
     expect(
       screen
         .getAllByRole('link', { name: 'Engine' })
-        .some((link) => link.getAttribute('href') === '#engine')
+        .some((link) => link.getAttribute('href') === '#engine'),
     ).toBe(true);
     expect(
       screen
         .getAllByRole('link', { name: 'Observability' })
-        .some((link) => link.getAttribute('href') === '#observability')
+        .some((link) => link.getAttribute('href') === '#observability'),
     ).toBe(true);
     expect(
-      screen.getAllByRole('link', { name: 'SDK' }).some((link) => link.getAttribute('href') === '#sdk')
+      screen
+        .getAllByRole('link', { name: 'SDK' })
+        .some((link) => link.getAttribute('href') === '#sdk'),
     ).toBe(true);
     expect(
       screen
         .getAllByRole('link', { name: 'Docs' })
-        .some((link) => link.getAttribute('href') === DOCS_URL)
+        .some((link) => link.getAttribute('href') === DOCS_URL),
     ).toBe(true);
   });
 
@@ -168,7 +205,7 @@ describe('LandingPage', () => {
             target: sdkSection!,
           } as unknown as IntersectionObserverEntry,
         ],
-        {} as IntersectionObserver
+        {} as IntersectionObserver,
       );
     });
 
@@ -178,7 +215,9 @@ describe('LandingPage', () => {
   it('renders commit activity from the bundled repo stats', () => {
     renderLandingPage();
 
-    expect(document.body).toHaveTextContent(/\d+ commits · since [A-Z][a-z]{2} \d{4}/);
+    expect(document.body).toHaveTextContent(
+      /\d+ commits · since [A-Z][a-z]{2} \d{4}/,
+    );
     expect(document.body).not.toHaveTextContent(/last 26 weeks/);
   });
 
@@ -194,10 +233,10 @@ describe('LandingPage', () => {
     expect(
       screen
         .getAllByRole('link', { name: /run locally/i })
-        .some((link) => link.getAttribute('href') === RUN_LOCALLY_DOCS_URL)
+        .some((link) => link.getAttribute('href') === RUN_LOCALLY_DOCS_URL),
     ).toBe(true);
     expect(
-      screen.getByText(/hosted debugger uses seeded sample traces only/i)
+      screen.getByText(/hosted debugger uses seeded sample traces only/i),
     ).toBeInTheDocument();
   });
 
@@ -209,25 +248,79 @@ describe('LandingPage', () => {
     for (const link of screen.getAllByRole('link', { name: 'Run Locally' })) {
       expect(link).toHaveAttribute('href', RUN_LOCALLY_DOCS_URL);
     }
-    expect(screen.queryByRole('link', { name: 'Open Console' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'open console ↗' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'run locally ↗' })).toHaveAttribute(
-      'href',
-      RUN_LOCALLY_DOCS_URL
-    );
+    expect(
+      screen.queryByRole('link', { name: 'Open Console' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Console' })).toHaveAttribute(
       'href',
-      RUN_LOCALLY_DOCS_URL
-    );
-    expect(screen.getByRole('link', { name: 'Traces' })).toHaveAttribute(
-      'href',
-      RUN_LOCALLY_DOCS_URL
+      RUN_LOCALLY_DOCS_URL,
     );
     for (const link of screen.getAllByRole('link', { name: 'Run Locally' })) {
       expect(link).toHaveAttribute('href', RUN_LOCALLY_DOCS_URL);
     }
     expect(
-      screen.getByText(/This hosted Pages deployment is static/i)
+      screen.getByText(
+        /Run Continua locally to inspect your own traces and sessions/i,
+      ),
     ).toBeInTheDocument();
+  });
+
+  it('inspects the failed span and its recovered retry without leaving the page', () => {
+    renderLandingPage();
+    const payload = screen.getByRole('tabpanel', { name: 'Payload' });
+    expect(payload).toHaveTextContent('TimeoutError');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect fetch_sources retry' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Inspect fetch_sources retry' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(payload).toHaveTextContent('"documents": 5');
+    expect(payload).not.toHaveTextContent('TimeoutError');
+    fireEvent.click(screen.getByRole('tab', { name: 'State' }));
+    expect(screen.getByRole('tabpanel', { name: 'State' })).toHaveTextContent(
+      '2 · recovered',
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }));
+    expect(
+      screen.getByRole('tabpanel', { name: 'Timeline' }),
+    ).toHaveTextContent('630ms elapsed');
+  });
+
+  it('moves focus and selection together across the inspector tabs', () => {
+    renderLandingPage();
+    const payloadTab = screen.getByRole('tab', {
+      name: 'Payload',
+    });
+    payloadTab.focus();
+    fireEvent.keyDown(payloadTab, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Timeline' })).toHaveFocus();
+    expect(
+      screen.getByRole('tabpanel', { name: 'Timeline' }),
+    ).toHaveTextContent('retry follows');
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(screen.getByRole('tab', { name: 'State' })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+    expect(payloadTab).toHaveFocus();
+    expect(payloadTab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('switches SDK examples with the keyboard and keeps the tab panel labelled', () => {
+    renderLandingPage();
+    const tabs = within(
+      screen.getByRole('tablist', { name: 'Python SDK examples' }),
+    );
+    const basicTab = tabs.getByRole('tab', { name: 'agent.py' });
+    basicTab.focus();
+    fireEvent.keyDown(basicTab, { key: 'ArrowRight' });
+    expect(tabs.getByRole('tab', { name: 'resilient.py' })).toHaveFocus();
+    expect(
+      screen.getByRole('tabpanel', { name: 'resilient.py' }),
+    ).toHaveTextContent('TimeoutError');
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(tabs.getByRole('tab', { name: 'review.py' })).toHaveFocus();
+    expect(
+      screen.getByRole('tabpanel', { name: 'review.py' }),
+    ).toHaveTextContent('demo-review');
   });
 });

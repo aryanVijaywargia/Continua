@@ -1,15 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 56" role="img" aria-label="Continua" fill="none">
-  <defs>
-    <linearGradient id="cont-grad-light" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#e99a4d"/>
-      <stop offset="1" stop-color="#c96a26"/>
-    </linearGradient>
-  </defs>
-  <g transform="scale(0.875)">
-    <circle cx="32" cy="32" r="28" stroke="url(#cont-grad-light)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="118 30 22 6" stroke-dashoffset="-32"/>
-    <path d="M 46 18 A 18 18 0 1 0 46 46" stroke="url(#cont-grad-light)" stroke-width="4.5" stroke-linecap="round"/>
-    <circle cx="46" cy="18" r="3.25" fill="url(#cont-grad-light)"/>
-    <circle cx="46" cy="46" r="3.25" fill="url(#cont-grad-light)"/>
-  </g>
-  <text x="68" y="36" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="26" fill="#19140f">Continua</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 188 36" role="img" aria-label="Continua" fill="none">
+  <path d="M27 6H13a10 10 0 0 0 0 20h14M27 12H13a4 4 0 0 0 0 8h14" stroke="#262626" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="27" cy="6" r="2.2" fill="#262626"/>
+  <circle cx="27" cy="20" r="2.2" fill="#262626"/>
+  <text x="44" y="24" font-family="Manrope, system-ui, sans-serif" font-weight="700" font-size="21" letter-spacing="-1.1" fill="#262626">Continua</text>
 </svg>
