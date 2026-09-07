@@ -262,8 +262,8 @@ describe('AppShell', () => {
     const brandLink = screen.getByRole('link', { name: 'Go to landing page' });
 
     expect(brandLink).toHaveAttribute('href', '/');
-    expect(brandLink.firstElementChild).toHaveAttribute('src', '/logo.svg');
-    expect(brandLink.firstElementChild).toHaveClass('h-6', 'w-6');
+    expect(brandLink).toHaveTextContent('Continua');
+    expect(brandLink.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('switches the active project and keeps the selected project in route state', async () => {
