@@ -5,11 +5,11 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Manrope', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['IBM Plex Mono', 'SFMono-Regular', 'monospace'],
-        headline: ['Inter'],
-        body: ['Inter'],
-        label: ['Inter'],
+        headline: ['Manrope'],
+        body: ['Manrope'],
+        label: ['Manrope'],
       },
       colors: {
         'on-secondary': '#ffffff',

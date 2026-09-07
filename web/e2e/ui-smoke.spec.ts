@@ -1300,3 +1300,67 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
   );
   await expect(page.getByRole('heading', { name: 'Span Diff' })).toBeVisible();
 });
+
+
+test('preserves the chosen theme from landing into the console', async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await mockApiRoutes(page, 'public-demo');
+  await page.goto('/');
+  await expect(
+    page.getByRole('link', { name: 'Open Demo' }).first(),
+  ).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.evaluate(() => document.fonts.ready);
+  expect(
+    await page.evaluate(() => document.fonts.check('600 16px Manrope')),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await testInfo.attach('paper-landing', {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
+
+  await page.getByRole('button', { name: 'Toggle theme', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await testInfo.attach('graphite-landing', {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
+  await page.getByRole('link', { name: 'Open Demo' }).first().click();
+  await expect(
+    page.getByRole('heading', { name: 'Recent traces' }),
+  ).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Recent traces' }),
+  ).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await testInfo.attach('graphite-console', {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
+
+  await page.getByRole('button', { name: 'Toggle theme', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.goto('/traces');
+  await expect(
+    page.getByRole('heading', { name: 'Traces', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await testInfo.attach('paper-traces', {
+    body: await page.screenshot({ fullPage: true, animations: 'disabled' }),
+    contentType: 'image/png',
+  });
+});
