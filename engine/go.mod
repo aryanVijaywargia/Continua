@@ -1,8 +1,6 @@
 module github.com/continua-ai/continua/engine
 
-go 1.25.0
-
-toolchain go1.25.12
+go 1.26.0
 
 require (
 	github.com/golang-migrate/migrate/v4 v4.18.1
@@ -11,7 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 )
 
 require (
