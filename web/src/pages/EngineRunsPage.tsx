@@ -1,7 +1,17 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Play, RefreshCw, X } from 'lucide-react';
+import {
+  ArrowRight,
+  ArrowUpRight,
+  FilterX,
+  Link as LinkIcon,
+  Play,
+  RefreshCw,
+  Workflow,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   ApiError,
   fetchEngineInstance,
@@ -14,10 +24,12 @@ import {
   type Trace,
 } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
+import { ReadOnlyBadge } from '../components/DataState';
 import {
   Btn,
   Chip,
   DataTable,
+  FilterBar,
   PageHeader,
   StatusDot,
   Td,
@@ -28,7 +40,7 @@ import { formatProjectionStateLabel } from '../components/engineProjectionState'
 import { PaginationControls } from '../components/PaginationControls';
 import { describeEngineWaitState } from './engineWaitState';
 import { DEFAULT_PAGE_SIZE } from '../utils/pagination';
-import { formatRelativeTime, formatTimestamp } from '../utils/format';
+import { formatExactTime, formatTimestamp } from '../utils/format';
 import {
   buildProjectPath,
   getProjectIdFromSearchParams,
@@ -41,9 +53,63 @@ import {
 import { useRuntimeAuth } from '../auth/runtime';
 
 const EMPTY_TRACES: Trace[] = [];
+const ENGINE_GUIDE_URL = 'https://www.continua.in/docs/concepts/engine-foundation';
+const SECONDARY_LINK_CLASS =
+  'inline-flex h-7 items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 text-xs font-medium text-[var(--c-text-primary)] transition hover:border-[var(--c-border-strong)]';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function describeErrorStatus(error: unknown): string {
+  return error instanceof ApiError ? String(error.status) : 'no response';
+}
+
+/**
+ * Names why a status filter returned nothing. The unfiltered total comes from
+ * the unfiltered first page (same cache entry as the list with no filter), so
+ * the page only claims the project has runs when it does.
+ */
+function describeFilterNoMatches(status: string, unfilteredTotal: number | undefined): string {
+  if (unfilteredTotal === undefined) {
+    return `No engine runs are ${status} right now.`;
+  }
+  if (unfilteredTotal === 0) {
+    return `This project has no engine runs yet, so none are ${status}.`;
+  }
+  return `This project has engine runs, but none are ${status} right now.`;
+}
+
+function EmptyRunsState({
+  body,
+  children,
+  icon: Icon,
+  state,
+  title,
+}: {
+  body: string;
+  children?: ReactNode;
+  icon: LucideIcon;
+  state: 'empty-project' | 'filter-no-matches';
+  title: string;
+}) {
+  return (
+    <section
+      data-state={state}
+      className="flex flex-col items-center gap-2.5 px-6 py-14 text-center"
+    >
+      <span className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-full bg-[var(--c-surface-muted)] text-[var(--c-text-secondary)]">
+        <Icon aria-hidden="true" className="h-[19px] w-[19px]" />
+      </span>
+      <h2 className="text-sm font-bold text-[var(--c-text-primary)]">{title}</h2>
+      <p className="max-w-[430px] text-[12.5px] leading-[1.6] text-[var(--c-text-secondary)]">
+        {body}
+      </p>
+      {children ? (
+        <div className="mt-0.5 flex flex-wrap items-center justify-center gap-3">{children}</div>
+      ) : null}
+    </section>
+  );
 }
 
 function generateRequestKey(): string {
@@ -108,6 +174,16 @@ export function EngineRunsPage() {
   const traces = runsQuery.data?.traces ?? EMPTY_TRACES;
   const total = runsQuery.data?.total ?? 0;
   const returnTo = buildProjectPath('/engine/runs', projectId);
+  const filteredToNothing =
+    Boolean(engineRunStatus) &&
+    runsQuery.isSuccess &&
+    !runsQuery.isPlaceholderData &&
+    total === 0;
+  const unfilteredProbe = useQuery({
+    queryKey: ['engine-runs', projectId ?? null, null, 0, pageSize],
+    queryFn: () => fetchTraces({ engine_only: true, limit: pageSize, offset: 0 }),
+    enabled: filteredToNothing,
+  });
   const definitionVersions = useMemo(() => {
     const versions = new Map<string, Set<string>>();
     for (const trace of traces) {
@@ -123,13 +199,30 @@ export function EngineRunsPage() {
     return versions;
   }, [traces]);
 
+  const setStatusFilter = (value: EngineRunStatusFilter | undefined) => {
+    const nextSearchParams = new URLSearchParams(location.search);
+    if (value) {
+      nextSearchParams.set('engine_run_status', value);
+    } else {
+      nextSearchParams.delete('engine_run_status');
+    }
+    nextSearchParams.delete('offset');
+    setOffset(0);
+    navigate({
+      pathname: location.pathname,
+      search: nextSearchParams.toString(),
+    });
+  };
+  const statusLabel = engineRunStatus ? formatEngineRunStatusLabel(engineRunStatus) : null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         actions={
           <>
+            {isPublicDemo ? <ReadOnlyBadge /> : null}
             <Link
-              className="inline-flex h-7 items-center justify-center rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2.5 text-xs font-medium text-[var(--c-text-primary)] transition hover:border-[var(--c-border-strong)]"
+              className={SECONDARY_LINK_CLASS}
               to={buildProjectPath('/tools/engine-health', projectId)}
             >
               Engine health
@@ -148,32 +241,40 @@ export function EngineRunsPage() {
         title="Engine Runs"
       />
 
-      <div className="flex items-center gap-2 border-b border-[var(--c-border)] px-6 py-2">
-        <label
-          className="text-xs font-medium text-[var(--c-text-secondary)]"
-          htmlFor="engine-run-status"
-        >
+      <FilterBar
+        right={
+          engineRunStatus ? (
+            <span
+              className="inline-flex items-center gap-1.5 font-mono text-[10.5px] text-[var(--c-text-muted)]"
+              title="The status filter is stored in the URL"
+            >
+              <LinkIcon aria-hidden="true" className="h-3 w-3" />
+              ?engine_run_status={engineRunStatus}
+            </span>
+          ) : null
+        }
+      >
+        {engineRunStatus && statusLabel ? (
+          <Chip
+            className="h-7 rounded-md px-2.5 text-xs font-semibold"
+            closeLabel={`Clear ${statusLabel} status filter`}
+            tone="accent"
+            onClose={() => setStatusFilter(undefined)}
+          >
+            {statusLabel}
+          </Chip>
+        ) : null}
+        <label className="sr-only" htmlFor="engine-run-status">
           Status
         </label>
         <select
           id="engine-run-status"
           aria-label="Engine run status"
-          className="h-7 rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 text-xs text-[var(--c-text-primary)] outline-none"
+          className="h-7 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 text-xs font-medium text-[var(--c-text-secondary)] outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)]"
           value={engineRunStatus ?? ''}
-          onChange={(event) => {
-            const nextSearchParams = new URLSearchParams(location.search);
-            if (event.target.value) {
-              nextSearchParams.set('engine_run_status', event.target.value);
-            } else {
-              nextSearchParams.delete('engine_run_status');
-            }
-            nextSearchParams.delete('offset');
-            setOffset(0);
-            navigate({
-              pathname: location.pathname,
-              search: nextSearchParams.toString(),
-            });
-          }}
+          onChange={(event) =>
+            setStatusFilter((event.target.value || undefined) as EngineRunStatusFilter | undefined)
+          }
         >
           <option value="">All statuses</option>
           {ENGINE_RUN_STATUS_FILTER_VALUES.map((value) => (
@@ -185,21 +286,29 @@ export function EngineRunsPage() {
             />
           ))}
         </select>
-      </div>
+      </FilterBar>
 
       {runsQuery.error ? (
         isAuthError(runsQuery.error) ? (
           <AuthErrorBanner message={getErrorMessage(runsQuery.error)} />
         ) : (
-          <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
-            <span>Could not load engine runs</span>: {getErrorMessage(runsQuery.error)}
-            <button
-              type="button"
-              className="ml-3 font-semibold underline underline-offset-2"
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-2.5 text-[13px] text-[var(--c-red-text)]"
+          >
+            <span className="font-semibold">Could not load engine runs</span>
+            <span className="font-mono text-[11px]">
+              GET /api/traces · {describeErrorStatus(runsQuery.error)} · {getErrorMessage(runsQuery.error)}
+            </span>
+            <Btn
+              className="ml-auto"
+              kind="secondary"
+              leadingIcon={RefreshCw}
+              size="sm"
               onClick={() => void runsQuery.refetch()}
             >
               Retry
-            </button>
+            </Btn>
           </div>
         )
       ) : null}
@@ -209,35 +318,56 @@ export function EngineRunsPage() {
       ) : runsQuery.error && !runsQuery.data ? (
         <div className="app-empty-state">Retry the request to continue.</div>
       ) : traces.length === 0 ? (
-        <div className="app-empty-state">
-          <h2 className="text-base font-semibold text-[var(--c-text-primary)]">
-            No engine runs yet
-          </h2>
-          <p className="mt-2">
-            {isPublicDemo
-              ? 'No captured engine runs are available in this demo.'
-              : 'Start a workflow run to inspect its projected trace here.'}
-          </p>
-          {!isPublicDemo ? (
-            <div className="mt-4">
-              <Btn kind="primary" leadingIcon={Play} onClick={() => setDialogOpen(true)}>
+        engineRunStatus && statusLabel ? (
+          <EmptyRunsState
+            state="filter-no-matches"
+            icon={FilterX}
+            title="No runs match this filter"
+            body={describeFilterNoMatches(statusLabel.toLowerCase(), unfilteredProbe.data?.total)}
+          >
+            <Btn kind="secondary" size="sm" onClick={() => setStatusFilter(undefined)}>
+              Clear filter
+            </Btn>
+          </EmptyRunsState>
+        ) : (
+          <EmptyRunsState
+            state="empty-project"
+            icon={Workflow}
+            title="No engine runs in this project"
+            body={
+              isPublicDemo
+                ? 'No captured engine runs are available in this demo.'
+                : 'Nothing has been recorded yet. Durable workflows are authored in Go and appear here once a worker executes them. No filter is applied.'
+            }
+          >
+            <a
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--c-accent-text)] hover:underline"
+              href={ENGINE_GUIDE_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Read the engine guide
+              <ArrowUpRight aria-hidden="true" className="h-3 w-3" />
+            </a>
+            {!isPublicDemo ? (
+              <Btn kind="primary" leadingIcon={Play} size="sm" onClick={() => setDialogOpen(true)}>
                 Start run
               </Btn>
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+          </EmptyRunsState>
+        )
       ) : (
         <>
           <DataTable>
             <colgroup>
-              <col className="w-[110px]" />
+              <col className="w-[120px]" />
               <col className="w-[220px]" />
               <col className="w-[220px]" />
               <col className="w-[220px]" />
               <col className="w-[90px]" />
               <col className="w-[140px]" />
-              <col className="w-[150px]" />
-              <col className="w-10" />
+              <col className="w-[130px]" />
+              <col className="w-12" />
             </colgroup>
             <thead>
               <tr>
@@ -258,6 +388,7 @@ export function EngineRunsPage() {
                 const updated = updatedAt(trace);
                 const to = buildProjectPath(`/traces/${trace.id}`, projectId);
                 const definition = formatEngineDefinitionLabel(trace.engine);
+                const instanceKey = trace.engine?.instance_key ?? '—';
                 return (
                   <Tr key={trace.id} className="hover:bg-[var(--c-row-hover-bg)]">
                     <Td>
@@ -267,15 +398,15 @@ export function EngineRunsPage() {
                       <span title={definition}>{definition}</span>
                     </Td>
                     <Td mono>
-                      <span title={trace.engine?.instance_key ?? '—'}>{trace.engine?.instance_key ?? '—'}</span>
+                      <span className="text-xs" title={instanceKey}>{instanceKey}</span>
                     </Td>
-                    <Td>
+                    <Td dim={!waitSummary}>
                       <span title={waitSummary ? `${waitSummary.heading}: ${waitSummary.detail}` : 'No wait state'}>
                         {waitSummary ? `${waitSummary.heading} · ${waitSummary.detail}` : '—'}
                       </span>
                     </Td>
-                    <Td align="right">
-                      <span title={pending.title}>{pending.label}</span>
+                    <Td align="right" mono dim={pending.total === 0}>
+                      <span className="text-xs" title={pending.title}>{pending.label}</span>
                     </Td>
                     <Td>
                       {trace.engine?.projection_state ? (
@@ -286,13 +417,15 @@ export function EngineRunsPage() {
                         '—'
                       )}
                     </Td>
-                    <Td>
-                      <span title={formatTimestamp(updated)}>{formatRelativeTime(updated)}</span>
+                    <Td mono dim>
+                      <time className="text-xs" dateTime={updated} title={formatTimestamp(updated)}>
+                        {formatExactTime(updated)}
+                      </time>
                     </Td>
                     <Td align="center">
                       <Link
                         aria-label={`Open ${trace.id}`}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--c-border)] text-[var(--c-text-secondary)] hover:text-[var(--c-text-primary)]"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--c-border)] text-[var(--c-text-secondary)] hover:border-[var(--c-border-strong)] hover:text-[var(--c-text-primary)]"
                         state={{ returnTo }}
                         to={to}
                       >

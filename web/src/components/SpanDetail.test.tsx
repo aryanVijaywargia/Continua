@@ -261,3 +261,33 @@ describe('SpanDetail retry safety', () => {
     expect(screen.queryByText('Retry Safety')).not.toBeInTheDocument();
   });
 });
+
+describe('SpanDetail details variant', () => {
+  it('hides the heading, error, and payloads that the inspector already shows', () => {
+    render(
+      <SpanDetail
+        variant="details"
+        span={createSpan({
+          span_id: 'child',
+          name: 'Child span',
+          parent_span_id: 'root',
+          status: 'FAILED',
+          error_message: 'boom-details',
+          input: { question: 'hidden-input' },
+        })}
+        breadcrumbPath={[
+          { spanId: 'root', name: 'Root span' },
+          { spanId: 'child', name: 'Child span' },
+        ]}
+        onSelectSpan={vi.fn()}
+        spanIndex={new Map()}
+      />
+    );
+
+    expect(screen.queryByRole('heading', { name: 'Child span' })).not.toBeInTheDocument();
+    expect(screen.queryByText('boom-details')).not.toBeInTheDocument();
+    expect(screen.queryByText(/hidden-input/)).not.toBeInTheDocument();
+    expect(screen.getByText('Parent Span ID:')).toBeInTheDocument();
+  });
+
+});

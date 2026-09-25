@@ -200,7 +200,7 @@ describe('TracesPage', () => {
     renderTraceRoutes(['/traces']);
 
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
-    expect(screen.getByText('Engine')).toBeInTheDocument();
+    expect(within(getTraceRow('Checkout Trace')).getByText('checkout')).toBeInTheDocument();
   });
 
   it('exports the current trace page as JSON', async () => {
@@ -235,7 +235,7 @@ describe('TracesPage', () => {
     renderTraceRoutes(['/traces']);
 
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
-    expect(within(getTraceRow('Checkout Trace')).queryByText('Engine')).not.toBeInTheDocument();
+    expect(within(getTraceRow('Checkout Trace')).queryByText('checkout')).not.toBeInTheDocument();
   });
 
   it('shows the auth recovery banner when the traces request returns 401', async () => {
@@ -275,7 +275,11 @@ describe('TracesPage', () => {
     );
 
     expect(screen.getByLabelText('Search')).toHaveValue('checkout');
-    expect(screen.getByLabelText('Filter Failed traces')).toBeChecked();
+    expect(screen.getByLabelText('Status')).toHaveValue('failed');
+    expect(screen.getByRole('button', { name: /Advanced/ })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
     expect(screen.getByLabelText('Start Date')).toHaveValue('2026-03-10');
     expect(screen.getByLabelText('End Date')).toHaveValue('2026-03-12');
     expect(screen.getByLabelText('User ID')).toHaveValue('user-123');
@@ -283,11 +287,17 @@ describe('TracesPage', () => {
     expect(screen.getByLabelText('Only show traces with errors')).toBeChecked();
   });
 
-  it('renders engine filters in the facet panel and rehydrates them from the URL', async () => {
+  it('keeps engine filters behind the Advanced control and rehydrates them from the URL', async () => {
+    const user = userEvent.setup();
     fetchMock.mockImplementation(buildFetchHandler());
 
     const firstView = renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    const advancedToggle = screen.getByRole('button', { name: /Advanced/ });
+    expect(advancedToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Engine Instance Key')).not.toBeInTheDocument();
+    await user.click(advancedToggle);
+    expect(advancedToggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('No engine definitions')).toBeInTheDocument();
     expect(screen.getByLabelText('Engine Instance Key')).toHaveValue('');
     firstView.unmount();
@@ -301,7 +311,7 @@ describe('TracesPage', () => {
       '?limit=20&engine_definition_name=checkout&engine_run_status=waiting&engine_projection_state=summary_only'
     );
 
-    expect(screen.getByLabelText('Filter checkout engine definition')).toBeChecked();
+    expect(screen.getByLabelText('Engine Definition')).toHaveValue('checkout');
     expect(screen.getByLabelText('Engine Status')).toHaveValue('waiting');
     expect(screen.getByLabelText('Projection State')).toHaveValue(
       'summary_only'
@@ -354,7 +364,7 @@ describe('TracesPage', () => {
       await router.navigate(-1);
     });
 
-    await screen.findByRole('heading', { name: 'Trace volume' });
+    await screen.findByRole('heading', { name: 'Recent traces' });
     expect(router.state.location.pathname).toBe('/dashboard');
   });
 
@@ -365,6 +375,7 @@ describe('TracesPage', () => {
     renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
     fetchMock.mockClear();
     const instanceKeyInput = screen.getByLabelText('Engine Instance Key');
     await user.type(instanceKeyInput, 'order-123');
@@ -405,6 +416,7 @@ describe('TracesPage', () => {
     const { router } = renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
     fetchMock.mockClear();
     const userIdInput = screen.getByLabelText('User ID');
 
@@ -423,6 +435,7 @@ describe('TracesPage', () => {
     renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
     fetchMock.mockClear();
     const minDurationInput = screen.getByLabelText('Min Duration (ms)');
 
@@ -444,6 +457,7 @@ describe('TracesPage', () => {
     const { router } = renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
     fetchMock.mockClear();
     const minDurationInput = screen.getByLabelText('Min Duration (ms)');
 
@@ -473,7 +487,7 @@ describe('TracesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Next page' }));
     await waitForListFetch('?limit=20&offset=20');
 
-    await user.click(screen.getByLabelText('Filter Running traces'));
+    await user.selectOptions(screen.getByLabelText('Status'), 'running');
     await waitForListFetch('?limit=20&status=running');
     await waitFor(() => {
       expect(router.state.location.search).toBe('?status=running');
@@ -608,7 +622,7 @@ describe('TracesPage', () => {
     renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText('Filter Running traces'));
+    await user.selectOptions(screen.getByLabelText('Status'), 'running');
 
     expect(screen.getByText('Checkout Trace')).toBeInTheDocument();
     expect(screen.getByText('Refreshing…')).toBeInTheDocument();
@@ -713,7 +727,7 @@ describe('TracesPage', () => {
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
     const searchInput = screen.getByLabelText('Search');
-    const statusCheckbox = screen.getByLabelText('Filter Failed traces');
+    const statusSelect = screen.getByLabelText('Status');
     const startDate = screen.getByLabelText('Start Date');
     const endDate = screen.getByLabelText('End Date');
     const userIdInput = screen.getByLabelText('User ID');
@@ -725,7 +739,7 @@ describe('TracesPage', () => {
     const clearSession = screen.getByRole('button', { name: 'Clear Session filter' });
     const clearAll = screen.getByRole('button', { name: 'Clear (3)' });
     expect(searchInput).toBeEnabled();
-    expect(statusCheckbox).toBeEnabled();
+    expect(statusSelect).toBeEnabled();
     expect(startDate).toBeEnabled();
     expect(endDate).toBeEnabled();
     expect(userIdInput).toBeEnabled();
@@ -838,13 +852,37 @@ describe('TracesPage', () => {
     expect(screen.getAllByText('Started').length).toBeGreaterThan(0);
   });
 
+  it('states the match count, what search checks, and the exact-time note', async () => {
+    fetchMock.mockImplementation(buildFetchHandler());
+
+    const firstView = renderTraceRoutes(['/traces']);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    expect(screen.getByText('2 traces')).toBeInTheDocument();
+    expect(screen.queryByText(/search checks/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Start times are exact/)).toBeInTheDocument();
+    const runningRow = screen.getByRole('link', { name: 'Latency Trace' }).closest('tr');
+    expect(runningRow).not.toBeNull();
+    expect(within(runningRow as HTMLElement).getByText('running')).toBeInTheDocument();
+    firstView.unmount();
+
+    renderTraceRoutes(['/traces?q=checkout']);
+    expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
+    expect(screen.getByText('2 traces match')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'search checks trace names and IDs, user IDs, session IDs, and step names'
+      )
+    ).toBeInTheDocument();
+  });
+
   it('renders trace ID as the secondary trace row identifier', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
     renderTraceRoutes(['/traces']);
     expect(await screen.findByText('Checkout Trace')).toBeInTheDocument();
 
-    expect(screen.getByText(TRACE_ONE.id)).toBeInTheDocument();
+    const shortId = within(getTraceRow('Checkout Trace')).getByText(TRACE_ONE.id.slice(0, 8));
+    expect(shortId).toHaveAttribute('title', TRACE_ONE.id);
     expect(screen.queryByText('conv-checkout-123')).not.toBeInTheDocument();
     expect(screen.queryByText(SESSION_ID)).not.toBeInTheDocument();
   });

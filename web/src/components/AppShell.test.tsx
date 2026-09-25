@@ -228,9 +228,13 @@ describe('AppShell', () => {
       'href',
       `/traces?project_id=${PRIMARY_PROJECT_ID}`
     );
-    expect(within(primaryNav).getByText('Engine Runs').closest('a')).toHaveAttribute(
+    expect(within(primaryNav).getByText('Runs').closest('a')).toHaveAttribute(
       'href',
       `/engine/runs?project_id=${PRIMARY_PROJECT_ID}`
+    );
+    expect(within(primaryNav).getByText('Health').closest('a')).toHaveAttribute(
+      'href',
+      `/tools/engine-health?project_id=${PRIMARY_PROJECT_ID}`
     );
     expect(within(primaryNav).getByText('Sessions').closest('a')).toHaveAttribute(
       'aria-current',
@@ -238,7 +242,9 @@ describe('AppShell', () => {
     );
     expect(within(primaryNav).queryByText('Definitions')).not.toBeInTheDocument();
     expect(within(primaryNav).queryByText('Schedules')).not.toBeInTheDocument();
-    expect(within(primaryNav).queryByText('Engine')).not.toBeInTheDocument();
+    expect(
+      within(primaryNav).queryByRole('link', { name: /^Engine$/ })
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId('location-probe')).toHaveTextContent(
       `/sessions?project_id=${PRIMARY_PROJECT_ID}`
     );

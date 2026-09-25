@@ -169,6 +169,10 @@ export function TraceDetailWorkspaceProvider({
     [setSpanParam]
   );
 
+  const clearSelection = useCallback(() => {
+    setSpanParam(null);
+  }, [setSpanParam]);
+
   const selectSpanAndShowDetails = useCallback(
     (spanId: string) => {
       setSpanParam(spanId);
@@ -260,6 +264,7 @@ export function TraceDetailWorkspaceProvider({
       collapseAll,
       setExact,
       selectSpan,
+      clearSelection,
       selectSpanAndShowDetails,
       buildCopyTraceUrl,
       exportTrace,
@@ -295,6 +300,7 @@ export function TraceDetailWorkspaceProvider({
       collapseAll,
       setExact,
       selectSpan,
+      clearSelection,
       selectSpanAndShowDetails,
       buildCopyTraceUrl,
       exportTrace,

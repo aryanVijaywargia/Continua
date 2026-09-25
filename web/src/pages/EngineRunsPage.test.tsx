@@ -357,19 +357,134 @@ describe('EngineRunsPage', () => {
     );
   });
 
-  it('shows the empty state and opens the start dialog from it', async () => {
+  it('shows the empty-project state and opens the start dialog from it', async () => {
     const user = userEvent.setup();
     mockEngineRequests({ traces: [] });
 
     renderEngineRunsPage();
 
-    const emptyHeading = await screen.findByRole('heading', { name: 'No engine runs yet' });
-    const emptyState = emptyHeading.closest('.app-empty-state');
+    const emptyHeading = await screen.findByRole('heading', {
+      name: 'No engine runs in this project',
+    });
+    const emptyState = emptyHeading.closest('[data-state="empty-project"]');
     expect(emptyState).not.toBeNull();
-    await user.click(within(emptyState as HTMLElement).getByRole('button', { name: 'Start run' }));
+    const scoped = within(emptyState as HTMLElement);
+    expect(scoped.getByText(/Durable workflows are authored in Go/)).toBeInTheDocument();
+    expect(scoped.getByText(/No filter is applied\./)).toBeInTheDocument();
+    expect(scoped.getByRole('link', { name: /Read the engine guide/ })).toHaveAttribute(
+      'href',
+      'https://www.continua.in/docs/concepts/engine-foundation'
+    );
+    expect(scoped.queryByRole('button', { name: 'Clear filter' })).not.toBeInTheDocument();
+    await user.click(scoped.getByRole('button', { name: 'Start run' }));
 
     expect(await screen.findByRole('heading', { name: 'Start run' })).toBeInTheDocument();
     expect(screen.getByLabelText(/^Instance key/)).toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      scenario: 'the project has other runs',
+      unfilteredTotal: 4,
+      body: 'This project has engine runs, but none are quarantined right now.',
+    },
+    {
+      scenario: 'the project has no runs at all',
+      unfilteredTotal: 0,
+      body: 'This project has no engine runs yet, so none are quarantined.',
+    },
+  ])('explains a status filter with no matches when $scenario', async ({ unfilteredTotal, body }) => {
+    fetchMock.mockImplementation((input: RequestInput) => {
+      const url = new URL(readRequestUrl(input), 'http://localhost');
+      if (url.pathname !== '/api/traces') {
+        throw new Error(`Unhandled request: ${url.pathname}`);
+      }
+      return url.searchParams.get('engine_run_status')
+        ? jsonResponse({ traces: [], total: 0 })
+        : jsonResponse({
+            traces: unfilteredTotal > 0 ? [ENGINE_TRACE] : [],
+            total: unfilteredTotal,
+          });
+    });
+
+    renderEngineRunsPage('/engine/runs?engine_run_status=quarantined');
+
+    const heading = await screen.findByRole('heading', { name: 'No runs match this filter' });
+    const state = heading.closest('[data-state="filter-no-matches"]') as HTMLElement;
+    expect(state).not.toBeNull();
+    expect(await within(state).findByText(body)).toBeInTheDocument();
+    expect(screen.getByTitle('The status filter is stored in the URL')).toHaveTextContent(
+      '?engine_run_status=quarantined'
+    );
+    expect(
+      screen.getByRole('button', { name: 'Clear Quarantined status filter' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'No engine runs in this project' })
+    ).not.toBeInTheDocument();
+
+    const probe = fetchMock.mock.calls
+      .map(([request]) => new URL(readRequestUrl(request as RequestInput), 'http://localhost'))
+      .find((url) => !url.searchParams.has('engine_run_status'));
+    expect(probe?.searchParams.get('engine_only')).toBe('true');
+    expect(probe?.searchParams.get('offset')).toBeNull();
+  });
+
+  it('clears the status filter from the no-matches state', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation((input: RequestInput) => {
+      const url = new URL(readRequestUrl(input), 'http://localhost');
+      return url.searchParams.get('engine_run_status')
+        ? jsonResponse({ traces: [], total: 0 })
+        : jsonResponse({ traces: [ENGINE_TRACE], total: 1 });
+    });
+
+    renderEngineRunsPage('/engine/runs?engine_run_status=quarantined&project_id=11111111-1111-4111-8111-111111111111');
+
+    await user.click(await screen.findByRole('button', { name: 'Clear filter' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('probe-search')).not.toHaveTextContent('engine_run_status');
+    });
+    expect(screen.getByTestId('probe-search')).toHaveTextContent('project_id=11111111-1111-4111-8111-111111111111');
+    expect(await screen.findByText('darklaunch.demo · v1')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Engine run status' })).toHaveDisplayValue(
+      'All statuses'
+    );
+  });
+
+  it('shows the failed request with method, path, and status and retries it', async () => {
+    const user = userEvent.setup();
+    let calls = 0;
+    fetchMock.mockImplementation(() => {
+      calls += 1;
+      return calls === 1
+        ? jsonResponse({ code: 'server_error', message: 'database unavailable' }, 503)
+        : jsonResponse({ traces: [ENGINE_TRACE], total: 1 });
+    });
+
+    renderEngineRunsPage();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Could not load engine runs');
+    expect(alert).toHaveTextContent('GET /api/traces · 503 · database unavailable');
+
+    await user.click(within(alert).getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('darklaunch.demo · v1')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders exact update times with the ISO timestamp as a title', async () => {
+    mockEngineRequests();
+
+    renderEngineRunsPage();
+
+    const row = (await screen.findByText('darklaunch.demo · v1')).closest('tr') as HTMLElement;
+    const time = row.querySelector('time');
+    expect(time).toHaveAttribute('dateTime', '2026-03-14T10:00:03.000Z');
+    expect(time).toHaveAttribute('title', '2026-03-14T10:00:03.000Z');
+    expect(time?.textContent).not.toMatch(/ago/);
   });
 
   it('keeps the public demo read-only while rendering captured engine runs', async () => {
@@ -386,6 +501,7 @@ describe('EngineRunsPage', () => {
     expect(screen.getByText(/read-only captured runs/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Engine health' })).toBeInTheDocument();
+    expect(screen.getByText('Read-only')).toBeInTheDocument();
   });
 
   it('shows the public demo empty state without a start action', async () => {

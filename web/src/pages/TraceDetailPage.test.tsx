@@ -171,27 +171,32 @@ describe('TraceDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Checkout Trace' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Replay' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export JSON' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open in workspace' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Trace Context' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Execution Waterfall' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Root span COMPLETED 1.0s' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Child span COMPLETED 1.0s' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Execution steps' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Focus slow steps/ })).toBeInTheDocument();
+    expect(screen.getByText(/tokens ·/)).toBeInTheDocument();
+    expect(screen.queryByText('Usage not verified')).not.toBeInTheDocument();
+    expect(screen.getByText('Select a step to inspect its input, output, and details.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select step Root span' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Select step Child span' })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Child span COMPLETED 1.0s' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select step Child span' }));
     expect(screen.getByRole('heading', { name: 'Child span' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Output' })).toHaveAttribute('aria-pressed', 'false');
     await userEvent.click(screen.getByRole('button', { name: 'Output' }));
-    expect(screen.getByText('"ok"')).toBeInTheDocument();
+    expect(screen.getByText('ok')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Raw JSON' }));
+    expect(screen.getByRole('button', { name: 'Raw JSON' })).toHaveAttribute('aria-pressed', 'true');
 
     const sectionTabs = screen.getByRole('navigation', { name: 'Trace detail sections' });
-    await userEvent.click(within(sectionTabs).getByRole('button', { name: /Timeline/i }));
+    await userEvent.click(within(sectionTabs).getByRole('button', { name: /Events/i }));
     expect(screen.getAllByRole('heading', { name: 'Timeline' }).length).toBeGreaterThan(0);
-    expect(within(sectionTabs).getByRole('button', { name: /Timeline/i })).toHaveAttribute(
+    expect(within(sectionTabs).getByRole('button', { name: /Events/i })).toHaveAttribute(
       'aria-pressed',
       'true'
     );
 
-    await userEvent.click(within(sectionTabs).getByRole('button', { name: /Logs/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Logs and errors' }));
     expect(screen.getByText(/Explicit logs, errors, exceptions/i)).toBeInTheDocument();
     expect(screen.getByText('Called checkout tool')).toBeInTheDocument();
 
@@ -202,8 +207,8 @@ describe('TraceDetailPage', () => {
 
     expect(within(sectionTabs).queryByRole('button', { name: 'Replay' })).not.toBeInTheDocument();
 
-    await userEvent.click(within(sectionTabs).getByRole('button', { name: 'Overview' }));
-    expect(screen.getByRole('heading', { name: 'Execution Waterfall' })).toBeInTheDocument();
+    await userEvent.click(within(sectionTabs).getByRole('button', { name: 'Execution' }));
+    expect(screen.getByRole('region', { name: 'Execution steps' })).toBeInTheDocument();
   });
 
   it('shows truncation metadata inside the active span inspector', async () => {
@@ -248,7 +253,6 @@ describe('TraceDetailPage', () => {
     await userEvent.click(within(sectionTabs).getByRole('button', { name: 'Replay' }));
     expect(screen.getByText('Replay is coming soon')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run replay' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Open in workspace' })).toBeDisabled();
     expect(screen.getByText('Replay source')).toBeInTheDocument();
     expect(screen.getByText('Determinism overrides')).toBeInTheDocument();
   });
@@ -273,7 +277,7 @@ describe('TraceDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Child span' })).toBeInTheDocument();
     expect(router.state.location.search).toContain('span=child');
 
-    await user.click(screen.getByRole('button', { name: 'Root span COMPLETED 1.0s' }));
+    await user.click(screen.getByRole('button', { name: 'Select step Root span' }));
     await waitFor(() => {
       expect(router.state.location.search).toContain('span=root');
       expect(router.state.location.search).toContain('debug=1');
@@ -295,7 +299,7 @@ describe('TraceDetailPage', () => {
 
     // span data renders...
     expect(
-      await screen.findByRole('button', { name: 'Real span COMPLETED 1.0s' })
+      await screen.findByRole('button', { name: 'Select step Real span' })
     ).toBeInTheDocument();
 
     // ...and the invalid param is stripped while unrelated params survive.
@@ -306,7 +310,7 @@ describe('TraceDetailPage', () => {
 
     // the phantom span is not selected: inspector shows the empty prompt
     expect(
-      screen.getByText('Select a span to inspect payloads.')
+      screen.getByText('Select a step to inspect its input, output, and details.')
     ).toBeInTheDocument();
   });
 
@@ -322,8 +326,8 @@ describe('TraceDetailPage', () => {
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}?debug=1`]);
 
-    expect(await screen.findByRole('button', { name: 'Copy span COMPLETED 1.0s' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Copy span COMPLETED 1.0s' }));
+    expect(await screen.findByRole('button', { name: 'Select step Copy span' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Select step Copy span' }));
     await user.click(screen.getByRole('button', { name: 'Copy Trace URL' }));
 
     expect(writeText).toHaveBeenCalledWith(
@@ -373,7 +377,7 @@ describe('TraceDetailPage', () => {
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
-    expect(await screen.findByText('checkout')).toBeInTheDocument();
+    expect((await screen.findAllByText('checkout')).length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: 'Engine state' }));
 
     expect(screen.getByRole('button', { name: 'Overview 0' })).toHaveAttribute(
@@ -688,41 +692,46 @@ describe('TraceDetailPage', () => {
     expect(screen.getByText('manual_override')).toBeInTheDocument();
   });
 
-  it('keeps the mobile execution tree available for search, expansion, and selection', async () => {
+  it('lists mobile steps by duration and opens a step inspector', async () => {
     const user = userEvent.setup();
     setMatchMediaMatches(false);
-    const rootSpan = createSpan({ span_id: 'root', name: 'Root span' });
+    const rootSpan = createSpan({ span_id: 'root', name: 'Root span', latency_ms: 2000 });
     const childSpan = createSpan({
       span_id: 'child',
       name: 'Needle child',
       parent_span_id: 'root',
+      latency_ms: 500,
       input: { needle: true },
+    });
+    const fastSpan = createSpan({
+      span_id: 'fast',
+      name: 'Fast child',
+      parent_span_id: 'root',
+      latency_ms: 2,
     });
     fetchMock.mockImplementation(
       buildFetchHandler({
-        spans: () => jsonResponse({ spans: [rootSpan, childSpan] }),
+        spans: () => jsonResponse({ spans: [rootSpan, childSpan, fastSpan] }),
       })
     );
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
-    expect(await screen.findByRole('button', { name: 'Execution' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Execution' }));
-    await user.click(screen.getByRole('button', { name: 'Tree' }));
+    const stepButtons = await screen.findAllByRole('button', { name: /^Select step / });
+    expect(stepButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Select step Root span',
+      'Select step Needle child',
+    ]);
+    await user.click(screen.getByRole('button', { name: '1 step under 10 ms — show all' }));
+    expect(screen.getByRole('button', { name: 'Select step Fast child' })).toBeInTheDocument();
 
-    expect(screen.getByRole('heading', { name: 'Spans (2)' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Collapse all' }));
-    expect(screen.queryByRole('button', { name: 'Select span Needle child' })).not.toBeInTheDocument();
-
-    await user.type(screen.getByLabelText('Search spans'), 'Needle');
-    expect(await screen.findByRole('button', { name: 'Select span Needle child' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Select span Needle child' }));
-
-    await user.click(screen.getByRole('button', { name: 'Summary' }));
-    expect(screen.getAllByText('Needle child').length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Select step Needle child' }));
+    expect(screen.getByRole('heading', { name: 'Needle child' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Back to steps' }));
+    expect(screen.getByRole('button', { name: 'Select step Needle child' })).toBeInTheDocument();
   });
 
-  it('does not expose duplicate mobile timeline and state workspaces inside overview', async () => {
+  it('uses Steps, Events, and Metrics tabs at narrow width', async () => {
     setMatchMediaMatches(false);
     fetchMock.mockImplementation(
       buildFetchHandler({
@@ -742,16 +751,13 @@ describe('TraceDetailPage', () => {
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
-    const mobileWorkspace = await screen.findByRole('navigation', {
-      name: 'Mobile trace workspace',
-    });
-    expect(within(mobileWorkspace).getByRole('button', { name: 'Summary' })).toBeInTheDocument();
-    expect(within(mobileWorkspace).getByRole('button', { name: 'Execution' })).toBeInTheDocument();
-    expect(within(mobileWorkspace).queryByRole('button', { name: 'Timeline' })).not.toBeInTheDocument();
-    expect(within(mobileWorkspace).queryByRole('button', { name: 'State' })).not.toBeInTheDocument();
+    const sectionTabs = await screen.findByRole('navigation', { name: 'Trace detail sections' });
+    expect(within(sectionTabs).getByRole('button', { name: 'Steps' })).toBeInTheDocument();
+    expect(within(sectionTabs).getByRole('button', { name: /Metrics/ })).toBeInTheDocument();
+    expect(within(sectionTabs).queryByRole('button', { name: 'Summary' })).not.toBeInTheDocument();
+    expect(within(sectionTabs).queryByRole('button', { name: 'Execution' })).not.toBeInTheDocument();
 
-    const sectionTabs = screen.getByRole('navigation', { name: 'Trace detail sections' });
-    await userEvent.click(within(sectionTabs).getByRole('button', { name: /Timeline/i }));
+    await userEvent.click(within(sectionTabs).getByRole('button', { name: /Events/i }));
     expect(screen.getByRole('heading', { name: 'Timeline' })).toBeInTheDocument();
   });
 
@@ -871,13 +877,13 @@ describe('TraceDetailPage', () => {
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
-    expect(await screen.findByRole('button', { name: 'Root span COMPLETED 1.0s' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Select step Root span' })).toBeInTheDocument();
     await waitFor(() => {
       expect(getTraceDetailRequests()).toHaveLength(1);
     });
 
-    await user.click(screen.getByRole('button', { name: 'Child span COMPLETED 1.0s' }));
-    await user.click(screen.getByRole('button', { name: 'Root span COMPLETED 1.0s' }));
+    await user.click(screen.getByRole('button', { name: 'Select step Child span' }));
+    await user.click(screen.getByRole('button', { name: 'Select step Root span' }));
 
     expect(getTraceDetailRequests()).toHaveLength(1);
   });

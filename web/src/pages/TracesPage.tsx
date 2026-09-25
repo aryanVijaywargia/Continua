@@ -1,23 +1,21 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Download, MoreHorizontal, RefreshCw, Zap } from 'lucide-react';
+import { Clock3, Download, Link2, SlidersHorizontal, Zap } from 'lucide-react';
 import { fetchTraces, isAuthError, type Trace } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import {
   Btn,
   Chip,
   DataTable,
-  FacetGroup,
-  FacetItem,
   FilterBar,
-  PageHeader,
   SearchInput,
   StatusDot,
   Td,
   Th,
   Tr,
 } from '../components/DebuggerKit';
+import { HonestyNote } from '../components/DataState';
 import { PaginationControls } from '../components/PaginationControls';
 import { STATUS_TONE } from '../components/statusTone';
 import { useTracesSearchParams } from '../hooks/useTracesSearchParams';
@@ -25,26 +23,27 @@ import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import {
   buildCanonicalQueryString,
   deriveActiveChips,
-  ENGINE_PROJECTION_STATE_FILTER_VALUES,
-  ENGINE_RUN_STATUS_FILTER_VALUES,
-  formatEngineProjectionStateLabel,
-  formatEngineRunStatusLabel,
   isoToLocalDateInputValue,
   localDateToISOEnd,
   localDateToISOStart,
 } from '../utils/tracesSearchParams';
-import {
-  calculateDuration,
-  formatCost,
-  formatDuration,
-  formatRelativeTime,
-  formatTokens,
-} from '../utils/format';
+import { calculateDuration, formatDerivedDuration } from '../utils/format';
 import { appendProjectToPath } from '../utils/projectSearchParams';
 import { downloadJsonFile } from '../utils/downloadJson';
+import { TracesAdvancedPanel } from './traces/TracesAdvancedPanel';
+import {
+  countAdvancedFilters,
+  formatExactTimeWithSeconds,
+  shortTraceId,
+} from './traces/traceListFormat';
 
 const DEBOUNCE_MS = 300;
 const EMPTY_TRACES: Trace[] = [];
+const ADVANCED_PANEL_ID = 'traces-advanced-filters';
+const TOOLBAR_CONTROL_CLASS =
+  'h-7 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-2 text-xs font-medium text-[var(--c-text-primary)] outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)]';
+const DATE_INPUT_CLASS =
+  'h-6 w-[118px] min-w-0 border-0 bg-transparent p-0 text-[11.5px] text-[var(--c-text-primary)] outline-none focus:ring-0';
 
 function normalizeTrimmedDraft(value: string): string {
   return value.trim();
@@ -225,25 +224,14 @@ function TracesContent() {
       traces,
     });
   }, [currentListUrl, filters, total, traces]);
-  const statusCounts = {
-    RUNNING: traces.filter((trace) => trace.status === 'RUNNING').length,
-    COMPLETED: traces.filter((trace) => trace.status === 'COMPLETED').length,
-    FAILED: traces.filter((trace) => trace.status === 'FAILED').length,
-  };
-  const engineDefinitionCounts = traces.reduce<Map<string, number>>((counts, trace) => {
-    const definitionName = trace.engine?.definition_name;
-    if (definitionName) {
-      counts.set(definitionName, (counts.get(definitionName) ?? 0) + 1);
-    }
-    return counts;
-  }, new Map<string, number>());
-  if (
-    filters.engine_definition_name &&
-    !engineDefinitionCounts.has(filters.engine_definition_name)
-  ) {
-    engineDefinitionCounts.set(filters.engine_definition_name, 0);
-  }
-  const engineDefinitionItems = Array.from(engineDefinitionCounts.entries());
+  const engineDefinitionItems = Array.from(
+    new Set(
+      [
+        ...traces.map((trace) => trace.engine?.definition_name),
+        filters.engine_definition_name,
+      ].filter((name): name is string => Boolean(name))
+    )
+  ).sort();
 
   useEffect(() => {
     if (traces.length !== 0 || total === 0 || filters.offset === 0) {
@@ -273,386 +261,287 @@ function TracesContent() {
     );
   }, [filters.q, filters.sort_by, filters.sort_dir, setFilters]);
 
+  const advancedFilterCount = countAdvancedFilters(filters);
+  const [advancedOpen, setAdvancedOpen] = useState(advancedFilterCount > 0);
+  useEffect(() => {
+    if (advancedFilterCount > 0) {
+      setAdvancedOpen(true);
+    }
+  }, [advancedFilterCount]);
+
   return (
-    <div className="flex min-h-0 flex-1">
-      <aside className="hidden w-60 shrink-0 overflow-y-auto border-r border-[var(--c-border)] bg-[var(--c-app-bg)] lg:block">
-        <div className="flex items-center justify-between px-3.5 py-3">
-          <span className="text-xs font-semibold text-[var(--c-text-primary)]">
-            Filters
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex items-center justify-between gap-4 border-b border-[var(--c-border)] px-6 py-3">
+        <div className="flex min-w-0 items-baseline gap-2.5">
+          <h1 className="text-lg font-bold tracking-[-0.015em] text-[var(--c-text-primary)]">
+            Traces
+          </h1>
+          <span className="truncate text-[12px] text-[var(--c-text-muted)]">
+            auto-refreshes every 5s
           </span>
-          {hasActiveFilters ? (
+        </div>
+        <Btn kind="secondary" leadingIcon={Download} size="sm" onClick={handleExport}>
+          Export
+        </Btn>
+      </header>
+
+      <FilterBar className="px-6 py-2.5">
+        <SearchInput
+          aria-label="Search"
+          value={searchDraft}
+          onChange={(event) => setSearchDraft(event.target.value)}
+          onKeyDown={(event) => commitOnEnter(event, commitSearch)}
+          onClear={() => {
+            setSearchDraft('');
+            setFilters({ q: undefined }, 'push');
+          }}
+          placeholder="Search trace, step, session, or user…"
+          widthClass="w-full sm:w-[300px]"
+        />
+        <span className="sr-only">Search names, user IDs, and matching span names.</span>
+        <select
+          aria-label="Status"
+          value={filters.status ?? ''}
+          onChange={(event) =>
+            setFilters(
+              {
+                status: event.target.value
+                  ? (event.target.value as 'running' | 'completed' | 'failed')
+                  : undefined,
+              },
+              'push'
+            )
+          }
+          className={TOOLBAR_CONTROL_CLASS}
+        >
+          <option value="">Any status</option>
+          {(['RUNNING', 'COMPLETED', 'FAILED'] as const).map((status) => (
+            <option key={status} value={status.toLowerCase()}>
+              {STATUS_TONE[status].label}
+            </option>
+          ))}
+        </select>
+        <div className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2">
+          <Clock3 aria-hidden="true" className="h-3.5 w-3.5 text-[var(--c-text-muted)]" />
+          <input
+            aria-label="Start Date"
+            type="date"
+            value={startDate}
+            onChange={(event) =>
+              setFilters(
+                {
+                  start_time_from: event.target.value
+                    ? localDateToISOStart(event.target.value)
+                    : undefined,
+                },
+                'push'
+              )
+            }
+            className={DATE_INPUT_CLASS}
+          />
+          <span className="text-[11px] text-[var(--c-text-muted)]">–</span>
+          <input
+            aria-label="End Date"
+            type="date"
+            value={endDate}
+            onChange={(event) =>
+              setFilters(
+                {
+                  start_time_to: event.target.value
+                    ? localDateToISOEnd(event.target.value)
+                    : undefined,
+                },
+                'push'
+              )
+            }
+            className={DATE_INPUT_CLASS}
+          />
+        </div>
+        <button
+          type="button"
+          aria-expanded={advancedOpen}
+          aria-controls={ADVANCED_PANEL_ID}
+          onClick={() => setAdvancedOpen((open) => !open)}
+          className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)] ${
+            advancedOpen || advancedFilterCount > 0
+              ? 'border-[var(--c-accent-border)] bg-[var(--c-accent-faint)] text-[var(--c-accent-text)]'
+              : 'border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-text-primary)]'
+          }`}
+        >
+          <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+          Advanced
+          <span className="rounded-[3px] border border-[var(--c-border)] bg-[var(--c-surface-muted)] px-1 font-mono text-[10px] text-[var(--c-text-muted)]">
+            {advancedFilterCount > 0 ? `${advancedFilterCount} active` : 'engine · projection'}
+          </span>
+        </button>
+      </FilterBar>
+
+      {advancedOpen ? (
+        <TracesAdvancedPanel
+          engineDefinitions={engineDefinitionItems}
+          engineInstanceKey={{
+            value: engineInstanceKeyDraft,
+            onChange: setEngineInstanceKeyDraft,
+            onKeyDown: (event) => commitOnEnter(event, commitEngineInstanceKey),
+          }}
+          filters={filters}
+          id={ADVANCED_PANEL_ID}
+          minDuration={{
+            value: minDurationDraft,
+            onChange: setMinDurationDraft,
+            onKeyDown: (event) => commitOnEnter(event, commitMinDuration),
+          }}
+          setFilters={setFilters}
+          userId={{
+            value: userIdDraft,
+            onChange: setUserIdDraft,
+            onKeyDown: (event) => commitOnEnter(event, commitUserId),
+          }}
+        />
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[var(--c-border)] px-6 py-2 text-[12.5px] text-[var(--c-text-secondary)]">
+        <span className="font-medium text-[var(--c-text-primary)]">
+          {tracesQuery.data
+            ? hasActiveFilters
+              ? `${total} ${total === 1 ? 'trace matches' : 'traces match'}`
+              : `${total} ${total === 1 ? 'trace' : 'traces'}`
+            : '—'}
+        </span>
+        {tracesQuery.data && traces.length > 0 && traces.length < total ? (
+          <span className="text-[var(--c-text-muted)]">{traces.length} on this page</span>
+        ) : null}
+        {filters.q ? (
+          <span className="border-l border-[var(--c-border)] pl-3 text-[var(--c-text-muted)]">
+            search checks trace names and IDs, user IDs, session IDs, and step names
+          </span>
+        ) : null}
+        {activeChips.map((chip) => (
+          <Chip
+            key={chip.key}
+            closeLabel={`Clear ${chip.label} filter`}
+            onClose={() => clearChip(chip.key)}
+          >
+            <span>{chip.label}:</span> <span>{chip.value}</span>
+          </Chip>
+        ))}
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            className="text-xs font-medium text-[var(--c-text-muted)] hover:text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)]"
+            onClick={clearAll}
+          >
+            Clear ({activeChips.length})
+          </button>
+        ) : null}
+        <span className="ml-auto flex items-center gap-3 text-[11.5px] text-[var(--c-text-muted)]">
+          {tracesQuery.isFetching && !tracesQuery.isPending ? <span>Refreshing…</span> : null}
+          {location.search ? (
+            <span
+              className="hidden max-w-[320px] items-center gap-1 truncate font-mono md:inline-flex"
+              title="These filters are saved in the page URL."
+            >
+              <Link2 aria-hidden="true" className="h-3 w-3 shrink-0" />
+              <span className="truncate">{location.search}</span>
+            </span>
+          ) : null}
+        </span>
+      </div>
+
+      {tracesQuery.error ? (
+        isAuthError(tracesQuery.error) ? (
+          <AuthErrorBanner message={getErrorMessage(tracesQuery.error)} />
+        ) : (
+          <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
+            <span>Could not load traces</span>: {getErrorMessage(tracesQuery.error)}
             <button
               type="button"
-              onClick={clearAll}
-              className="text-[11.5px] text-[var(--c-text-muted)] hover:text-[var(--c-text-primary)]"
+              className="ml-3 font-semibold underline underline-offset-2"
+              onClick={() => void tracesQuery.refetch()}
             >
-              Reset
+              Retry
             </button>
-          ) : null}
+          </div>
+        )
+      ) : null}
+      {dateRangeError ? (
+        <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
+          {dateRangeError}
         </div>
+      ) : null}
 
-        <FacetGroup label="Status" count={filters.status ? 1 : 0}>
-          {(['RUNNING', 'COMPLETED', 'FAILED'] as const).map((status) => (
-            <FacetItem
-              key={status}
-              ariaLabel={`Filter ${STATUS_TONE[status].label} traces`}
-              checked={filters.status === status.toLowerCase()}
-              count={statusCounts[status]}
-              dot={STATUS_TONE[status].dot}
-              label={STATUS_TONE[status].label}
-              onChange={() =>
-                setFilters(
-                  {
-                    status:
-                      filters.status === status.toLowerCase()
-                        ? undefined
-                        : (status.toLowerCase() as 'running' | 'completed' | 'failed'),
-                  },
-                  'push'
-                )
-              }
-            />
-          ))}
-        </FacetGroup>
-
-        <FacetGroup
-          label="Engine definition"
-          count={filters.engine_definition_name ? 1 : 0}
-        >
-          {engineDefinitionItems.length > 0 ? (
-            engineDefinitionItems.map(([definitionName, count]) => (
-              <FacetItem
-                key={definitionName}
-                ariaLabel={`Filter ${definitionName} engine definition`}
-                checked={filters.engine_definition_name === definitionName}
-                count={count}
-                label={definitionName}
-                onChange={() =>
-                  setFilters(
-                    {
-                      engine_definition_name:
-                        filters.engine_definition_name === definitionName
-                          ? undefined
-                          : definitionName,
-                    },
-                    'push'
-                  )
-                }
-              />
-            ))
-          ) : (
-            <p className="py-1 text-[12.5px] text-[var(--c-text-muted)]">
-              No engine definitions
-            </p>
-          )}
-        </FacetGroup>
-
-        <FacetGroup label="Engine instance" defaultOpen={false} count={filters.engine_instance_key ? 1 : 0}>
-          <input
-            aria-label="Engine Instance Key"
-            value={engineInstanceKeyDraft}
-            onChange={(event) => setEngineInstanceKeyDraft(event.target.value)}
-            onKeyDown={(event) => commitOnEnter(event, commitEngineInstanceKey)}
-            placeholder="Instance key"
-            className="h-7 w-full rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 text-xs text-[var(--c-text-primary)] outline-none"
-          />
-        </FacetGroup>
-
-        <FacetGroup label="Engine status" defaultOpen={false} count={filters.engine_run_status ? 1 : 0}>
-          <select
-            aria-label="Engine Status"
-            value={filters.engine_run_status ?? ''}
-            onChange={(event) =>
-              setFilters(
-                {
-                  engine_run_status: event.target.value
-                    ? (event.target.value as (typeof ENGINE_RUN_STATUS_FILTER_VALUES)[number])
-                    : undefined,
-                },
-                'push'
-              )
-            }
-            className="h-7 w-full rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 text-xs text-[var(--c-text-primary)] outline-none"
-          >
-            <option value="">All engine statuses</option>
-            {ENGINE_RUN_STATUS_FILTER_VALUES.map((value) => (
-              <option key={value} value={value}>
-                {formatEngineRunStatusLabel(value)}
-              </option>
-            ))}
-          </select>
-        </FacetGroup>
-
-        <FacetGroup label="Projection" defaultOpen={false} count={filters.engine_projection_state ? 1 : 0}>
-          <select
-            aria-label="Projection State"
-            value={filters.engine_projection_state ?? ''}
-            onChange={(event) =>
-              setFilters(
-                {
-                  engine_projection_state: event.target.value
-                    ? (event.target.value as (typeof ENGINE_PROJECTION_STATE_FILTER_VALUES)[number])
-                    : undefined,
-                },
-                'push'
-              )
-            }
-            className="h-7 w-full rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 text-xs text-[var(--c-text-primary)] outline-none"
-          >
-            <option value="">All projection states</option>
-            {ENGINE_PROJECTION_STATE_FILTER_VALUES.map((value) => (
-              <option key={value} value={value}>
-                {formatEngineProjectionStateLabel(value)}
-              </option>
-            ))}
-          </select>
-          <p className="mt-2 text-[11px] leading-4 text-[var(--c-text-muted)]">
-            Advanced operator filter for inspecting projection health across engine traces.
+      {dateRangeError ? (
+        <div className="app-empty-state">Fix the date range to load traces.</div>
+      ) : tracesQuery.isPending && !tracesQuery.data ? (
+        <div className="app-empty-state">Loading traces...</div>
+      ) : tracesQuery.error && !tracesQuery.data ? (
+        <div className="app-empty-state">Retry the request or adjust your filters to continue.</div>
+      ) : traces.length === 0 ? (
+        <div className="app-empty-state">
+          <h2 className="text-base font-semibold text-[var(--c-text-primary)]">
+            {hasActiveFilters ? 'No matching traces' : 'No traces yet'}
+          </h2>
+          <p className="mt-2">
+            {hasActiveFilters
+              ? 'Try broadening the filters or clearing them entirely.'
+              : 'Start sending traces from your application to see them here.'}
           </p>
-        </FacetGroup>
-
-        <FacetGroup label="Errors" count={filters.has_errors ? 1 : 0}>
-          <FacetItem
-            ariaLabel="Only show traces with errors"
-            checked={Boolean(filters.has_errors)}
-            count={traces.filter((trace) => (trace.error_count ?? 0) > 0).length}
-            label="Has errors"
-            onChange={() =>
-              setFilters({ has_errors: filters.has_errors ? undefined : true }, 'push')
-            }
-          />
-        </FacetGroup>
-
-        <FacetGroup label="Time range" defaultOpen={false}>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              aria-label="Start Date"
-              type="date"
-              value={startDate}
-              onChange={(event) =>
-                setFilters(
-                  {
-                    start_time_from: event.target.value
-                      ? localDateToISOStart(event.target.value)
-                      : undefined,
-                  },
-                  'push'
-                )
-              }
-              className="h-7 min-w-0 rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-1 text-[11px] text-[var(--c-text-primary)] outline-none"
-            />
-            <input
-              aria-label="End Date"
-              type="date"
-              value={endDate}
-              onChange={(event) =>
-                setFilters(
-                  {
-                    start_time_to: event.target.value
-                      ? localDateToISOEnd(event.target.value)
-                      : undefined,
-                  },
-                  'push'
-                )
-              }
-              className="h-7 min-w-0 rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-1 text-[11px] text-[var(--c-text-primary)] outline-none"
-            />
-          </div>
-        </FacetGroup>
-
-        <FacetGroup label="Duration" defaultOpen={false} count={filters.min_duration_ms ? 1 : 0}>
-          <div className="flex items-center gap-1.5 text-[11.5px] text-[var(--c-text-muted)]">
-            <input
-              aria-label="Min Duration (ms)"
-              type="number"
-              min="1"
-              step="1"
-              value={minDurationDraft}
-              onChange={(event) => setMinDurationDraft(event.target.value)}
-              onKeyDown={(event) => commitOnEnter(event, commitMinDuration)}
-              placeholder="Min"
-              className="h-7 min-w-0 flex-1 rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 text-xs text-[var(--c-text-primary)] outline-none"
-            />
-            <span>—</span>
-            <input
-              aria-label="Max Duration (ms)"
-              disabled
-              placeholder="Max ms"
-              className="h-7 min-w-0 flex-1 rounded border border-[var(--c-border)] bg-[var(--c-surface-muted)] px-2 text-xs text-[var(--c-text-muted)] outline-none"
+        </div>
+      ) : (
+        <>
+          <DataTable>
+            <colgroup>
+              <col />
+              <col className="w-[120px]" />
+              <col className="w-[104px]" />
+              <col className="w-[104px]" />
+              <col className="w-[180px]" />
+            </colgroup>
+            <thead>
+              <tr>
+                <Th>Trace</Th>
+                <Th>Status</Th>
+                <Th align="right">Failed steps</Th>
+                <Th align="right">Duration</Th>
+                <Th
+                  align="right"
+                  sortable={!filters.q}
+                  sortActive={filters.sort_by === 'started_at'}
+                  sortDir={filters.sort_dir}
+                  onSort={handleStartedSortToggle}
+                >
+                  Started
+                </Th>
+              </tr>
+            </thead>
+            <tbody>
+              {traces.map((trace) => (
+                <TraceRow
+                  key={trace.id}
+                  projectId={filters.project_id}
+                  returnTo={currentListUrl}
+                  trace={trace}
+                />
+              ))}
+            </tbody>
+          </DataTable>
+          <div className="border-t border-[var(--c-border)] px-6 py-2">
+            <HonestyNote className="mb-1.5" kind="derived">
+              Start times are exact so runs on the same day stay distinguishable. Durations are
+              derived from recorded start and end times.
+            </HonestyNote>
+            <PaginationControls
+              offset={filters.offset}
+              pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
+              total={total}
+              currentItemCount={traces.length}
+              onOffsetChange={(offset) => setFilters({ offset }, 'push')}
+              onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
+              onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
             />
           </div>
-        </FacetGroup>
-
-        <FacetGroup label="User" defaultOpen={false} count={filters.user_id ? 1 : 0}>
-          <input
-            aria-label="User ID"
-            value={userIdDraft}
-            onChange={(event) => setUserIdDraft(event.target.value)}
-            onKeyDown={(event) => commitOnEnter(event, commitUserId)}
-            placeholder="usr_…"
-            className="h-7 w-full rounded border border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 text-xs text-[var(--c-text-primary)] outline-none"
-          />
-        </FacetGroup>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <PageHeader
-          actions={
-            <>
-              <Btn kind="secondary" leadingIcon={Download} size="sm" onClick={handleExport}>
-                Export
-              </Btn>
-            </>
-          }
-          description={`${traces.length} of ${total} traces · auto-refreshing every 5s`}
-          title="Traces"
-        />
-
-        <FilterBar
-          count={activeChips.length}
-          onClear={clearAll}
-          right={
-            <div className="flex items-center gap-2">
-              <span className="text-[11.5px] text-[var(--c-text-muted)]">
-                {tracesQuery.isFetching && !tracesQuery.isPending
-                  ? 'Refreshing…'
-                  : `${traces.length} results`}
-              </span>
-              <Btn
-                kind="secondary"
-                leadingIcon={RefreshCw}
-                size="sm"
-                onClick={() => void tracesQuery.refetch()}
-              >
-                Auto
-              </Btn>
-            </div>
-          }
-        >
-          <SearchInput
-            aria-label="Search"
-            value={searchDraft}
-            onChange={(event) => setSearchDraft(event.target.value)}
-            onKeyDown={(event) => commitOnEnter(event, commitSearch)}
-            onClear={() => {
-              setSearchDraft('');
-              setFilters({ q: undefined }, 'push');
-            }}
-            placeholder="Search trace, span, session, or user…"
-          />
-          <span className="sr-only">Search names, user IDs, and matching span names.</span>
-          {activeChips.map((chip) => (
-            <Chip
-              key={chip.key}
-              closeLabel={`Clear ${chip.label} filter`}
-              onClose={() => clearChip(chip.key)}
-            >
-              <span>{chip.label}:</span> <span>{chip.value}</span>
-            </Chip>
-          ))}
-        </FilterBar>
-
-        {tracesQuery.error ? (
-          isAuthError(tracesQuery.error) ? (
-            <AuthErrorBanner message={getErrorMessage(tracesQuery.error)} />
-          ) : (
-            <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
-              <span>Could not load traces</span>: {getErrorMessage(tracesQuery.error)}
-              <button
-                type="button"
-                className="ml-3 font-semibold underline underline-offset-2"
-                onClick={() => void tracesQuery.refetch()}
-              >
-                Retry
-              </button>
-            </div>
-          )
-        ) : null}
-        {dateRangeError ? (
-          <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
-            {dateRangeError}
-          </div>
-        ) : null}
-
-        {dateRangeError ? (
-          <div className="app-empty-state">Fix the date range to load traces.</div>
-        ) : tracesQuery.isPending && !tracesQuery.data ? (
-          <div className="app-empty-state">Loading traces...</div>
-        ) : tracesQuery.error && !tracesQuery.data ? (
-          <div className="app-empty-state">Retry the request or adjust your filters to continue.</div>
-        ) : traces.length === 0 ? (
-          <div className="app-empty-state">
-            <h2 className="text-base font-semibold text-[var(--c-text-primary)]">
-              {hasActiveFilters ? 'No matching traces' : 'No traces yet'}
-            </h2>
-            <p className="mt-2">
-              {hasActiveFilters
-                ? 'Try broadening the filters or clearing them entirely.'
-                : 'Start sending traces from your application to see them here.'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <DataTable>
-              <colgroup>
-                <col className="w-[30%]" />
-                <col className="w-[110px]" />
-                <col className="w-[140px]" />
-                <col className="w-[90px]" />
-                <col className="w-[90px]" />
-                <col className="w-[90px]" />
-                <col className="w-[60px]" />
-                <col className="w-[130px]" />
-                <col className="w-8" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <Th>Trace</Th>
-                  <Th>Status</Th>
-                  <Th>Engine</Th>
-                  <Th align="right">Duration</Th>
-                  <Th align="right">Tokens</Th>
-                  <Th align="right">Cost</Th>
-                  <Th align="right">Errors</Th>
-                  <Th
-                    align="right"
-                    sortable={!filters.q}
-                    sortActive={filters.sort_by === 'started_at'}
-                    sortDir={filters.sort_dir}
-                    onSort={handleStartedSortToggle}
-                  >
-                    Started
-                  </Th>
-                  <Th>
-                    <span className="sr-only">Actions</span>
-                  </Th>
-                </tr>
-              </thead>
-              <tbody>
-                {traces.map((trace) => (
-                  <TraceRow
-                    key={trace.id}
-                    projectId={filters.project_id}
-                    returnTo={currentListUrl}
-                    trace={trace}
-                  />
-                ))}
-              </tbody>
-            </DataTable>
-            <div className="border-t border-[var(--c-border)] px-6 py-2">
-              <PaginationControls
-                offset={filters.offset}
-                pageSize={filters.limit ?? DEFAULT_PAGE_SIZE}
-                total={total}
-                currentItemCount={traces.length}
-                onOffsetChange={(offset) => setFilters({ offset }, 'push')}
-                onPageSizeChange={(limit) => setFilters({ limit }, 'push')}
-                onRepairOffset={(offset) => setFilters({ offset }, 'replace')}
-              />
-            </div>
-          </>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -666,71 +555,53 @@ function TraceRow({
   returnTo: string;
   trace: Trace;
 }) {
-  const duration = calculateDuration(trace.started_at, trace.ended_at);
-  const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
   const tracePath = appendProjectToPath(`/traces/${trace.id}`, projectId);
+  const failedSteps = trace.error_count ?? 0;
 
   return (
-    <Tr>
+    <Tr className="hover:bg-[var(--c-row-hover-bg)]">
       <Td>
-        <article className="min-w-0">
+        <article className="flex min-w-0 items-center gap-2">
           <Link
             aria-label={trace.name}
             to={tracePath}
             state={{ returnTo }}
-            className="flex min-w-0 flex-col gap-0.5 hover:text-[var(--c-accent-text)]"
+            className="min-w-0 truncate font-mono text-[12.5px] font-medium text-[var(--c-text-primary)] hover:text-[var(--c-accent-text)]"
           >
-            <span className="truncate font-mono text-[12.5px] font-medium text-[var(--c-text-primary)]">
-              {trace.name}
-            </span>
+            {trace.name}
           </Link>
-          <span className="block truncate font-mono text-[10.5px] text-[var(--c-text-muted)]">
-            {trace.id}
+          <span
+            className="shrink-0 font-mono text-[11px] text-[var(--c-text-muted)]"
+            title={trace.id}
+          >
+            {shortTraceId(trace.id)}
           </span>
+          {trace.engine ? (
+            <Chip icon={Zap}>{trace.engine.definition_name}</Chip>
+          ) : null}
         </article>
       </Td>
       <Td>
         <StatusDot status={trace.status} />
       </Td>
-      <Td>
-        {trace.engine ? (
-          <Chip icon={Zap}>{trace.engine.definition_name}</Chip>
-        ) : (
-          <span className="text-[var(--c-text-muted)]">—</span>
-        )}
-      </Td>
-      <Td align="right" mono>
-        {formatDuration(duration)}
-      </Td>
-      <Td align="right" mono>
-        {formatTokens(totalTokens)}
-      </Td>
-      <Td align="right" mono>
-        {formatCost(trace.total_cost_usd)}
-      </Td>
       <Td
         align="right"
-        className={
-          trace.error_count && trace.error_count > 0
-            ? 'text-[var(--c-red-text)]'
-            : 'text-[var(--c-text-muted)]'
-        }
+        className={failedSteps > 0 ? 'text-[var(--c-red-text)]' : 'text-[var(--c-text-muted)]'}
         mono
       >
-        {trace.error_count ?? 0}
+        {failedSteps}
       </Td>
-      <Td align="right" dim>
-        {formatRelativeTime(trace.started_at)}
+      <Td align="right" mono>
+        {trace.ended_at ? (
+          <span title="Derived from recorded start and end times.">
+            {formatDerivedDuration(calculateDuration(trace.started_at, trace.ended_at))}
+          </span>
+        ) : (
+          <span className="font-sans text-[12px] text-[var(--c-text-muted)]">running</span>
+        )}
       </Td>
-      <Td align="right">
-        <button
-          type="button"
-          aria-label={`Open actions for ${trace.name}`}
-          className="inline-flex text-[var(--c-text-muted)] hover:text-[var(--c-text-primary)]"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <MoreHorizontal className="h-3.5 w-3.5" />
-        </button>
+      <Td align="right" dim mono>
+        <span title={trace.started_at}>{formatExactTimeWithSeconds(trace.started_at)}</span>
       </Td>
     </Tr>
   );

@@ -31,6 +31,11 @@ interface SpanDetailProps {
   spanIndex: ReadonlyMap<string, Span>;
   events?: TimelineEvent[];
   retrySafety?: RetrySafetyAssessment | null;
+  /**
+   * `full` renders the whole card. `details` omits the title, metric cards,
+   * error, and input/output payloads, for hosts that show those elsewhere.
+   */
+  variant?: 'full' | 'details';
 }
 
 /**
@@ -43,6 +48,7 @@ export function SpanDetail({
   spanIndex,
   events = [],
   retrySafety = null,
+  variant = 'full',
 }: SpanDetailProps) {
   if (!span) {
     return (
@@ -53,6 +59,7 @@ export function SpanDetail({
   }
 
   const totalTokens = (span.tokens_in ?? 0) + (span.tokens_out ?? 0);
+  const isFull = variant === 'full';
   const showLLMContext =
     span.kind === 'LLM' &&
     (span.model !== undefined || span.provider !== undefined);
@@ -69,34 +76,46 @@ export function SpanDetail({
   });
 
   return (
-    <div className="h-full overflow-y-auto bg-[var(--c-app-bg)] p-4">
+    <div
+      className={
+        isFull
+          ? 'h-full overflow-y-auto bg-[var(--c-app-bg)] p-4'
+          : 'bg-[var(--c-app-bg)]'
+      }
+    >
       {/* Header */}
       <div className="mb-4">
         <SpanBreadcrumb
           path={breadcrumbPath}
           onSelectSpan={onSelectSpan}
-          className="mb-3"
+          className={isFull ? 'mb-3' : ''}
         />
-        <h2 className="text-lg font-semibold text-[var(--c-text-primary)]">
-          {span.name}
-        </h2>
-        <div className="mt-2 flex items-center gap-2">
-          <span className="rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-secondary)]">
-            {span.kind}
-          </span>
-          <StatusBadge status={span.status} />
-        </div>
+        {isFull ? (
+          <>
+            <h2 className="text-lg font-semibold text-[var(--c-text-primary)]">
+              {span.name}
+            </h2>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-secondary)]">
+                {span.kind}
+              </span>
+              <StatusBadge status={span.status} />
+            </div>
+          </>
+        ) : null}
       </div>
 
       {/* Metrics */}
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <MetricCard label="Duration" value={formatDuration(span.latency_ms)} />
-        <MetricCard label="Tokens" value={formatTokens(totalTokens)} />
-        <MetricCard label="Cost" value={formatCost(span.cost_usd)} />
-      </div>
+      {isFull ? (
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricCard label="Duration" value={formatDuration(span.latency_ms)} />
+          <MetricCard label="Tokens" value={formatTokens(totalTokens)} />
+          <MetricCard label="Cost" value={formatCost(span.cost_usd)} />
+        </div>
+      ) : null}
 
       {/* Token breakdown */}
-      {(span.tokens_in || span.tokens_out) && (
+      {totalTokens > 0 && (
         <div className="mb-6">
           <h3 className="mb-2 text-sm font-medium text-[var(--c-text-secondary)]">Token Breakdown</h3>
           <div className="app-surface-muted p-3 text-sm">
@@ -113,7 +132,7 @@ export function SpanDetail({
       )}
 
       {/* Error message */}
-      {span.error_message && (
+      {isFull && span.error_message && (
         <div className="mb-6">
           <h3 className="mb-2 text-sm font-medium text-[var(--c-red-text)]">Error</h3>
           <div className="whitespace-pre-wrap rounded border border-[var(--c-red-border)] bg-[var(--c-red-faint)] p-3 font-mono text-sm text-[var(--c-red-text)]">
@@ -134,7 +153,7 @@ export function SpanDetail({
       )}
 
       {/* Input */}
-      {span.input !== undefined && (
+      {isFull && span.input !== undefined && (
         <div className="mb-6">
           <h3 className="mb-2 text-sm font-medium text-[var(--c-text-secondary)]">Input</h3>
           <TruncationBanner
@@ -148,7 +167,7 @@ export function SpanDetail({
       )}
 
       {/* Output */}
-      {span.output !== undefined && (
+      {isFull && span.output !== undefined && (
         <div className="mb-6">
           <h3 className="mb-2 text-sm font-medium text-[var(--c-text-secondary)]">Output</h3>
           <TruncationBanner

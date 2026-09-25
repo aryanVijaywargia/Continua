@@ -1009,8 +1009,12 @@ test('captures trace, session, and compare workspaces', async ({ page }, testInf
     `/traces/${TRACE_ONE.id}?project_id=${PRIMARY_PROJECT_ID}`,
     () =>
       isMobile
-        ? expect(page.getByRole('button', { name: 'Summary' })).toBeVisible()
-        : expect(page.getByRole('heading', { name: 'Execution Waterfall' })).toBeVisible(),
+        ? expect(
+            page
+              .getByRole('navigation', { name: 'Trace detail sections' })
+              .getByRole('button', { name: 'Steps' })
+          ).toBeVisible()
+        : expect(page.getByRole('region', { name: 'Execution steps' })).toBeVisible(),
     `${prefix}-trace-detail`
   );
 
@@ -1026,7 +1030,7 @@ test('captures trace, session, and compare workspaces', async ({ page }, testInf
     page,
     testInfo,
     `/sessions/${SESSION_ID}/compare?project_id=${PRIMARY_PROJECT_ID}&baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
-    () => expect(page.getByRole('heading', { name: 'Span Diff' })).toBeVisible(),
+    () => expect(page.getByRole('heading', { name: 'Step comparison' })).toBeVisible(),
     `${prefix}-session-compare`
   );
 });
@@ -1046,13 +1050,13 @@ test('covers the engine runs console smoke flows', async ({ page }, testInfo) =>
     exact: true,
   });
   expect((await navigation.getByRole('link').allTextContents()).map((text) => text.trim()))
-    .toEqual(['Overview', 'Traces', 'Engine Runs', 'Sessions', 'Projects', 'Settings']);
+    .toEqual(['Overview', 'Traces', 'Sessions', 'RunsPreview', 'Health', 'Projects', 'Settings']);
 
   const engineRunsRequest = page.waitForRequest((request) => {
     const url = new URL(request.url());
     return url.pathname === '/api/traces' && url.searchParams.get('engine_only') === 'true';
   });
-  await navigation.getByRole('link', { name: 'Engine Runs', exact: true }).click();
+  await navigation.getByRole('link', { name: 'Runs Preview', exact: true }).click();
   expect(new URL((await engineRunsRequest).url()).searchParams.get('engine_only')).toBe('true');
   await expect(page).toHaveURL(
     `/engine/runs?project_id=${PRIMARY_PROJECT_ID}`
@@ -1278,15 +1282,15 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
   await page.goto(`/traces/${TRACE_ONE.id}`);
   await expect(
     isMobile
-      ? page.getByRole('button', { name: 'Summary' })
-      : page.getByRole('heading', { name: 'Execution Waterfall' })
+      ? page
+          .getByRole('navigation', { name: 'Trace detail sections' })
+          .getByRole('button', { name: 'Steps' })
+      : page.getByRole('region', { name: 'Execution steps' })
   ).toBeVisible();
   if (!isMobile) {
-    const costStrip = page
-      .locator('svg[aria-label="Cumulative cost chart"]')
-      .locator('xpath=ancestor::div[contains(@class, "grid")][1]');
-    await expect(costStrip).toBeVisible();
-    await expect(costStrip).not.toHaveCSS(
+    const executionSteps = page.getByRole('region', { name: 'Execution steps' });
+    await expect(executionSteps).toBeVisible();
+    await expect(executionSteps).not.toHaveCSS(
       'background-color',
       'rgb(255, 255, 255)'
     );
@@ -1298,7 +1302,7 @@ test('walks the public demo flow from landing through debugger reads', async ({ 
   await page.goto(
     `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`
   );
-  await expect(page.getByRole('heading', { name: 'Span Diff' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Step comparison' })).toBeVisible();
 });
 
 

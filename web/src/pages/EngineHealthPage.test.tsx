@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import {
+  ApiError,
   fetchEngineHealth,
   type EngineHealthResponse,
 } from '../api/client';
@@ -174,11 +176,99 @@ describe('EngineHealthPage', () => {
     });
   });
 
-  it('surfaces fetch errors', async () => {
-    mockedFetchEngineHealth.mockRejectedValue(new Error('health unavailable'));
+  it('surfaces fetch errors with the request line and a retry', async () => {
+    const user = userEvent.setup();
+    mockedFetchEngineHealth.mockRejectedValue(new ApiError(503, 'error', 'request timed out'));
+
+    renderEngineHealthPage('/tools/engine-health?project_id=11111111-1111-4111-8111-111111111111');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Could not load engine health');
+    expect(alert).toHaveTextContent('The engine API is enabled but the request failed.');
+    expect(alert).toHaveTextContent('No successful read is available yet.');
+    expect(alert).toHaveTextContent('GET /v1/engine/health · 503 · request timed out');
+    expect(within(alert).getByRole('link', { name: 'Back to Engine Runs' })).toHaveAttribute(
+      'href',
+      '/engine/runs?project_id=11111111-1111-4111-8111-111111111111'
+    );
+    expect(screen.queryByText('Projector lag')).not.toBeInTheDocument();
+
+    mockedFetchEngineHealth.mockResolvedValue(healthResponse());
+    await user.click(within(alert).getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Projector lag')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('names a network failure without claiming the server answered', async () => {
+    mockedFetchEngineHealth.mockRejectedValue(new TypeError('Failed to fetch'));
 
     renderEngineHealthPage();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('health unavailable');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The request failed before the server answered.');
+    expect(alert).toHaveTextContent('GET /v1/engine/health · no response · Failed to fetch');
+  });
+
+  it('keeps the last successful read visible as stale when a later poll fails', async () => {
+    const { queryClient } = renderEngineHealthPage();
+
+    expect(await screen.findByText('Projector lag')).toBeInTheDocument();
+
+    mockedFetchEngineHealth.mockRejectedValue(new ApiError(500, 'error', 'projector query failed'));
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['engine-health', null] });
+    });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'The last successful read was less than a minute ago, shown below as stale rather than hidden.'
+    );
+    expect(alert).toHaveTextContent('GET /v1/engine/health · 500 · projector query failed');
+    expect(screen.getByText('Projector lag')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getAllByText(/stale · less than a minute old/)).toHaveLength(7);
+  });
+
+  it('shows the disabled capability as a configuration state without retrying', async () => {
+    mockedFetchEngineHealth.mockRejectedValue(new ApiError(404, 'not_found', 'Resource not found'));
+
+    renderEngineHealthPage('/tools/engine-health?project_id=11111111-1111-4111-8111-111111111111');
+
+    const heading = await screen.findByRole('heading', {
+      name: 'Engine health is not enabled on this server',
+    });
+    const card = heading.closest('[data-state="capability-disabled"]') as HTMLElement;
+    expect(card).not.toBeNull();
+    const scoped = within(card);
+    expect(scoped.getByText(/A configuration state, not an error\./)).toBeInTheDocument();
+    expect(scoped.getByText('engine api · disabled · returned 404')).toBeInTheDocument();
+    expect(scoped.getByRole('link', { name: 'Back to Traces' })).toHaveAttribute(
+      'href',
+      '/traces?project_id=11111111-1111-4111-8111-111111111111'
+    );
+    expect(
+      scoped.getByRole('link', { name: /How to enable the engine API/ })
+    ).toHaveAttribute('href', 'https://www.continua.in/docs/debugger/engine-runs');
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Could not load engine health')).not.toBeInTheDocument();
+    expect(mockedFetchEngineHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops polling once the engine API reports disabled', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockedFetchEngineHealth.mockRejectedValue(new ApiError(404, 'not_found', 'Resource not found'));
+    renderEngineHealthPage();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Engine health is not enabled on this server' })
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+
+    expect(mockedFetchEngineHealth).toHaveBeenCalledTimes(1);
   });
 });

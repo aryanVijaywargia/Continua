@@ -1,36 +1,52 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link, useLocation } from 'react-router-dom';
-import { ArrowRight, RefreshCw, Zap } from 'lucide-react';
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { Clock3, RefreshCw } from 'lucide-react';
 import {
+  fetchEngineHealth,
+  fetchProjects,
   fetchSessions,
+  fetchSpans,
+  fetchTrace,
   fetchTraces,
   isAuthError,
-  type Trace,
 } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
-import {
-  Btn,
-  Chip,
-  DataTable,
-  StatusDot,
-  Td,
-  Th,
-  Tr,
-} from '../components/DebuggerKit';
-import {
-  calculateDuration,
-  formatCost,
-  formatDuration,
-  formatRelativeTime,
-  formatTokens,
-} from '../utils/format';
+import { Btn } from '../components/DebuggerKit';
+import { ReadOnlyBadge } from '../components/DataState';
 import {
   appendProjectToPath,
   getProjectIdFromSearchParams,
 } from '../utils/projectSearchParams';
+import {
+  AttentionSection,
+  CoverageCard,
+  DurationByTrace,
+  RecentTracesTable,
+  SectionHeading,
+  ViewAllLink,
+  type AttentionItem,
+  type RecentTraceRowData,
+} from './overview/OverviewSections';
+import {
+  buildTracesLink,
+  deriveCoverage,
+  OVERVIEW_RANGES,
+  overviewRangeLabel,
+  overviewRangeStart,
+  parseOverviewRange,
+  recordedDurations,
+  summarizeEngineProjections,
+  summarizeRequest,
+  type OverviewRange,
+} from './overview/overviewData';
 
+/** Traces loaded for the duration chart and coverage checks. */
 const OVERVIEW_TRACE_LIMIT = 12;
-const OVERVIEW_SESSION_LIMIT = 6;
+/** Rows in the recent table; each row loads its detail and spans. */
+const RECENT_ROW_LIMIT = 5;
+const ATTENTION_LIMIT = 5;
+const SAMPLE_STALE_MS = 30_000;
 
 export function OverviewPage() {
   return <OverviewContent />;
@@ -38,443 +54,305 @@ export function OverviewPage() {
 
 function OverviewContent() {
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const returnTo = `${location.pathname}${location.search}`;
-  const currentProjectId = getProjectIdFromSearchParams(
-    new URLSearchParams(location.search)
-  );
+  const currentProjectId = getProjectIdFromSearchParams(searchParams);
   const projectQueryKey = currentProjectId ?? null;
+  const range = parseOverviewRange(searchParams.get('range'));
+  // Fix the range start per selection so the query key stays stable across renders.
+  const rangeStart = useMemo(() => overviewRangeStart(range, Date.now()), [range]);
+  const rangeKey = rangeStart ?? 'all';
+
   const recentTracesQuery = useQuery({
-    queryKey: ['overview', 'recent-traces', projectQueryKey],
-    queryFn: () =>
-      fetchTraces({ project_id: currentProjectId, limit: OVERVIEW_TRACE_LIMIT }),
-    placeholderData: keepPreviousData,
-  });
-  const failedTracesQuery = useQuery({
-    queryKey: ['overview', 'failed-traces', projectQueryKey],
+    queryKey: ['overview', 'recent-traces', projectQueryKey, rangeKey],
     queryFn: () =>
       fetchTraces({
         project_id: currentProjectId,
         limit: OVERVIEW_TRACE_LIMIT,
+        start_time_from: rangeStart,
+      }),
+    placeholderData: keepPreviousData,
+  });
+  const failedTracesQuery = useQuery({
+    queryKey: ['overview', 'failed-traces', projectQueryKey, rangeKey],
+    queryFn: () =>
+      fetchTraces({
+        project_id: currentProjectId,
+        limit: ATTENTION_LIMIT,
         status: 'failed',
+        start_time_from: rangeStart,
       }),
     placeholderData: keepPreviousData,
   });
   const runningTracesQuery = useQuery({
-    queryKey: ['overview', 'running-traces', projectQueryKey],
+    queryKey: ['overview', 'running-traces', projectQueryKey, rangeKey],
     queryFn: () =>
       fetchTraces({
         project_id: currentProjectId,
-        limit: OVERVIEW_TRACE_LIMIT,
+        limit: ATTENTION_LIMIT,
         status: 'running',
+        start_time_from: rangeStart,
+      }),
+    placeholderData: keepPreviousData,
+  });
+  const erroredTracesQuery = useQuery({
+    queryKey: ['overview', 'errored-traces', projectQueryKey, rangeKey],
+    queryFn: () =>
+      fetchTraces({
+        project_id: currentProjectId,
+        limit: ATTENTION_LIMIT,
+        has_errors: true,
+        start_time_from: rangeStart,
       }),
     placeholderData: keepPreviousData,
   });
   const sessionsQuery = useQuery({
     queryKey: ['overview', 'sessions', projectQueryKey],
-    queryFn: () =>
-      fetchSessions({ project_id: currentProjectId, limit: OVERVIEW_SESSION_LIMIT }),
+    queryFn: () => fetchSessions({ project_id: currentProjectId, limit: 1 }),
     placeholderData: keepPreviousData,
   });
+  // Supporting queries: a failure here degrades one label, never the page.
+  const projectsQuery = useQuery({
+    queryKey: ['projects'],
+    queryFn: fetchProjects,
+    retry: false,
+  });
+  const engineHealthQuery = useQuery({
+    queryKey: ['engine-health', projectQueryKey],
+    queryFn: fetchEngineHealth,
+    retry: false,
+  });
 
-  const authError = [
-    recentTracesQuery.error,
-    failedTracesQuery.error,
-    runningTracesQuery.error,
-    sessionsQuery.error,
-  ].find(isAuthError);
+  const recentTraces = recentTracesQuery.data?.traces ?? [];
+  const recentRows = recentTraces.slice(0, RECENT_ROW_LIMIT);
+  const detailQueries = useQueries({
+    queries: recentRows.map((trace) => ({
+      queryKey: ['trace', trace.id, projectQueryKey],
+      queryFn: () => fetchTrace(trace.id, currentProjectId),
+      staleTime: SAMPLE_STALE_MS,
+    })),
+  });
+  const spansQueries = useQueries({
+    queries: recentRows.map((trace) => ({
+      queryKey: ['spans', trace.id, projectQueryKey],
+      queryFn: () => fetchSpans(trace.id, currentProjectId),
+      staleTime: SAMPLE_STALE_MS,
+    })),
+  });
+
+  const primaryQueries = [
+    recentTracesQuery,
+    failedTracesQuery,
+    runningTracesQuery,
+    erroredTracesQuery,
+    sessionsQuery,
+  ];
+  const authError = primaryQueries.map((query) => query.error).find(isAuthError);
   if (authError) {
     return <AuthErrorBanner message={authError.message} />;
   }
+  const errors = primaryQueries
+    .map((query) => query.error)
+    .filter((error): error is Error => error instanceof Error);
 
-  const recentTraces = recentTracesQuery.data?.traces ?? [];
+  const totalTraces = recentTracesQuery.data?.total;
+  const totalSessions = sessionsQuery.data?.total;
+  const projects = projectsQuery.data?.projects ?? [];
+  const project =
+    projects.find((item) => item.id === currentProjectId) ??
+    projects.find((item) => item.id === projectsQuery.data?.authenticated_project_id) ??
+    (projects.length === 1 ? projects[0] : undefined);
+  const rangeLabel = overviewRangeLabel(range);
+  const tracesLink = (extra?: Record<string, string>) =>
+    appendProjectToPath(buildTracesLink(rangeStart, extra), currentProjectId);
+
   const failedTraces = failedTracesQuery.data?.traces ?? [];
   const runningTraces = runningTracesQuery.data?.traces ?? [];
-  const sessions = sessionsQuery.data?.sessions ?? [];
-  const totalTraces = recentTracesQuery.data?.total ?? 0;
-  const totalFailedTraces = failedTracesQuery.data?.total ?? 0;
-  const totalRunningTraces = runningTracesQuery.data?.total ?? 0;
-  const totalSessions = sessionsQuery.data?.total ?? 0;
-  const totalTokens = recentTraces.reduce(
-    (sum, trace) => sum + (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0),
-    0
-  );
-  const totalSpend = recentTraces.reduce(
-    (sum, trace) => sum + (trace.total_cost_usd ?? 0),
-    0
-  );
-  const errors = [
-    recentTracesQuery.error,
-    failedTracesQuery.error,
-    runningTracesQuery.error,
-    sessionsQuery.error,
-  ].filter((error): error is Error => error instanceof Error && !isAuthError(error));
+  const erroredTraces = erroredTracesQuery.data?.traces ?? [];
+  const seen = new Set<string>();
+  const attentionItems: AttentionItem[] = [
+    ...failedTraces.map((trace) => ({ reason: 'failed' as const, trace })),
+    ...runningTraces.map((trace) => ({ reason: 'running' as const, trace })),
+    ...erroredTraces.map((trace) => ({ reason: 'errors' as const, trace })),
+  ].filter((item) => {
+    if (seen.has(item.trace.id)) {
+      return false;
+    }
+    seen.add(item.trace.id);
+    return true;
+  });
+  const failedTotal = failedTracesQuery.data?.total;
+  const runningTotal = runningTracesQuery.data?.total;
+  const erroredTotal = erroredTracesQuery.data?.total;
+  const attentionQueries = [failedTracesQuery, runningTracesQuery, erroredTracesQuery];
+  const attentionQueryFailed = attentionQueries.some((query) => query.isError);
+  const attentionState =
+    attentionItems.length > 0
+      ? 'items'
+      : attentionQueryFailed
+        ? 'unavailable'
+        : attentionQueries.some((query) => !query.data)
+          ? 'loading'
+          : failedTotal === 0 && runningTotal === 0 && erroredTotal === 0
+            ? 'clear'
+            : 'items';
+
+  const rowData: RecentTraceRowData[] = recentRows.map((trace, index) => {
+    const detailQuery = detailQueries[index];
+    const spansQuery = spansQueries[index];
+    const requestText = detailQuery?.data ? summarizeRequest(detailQuery.data.input) : null;
+    return {
+      trace,
+      request: detailQuery?.data
+        ? requestText
+          ? { state: 'recorded', text: requestText }
+          : { state: 'absent' }
+        : detailQuery?.isError
+          ? { state: 'unavailable' }
+          : { state: 'loading' },
+      steps: spansQuery?.data
+        ? { state: 'recorded', count: spansQuery.data.spans.length }
+        : spansQuery?.isError
+          ? { state: 'unavailable' }
+          : { state: 'loading' },
+    };
+  });
+
+  const coverageRows = deriveCoverage({
+    engineHealthLoaded: Boolean(engineHealthQuery.data),
+    sampledDetails: detailQueries.map((query) => query.data),
+    sampledSpans: spansQueries.map((query) => query.data?.spans),
+    traces: recentRows,
+  });
+
+  const refreshAll = () => {
+    for (const query of [...primaryQueries, engineHealthQuery]) {
+      void query.refetch();
+    }
+  };
+
+  const setRange = (next: OverviewRange) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'all') {
+      params.delete('range');
+    } else {
+      params.set('range', next);
+    }
+    setSearchParams(params, { replace: true });
+  };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {errors.length > 0 ? (
         <div className="border-b border-[var(--c-red-border)] bg-[var(--c-red-faint)] px-6 py-3 text-sm text-[var(--c-red-text)]">
           Overview data is partially unavailable. {errors[0].message}
         </div>
       ) : null}
 
-      <section className="flex border-b border-[var(--c-border)] bg-[var(--c-app-bg)]">
-        <KpiCard
-          label="Tracked traces"
-          value={formatNumber(totalTraces)}
-          delta={`${recentTraces.length} loaded`}
-          spark={recentTraces.map((trace) => trace.error_count ?? 0)}
-        />
-        <KpiCard
-          label="Running now"
-          value={formatNumber(totalRunningTraces)}
-          delta="polling"
-          tone="running"
-          spark={runningTraces.map((trace) => trace.error_count ?? 0)}
-        />
-        <KpiCard
-          label="Failed traces"
-          value={formatNumber(totalFailedTraces)}
-          delta={totalTraces ? `${Math.round((totalFailedTraces / totalTraces) * 100)}%` : '0%'}
-          tone="failed"
-          spark={failedTraces.map((trace) => trace.error_count ?? 0)}
-        />
-        <KpiCard
-          label="Sessions"
-          value={formatNumber(totalSessions)}
-          delta={`${sessions.length} loaded`}
-          spark={sessions.map((session) => session.trace_count ?? 0)}
-        />
-        <KpiCard label="Tokens loaded" value={formatTokens(totalTokens)} delta={formatCost(totalSpend)} />
-        <div className="flex items-center px-4">
-          <Btn
-            kind="secondary"
-            leadingIcon={RefreshCw}
-            size="sm"
-            onClick={() => {
-              void recentTracesQuery.refetch();
-              void failedTracesQuery.refetch();
-              void runningTracesQuery.refetch();
-              void sessionsQuery.refetch();
-            }}
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--c-border)] px-6 py-3.5">
+        <h1 className="text-lg font-bold tracking-[-0.015em] text-[var(--c-text-primary)]">
+          {project?.name ?? 'Overview'}
+        </h1>
+        <label className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] pl-2.5 pr-1 text-[13px] text-[var(--c-text-primary)]">
+          <Clock3 aria-hidden="true" className="h-3.5 w-3.5 text-[var(--c-text-muted)]" />
+          <select
+            aria-label="Date range"
+            value={range}
+            onChange={(event) => setRange(event.target.value as OverviewRange)}
+            className="h-full border-0 bg-transparent pr-1 text-[13px] text-[var(--c-text-primary)] outline-none focus:ring-0"
           >
+            {OVERVIEW_RANGES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-[12.5px] text-[var(--c-text-secondary)]">
+          {totalTraces ?? '—'} {totalTraces === 1 ? 'trace' : 'traces'}
+          {range === 'all' ? '' : ' in range'} · {totalSessions ?? '—'}{' '}
+          {totalSessions === 1 ? 'session' : 'sessions'}
+          {range === 'all' ? '' : ' (all time)'}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <Btn kind="secondary" leadingIcon={RefreshCw} size="sm" onClick={refreshAll}>
             Refresh
           </Btn>
+          <ReadOnlyBadge />
         </div>
-      </section>
+      </header>
 
-      <section className="grid border-b border-[var(--c-border)] lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="border-r border-[var(--c-border)] px-6 py-5">
-          <div className="mb-3 flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-[13px] font-semibold text-[var(--c-text-primary)]">
-                Trace volume
-              </h2>
-              <p className="mt-0.5 text-[11.5px] text-[var(--c-text-muted)]">
-                Current page sample · existing trace endpoints
-              </p>
-            </div>
-            <div className="flex items-center gap-3 text-[11.5px] text-[var(--c-text-secondary)]">
-              <Legend color="var(--c-bar-success)" label="Completed" />
-              <Legend color="var(--c-bar-running)" label="Running" />
-              <Legend color="var(--c-bar-failed)" label="Failed" />
-            </div>
+      <AttentionSection
+        counts={{
+          errors: erroredTotal,
+          failed: failedTotal,
+          running: runningTotal,
+          total: totalTraces,
+        }}
+        engineProjections={summarizeEngineProjections(
+          engineHealthQuery.data,
+          engineHealthQuery.isError
+        )}
+        items={attentionItems}
+        moreLinks={
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+            {(failedTotal ?? 0) > failedTraces.length ? (
+              <ViewAllLink to={tracesLink({ status: 'failed' })}>
+                All {failedTotal} failed traces
+              </ViewAllLink>
+            ) : null}
+            {(runningTotal ?? 0) > runningTraces.length ? (
+              <ViewAllLink to={tracesLink({ status: 'running' })}>
+                All {runningTotal} running traces
+              </ViewAllLink>
+            ) : null}
+            {(erroredTotal ?? 0) > erroredTraces.length ? (
+              <ViewAllLink to={tracesLink({ has_errors: 'true' })}>
+                All {erroredTotal} traces with failed steps
+              </ViewAllLink>
+            ) : null}
           </div>
-          <ActivityBars traces={recentTraces} />
-        </div>
+        }
+        projectId={currentProjectId}
+        queryFailed={attentionQueryFailed}
+        returnTo={returnTo}
+        state={attentionState}
+      />
 
-        <div className="px-6 py-5">
-          <div className="mb-3 flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-[13px] font-semibold text-[var(--c-text-primary)]">
-                Live runs
-              </h2>
-              <p className="mt-0.5 text-[11.5px] text-[var(--c-text-muted)]">
-                Currently executing
-              </p>
-            </div>
-            <span className="font-mono text-[11px] tabular-nums text-[var(--c-text-muted)]">
-              {totalRunningTraces} active
-            </span>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {runningTraces.length === 0 ? (
-              <div className="text-sm text-[var(--c-text-muted)]">No running traces.</div>
-            ) : (
-              runningTraces.slice(0, 5).map((trace) => (
-                <Link
-                  key={trace.id}
-                  to={appendProjectToPath(`/traces/${trace.id}`, currentProjectId)}
-                  state={{ returnTo }}
-                  className="flex items-center justify-between gap-3 text-xs hover:text-[var(--c-accent-text)]"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <StatusDot status={trace.status} withLabel={false} />
-                    <span className="truncate font-mono text-[var(--c-text-primary)]">
-                      {trace.name}
-                    </span>
-                  </span>
-                  <span className="truncate text-[var(--c-text-muted)]">
-                    {trace.engine?.definition_name ?? 'trace'}
-                  </span>
-                  <span className="min-w-[3rem] text-right font-mono text-[var(--c-text-muted)]">
-                    {formatRelativeTime(trace.started_at)}
-                  </span>
-                </Link>
-              ))
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center justify-between px-6 py-4">
-          <h2 className="text-[13px] font-semibold text-[var(--c-text-primary)]">
-            Recent traces
-          </h2>
-          <Link
-            to={appendProjectToPath('/traces', currentProjectId)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--c-accent-text)]"
-          >
-            View all <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
+      <section className="px-6 pt-6">
+        <SectionHeading
+          action={<ViewAllLink to={tracesLink()} />}
+          subtitle={
+            recentTraces.length > 0
+              ? `${recentRows.length} most recent of ${totalTraces ?? '—'}`
+              : undefined
+          }
+          title="Recent traces"
+        />
         {recentTracesQuery.isPending && !recentTracesQuery.data ? (
           <div className="app-empty-state">Loading traces...</div>
         ) : recentTraces.length === 0 ? (
-          <div className="app-empty-state">No traces yet.</div>
+          <div className="app-empty-state">
+            {range === 'all' ? 'No traces yet.' : 'No traces in this range.'}
+          </div>
         ) : (
-          <DataTable className="flex-none overflow-visible">
-            <colgroup>
-              <col className="w-[34%]" />
-              <col className="w-[110px]" />
-              <col className="w-[120px]" />
-              <col className="w-[100px]" />
-              <col className="w-[90px]" />
-              <col className="w-[130px]" />
-            </colgroup>
-            <thead>
-              <tr>
-                <Th>Trace</Th>
-                <Th>Status</Th>
-                <Th align="right">Duration</Th>
-                <Th align="right">Tokens</Th>
-                <Th align="right">Cost</Th>
-                <Th align="right">Started</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentTraces.slice(0, 8).map((trace) => (
-                <OverviewTraceRow
-                  key={trace.id}
-                  projectId={currentProjectId}
-                  returnTo={returnTo}
-                  trace={trace}
-                />
-              ))}
-            </tbody>
-          </DataTable>
+          <RecentTracesTable
+            projectId={currentProjectId}
+            returnTo={returnTo}
+            rows={rowData}
+          />
         )}
+      </section>
+
+      <section className="grid gap-4 px-6 pb-8 pt-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,380px)]">
+        <DurationByTrace
+          durations={recordedDurations(recentTraces)}
+          loadedCount={recentTraces.length}
+          rangeLabel={rangeLabel}
+          totalInRange={totalTraces ?? recentTraces.length}
+        />
+        <CoverageCard rows={coverageRows} sampleSize={recentRows.length} />
       </section>
     </div>
   );
-}
-
-function KpiCard({
-  delta,
-  label,
-  spark = [],
-  tone = 'muted',
-  value,
-}: {
-  delta?: string;
-  label: string;
-  spark?: number[];
-  tone?: 'muted' | 'running' | 'failed';
-  value: string;
-}) {
-  const color =
-    tone === 'failed'
-      ? 'var(--c-red)'
-      : tone === 'running'
-        ? 'var(--c-blue)'
-        : 'var(--c-accent)';
-
-  return (
-    <div className="min-w-0 flex-1 border-r border-[var(--c-border)] px-4 py-3.5">
-      <div className="mb-2 text-[11.5px] font-medium text-[var(--c-text-muted)]">
-        {label}
-      </div>
-      <div className="mb-1 flex items-baseline gap-1.5">
-        <span className="text-[22px] font-semibold tracking-[-0.02em] text-[var(--c-text-primary)]">
-          {value}
-        </span>
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        {delta ? (
-          <span className="text-[11.5px] font-medium text-[var(--c-text-muted)]">
-            {delta}
-          </span>
-        ) : null}
-        <Sparkline color={color} data={spark} />
-      </div>
-    </div>
-  );
-}
-
-function Sparkline({ color, data }: { color: string; data: number[] }) {
-  const normalizedData = data.length > 1 ? data : [0, 1, 0, 1, 0];
-  const max = Math.max(...normalizedData, 1);
-  const min = Math.min(...normalizedData, 0);
-  const range = max - min || 1;
-  const width = 96;
-  const height = 28;
-  const points = normalizedData
-    .map(
-      (value, index) =>
-        `${(index / (normalizedData.length - 1)) * width},${height - ((value - min) / range) * (height - 4) - 2}`
-    )
-    .join(' ');
-
-  return (
-    <svg width={width} height={height} className="block">
-      <polyline
-        fill="none"
-        points={points}
-        stroke={color}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
-
-function ActivityBars({ traces }: { traces: Trace[] }) {
-  const buckets = buildActivityBuckets(traces);
-  const max = Math.max(
-    ...buckets.map((bucket) => bucket.completed + bucket.failed + bucket.running),
-    1
-  );
-
-  return (
-    <>
-      <div className="flex h-36 items-end gap-1">
-        {buckets.map((bucket, index) => {
-          const total = bucket.completed + bucket.failed + bucket.running;
-          const height = Math.max((total / max) * 140, total ? 8 : 2);
-          return (
-            <div
-              key={index}
-              className="flex min-w-0 flex-1 flex-col-reverse gap-px"
-              style={{ height }}
-            >
-              <div
-                style={{
-                  background: 'var(--c-bar-success)',
-                  height: `${total ? (bucket.completed / total) * 100 : 0}%`,
-                }}
-              />
-              <div
-                style={{
-                  background: 'var(--c-bar-running)',
-                  height: `${total ? (bucket.running / total) * 100 : 0}%`,
-                }}
-              />
-              <div
-                style={{
-                  background: 'var(--c-bar-failed)',
-                  height: `${total ? (bucket.failed / total) * 100 : 0}%`,
-                }}
-              />
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-2 flex justify-between font-mono text-[10.5px] text-[var(--c-text-muted)]">
-        <span>oldest</span>
-        <span>recent</span>
-      </div>
-    </>
-  );
-}
-
-function buildActivityBuckets(traces: Trace[]) {
-  const buckets = Array.from({ length: 24 }, () => ({
-    completed: 0,
-    failed: 0,
-    running: 0,
-  }));
-  traces.forEach((trace, index) => {
-    const bucket = buckets[index % buckets.length];
-    if (trace.status === 'FAILED') {
-      bucket.failed += 1;
-    } else if (trace.status === 'RUNNING') {
-      bucket.running += 1;
-    } else {
-      bucket.completed += 1;
-    }
-  });
-  return buckets;
-}
-
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="h-2 w-2" style={{ background: color }} />
-      {label}
-    </span>
-  );
-}
-
-function OverviewTraceRow({
-  projectId,
-  returnTo,
-  trace,
-}: {
-  projectId?: string;
-  returnTo: string;
-  trace: Trace;
-}) {
-  const duration = calculateDuration(trace.started_at, trace.ended_at);
-  const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
-
-  return (
-    <Tr>
-      <Td>
-        <Link
-          to={appendProjectToPath(`/traces/${trace.id}`, projectId)}
-          state={{ returnTo }}
-          className="flex min-w-0 items-center gap-2 hover:text-[var(--c-accent-text)]"
-        >
-          <span className="truncate font-mono text-[12.5px] font-medium text-[var(--c-text-primary)]">
-            {trace.name}
-          </span>
-          {trace.engine ? (
-            <Chip icon={Zap}>{trace.engine.definition_name}</Chip>
-          ) : null}
-        </Link>
-      </Td>
-      <Td>
-        <StatusDot status={trace.status} />
-      </Td>
-      <Td align="right" mono>
-        {formatDuration(duration)}
-      </Td>
-      <Td align="right" mono>
-        {formatTokens(totalTokens)}
-      </Td>
-      <Td align="right" mono>
-        {formatCost(trace.total_cost_usd)}
-      </Td>
-      <Td align="right" dim>
-        {formatRelativeTime(trace.started_at)}
-      </Td>
-    </Tr>
-  );
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    notation: value >= 10000 ? 'compact' : 'standard',
-  }).format(value);
 }

@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Download } from 'lucide-react';
+import { Download, UserRound } from 'lucide-react';
 import { fetchSessions, isAuthError, type Session } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
 import {
@@ -19,7 +19,9 @@ import { PaginationControls } from '../components/PaginationControls';
 import { useSessionsSearchParams } from '../hooks/useSessionsSearchParams';
 import { DEFAULT_PAGE_SIZE, getLastValidOffset } from '../utils/pagination';
 import { buildSessionsQueryString } from '../utils/sessionsSearchParams';
-import { formatRelativeTime } from '../utils/format';
+import { formatExactTime } from '../utils/format';
+import { DerivedTag, HonestyNote } from '../components/DataState';
+import { shortId } from './session/sessionDisplay';
 import { appendProjectToPath } from '../utils/projectSearchParams';
 import { downloadJsonFile } from '../utils/downloadJson';
 
@@ -151,6 +153,10 @@ function SessionsContent() {
     }
   }, [filters.limit, filters.offset, sessions.length, setFilters, total]);
 
+  const firstRow = sessions.length > 0 ? filters.offset + 1 : 0;
+  const lastRow = filters.offset + sessions.length;
+  const anyUserOnPage = sessions.some((session) => Boolean(session.user_id));
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
@@ -159,7 +165,6 @@ function SessionsContent() {
             Export
           </Btn>
         }
-        description="Group multi-trace user journeys to follow narrative context across runs."
         title="Sessions"
       />
 
@@ -167,9 +172,15 @@ function SessionsContent() {
         count={filterCount}
         onClear={clearAll}
         right={
-          <span className="text-[11.5px] text-[var(--c-text-muted)]">
-            {total} sessions
-            {sessionsQuery.isFetching && !sessionsQuery.isPending ? ' · refreshing' : ''}
+          <span className="text-[11.5px] tabular-nums text-[var(--c-text-muted)]">
+            {sessionsQuery.isFetching && !sessionsQuery.isPending ? 'refreshing · ' : ''}
+            {total === 0
+              ? hasFilters
+                ? 'No matching sessions'
+                : 'No sessions'
+              : `${firstRow}–${lastRow} of ${total} ${hasFilters ? 'matching ' : ''}session${
+                  total === 1 ? '' : 's'
+                }`}
           </span>
         }
       >
@@ -181,7 +192,9 @@ function SessionsContent() {
             setSearchDraft('');
             setFilters({ q: undefined, user_id: undefined }, 'push');
           }}
-          placeholder="Search ID, external ID, user, or name…"
+          placeholder="Search name, ID, or user…"
+          title="Type user:<id> to filter by user"
+          widthClass="w-full max-w-[320px]"
         />
         {filters.q && filters.user_id ? (
           <Chip
@@ -227,52 +240,64 @@ function SessionsContent() {
         </div>
       ) : (
         <>
-          <DataTable>
-            <colgroup>
-              <col className="w-[26%]" />
-              <col className="w-[22%]" />
-              <col className="w-[26%]" />
-              <col className="w-[90px]" />
-              <col className="w-[130px]" />
-              <col className="w-[130px]" />
-            </colgroup>
-            <thead>
-              <tr>
-                <Th>Session</Th>
-                <Th>User</Th>
-                <Th>Name</Th>
-                <Th
-                  align="right"
-                  sortable={!isSearchActive}
-                  sortActive={filters.sort_by === 'trace_count'}
-                  sortDir={filters.sort_dir}
-                  onSort={handleTraceCountSortToggle}
-                >
-                  Traces
-                </Th>
-                <Th align="right">Last active</Th>
-                <Th
-                  align="right"
-                  sortable={!isSearchActive}
-                  sortActive={filters.sort_by === 'created_at'}
-                  sortDir={filters.sort_dir}
-                  onSort={handleCreatedSortToggle}
-                >
-                  Created
-                </Th>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((session) => (
-                <SessionRow
-                  key={session.id}
-                  projectId={filters.project_id}
-                  returnTo={currentListUrl}
-                  session={session}
-                />
-              ))}
-            </tbody>
-          </DataTable>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <DataTable>
+              <colgroup>
+                <col />
+                <col className="w-[110px]" />
+                <col className="w-[170px]" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <Th className="pl-6">Session</Th>
+                  <Th
+                    align="right"
+                    sortable={!isSearchActive}
+                    sortActive={filters.sort_by === 'trace_count'}
+                    sortDir={filters.sort_dir}
+                    onSort={handleTraceCountSortToggle}
+                  >
+                    Traces
+                  </Th>
+                  <Th
+                    align="right"
+                    className="pr-6"
+                    sortable={!isSearchActive}
+                    sortActive={filters.sort_by === 'created_at'}
+                    sortDir={filters.sort_dir}
+                    onSort={handleCreatedSortToggle}
+                  >
+                    Created
+                  </Th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    onFilterUser={(userId) =>
+                      setFilters({ q: undefined, user_id: userId }, 'push')
+                    }
+                    projectId={filters.project_id}
+                    returnTo={currentListUrl}
+                    session={session}
+                  />
+                ))}
+              </tbody>
+            </DataTable>
+            <div className="flex flex-col gap-1.5 px-6 py-3">
+              {anyUserOnPage ? null : (
+                <HonestyNote kind="not-captured">
+                  No session on this page recorded a user, so there is no user column. Where a user
+                  exists it appears as a chip beside the name.
+                </HonestyNote>
+              )}
+              <HonestyNote kind="recorded">
+                Created times are exact local times. The sessions list does not return durations —
+                open a session to see its derived duration.
+              </HonestyNote>
+            </div>
+          </div>
           <div className="border-t border-[var(--c-border)] px-6 py-2">
             <PaginationControls
               offset={filters.offset}
@@ -291,42 +316,67 @@ function SessionsContent() {
 }
 
 function SessionRow({
+  onFilterUser,
   projectId,
   returnTo,
   session,
 }: {
+  onFilterUser: (userId: string) => void;
   projectId?: string;
   returnTo: string;
   session: Session;
 }) {
   const sessionPath = appendProjectToPath(`/sessions/${session.id}`, projectId);
+  const recordedName = session.name?.trim();
 
   return (
-    <Tr>
-      <Td>
-        <Link
-          to={sessionPath}
-          state={{ returnTo }}
-          className="flex min-w-0 flex-col gap-0.5 hover:text-[var(--c-accent-text)]"
-        >
-          <span className="truncate font-mono text-[12.5px] font-medium text-[var(--c-text-primary)]">
-            {session.external_id}
-          </span>
-          <span className="truncate font-mono text-[10.5px] text-[var(--c-text-muted)]">
-            {session.id}
-          </span>
-        </Link>
+    <Tr className="hover:bg-[var(--c-row-hover-bg)]">
+      <Td className="h-[52px] pl-6">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <Link
+              to={sessionPath}
+              state={{ returnTo }}
+              className={`min-w-0 truncate text-[13px] font-medium text-[var(--c-text-primary)] hover:text-[var(--c-accent-text)] ${
+                recordedName ? '' : 'font-mono'
+              }`}
+            >
+              {recordedName || session.external_id}
+            </Link>
+            {recordedName ? null : (
+              <DerivedTag
+                label="no name · external ID"
+                title="No name was recorded for this session, so it shows its external session ID."
+              />
+            )}
+            {session.user_id ? (
+              <button
+                type="button"
+                title={`Show sessions for user ${session.user_id}`}
+                aria-label={`Filter by user ${session.user_id}`}
+                onClick={() => onFilterUser(session.user_id!)}
+                className="shrink-0 rounded focus:outline-none focus:ring-2 focus:ring-[var(--c-accent-faint)]"
+              >
+                <Chip icon={UserRound}>{session.user_id}</Chip>
+              </button>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 items-center gap-2 font-mono text-[11px] text-[var(--c-text-muted)]">
+            <span title={session.id}>{shortId(session.id)}</span>
+            {recordedName ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="truncate">{session.external_id}</span>
+              </>
+            ) : null}
+          </div>
+        </div>
       </Td>
-      <Td mono>{session.user_id || 'No user ID'}</Td>
-      <Td>{session.name || 'Unnamed session'}</Td>
       <Td align="right" mono>
-        {session.trace_count ?? 0}
+        {session.trace_count ?? '—'}
       </Td>
-      <Td align="right" dim>
-        {formatRelativeTime(session.created_at)}
-      </Td>
-      <Td align="right" dim>
-        {formatRelativeTime(session.created_at)}
+      <Td align="right" className="pr-6 font-mono text-[12px] text-[var(--c-text-secondary)]">
+        <span title={session.created_at}>{formatExactTime(session.created_at)}</span>
       </Td>
     </Tr>
   );

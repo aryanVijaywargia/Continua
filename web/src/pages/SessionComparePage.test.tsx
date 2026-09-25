@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearApiKey, setApiKey } from '../api/client';
@@ -13,6 +13,9 @@ import {
 } from './testUtils';
 
 let fetchMock: ReturnType<typeof vi.fn>;
+
+const COMPARE_TITLE = 'Checkout Session';
+const COMPARE_URL = `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`;
 
 beforeEach(() => {
   fetchMock = vi.fn();
@@ -45,7 +48,7 @@ describe('SessionComparePage', () => {
     deferredCompare.resolve(jsonResponse(SESSION_COMPARE));
 
     expect(
-      await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })
+      await screen.findByRole('heading', { name: COMPARE_TITLE })
     ).toBeInTheDocument();
   });
 
@@ -65,7 +68,7 @@ describe('SessionComparePage', () => {
       },
     ]);
 
-    expect(await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: COMPARE_TITLE })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Back to Session/i })).toHaveAttribute(
       'href',
       `/sessions/${SESSION_ID}?offset=20`
@@ -79,12 +82,85 @@ describe('SessionComparePage', () => {
       `/traces/${SESSION_COMPARE.candidate.id}`
     );
 
-    const semanticButtons = screen.getAllByRole('button', { name: 'Show semantic details' });
-    await user.click(semanticButtons[0]);
-    await user.click(semanticButtons[1]);
+    const toolbar = screen.getByRole('region', { name: 'Comparison toolbar' });
+    expect(within(toolbar).getByText('-1.00s total (-33.3%)')).toBeInTheDocument();
+    expect(within(toolbar).getByText('spans 1 → 2')).toBeInTheDocument();
+    expect(within(toolbar).queryByText('usage not verified')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Step comparison' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Changed only · 2' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByText('first change')).toBeInTheDocument();
+    expect(screen.getByText('added')).toBeInTheDocument();
+    expect(screen.getByText('aligned by span ID · 1 of 2 matched')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Ask/i })).not.toBeInTheDocument();
+
+    const planRow = screen.getByRole('button', { name: 'Show details for Plan' }).closest('tr');
+    expect(planRow).toHaveTextContent('+1.00s · +50.0%');
+
+    await user.click(screen.getByRole('button', { name: 'Show details for Plan' }));
+    await user.click(screen.getByRole('button', { name: 'Show details for Retry Tool' }));
 
     expect(await screen.findAllByText('Pick alpha path')).toHaveLength(2);
     expect(screen.getByText('Called retry tool')).toBeInTheDocument();
+    expect(screen.getByText('Baseline timing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hide details for Plan' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+  });
+
+  it('flags unverified usage instead of showing a usage delta', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionCompare: () =>
+          jsonResponse({
+            ...SESSION_COMPARE,
+            baseline: {
+              ...SESSION_COMPARE.baseline,
+              total_tokens_in: 0,
+              total_tokens_out: 0,
+              total_cost_usd: 0,
+            },
+          }),
+      })
+    );
+
+    renderTraceRoutes([COMPARE_URL]);
+
+    const toolbar = await screen.findByRole('region', { name: 'Comparison toolbar' });
+    expect(within(toolbar).getByText('usage not verified')).toBeInTheDocument();
+    expect(within(toolbar).queryByText(/^tokens /)).not.toBeInTheDocument();
+  });
+
+  it('swaps the pair when a picker selects the other role trace', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionCompare: () => jsonResponse(SESSION_COMPARE),
+      })
+    );
+
+    const { router } = renderTraceRoutes([COMPARE_URL]);
+
+    const candidateSelect = await screen.findByRole('combobox', { name: 'Candidate trace' });
+    expect(candidateSelect).toHaveValue(SESSION_COMPARE.candidate.id);
+
+    await user.selectOptions(candidateSelect, SESSION_COMPARE.baseline.id);
+
+    await waitFor(() => {
+      const params = new URLSearchParams(router.state.location.search);
+      expect(params.get('baseline_trace_id')).toBe(SESSION_COMPARE.candidate.id);
+      expect(params.get('candidate_trace_id')).toBe(SESSION_COMPARE.baseline.id);
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Swap baseline and candidate' }));
+
+    await waitFor(() => {
+      const params = new URLSearchParams(router.state.location.search);
+      expect(params.get('baseline_trace_id')).toBe(SESSION_COMPARE.baseline.id);
+    });
   });
 
   it('shows engine metadata in compare headers when present', async () => {
@@ -110,7 +186,7 @@ describe('SessionComparePage', () => {
       `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
     ]);
 
-    expect(await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: COMPARE_TITLE })).toBeInTheDocument();
     expect(screen.getByText('checkout@v1 · Catching up')).toBeInTheDocument();
     expect(screen.getByText('Engine')).toBeInTheDocument();
   });
@@ -128,12 +204,12 @@ describe('SessionComparePage', () => {
     ]);
 
     expect(
-      await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })
+      await screen.findByRole('heading', { name: COMPARE_TITLE })
     ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show details for Plan' }));
+
     expect(screen.getByText('Stable ID')).toBeInTheDocument();
     expect(screen.getByText('tokens_in')).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole('button', { name: 'Show semantic details' })[0]);
 
     expect(await screen.findByText('Heuristic')).toBeInTheDocument();
     expect(screen.getByText('chosen')).toBeInTheDocument();
@@ -167,7 +243,7 @@ describe('SessionComparePage', () => {
       `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
     ]);
 
-    expect(await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: COMPARE_TITLE })).toBeInTheDocument();
     expect(screen.getByText('Candidate-only branches')).toBeInTheDocument();
   });
 
@@ -182,7 +258,7 @@ describe('SessionComparePage', () => {
       `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
     ]);
 
-    expect(await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: COMPARE_TITLE })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Back to Session/i })).toHaveAttribute(
       'href',
       `/sessions/${SESSION_ID}?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`
@@ -204,7 +280,7 @@ describe('SessionComparePage', () => {
       },
     ]);
 
-    expect(await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: COMPARE_TITLE })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Back to Session/i })).toHaveAttribute(
       'href',
       `/sessions/${SESSION_ID}?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`
@@ -260,13 +336,18 @@ describe('SessionComparePage', () => {
       `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
     ]);
 
-    const spanLinks = await screen.findAllByRole('link', { name: 'Plan' });
-    expect(spanLinks[0]).toHaveAttribute(
+    await user.click(await screen.findByRole('button', { name: 'Show details for Plan' }));
+    const baselineSpanLink = screen.getByRole('link', { name: 'Open baseline span' });
+    expect(baselineSpanLink).toHaveAttribute(
       'href',
       `/traces/${SESSION_COMPARE.baseline.id}?span=shared-span`
     );
+    expect(screen.getByRole('link', { name: 'Open candidate span' })).toHaveAttribute(
+      'href',
+      `/traces/${SESSION_COMPARE.candidate.id}?span=shared-span`
+    );
 
-    await user.click(spanLinks[0]);
+    await user.click(baselineSpanLink);
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe(`/traces/${SESSION_COMPARE.baseline.id}`);
@@ -296,11 +377,12 @@ describe('SessionComparePage', () => {
       `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
     ]);
 
-    expect(await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: COMPARE_TITLE })).toBeInTheDocument();
     expect(screen.getByText('No span rows were returned for this comparison. Both traces may be empty.')).toBeInTheDocument();
   });
 
-  it('does not show a semantic expander for rows without semantic groups', async () => {
+  it('says no payload difference is established for rows without semantic groups', async () => {
+    const user = userEvent.setup();
     fetchMock.mockImplementation(
       buildFetchHandler({
         sessionCompare: () =>
@@ -320,8 +402,13 @@ describe('SessionComparePage', () => {
       `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
     ]);
 
-    expect(await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Show semantic details' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: COMPARE_TITLE })).toBeInTheDocument();
+    expect(screen.queryByText('No payload difference established')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show details for Plan' }));
+
+    expect(screen.getByText('No payload difference established')).toBeInTheDocument();
+    expect(screen.getByText(/No semantic events were recorded for this step/)).toBeInTheDocument();
   });
 
   it('survives null changed-field arrays from older compare responses', async () => {
@@ -349,9 +436,14 @@ describe('SessionComparePage', () => {
     ]);
 
     expect(
-      await screen.findByRole('heading', { name: SESSION_COMPARE.session.external_id })
+      await screen.findByRole('heading', { name: COMPARE_TITLE })
     ).toBeInTheDocument();
     expect(screen.getByText('Retry Tool')).toBeInTheDocument();
+
+    await userEvent.setup().click(
+      screen.getByRole('button', { name: 'Show details for Retry Tool' })
+    );
+    expect(screen.getByText('Called retry tool')).toBeInTheDocument();
   });
 
   it('renders the 422 comparison ceiling detail state', async () => {
@@ -419,29 +511,63 @@ describe('SessionComparePage', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps the compare page in its stacked layout contract', async () => {
+  it('collapses unchanged steps and reveals them on request', async () => {
+    const user = userEvent.setup();
+    const planRow = SESSION_COMPARE.span_diffs[0];
+    const unchangedRow = {
+      ...planRow,
+      diff_status: 'unchanged' as const,
+      changed_fields: [],
+      semantic_groups: [],
+      baseline_span: planRow.baseline_span
+        ? { ...planRow.baseline_span, id: 'load-cart-baseline', span_id: 'load-cart', name: 'Load Cart' }
+        : null,
+      candidate_span: planRow.candidate_span
+        ? { ...planRow.candidate_span, id: 'load-cart-candidate', span_id: 'load-cart', name: 'Load Cart' }
+        : null,
+    };
     fetchMock.mockImplementation(
       buildFetchHandler({
-        sessionCompare: () => jsonResponse(SESSION_COMPARE),
+        sessionCompare: () =>
+          jsonResponse({
+            ...SESSION_COMPARE,
+            span_diffs: [unchangedRow, ...SESSION_COMPARE.span_diffs],
+          }),
       })
     );
 
-    renderTraceRoutes([
-      `/sessions/${SESSION_ID}/compare?baseline_trace_id=${SESSION_COMPARE.baseline.id}&candidate_trace_id=${SESSION_COMPARE.candidate.id}`,
-    ]);
+    renderTraceRoutes([COMPARE_URL]);
 
-    const overviewHeading = await screen.findByRole('heading', {
-      name: SESSION_COMPARE.session.external_id,
-    });
-    const overviewSection = overviewHeading.closest('section');
-    const overviewLayout = overviewSection?.querySelector('div.flex');
+    expect(await screen.findByRole('heading', { name: COMPARE_TITLE })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Changed only · 2' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Show details for Load Cart' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/1 step unchanged — same status, timing, and usage/)).toBeInTheDocument();
+    expect(screen.getByText('Load Cart')).toBeInTheDocument();
+    expect(screen.getByText('aligned by span ID · 2 of 3 matched')).toBeInTheDocument();
 
-    expect(overviewLayout).toHaveClass('flex-col');
+    await user.click(screen.getByRole('button', { name: 'Show them' }));
 
-    const semanticToggle = screen.getAllByRole('button', { name: 'Show semantic details' })[0];
-    const spanRow = semanticToggle.closest('article');
-    const spanGrid = spanRow?.querySelector('div.grid');
+    expect(screen.getByRole('button', { name: 'Show all 3' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: 'Show details for Load Cart' })).toBeInTheDocument();
+    expect(screen.getByText('unchanged')).toBeInTheDocument();
+    expect(screen.queryByText(/step unchanged/)).not.toBeInTheDocument();
+    // The first changed row keeps the FIRST CHANGE label even when unchanged rows show above it.
+    expect(
+      screen.getByRole('button', { name: 'Show details for Plan' }).closest('tr')
+    ).toHaveTextContent('first change');
 
-    expect(spanGrid).toHaveClass('lg:grid-cols-2');
+    await user.click(screen.getByRole('button', { name: 'Changed only · 2' }));
+
+    expect(
+      screen.queryByRole('button', { name: 'Show details for Load Cart' })
+    ).not.toBeInTheDocument();
   });
 });
