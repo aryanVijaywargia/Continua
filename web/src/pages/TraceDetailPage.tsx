@@ -9,10 +9,13 @@ import {
   type Trace,
 } from '../api/client';
 import { AuthErrorBanner } from '../components/AuthErrorBanner';
+import { ExecutionWaterfall } from '../components/ExecutionWaterfall';
+import { useStepDurations } from '../components/trace/useStepDurations';
 import { ReasoningTab } from '../components/ReasoningTab';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { buildTraceLineageChain, getReturnToDestination } from '../utils/traceLineage';
 import { getProjectIdFromSearchParams } from '../utils/projectSearchParams';
+import { deriveVisibleRows } from '../utils/spanTree';
 import {
   TIMELINE_POLL_INTERVAL_MS,
   useTraceTimeline,
@@ -28,7 +31,6 @@ import {
 } from './traceDetail/TraceDetailChrome';
 import { TraceDetailHeader } from './traceDetail/TraceDetailHeader';
 import { TraceDetailWorkspaceProvider } from './traceDetail/TraceDetailWorkspaceProvider';
-import { TraceDetailsSurface } from './traceDetail/TraceDetailsSurface';
 import { TraceContextDrawer, TraceContextSheet } from './traceDetail/TraceContextPanels';
 import { TraceEngineSection } from './traceDetail/TraceEngineSection';
 import { TraceLineageCard } from './traceDetail/TraceLineagePanels';
@@ -36,7 +38,9 @@ import { TraceLogsSection } from './traceDetail/TraceLogsSection';
 import { TraceMetricsSection } from './traceDetail/TraceMetricsSection';
 import { TraceReplaySection } from './traceDetail/TraceReplaySection';
 import { TraceTimelineSection } from './traceDetail/TraceTimelineSection';
-import { WorkspaceOverviewSection } from './traceDetail/WorkspaceOverviewSection';
+import { MobileStepList } from './traceDetail/MobileStepList';
+import { TraceInspector } from './traceDetail/TraceInspector';
+import { TraceStatePanels } from './traceDetail/TraceStatePanels';
 import {
   fetchDirectChildTraces,
   fetchTraceLineageAncestors,
@@ -50,7 +54,7 @@ import {
 const EMPTY_SPANS: Span[] = [];
 const EMPTY_TRACES: Trace[] = [];
 const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
-const TRACE_CONTEXT_DRAWER_MEDIA_QUERY = '(min-width: 768px)';
+const MEDIUM_MEDIA_QUERY = '(min-width: 768px)';
 
 function isReplayPreviewEnabled(): boolean {
   return import.meta.env.VITE_CONTINUA_REPLAY_PREVIEW === '1';
@@ -210,8 +214,8 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
 
 /**
  * Layout and section switching for a loaded trace. Owns only page-local UI
- * state (active section, trace-context overlay); everything else comes from
- * the workspace context.
+ * state (active section, events view, narrow step view, trace-context
+ * overlay); everything else comes from the workspace context.
  */
 function TraceDetailBody({
   childTraces,
@@ -230,85 +234,165 @@ function TraceDetailBody({
 }) {
   const {
     events,
+    expandedSpanIds,
     projectId,
     reasoningEntries,
     returnTo,
+    selectSpan,
     selectSpanAndShowDetails,
+    selectedSpanId,
+    spanTree,
     spans,
+    toggleExpandedSpan,
     trace,
+    visibleRetrySafetyAssessments,
   } = useTraceDetailWorkspace();
   const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY);
-  const isContextDrawer = useMediaQuery(TRACE_CONTEXT_DRAWER_MEDIA_QUERY);
+  const isMediumUp = useMediaQuery(MEDIUM_MEDIA_QUERY);
+  const isNarrow = !isMediumUp;
   const [activeSection, setActiveSection] =
-    useState<TraceDetailSectionId>('overview');
+    useState<TraceDetailSectionId>('execution');
+  const [eventsView, setEventsView] = useState<'timeline' | 'logs'>('timeline');
+  const [isNarrowStepOpen, setIsNarrowStepOpen] = useState(false);
   const [isTraceContextOpen, setIsTraceContextOpen] = useState(false);
   const replayPreviewEnabled = isReplayPreviewEnabled();
+  const durations = useStepDurations(spans);
+  const visibleRows = useMemo(
+    () => deriveVisibleRows(spanTree, expandedSpanIds),
+    [expandedSpanIds, spanTree]
+  );
 
   useEffect(() => {
     if (activeSection === 'engine' && !trace.engine) {
-      setActiveSection('overview');
+      setActiveSection('execution');
     }
     if (activeSection === 'replay' && !replayPreviewEnabled) {
-      setActiveSection('overview');
+      setActiveSection('execution');
     }
   }, [activeSection, replayPreviewEnabled, trace.engine]);
 
   const timelineAuthError = isAuthError(timelineRawError);
 
-  const mobileSummaryContent = (
-    <div className="grid h-full gap-4 overflow-y-auto p-4">
-      <TraceLineageCard
-        childTraces={childTraces}
-        childTracesLoading={childTracesLoading}
-        hasChildTracesError={hasChildTracesError}
-        lineageChain={lineageChain}
-        lineageLoading={lineageLoading}
-        projectId={projectId}
-        returnTo={returnTo}
-        showLineageSummary
-        showEmptyChildren={Boolean(trace.engine?.parent_run_id)}
-        trace={trace}
-      />
-      <TraceDetailsSurface />
-      <ReasoningTab
-        entries={reasoningEntries}
-        onSelectSpan={selectSpanAndShowDetails}
-      />
-    </div>
-  );
-
-  const workspaceContent = (
-    <WorkspaceOverviewSection
-      isDesktop={isDesktop}
-      mobileSummary={mobileSummaryContent}
+  const executionTable = (
+    <ExecutionWaterfall
+      events={events}
+      rows={visibleRows}
+      spans={spans}
+      durations={durations}
+      selectedSpanId={selectedSpanId}
+      onSelectSpan={selectSpan}
+      revealTarget={selectedSpanId}
+      expandedSpanIds={expandedSpanIds}
+      onToggleExpand={toggleExpandedSpan}
+      spanAssessments={visibleRetrySafetyAssessments}
+      traceEndedAt={trace.ended_at}
+      traceStartedAt={trace.started_at}
     />
   );
 
+  const executionContent = isNarrow ? (
+    isNarrowStepOpen && selectedSpanId ? (
+      <TraceInspector durations={durations} onBack={() => setIsNarrowStepOpen(false)} />
+    ) : (
+      <MobileStepList
+        durations={durations}
+        onOpenStep={(spanId) => {
+          selectSpan(spanId);
+          setIsNarrowStepOpen(true);
+        }}
+      />
+    )
+  ) : isDesktop ? (
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
+      <div className="min-h-0 min-w-0">{executionTable}</div>
+      <div className="min-h-0 border-l border-[var(--c-border)]">
+        <TraceInspector durations={durations} />
+      </div>
+    </div>
+  ) : (
+    <div className="grid min-h-0 flex-1 grid-rows-[minmax(18rem,1fr)_minmax(20rem,1fr)]">
+      <div className="min-h-0 min-w-0">{executionTable}</div>
+      <div className="min-h-0 border-t border-[var(--c-border)]">
+        <TraceInspector durations={durations} />
+      </div>
+    </div>
+  );
+
+  const eventsViewToggle = (
+    <div className="flex gap-1 border-b border-[var(--c-border)] px-4 py-2 md:px-6">
+      {(
+        [
+          ['timeline', 'Timeline view'],
+          ['logs', 'Logs and errors'],
+        ] as const
+      ).map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={eventsView === id}
+          onClick={() => setEventsView(id)}
+          className={`h-7 rounded-md border px-2.5 text-xs font-medium ${
+            eventsView === id
+              ? 'border-[var(--c-accent-border)] bg-[var(--c-accent-faint)] text-[var(--c-accent-text)]'
+              : 'border-[var(--c-border)] text-[var(--c-text-secondary)] hover:text-[var(--c-text-primary)]'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   const sectionContent =
-    activeSection === 'overview' ? (
-      workspaceContent
-    ) : activeSection === 'timeline' ? (
-      <TraceSectionSurface
-        flush
-        title="Timeline"
-        description="Chronological trace events with span selection preserved."
-      >
-        <TraceTimelineSection />
-      </TraceSectionSurface>
-    ) : activeSection === 'logs' ? (
-      <TraceSectionSurface
-        flush
-        title="Logs"
-        description="Explicit logs, errors, exceptions, decisions, effects, and waits recorded by the trace."
-      >
-        <TraceLogsSection />
-      </TraceSectionSurface>
+    activeSection === 'events' ? (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {eventsViewToggle}
+        {eventsView === 'timeline' ? (
+          <TraceSectionSurface
+            flush
+            title="Timeline"
+            description="Chronological trace events with step selection preserved."
+          >
+            <TraceTimelineSection />
+          </TraceSectionSurface>
+        ) : (
+          <TraceSectionSurface
+            flush
+            title="Logs"
+            description="Explicit logs, errors, exceptions, decisions, effects, and waits recorded by the trace."
+          >
+            <TraceLogsSection />
+          </TraceSectionSurface>
+        )}
+      </div>
     ) : activeSection === 'metrics' ? (
       <TraceSectionSurface
         title="Metrics"
-        description="Aggregate latency, token, cost, and state-change signals from the loaded spans."
+        description="Trace state, lineage, reasoning, and aggregate latency, token, cost, and state-change signals."
       >
-        <TraceMetricsSection />
+        <div className="grid gap-4">
+          <TraceStatePanels />
+          <TraceLineageCard
+            childTraces={childTraces}
+            childTracesLoading={childTracesLoading}
+            hasChildTracesError={hasChildTracesError}
+            lineageChain={lineageChain}
+            lineageLoading={lineageLoading}
+            projectId={projectId}
+            returnTo={returnTo}
+            showLineageSummary
+            showEmptyChildren={Boolean(trace.engine?.parent_run_id)}
+            trace={trace}
+          />
+          <TraceMetricsSection />
+          <ReasoningTab
+            entries={reasoningEntries}
+            onSelectSpan={(spanId) => {
+              selectSpanAndShowDetails(spanId);
+              setActiveSection('execution');
+            }}
+          />
+        </div>
       </TraceSectionSurface>
     ) : activeSection === 'engine' ? (
       <TraceSectionSurface
@@ -327,13 +411,14 @@ function TraceDetailBody({
         <TraceReplaySection />
       </TraceSectionSurface>
     ) : (
-      workspaceContent
+      executionContent
     );
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <TraceDetailHeader
         isDesktop={isDesktop}
+        isNarrow={isNarrow}
         isTraceContextOpen={isTraceContextOpen}
         lineageChain={lineageChain}
         lineageLoading={lineageLoading}
@@ -346,9 +431,9 @@ function TraceDetailBody({
         activeSection={activeSection}
         eventCount={events.length}
         hasEngine={Boolean(trace.engine)}
+        isNarrow={isNarrow}
         onChange={setActiveSection}
         replayPreviewEnabled={replayPreviewEnabled}
-        spanCount={spans.length}
       />
 
       {timelineAuthError ? (
@@ -362,7 +447,7 @@ function TraceDetailBody({
         {sectionContent}
       </div>
 
-      {isContextDrawer && isTraceContextOpen ? (
+      {isMediumUp && isTraceContextOpen ? (
         <TraceContextDrawer
           childTraces={childTraces}
           childTracesLoading={childTracesLoading}
@@ -371,7 +456,7 @@ function TraceDetailBody({
         />
       ) : null}
 
-      {!isContextDrawer && isTraceContextOpen ? (
+      {!isMediumUp && isTraceContextOpen ? (
         <TraceContextSheet
           childTraces={childTraces}
           childTracesLoading={childTracesLoading}

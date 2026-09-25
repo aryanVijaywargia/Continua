@@ -2,13 +2,7 @@ import type { ReactNode } from 'react';
 import type { TraceDetail } from '../../api/client';
 import { describeEngineWaitState } from '../engineWaitState';
 
-export type TraceDetailSectionId =
-  | 'overview'
-  | 'timeline'
-  | 'logs'
-  | 'metrics'
-  | 'engine'
-  | 'replay';
+export type TraceDetailSectionId = 'execution' | 'events' | 'metrics' | 'engine' | 'replay';
 
 export function TraceDetailEmptyState({ children }: { children: ReactNode }) {
   return (
@@ -28,52 +22,25 @@ export function TraceDetailErrorState({ children }: { children: ReactNode }) {
   );
 }
 
-export function TraceHeaderMetric({
-  label,
-  value,
-  danger = false,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  danger?: boolean;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <div className="text-[10.5px] font-medium uppercase tracking-[0.04em] text-[var(--c-text-muted)]">
-        {label}
-      </div>
-      <div
-        className={`text-[13px] font-medium tabular-nums ${mono ? 'font-mono' : ''} ${
-          danger ? 'text-[var(--c-red-text)]' : 'text-[var(--c-text-primary)]'
-        }`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
 export function TraceDetailTabs({
   activeSection,
   eventCount,
   hasEngine,
+  isNarrow,
   onChange,
   replayPreviewEnabled,
-  spanCount,
 }: {
   activeSection: TraceDetailSectionId;
   eventCount: number;
   hasEngine: boolean;
+  /** Narrow layouts call the execution tab "Steps". */
+  isNarrow: boolean;
   onChange: (section: TraceDetailSectionId) => void;
   replayPreviewEnabled: boolean;
-  spanCount: number;
 }) {
   const tabs: Array<{ id: TraceDetailSectionId; label: string; count?: number }> = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'timeline', label: 'Timeline', count: spanCount },
-    { id: 'logs', label: 'Logs', count: eventCount },
+    { id: 'execution', label: isNarrow ? 'Steps' : 'Execution' },
+    { id: 'events', label: 'Events', count: eventCount },
     { id: 'metrics', label: 'Metrics' },
     ...(hasEngine ? [{ id: 'engine' as const, label: 'Engine state' }] : []),
     ...(replayPreviewEnabled ? [{ id: 'replay' as const, label: 'Replay' }] : []),
@@ -82,7 +49,7 @@ export function TraceDetailTabs({
   return (
     <nav
       aria-label="Trace detail sections"
-      className="flex border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-6"
+      className="flex overflow-x-auto border-b border-[var(--c-border)] bg-[var(--c-app-bg)] px-2 md:px-4"
     >
       {tabs.map((tab) => (
         <button
@@ -90,7 +57,7 @@ export function TraceDetailTabs({
           type="button"
           aria-pressed={activeSection === tab.id}
           onClick={() => onChange(tab.id)}
-          className={`-mb-px border-b-2 px-3.5 py-2 text-[13px] font-medium ${
+          className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-medium ${
             activeSection === tab.id
               ? 'border-[var(--c-accent)] text-[var(--c-text-primary)]'
               : 'border-transparent text-[var(--c-text-secondary)] hover:text-[var(--c-text-primary)]'

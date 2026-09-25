@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   FolderKanban,
+  HeartPulse,
   LayoutDashboard,
   Menu,
   Moon,
@@ -42,18 +43,28 @@ interface NavItem {
   path: string;
   label: string;
   icon: LucideIcon;
+  group: 'main' | 'observability' | 'engine' | 'workspace';
+  badge?: string;
+  child?: boolean;
 }
 
 const RUN_LOCALLY_DOCS_URL =
   'https://www.continua.in/docs/guides/installation';
 
 const NAV_ITEMS: NavItem[] = [
-  { path: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { path: '/traces', label: 'Traces', icon: Activity },
-  { path: '/engine/runs', label: 'Engine Runs', icon: Workflow },
-  { path: '/sessions', label: 'Sessions', icon: Waypoints },
-  { path: '/projects', label: 'Projects', icon: FolderKanban },
-  { path: '/settings', label: 'Settings', icon: Settings2 },
+  { path: '/dashboard', label: 'Overview', icon: LayoutDashboard, group: 'main' },
+  { path: '/traces', label: 'Traces', icon: Activity, group: 'observability' },
+  { path: '/sessions', label: 'Sessions', icon: Waypoints, group: 'observability' },
+  { path: '/engine/runs', label: 'Runs', icon: Workflow, group: 'engine', badge: 'Preview' },
+  { path: '/tools/engine-health', label: 'Health', icon: HeartPulse, group: 'engine', child: true },
+  { path: '/projects', label: 'Projects', icon: FolderKanban, group: 'workspace' },
+  { path: '/settings', label: 'Settings', icon: Settings2, group: 'workspace' },
+];
+
+const NAV_GROUPS: Array<{ id: NavItem['group']; label?: string }> = [
+  { id: 'main' },
+  { id: 'observability', label: 'Observability' },
+  { id: 'engine', label: 'Engine' },
 ];
 
 export function AppShell() {
@@ -561,34 +572,45 @@ function SidebarNav({
   label: string;
   projectId?: string;
 }) {
-  const primaryItems = items.filter((item) => item.path !== '/settings');
-  const projectItem = items.find((item) => item.path === '/projects');
-  const settingsItem = items.find((item) => item.path === '/settings');
-  const mainItems = primaryItems.filter((item) => item.path !== '/projects');
+  const workspaceItems = items.filter((item) => item.group === 'workspace');
 
   return (
     <nav
       aria-label={label}
       className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 pb-4"
     >
-      <div>
-        {mainItems.map((item) => (
-          <SidebarNavLink key={item.path} item={item} projectId={projectId} />
-        ))}
-      </div>
-
-      {!isPublicDemo && settingsItem ? (
-        <div>
-          <div className="px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
-            Workspace
+      {NAV_GROUPS.map((group) => {
+        const groupItems = items.filter((item) => item.group === group.id);
+        if (groupItems.length === 0) {
+          return null;
+        }
+        return (
+          <div key={group.id}>
+            {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
+            {groupItems.map((item) => (
+              <SidebarNavLink key={item.path} item={item} projectId={projectId} />
+            ))}
           </div>
-          {projectItem ? (
-            <SidebarNavLink item={projectItem} projectId={projectId} />
-          ) : null}
-          <SidebarNavLink item={settingsItem} projectId={projectId} />
+        );
+      })}
+
+      {!isPublicDemo && workspaceItems.length > 0 ? (
+        <div className="mt-auto">
+          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+          {workspaceItems.map((item) => (
+            <SidebarNavLink key={item.path} item={item} projectId={projectId} />
+          ))}
         </div>
       ) : null}
     </nav>
+  );
+}
+
+function SidebarGroupLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-2.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-muted)]">
+      {children}
+    </div>
   );
 }
 
@@ -606,15 +628,22 @@ function SidebarNavLink({
       to={buildProjectPath(item.path, projectId)}
       end={item.path === '/dashboard'}
       className={({ isActive }) =>
-        `console-nav-link mb-0.5 flex items-center gap-2.5 rounded-[5px] px-2.5 py-1.5 text-[13px] font-medium transition ${
+        `console-nav-link mb-0.5 flex items-center gap-2.5 rounded-[5px] py-1.5 pr-2.5 font-medium transition ${
+          item.child ? 'pl-9 text-[12.5px]' : 'pl-2.5 text-[13px]'
+        } ${
           isActive
             ? 'bg-[var(--c-nav-active-bg)] font-semibold text-[var(--c-text-primary)]'
             : 'text-[var(--c-text-secondary)] hover:bg-[var(--c-nav-hover-bg)] hover:text-[var(--c-text-primary)]'
         }`
       }
     >
-      <Icon className="h-4 w-4 text-[var(--c-text-muted)]" />
+      {item.child ? null : <Icon className="h-4 w-4 text-[var(--c-text-muted)]" />}
       {item.label}
+      {item.badge ? (
+        <span className="ml-auto inline-flex h-4 items-center rounded-[3px] border border-[var(--c-amber-border)] bg-[var(--c-amber-faint)] px-1.5 text-[9.5px] font-bold uppercase tracking-[0.06em] text-[var(--c-amber-text)]">
+          {item.badge}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
@@ -766,13 +795,13 @@ function buildBreadcrumbs(pathname: string): string[] {
     return segments[1] ? ['Traces', segments[1]] : ['Traces'];
   }
   if (segments[0] === 'engine') {
-    return ['Engine Runs'];
+    return ['Engine', 'Runs'];
   }
   if (segments[0] === 'tools' && segments[1] === 'engine-projections') {
     return ['Settings', 'Engine projection repair'];
   }
   if (segments[0] === 'tools' && segments[1] === 'engine-health') {
-    return ['Engine Runs', 'Engine health'];
+    return ['Engine', 'Health'];
   }
   if (segments[0] === 'sessions') {
     if (segments[2] === 'compare') {

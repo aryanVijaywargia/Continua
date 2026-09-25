@@ -75,24 +75,115 @@ describe('SessionDetailPage', () => {
     ],
   };
 
-  it('renders the debugger-kit session header, metrics, tabs, and journey rail', async () => {
+  it('renders the session header, summary strip, view toggle, journey cards, and details drawer', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
     renderTraceRoutes([`/sessions/${SESSION_ID}`]);
 
     expect(await screen.findByRole('heading', { name: 'Checkout Session' })).toBeInTheDocument();
-    expect(screen.getAllByText(SESSION_EXTERNAL_ID).length).toBeGreaterThan(0);
-    expect(screen.getByText('Success rate')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Journey/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Traces/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Context/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Feedback/i })).toBeInTheDocument();
+    expect(screen.getByText('Read-only')).toBeInTheDocument();
+    expect(screen.queryByText('name derived from its trace')).not.toBeInTheDocument();
+
+    const strip = screen.getByRole('region', { name: 'Session summary' });
+    expect(within(strip).getByText('Traces')).toBeInTheDocument();
+    expect(within(strip).getByText('Duration')).toBeInTheDocument();
+    expect(within(strip).getByText('Errors')).toBeInTheDocument();
+    expect(within(strip).getByText('Usage')).toBeInTheDocument();
+    expect(within(strip).getByText('user-123')).toBeInTheDocument();
+
+    expect(screen.getByRole('button', { name: 'Journey' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('heading', { name: 'Session journey' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Alpha Narrative' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Alpha Narrative' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Checkout Narrative' })).toBeInTheDocument();
-    expect(screen.getByText('Latency by trace')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /Open trace/ })).toHaveLength(2);
+    expect(screen.getByText('Pick alpha path')).toBeInTheDocument();
+
+    const drawer = screen.getByRole('complementary', { name: 'Session details' });
+    expect(within(drawer).getByText(SESSION_EXTERNAL_ID)).toBeInTheDocument();
+    expect(within(drawer).getByText('Checkout Session')).toBeInTheDocument();
+    expect(
+      within(drawer).getByText(
+        'No feedback has been recorded for this session, so no feedback view is shown.'
+      )
+    ).toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: /Ask/ })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Search')).not.toBeInTheDocument();
     await waitForSessionTraceFetch(`?limit=20&session_id=${SESSION_ID}`);
+  });
+
+  it('links Compare to the two most recent finished traces when nothing is selected', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionNarrative: () => jsonResponse(journeyNarrative),
+      })
+    );
+
+    renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(await screen.findByRole('link', { name: 'Alpha Narrative' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Compare' })).toHaveAttribute(
+      'href',
+      `/sessions/${SESSION_ID}/compare?baseline_trace_id=${journeyBaselineId}&candidate_trace_id=${journeyCandidateId}`
+    );
+  });
+
+  it('derives the name from the trace and states why Compare is off for a one-trace session', async () => {
+    const singleTrace = createSessionNarrativeTrace({
+      ...SESSION_NARRATIVE.traces[0],
+      name: 'Catalog review workflow',
+      total_cost_usd: 0,
+      total_tokens_in: 0,
+      total_tokens_out: 0,
+    });
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        sessionDetail: () =>
+          jsonResponse({ ...SESSION_ONE, name: undefined, user_id: undefined, metadata: {} }),
+        sessionNarrative: () =>
+          jsonResponse({
+            summary: {
+              ...SESSION_NARRATIVE.summary,
+              total_trace_count: 1,
+              returned_trace_count: 1,
+              completed_trace_count: 1,
+              failed_trace_count: 0,
+              total_cost_usd: 0,
+              total_tokens_in: 0,
+              total_tokens_out: 0,
+              inferred_link_count: 0,
+              unlinked_trace_count: 1,
+            },
+            traces: [singleTrace],
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/sessions/${SESSION_ID}`]);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Catalog review workflow' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('name derived from its trace')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Compare' })).toBeDisabled();
+    expect(screen.getByText('Needs two traces — this session has one')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Compare' })).not.toBeInTheDocument();
+
+    const strip = screen.getByRole('region', { name: 'Session summary' });
+    expect(within(strip).getByText('Not verified')).toBeInTheDocument();
+    expect(within(strip).getByText('Not recorded')).toBeInTheDocument();
+    expect(screen.getByText('only trace')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'No trace relationships to show — a single-trace session has nothing to link or infer.'
+      )
+    ).toBeInTheDocument();
+
+    const drawer = screen.getByRole('complementary', { name: 'Session details' });
+    expect(within(drawer).getByText('Usage telemetry')).toBeInTheDocument();
+    expect(within(drawer).getByText('User identity')).toBeInTheDocument();
+    expect(within(drawer).getByText('Empty')).toBeInTheDocument();
   });
 
   it('keeps narrative loading and error states local to the redesigned journey area', async () => {
@@ -133,7 +224,7 @@ describe('SessionDetailPage', () => {
     );
   });
 
-  it('renders the trace table tab with URL-backed sort and pagination state', async () => {
+  it('renders the table view with URL-backed sort and pagination state', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(
       buildFetchHandler({
@@ -150,7 +241,7 @@ describe('SessionDetailPage', () => {
     ]);
 
     await screen.findByRole('heading', { name: 'Checkout Session' });
-    await user.click(screen.getByRole('button', { name: /Traces/i }));
+    await user.click(screen.getByRole('button', { name: 'Table' }));
     expect(await screen.findByRole('link', { name: 'Latency Trace' })).toBeInTheDocument();
     await waitForSessionTraceFetch(
       `?limit=50&offset=20&session_id=${SESSION_ID}&sort_by=started_at&sort_dir=asc`
@@ -183,8 +274,8 @@ describe('SessionDetailPage', () => {
     ]);
 
     expect(await screen.findByRole('link', { name: 'Alpha Narrative' })).toBeInTheDocument();
-    const alphaCard = screen.getByRole('link', { name: 'Alpha Narrative' }).closest('.grid');
-    const checkoutCard = screen.getByRole('link', { name: 'Checkout Narrative' }).closest('.grid');
+    const alphaCard = screen.getByRole('link', { name: 'Alpha Narrative' }).closest('article');
+    const checkoutCard = screen.getByRole('link', { name: 'Checkout Narrative' }).closest('article');
     if (!alphaCard || !checkoutCard) {
       throw new Error('Expected journey trace cards');
     }
@@ -251,8 +342,7 @@ describe('SessionDetailPage', () => {
     );
   });
 
-  it('renders context and feedback tabs from session metadata', async () => {
-    const user = userEvent.setup();
+  it('renders metadata and feedback in the details drawer', async () => {
     fetchMock.mockImplementation(
       buildFetchHandler({
         sessionDetail: () =>
@@ -276,13 +366,12 @@ describe('SessionDetailPage', () => {
     renderTraceRoutes([`/sessions/${SESSION_ID}`]);
 
     expect(await screen.findByRole('heading', { name: 'Checkout Session' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Context/i }));
-    expect(screen.getByText('plan')).toBeInTheDocument();
-    expect(screen.getByText('premium')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /Feedback/i }));
-    expect(screen.getByText('Checkout recovery worked after retry.')).toBeInTheDocument();
-    expect(screen.getByText('Checkout Narrative')).toBeInTheDocument();
+    const drawer = screen.getByRole('complementary', { name: 'Session details' });
+    expect(within(drawer).getByText('plan')).toBeInTheDocument();
+    expect(within(drawer).getByText('premium')).toBeInTheDocument();
+    expect(within(drawer).getByText('Checkout recovery worked after retry.')).toBeInTheDocument();
+    expect(within(drawer).getByText('Checkout Narrative')).toBeInTheDocument();
+    expect(within(drawer).getByText('positive')).toBeInTheDocument();
   });
 
   it('exports the current session, narrative, traces, and compare state as JSON', async () => {
@@ -375,7 +464,7 @@ describe('SessionDetailPage', () => {
     const { router } = renderTraceRoutes([`/sessions/${SESSION_ID}`]);
 
     await screen.findByRole('heading', { name: 'Checkout Session' });
-    await user.click(screen.getByRole('button', { name: /Traces/i }));
+    await user.click(screen.getByRole('button', { name: 'Table' }));
     expect(await screen.findByRole('link', { name: 'Checkout Compare Trace' })).toBeInTheDocument();
 
     const table = screen.getByRole('table');

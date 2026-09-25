@@ -83,3 +83,42 @@ export function calculateDuration(
   const end = endedAt ? new Date(endedAt).getTime() : Date.now();
   return end - start;
 }
+
+/**
+ * Formats a derived duration. Values under 10 ms show as "<10 ms" because
+ * timestamp rounding makes smaller differences unreliable.
+ */
+export function formatDerivedDuration(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) {
+    return '—';
+  }
+  if (ms < 10) {
+    return '<10 ms';
+  }
+  if (ms < 1000) {
+    return `${Math.round(ms)} ms`;
+  }
+  if (ms < 60_000) {
+    return `${(ms / 1000).toFixed(2)}s`;
+  }
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1000);
+  return `${minutes}m ${seconds}s`;
+}
+
+/**
+ * Format an exact local time, e.g. "Aug 17, 03:02". Lists show exact times
+ * instead of relative ones so two rows can be compared.
+ */
+export function formatExactTime(dateStr: string | undefined | null): string {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}

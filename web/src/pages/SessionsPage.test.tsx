@@ -225,7 +225,7 @@ describe('SessionsPage', () => {
     });
     expect(router.state.location.search).toBe('?offset=20');
     expect(screen.getByText('conv-latency-456')).toBeInTheDocument();
-    expect(screen.getByText(OTHER_SESSION_ID)).toBeInTheDocument();
+    expect(screen.getByTitle(OTHER_SESSION_ID)).toHaveTextContent(OTHER_SESSION_ID.slice(0, 8));
   });
 
   it('does not fan out narrative requests while rendering the session index', async () => {

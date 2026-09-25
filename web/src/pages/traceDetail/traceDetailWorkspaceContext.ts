@@ -76,6 +76,8 @@ export interface TraceDetailWorkspaceValue {
 
   // Actions.
   selectSpan: (spanId: string) => void;
+  /** Removes the `span` URL param, so no step is selected. */
+  clearSelection: () => void;
   /** Selects and, on mobile, switches the workspace to the summary tab. */
   selectSpanAndShowDetails: (spanId: string) => void;
   buildCopyTraceUrl: () => string;
