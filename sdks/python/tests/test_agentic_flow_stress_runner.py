@@ -81,13 +81,22 @@ def use_recording_client(stress, client: RecordingSDKClient) -> Iterator[None]:
 
 
 class FakeReadClient:
-    def __init__(self, *, missing_event: bool = False) -> None:
+    def __init__(self, *, missing_event: bool = False, missing_payload: bool = False) -> None:
         self.session_id = str(uuid.uuid4())
         self.trace_ids = {
             "trace.a": str(uuid.uuid4()),
             "trace.b": str(uuid.uuid4()),
         }
         self.missing_event = missing_event
+        self.missing_payload = missing_payload
+        self.payloads_by_span = {
+            f"{kind}-{suffix}": payload
+            for suffix in ("a", "b")
+            for kind, payload in (
+                ("root", {"input": {"ok": True}, "output": {"ok": True}}),
+                ("llm", {"input": {"prompt": "x"}, "output": {"text": "y"}}),
+            )
+        }
 
     def wait_for_session(self, external_id: str, **_kwargs: Any) -> dict[str, Any]:
         return {
@@ -120,6 +129,7 @@ class FakeReadClient:
         parent_span_id = f"parent-{suffix}"
         return [
             {
+                "id": f"root-{suffix}",
                 "name": f"root.{suffix}",
                 "span_id": parent_span_id,
                 "status": "COMPLETED",
@@ -127,6 +137,7 @@ class FakeReadClient:
                 "has_output": True,
             },
             {
+                "id": f"llm-{suffix}",
                 "name": f"llm.{suffix}",
                 "span_id": f"child-{suffix}",
                 "parent_span_id": parent_span_id,
@@ -138,6 +149,11 @@ class FakeReadClient:
                 "has_output": True,
             },
         ]
+
+    def span_payload(self, _trace_id: str, span_uuid: str) -> dict[str, Any]:
+        if self.missing_payload:
+            return {}
+        return self.payloads_by_span[span_uuid]
 
     def timeline(self, trace_id: str) -> dict[str, Any]:
         suffix = "a" if trace_id == self.trace_ids["trace.a"] else "b"
@@ -282,6 +298,34 @@ def test_assert_flow_readback_validates_sessions_traces_and_timelines():
         f"http://app.test/traces/{runner.read_client.trace_ids['trace.a']}",
         f"http://app.test/traces/{runner.read_client.trace_ids['trace.b']}",
     ]
+
+
+def test_assert_flow_readback_fails_when_payload_endpoint_returns_no_payload():
+    stress = load_stress_module()
+    config = make_config(stress)
+    expectation = stress.FlowExpectation(
+        flow_name="readback",
+        session_external_id="session-readback",
+        user_id="user",
+        traces=(
+            stress.ExpectedTrace(
+                name="readback.a",
+                status="COMPLETED",
+                min_spans=1,
+                required_spans=("llm.a",),
+                required_payload_spans=("llm.a",),
+            ),
+        ),
+    )
+    runner = stress.StressRunner(
+        config=config,
+        llm=FakeLLM(stress),
+        read_client=FakeReadClient(missing_payload=True),
+        sdk_client=RecordingSDKClient(),
+    )
+
+    with pytest.raises(AssertionError, match="did not preserve input/output payload"):
+        runner.assert_flow_readback(expectation)
 
 
 def test_assert_flow_readback_fails_on_missing_required_event():
