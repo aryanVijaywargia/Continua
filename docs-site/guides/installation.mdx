@@ -137,6 +137,7 @@ Common optional variables:
 | `RIVER_QUEUE_ROLLUP_WORKERS` | `10` | Rollup job concurrency |
 | `RIVER_QUEUE_MAINTENANCE_WORKERS` | `1` | Cleanup / maintenance job concurrency |
 | `RIVER_QUEUE_DEFAULT_WORKERS` | `1` | Catch-all queue concurrency |
+| `RIVER_FETCH_COOLDOWN` | `2ms` | Minimum gap between job fetches per queue, from `1ms` to `1s`. A queue drains at most workers ÷ cooldown jobs/s |
 
 Set `HOST=0.0.0.0` explicitly to listen on all network interfaces.
 

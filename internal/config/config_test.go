@@ -40,6 +40,41 @@ func TestLoad_RejectsInvalidWorkerCount(t *testing.T) {
 	assert.Contains(t, err.Error(), "RIVER_QUEUE_INGEST_WORKERS")
 }
 
+func TestLoad_RiverFetchCooldown(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    time.Duration
+		wantErr bool
+	}{
+		{name: "default", raw: "", want: 2 * time.Millisecond},
+		{name: "override", raw: "25ms", want: 25 * time.Millisecond},
+		{name: "river minimum accepted", raw: "1ms", want: time.Millisecond},
+		{name: "poll interval accepted", raw: "1s", want: time.Second},
+		{name: "below river minimum rejected", raw: "999us", wantErr: true},
+		{name: "above poll interval rejected", raw: "1001ms", wantErr: true},
+		{name: "zero rejected", raw: "0s", wantErr: true},
+		{name: "negative rejected", raw: "-1ms", wantErr: true},
+		{name: "unparseable rejected", raw: "fast", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://example")
+			t.Setenv("RIVER_FETCH_COOLDOWN", tt.raw)
+
+			cfg, err := config.Load()
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Nil(t, cfg)
+				assert.Contains(t, err.Error(), "RIVER_FETCH_COOLDOWN")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.Jobs.FetchCooldown)
+		})
+	}
+}
+
 func TestLoad_RejectsHistoryRetentionWithoutProjectionRetention(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("ENGINE_HISTORY_RETENTION_AFTER", "720h")
