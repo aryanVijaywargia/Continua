@@ -41,7 +41,7 @@ type paginatedTimelineEntries struct {
 	pollCursor *string
 }
 
-func buildTimelineEntries(explicitEvents []platform.SpanEvent, spans []platform.Span) []timelineEntry {
+func buildTimelineEntries(explicitEvents []platform.SpanEvent, spans []platform.ListSpanSummariesByTraceRow) []timelineEntry {
 	spanNames := make(map[string]string, len(spans))
 	entries := make([]timelineEntry, 0, len(explicitEvents)+(len(spans)*2))
 
@@ -71,7 +71,7 @@ func buildTimelineEntries(explicitEvents []platform.SpanEvent, spans []platform.
 	return entries
 }
 
-func syntheticTimelineEntriesFromSpan(sp *platform.Span) []timelineEntry {
+func syntheticTimelineEntriesFromSpan(sp *platform.ListSpanSummariesByTraceRow) []timelineEntry {
 	entries := make([]timelineEntry, 0, 2)
 
 	if !sp.StartTime.IsZero() {

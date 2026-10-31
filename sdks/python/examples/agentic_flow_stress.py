@@ -1093,7 +1093,7 @@ class StressRunner:
 
         for span_name in expected.required_payload_spans:
             span_obj = spans_by_name[span_name]
-            if span_obj.get("input") is None and span_obj.get("output") is None:
+            if not span_obj.get("has_input") and not span_obj.get("has_output"):
                 raise AssertionError(f"Span {span_name!r} did not preserve input/output payload")
 
         timeline = self.read_client.timeline(str(trace_record["id"]))

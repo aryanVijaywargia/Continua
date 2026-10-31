@@ -603,6 +603,91 @@ func TestListSpansByTrace_ReturnsLLMContextAndTruncationFields(t *testing.T) {
 	assert.Equal(t, reason, *span.OutputTruncationReason)
 }
 
+// Issue #317: the span list must not carry payloads; one span's payloads load on demand.
+func TestSpanPayloads_ListOmitsThemAndPayloadEndpointReturnsThem(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	s := store.New(pool)
+	server := NewServer(s, nil)
+	q := s.Queries()
+
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	otherProjectID := testutil.CreateTestProject(t, ctx, q)
+	trace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+		ProjectID: projectID,
+		TraceID:   "payload-trace-317",
+		Status:    "running",
+		StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 16, 0, 0, 0, time.UTC)),
+	})
+	withPayload := upsertSpanRecord(ctx, t, q, platform.UpsertSpanParams{
+		ProjectID: projectID,
+		TraceID:   trace.ID,
+		SpanID:    "with-payload",
+		Name:      "With payload",
+		Type:      "llm",
+		Status:    "completed",
+		Level:     "default",
+		StartTime: time.Date(2026, 3, 7, 16, 0, 1, 0, time.UTC),
+		Input:     []byte(`{"prompt":"hello"}`),
+		Output:    []byte(`{"answer":"world"}`),
+		Metadata:  []byte(`{"source":"test"}`),
+		TotalCost: testutil.PgtypeNumericFromFloat64(0),
+	})
+	upsertSpanRecord(ctx, t, q, platform.UpsertSpanParams{
+		ProjectID: projectID,
+		TraceID:   trace.ID,
+		SpanID:    "no-payload",
+		Name:      "No payload",
+		Type:      "tool",
+		Status:    "completed",
+		Level:     "default",
+		StartTime: time.Date(2026, 3, 7, 16, 0, 2, 0, time.UTC),
+		TotalCost: testutil.PgtypeNumericFromFloat64(0),
+	})
+
+	listRec := invokeListSpansByTrace(t, server, projectID, trace.ID)
+	require.Equal(t, http.StatusOK, listRec.Code)
+	var list struct {
+		Spans []map[string]json.RawMessage `json:"spans"`
+	}
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &list))
+	require.Len(t, list.Spans, 2)
+	for _, span := range list.Spans {
+		assert.NotContains(t, span, "input")
+		assert.NotContains(t, span, "output")
+		assert.NotContains(t, span, "metadata")
+	}
+	assert.JSONEq(t, "true", string(list.Spans[0]["has_input"]))
+	assert.JSONEq(t, "true", string(list.Spans[0]["has_output"]))
+	assert.JSONEq(t, "false", string(list.Spans[1]["has_input"]))
+	assert.JSONEq(t, "false", string(list.Spans[1]["has_output"]))
+
+	tests := []struct {
+		name       string
+		projectID  uuid.UUID
+		spanUUID   uuid.UUID
+		wantStatus int
+	}{
+		{name: "returns the payloads", projectID: projectID, spanUUID: withPayload.ID, wantStatus: http.StatusOK},
+		{name: "unknown span", projectID: projectID, spanUUID: uuid.New(), wantStatus: http.StatusNotFound},
+		{name: "other project", projectID: otherProjectID, spanUUID: withPayload.ID, wantStatus: http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/traces/"+trace.ID.String()+"/spans/"+tt.spanUUID.String()+"/payload", nil)
+			req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, tt.projectID))
+			rec := httptest.NewRecorder()
+
+			server.GetSpanPayload(rec, req, trace.ID, tt.spanUUID, GetSpanPayloadParams{})
+
+			require.Equal(t, tt.wantStatus, rec.Code)
+			if tt.wantStatus == http.StatusOK {
+				assert.JSONEq(t, `{"input":{"prompt":"hello"},"output":{"answer":"world"},"metadata":{"source":"test"}}`, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestListTraces_OmitsDetailFields(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()

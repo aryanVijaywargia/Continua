@@ -37,7 +37,7 @@ func TestBuildTimelineEntries_MixedSources(t *testing.T) {
 				CreatedAt:        base.Add(20 * time.Millisecond),
 			},
 		},
-		[]platform.Span{
+		[]platform.ListSpanSummariesByTraceRow{
 			{
 				ID:        uuid.New(),
 				TraceID:   traceID,

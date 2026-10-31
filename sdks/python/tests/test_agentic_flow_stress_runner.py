@@ -123,8 +123,8 @@ class FakeReadClient:
                 "name": f"root.{suffix}",
                 "span_id": parent_span_id,
                 "status": "COMPLETED",
-                "input": {"ok": True},
-                "output": {"ok": True},
+                "has_input": True,
+                "has_output": True,
             },
             {
                 "name": f"llm.{suffix}",
@@ -134,8 +134,8 @@ class FakeReadClient:
                 "model": "gpt-5.4-nano",
                 "tokens_in": 12,
                 "tokens_out": 5,
-                "input": {"prompt": "x"},
-                "output": {"text": "y"},
+                "has_input": True,
+                "has_output": True,
             },
         ]
 

@@ -139,8 +139,8 @@ func traceDetailToAPIWithEngine(t *store.TraceRead, engine *EngineRunSummary) Tr
 	return trace
 }
 
-// spanToAPI converts a database span to an API span.
-func spanToAPI(sp *platform.Span) Span {
+// spanToAPI converts a database span summary row to an API span.
+func spanToAPI(sp *platform.ListSpanSummariesByTraceRow) Span {
 	span := Span{
 		Id:        sp.ID,
 		TraceId:   sp.TraceID,
@@ -149,6 +149,8 @@ func spanToAPI(sp *platform.Span) Span {
 		Kind:      SpanKind(mapSpanKind(sp.Type)),
 		Status:    SpanStatus(mapSpanStatus(sp.Status)),
 		StartedAt: sp.StartTime,
+		HasInput:  sp.HasInput,
+		HasOutput: sp.HasOutput,
 	}
 
 	// Parent span ID - direct string copy from DB
@@ -189,24 +191,6 @@ func spanToAPI(sp *platform.Span) Span {
 		span.ErrorMessage = sp.StatusMessage
 	}
 
-	// Metadata
-	if len(sp.Metadata) > 0 {
-		var meta map[string]interface{}
-		if err := parseJSON(sp.Metadata, &meta); err == nil {
-			span.Metadata = &meta
-		}
-	}
-
-	// Input payload (JSON from DB bytes - can be any valid JSON)
-	if input, ok := parseJSONValue(sp.Input); ok {
-		span.Input = input
-	}
-
-	// Output payload (JSON from DB bytes - can be any valid JSON)
-	if output, ok := parseJSONValue(sp.Output); ok {
-		span.Output = output
-	}
-
 	if sp.Model != nil {
 		span.Model = sp.Model
 	}
@@ -233,6 +217,24 @@ func spanToAPI(sp *platform.Span) Span {
 	}
 
 	return span
+}
+
+// spanPayloadToAPI converts one span's stored payload columns to the API payload.
+func spanPayloadToAPI(p *platform.GetSpanPayloadRow) SpanPayload {
+	var payload SpanPayload
+	if input, ok := parseJSONValue(p.Input); ok {
+		payload.Input = input
+	}
+	if output, ok := parseJSONValue(p.Output); ok {
+		payload.Output = output
+	}
+	if len(p.Metadata) > 0 {
+		var meta map[string]interface{}
+		if err := parseJSON(p.Metadata, &meta); err == nil {
+			payload.Metadata = &meta
+		}
+	}
+	return payload
 }
 
 // explicitTimelineEventToAPI converts an explicit span event row to a timeline event.
@@ -275,7 +277,7 @@ func explicitTimelineEventToAPI(ev *platform.SpanEvent, spanName *string) Timeli
 }
 
 // syntheticTimelineEventToAPI converts a span lifecycle marker to a timeline event.
-func syntheticTimelineEventToAPI(sp *platform.Span, eventType TimelineEventType, timestamp time.Time) TimelineEvent {
+func syntheticTimelineEventToAPI(sp *platform.ListSpanSummariesByTraceRow, eventType TimelineEventType, timestamp time.Time) TimelineEvent {
 	spanID := sp.SpanID
 	spanName := sp.Name
 

@@ -7,6 +7,28 @@ WHERE trace_id = sqlc.arg(trace_id)
   AND (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid)
 ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST;
 
+-- name: ListSpanSummariesByTrace :many
+-- Reads no payload column (input, output, thinking, metadata, search_vector),
+-- so the cost of a list read does not grow with payload size.
+SELECT
+    id, trace_id, span_id, parent_span_id, name, type, status, status_message,
+    start_time, end_time, duration_ms,
+    (input IS NOT NULL)::boolean AS has_input,
+    input_truncated, input_original_size_bytes, input_truncation_reason,
+    (output IS NOT NULL)::boolean AS has_output,
+    output_truncated, output_original_size_bytes, output_truncation_reason,
+    model, provider, prompt_tokens, completion_tokens, total_cost, created_at
+FROM spans
+WHERE trace_id = sqlc.arg(trace_id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid)
+ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST;
+
+-- name: GetSpanPayload :one
+SELECT input, output, metadata FROM spans
+WHERE id = sqlc.arg(id)
+  AND trace_id = sqlc.arg(trace_id)
+  AND (sqlc.narg(project_filter_id)::uuid IS NULL OR project_id = sqlc.narg(project_filter_id)::uuid);
+
 -- name: CreateSpan :one
 INSERT INTO spans (
     project_id, trace_id, span_id, parent_span_id, name, type,
