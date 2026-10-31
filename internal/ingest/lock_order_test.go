@@ -72,6 +72,23 @@ func TestProcessBatch_OppositeOrderBatchesDoNotDeadlock(t *testing.T) {
 	traceInSession := func(sessionID string) ingest.TraceInput {
 		return ingest.TraceInput{TraceID: "trace-" + uuid.NewString(), SessionID: &sessionID}
 	}
+	event := func(traceID string) ingest.EventInput {
+		return ingest.EventInput{TraceID: traceID, SpanID: "span-" + uuid.NewString()[:8]}
+	}
+	// Session ids sort opposite to their traces' ids, so locking each session while
+	// upserting its trace interleaves session and trace locks in request order.
+	crossedSessions := func(p string, traceSuffixes ...string) *ingest.IngestRequest {
+		sessionOf := map[string]string{"a": p + "z", "z": p + "a"}
+		req := &ingest.IngestRequest{}
+		for _, suffix := range traceSuffixes {
+			trace := ingest.TraceInput{TraceID: p + suffix}
+			if session, ok := sessionOf[suffix]; ok {
+				trace.SessionID = &session
+			}
+			req.Traces = append(req.Traces, trace)
+		}
+		return req
+	}
 
 	tests := []struct {
 		name    string
@@ -119,6 +136,26 @@ func TestProcessBatch_OppositeOrderBatchesDoNotDeadlock(t *testing.T) {
 				return &ingest.IngestRequest{Traces: []ingest.TraceInput{traceInSession(p + "a"), traceInSession(p + "b")}}
 			},
 		},
+		{
+			name:    "event-only references against trace upserts",
+			lockSQL: `SELECT 1 FROM traces WHERE project_id = $1 AND trace_id = $2 FOR UPDATE`,
+			seed: func(p string) *ingest.IngestRequest {
+				return &ingest.IngestRequest{Traces: []ingest.TraceInput{{TraceID: p + "a"}, {TraceID: p + "b"}, {TraceID: p + "m"}}}
+			},
+			first: func(p string) *ingest.IngestRequest {
+				return &ingest.IngestRequest{Events: []ingest.EventInput{event(p + "b"), event(p + "m"), event(p + "a")}}
+			},
+			second: func(p string) *ingest.IngestRequest {
+				return &ingest.IngestRequest{Traces: []ingest.TraceInput{{TraceID: p + "a"}, {TraceID: p + "b"}}}
+			},
+		},
+		{
+			name:    "session order crosses trace order",
+			lockSQL: `SELECT 1 FROM traces WHERE project_id = $1 AND trace_id = $2 FOR UPDATE`,
+			seed:    func(p string) *ingest.IngestRequest { return crossedSessions(p, "a", "m", "z") },
+			first:   func(p string) *ingest.IngestRequest { return crossedSessions(p, "z", "m", "a") },
+			second:  func(p string) *ingest.IngestRequest { return crossedSessions(p, "a", "z") },
+		},
 	}
 
 	for _, tt := range tests {
@@ -145,6 +182,77 @@ func TestProcessBatch_OppositeOrderBatchesDoNotDeadlock(t *testing.T) {
 			assert.NoError(t, <-secondErr, "second batch")
 		})
 	}
+}
+
+// Twelve batches each mix sessions, trace upserts, spans, and event references, every
+// one in a different request order, and all of them queue behind one held trace before
+// it is released. Request-order locking turns that release into a chain of deadlocks;
+// with one global order every batch must commit.
+func TestProcessBatch_ManyConcurrentBatchesDoNotDeadlock(t *testing.T) {
+	const batches = 12
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	// Each waiting batch holds a connection, more than the default pool size allows.
+	s := store.New(newTestPool(t, pool, batches+1))
+	processor := ingest.NewProcessor(s, nil)
+	projectID := testutil.CreateTestProject(t, ctx, s.Queries())
+	p := "many-" + uuid.NewString()[:8] + "-"
+
+	keys := []string{"a", "b", "c", "d", "e", "f"}
+	// Trace keys[i] belongs to session keys[5-i], so session order runs against trace order.
+	trace := func(i int) ingest.TraceInput {
+		session := p + "session-" + keys[len(keys)-1-i]
+		return ingest.TraceInput{TraceID: p + keys[i], SessionID: &session}
+	}
+	seed := &ingest.IngestRequest{}
+	for i := range keys {
+		seed.Traces = append(seed.Traces, trace(i))
+	}
+	_, err := runBatch(ctx, s, processor, projectID, seed, nil)
+	require.NoError(t, err)
+
+	blocker, err := pool.Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = blocker.Rollback(ctx) }()
+	_, err = blocker.Exec(ctx, `SELECT 1 FROM traces WHERE project_id = $1 AND trace_id = $2 FOR UPDATE`, projectID, p+"c")
+	require.NoError(t, err)
+
+	errs := make([]<-chan error, batches)
+	for b := range batches {
+		// Batch b upserts three traces from rotation b, writes spans on the other three in
+		// reverse, and logs an event on one of the spanned traces.
+		req := &ingest.IngestRequest{}
+		for j := range 3 {
+			req.Traces = append(req.Traces, trace((b+j)%len(keys)))
+			req.Spans = append(req.Spans, ingest.SpanInput{
+				TraceID:   p + keys[(b+5-j)%len(keys)],
+				SpanID:    "span-" + uuid.NewString()[:8],
+				Name:      "op",
+				StartTime: time.Now().UTC(),
+			})
+		}
+		req.Events = append(req.Events, ingest.EventInput{TraceID: p + keys[(b+4)%len(keys)], SpanID: "span-event"})
+
+		pid, batchErr := startBatch(ctx, s, processor, projectID, req)
+		waitForLockWait(t, pool, pid)
+		errs[b] = batchErr
+	}
+
+	require.NoError(t, blocker.Rollback(ctx))
+	for b, batchErr := range errs {
+		assert.NoError(t, <-batchErr, "batch %d", b)
+	}
+}
+
+// newTestPool opens another pool on the test database, capped at maxConns connections.
+func newTestPool(t *testing.T, pool *pgxpool.Pool, maxConns int32) *pgxpool.Pool {
+	t.Helper()
+	cfg := pool.Config()
+	cfg.MaxConns = maxConns
+	p, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	require.NoError(t, err)
+	t.Cleanup(p.Close)
+	return p
 }
 
 // startBatch runs one batch in its own goroutine and transaction. It returns once the
