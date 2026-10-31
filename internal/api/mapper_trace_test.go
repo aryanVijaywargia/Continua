@@ -327,7 +327,7 @@ func TestSpanToAPI_MapsLLMContextAndTruncationFields(t *testing.T) {
 		inputSize := int64(524288)
 		outputSize := int64(1048576)
 
-		span := platform.Span{
+		span := platform.ListSpanSummariesByTraceRow{
 			ID:                      uuid.New(),
 			TraceID:                 uuid.New(),
 			SpanID:                  "span-1",
@@ -369,7 +369,7 @@ func TestSpanToAPI_MapsLLMContextAndTruncationFields(t *testing.T) {
 		inputTruncated := false
 		outputTruncated := false
 
-		span := platform.Span{
+		span := platform.ListSpanSummariesByTraceRow{
 			ID:              uuid.New(),
 			TraceID:         uuid.New(),
 			SpanID:          "span-2",

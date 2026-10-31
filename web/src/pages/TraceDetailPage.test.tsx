@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearApiKey,
   setApiKey,
+  type SpanPayload,
+  type TimelineEvent,
   type TraceDetail,
 } from '../api/client';
 import { setMatchMediaMatches } from '../test/matchMedia';
@@ -36,11 +38,26 @@ function getTraceDetailRequests(): URL[] {
   return getRequests(fetchMock, `/api/traces/${TRACE_ONE.id}`);
 }
 
-function countSpanRequests(): number {
+function countRequests(pattern: RegExp, withParam?: string): number {
   return fetchMock.mock.calls.filter(([input]) => {
     const url = new URL(readRequestUrl(input), 'http://localhost');
-    return /^\/api\/traces\/[^/]+\/spans$/.test(url.pathname);
+    return pattern.test(url.pathname) && (!withParam || url.searchParams.has(withParam));
   }).length;
+}
+
+function countSpanRequests(): number {
+  return countRequests(/^\/api\/traces\/[^/]+\/spans$/);
+}
+
+function getSpanPayloadRequests(): URL[] {
+  return fetchMock.mock.calls
+    .map(([input]) => new URL(readRequestUrl(input), 'http://localhost'))
+    .filter((url) => url.pathname.endsWith('/payload'));
+}
+
+/** Serves span payloads by span UUID, as GET /spans/{span_uuid}/payload does. */
+function payloadsBySpanUuid(payloads: Record<string, SpanPayload>) {
+  return (url: URL) => jsonResponse(payloads[url.pathname.split('/')[5]] ?? {});
 }
 
 function createEngineTraceDetail(
@@ -135,20 +152,20 @@ afterEach(() => {
 
 describe('TraceDetailPage', () => {
   it('renders the debugger-kit trace header, waterfall workspace, and inspector', async () => {
-    const rootSpan = createSpan({
-      span_id: 'root',
-      name: 'Root span',
-      input: { cart_id: 'cart_123' },
-    });
+    const rootSpan = createSpan({ span_id: 'root', name: 'Root span', has_input: true });
     const childSpan = createSpan({
       span_id: 'child',
       name: 'Child span',
       parent_span_id: 'root',
-      output: { ok: true },
+      has_output: true,
     });
     fetchMock.mockImplementation(
       buildFetchHandler({
         spans: () => jsonResponse({ spans: [rootSpan, childSpan] }),
+        spanPayload: payloadsBySpanUuid({
+          [rootSpan.id]: { input: { cart_id: 'cart_123' } },
+          [childSpan.id]: { output: { ok: true } },
+        }),
         timeline: () =>
           jsonResponse({
             events: [
@@ -179,12 +196,16 @@ describe('TraceDetailPage', () => {
     expect(screen.getByText('Select a step to inspect its input, output, and details.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Select step Root span' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Select step Child span' })).toBeInTheDocument();
+    expect(getSpanPayloadRequests()).toHaveLength(0);
 
     await userEvent.click(screen.getByRole('button', { name: 'Select step Child span' }));
     expect(screen.getByRole('heading', { name: 'Child span' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Output' })).toHaveAttribute('aria-pressed', 'false');
     await userEvent.click(screen.getByRole('button', { name: 'Output' }));
-    expect(screen.getByText('ok')).toBeInTheDocument();
+    expect(await screen.findByText('ok')).toBeInTheDocument();
+    expect(getSpanPayloadRequests().map((url) => url.pathname)).toEqual([
+      `/api/traces/${TRACE_ONE.id}/spans/${childSpan.id}/payload`,
+    ]);
     await userEvent.click(screen.getByRole('button', { name: 'Raw JSON' }));
     expect(screen.getByRole('button', { name: 'Raw JSON' })).toHaveAttribute('aria-pressed', 'true');
 
@@ -215,11 +236,11 @@ describe('TraceDetailPage', () => {
     const truncatedSpan = createSpan({
       span_id: 'truncated',
       name: 'Truncated payload span',
-      input: { prompt: 'shortened' },
+      has_input: true,
       input_truncated: true,
       input_original_size_bytes: 70_000,
       input_truncation_reason: 'max_bytes_exceeded',
-      output: { answer: 'shortened' },
+      has_output: true,
       output_truncated: true,
       output_original_size_bytes: 80_000,
       output_truncation_reason: 'max_bytes_exceeded',
@@ -227,13 +248,15 @@ describe('TraceDetailPage', () => {
     fetchMock.mockImplementation(
       buildFetchHandler({
         spans: () => jsonResponse({ spans: [truncatedSpan] }),
+        spanPayload: () =>
+          jsonResponse({ input: { prompt: 'shortened' }, output: { answer: 'shortened' } }),
       })
     );
 
     renderTraceRoutes([`/traces/${TRACE_ONE.id}?span=truncated`]);
 
     expect(await screen.findByRole('heading', { name: 'Truncated payload span' })).toBeInTheDocument();
-    expect(screen.getByText('Input payload was truncated before storage.')).toBeInTheDocument();
+    expect(await screen.findByText('Input payload was truncated before storage.')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Output' }));
 
@@ -264,7 +287,6 @@ describe('TraceDetailPage', () => {
       span_id: 'child',
       name: 'Child span',
       parent_span_id: 'root',
-      input: { selected: true },
     });
     fetchMock.mockImplementation(
       buildFetchHandler({
@@ -762,7 +784,6 @@ describe('TraceDetailPage', () => {
       name: 'Needle child',
       parent_span_id: 'root',
       latency_ms: 500,
-      input: { needle: true },
     });
     const fastSpan = createSpan({
       span_id: 'fast',
@@ -857,7 +878,7 @@ describe('TraceDetailPage', () => {
     expect(screen.getAllByText('Tool timeout').length).toBeGreaterThan(0);
   });
 
-  it('polls spans while a trace is live so new waterfall rows appear', async () => {
+  it('refreshes live spans when a timeline poll has new events, not on every poll', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const firstSpan = createSpan({
       span_id: 'first',
@@ -872,6 +893,8 @@ describe('TraceDetailPage', () => {
       ended_at: undefined,
     });
     let spans = [firstSpan];
+    let pollEvents: TimelineEvent[] = [];
+    const countTimelinePolls = () => countRequests(/\/events$/, 'after');
     fetchMock.mockImplementation(
       buildFetchHandler({
         detail: () =>
@@ -881,9 +904,9 @@ describe('TraceDetailPage', () => {
             ended_at: undefined,
           }),
         spans: () => jsonResponse({ spans }),
-        timeline: () =>
+        timeline: (url) =>
           jsonResponse({
-            events: [],
+            events: url.searchParams.has('after') ? pollEvents : [],
             trace_status: 'RUNNING',
             has_more: false,
             poll_cursor: 'cursor-running',
@@ -894,11 +917,18 @@ describe('TraceDetailPage', () => {
     renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
 
     expect((await screen.findAllByRole('button', { name: /First live span/i })).length).toBeGreaterThan(0);
-    await waitFor(() => {
-      expect(countSpanRequests()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TIMELINE_POLL_INTERVAL_MS * 4);
     });
+    await waitFor(() => {
+      expect(countTimelinePolls()).toBeGreaterThanOrEqual(3);
+    });
+    expect(countSpanRequests()).toBe(1);
 
     spans = [firstSpan, secondSpan];
+    pollEvents = [
+      createTimelineEvent({ span_id: 'second', event_type: 'span_started', source: 'synthetic' }),
+    ];
     await act(async () => {
       await vi.advanceTimersByTimeAsync(TIMELINE_POLL_INTERVAL_MS + 100);
     });

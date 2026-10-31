@@ -595,8 +595,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List spans for a trace */
+        /**
+         * List spans for a trace
+         * @description Returns every span of the trace without its input, output, or metadata
+         *     payloads. Use getSpanPayload to read one span's payloads.
+         *
+         */
         get: operations["listSpansByTrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/traces/{id}/spans/{span_uuid}/payload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the input, output, and metadata payloads of one span */
+        get: operations["getSpanPayload"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1133,6 +1155,9 @@ export interface components {
             traces: components["schemas"]["Trace"][];
             total: number;
         };
+        /** @description A span without its payloads. has_input and has_output tell whether a
+         *     payload is stored; getSpanPayload returns the payloads.
+         *      */
         Span: {
             /** Format: uuid */
             id: string;
@@ -1158,18 +1183,24 @@ export interface components {
             error_message?: string;
             model?: string;
             provider?: string;
-            /** @description Span input payload (any valid JSON) */
-            input?: unknown;
+            /** @description True when the span has a stored input payload */
+            has_input: boolean;
             input_truncated?: boolean;
             /** Format: int64 */
             input_original_size_bytes?: number;
             input_truncation_reason?: string;
-            /** @description Span output payload (any valid JSON) */
-            output?: unknown;
+            /** @description True when the span has a stored output payload */
+            has_output: boolean;
             output_truncated?: boolean;
             /** Format: int64 */
             output_original_size_bytes?: number;
             output_truncation_reason?: string;
+        };
+        SpanPayload: {
+            /** @description Span input payload (any valid JSON) */
+            input?: unknown;
+            /** @description Span output payload (any valid JSON) */
+            output?: unknown;
             metadata?: Record<string, never>;
         };
         SpanList: {
@@ -3266,6 +3297,60 @@ export interface operations {
                 };
             };
             /** @description Trace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSpanPayload: {
+        parameters: {
+            query?: {
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                project_id?: components["parameters"]["SelectedProjectId"];
+            };
+            header?: never;
+            path: {
+                id: string;
+                /** @description Internal span UUID (the `id` field of a Span) */
+                span_uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Span payloads */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpanPayload"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project selection does not match the authenticated API key */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Trace or span not found */
             404: {
                 headers: {
                     [name: string]: unknown;

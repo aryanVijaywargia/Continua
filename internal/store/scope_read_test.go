@@ -63,16 +63,16 @@ func TestScopedReadsEnforceProjectScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, sessionB.ID, session.ID)
 
-	spans, err := s.ListSpansByTrace(ctx, store.BoundScope(projectAID), traceA.ID)
+	spans, err := s.ListSpanSummariesByTrace(ctx, store.BoundScope(projectAID), traceA.ID)
 	require.NoError(t, err)
 	require.Len(t, spans, 1)
 	assert.Equal(t, spanA.ID, spans[0].ID)
 
-	spans, err = s.ListSpansByTrace(ctx, store.BoundScope(projectAID), traceB.ID)
+	spans, err = s.ListSpanSummariesByTrace(ctx, store.BoundScope(projectAID), traceB.ID)
 	require.NoError(t, err)
 	assert.Empty(t, spans)
 
-	spans, err = s.ListSpansByTrace(ctx, store.UnboundedScope(), traceB.ID)
+	spans, err = s.ListSpanSummariesByTrace(ctx, store.UnboundedScope(), traceB.ID)
 	require.NoError(t, err)
 	require.Len(t, spans, 1)
 	assert.Equal(t, spanB.ID, spans[0].ID)

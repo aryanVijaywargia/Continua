@@ -1484,6 +1484,9 @@ paths:
     get:
       operationId: listSpansByTrace
       summary: List spans for a trace
+      description: |
+        Returns every span of the trace without its input, output, or metadata
+        payloads. Use getSpanPayload to read one span's payloads.
       tags: [Spans]
       parameters:
         - name: id
@@ -1514,6 +1517,52 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Trace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/traces/{id}/spans/{span_uuid}/payload:
+    get:
+      operationId: getSpanPayload
+      summary: Get the input, output, and metadata payloads of one span
+      tags: [Spans]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: span_uuid
+          in: path
+          required: true
+          description: Internal span UUID (the `id` field of a Span)
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/SelectedProjectId'
+      responses:
+        '200':
+          description: Span payloads
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpanPayload'
+        '401':
+          description: Unauthorized - missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Project selection does not match the authenticated API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Trace or span not found
           content:
             application/json:
               schema:
@@ -2670,7 +2719,10 @@ components:
 
     Span:
       type: object
-      required: [id, trace_id, span_id, name, kind, status, started_at]
+      description: |
+        A span without its payloads. has_input and has_output tell whether a
+        payload is stored; getSpanPayload returns the payloads.
+      required: [id, trace_id, span_id, name, kind, status, started_at, has_input, has_output]
       properties:
         id:
           type: string
@@ -2712,8 +2764,9 @@ components:
           type: string
         provider:
           type: string
-        input:
-          description: Span input payload (any valid JSON)
+        has_input:
+          type: boolean
+          description: True when the span has a stored input payload
         input_truncated:
           type: boolean
         input_original_size_bytes:
@@ -2721,8 +2774,9 @@ components:
           format: int64
         input_truncation_reason:
           type: string
-        output:
-          description: Span output payload (any valid JSON)
+        has_output:
+          type: boolean
+          description: True when the span has a stored output payload
         output_truncated:
           type: boolean
         output_original_size_bytes:
@@ -2730,6 +2784,14 @@ components:
           format: int64
         output_truncation_reason:
           type: string
+
+    SpanPayload:
+      type: object
+      properties:
+        input:
+          description: Span input payload (any valid JSON)
+        output:
+          description: Span output payload (any valid JSON)
         metadata:
           type: object
 

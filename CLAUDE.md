@@ -133,7 +133,8 @@ OpenAPI currently defines:
 - `GET /v1/ingest/batches/{id}`
 - `GET /api/traces`
 - `GET /api/traces/{id}`
-- `GET /api/traces/{id}/spans`
+- `GET /api/traces/{id}/spans` (no payloads)
+- `GET /api/traces/{id}/spans/{span_uuid}/payload`
 - `GET /api/traces/{id}/events`
 - `GET /api/sessions`
 - `GET /api/sessions/{id}`

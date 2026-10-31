@@ -440,6 +440,12 @@ class Status2(Enum):
 
 
 class Span(BaseModel):
+    """
+    A span without its payloads. has_input and has_output tell whether a
+    payload is stored; getSpanPayload returns the payloads.
+
+    """
+
     id: UUID
     trace_id: UUID
     span_id: str = Field(
@@ -461,14 +467,23 @@ class Span(BaseModel):
     error_message: str | None = None
     model: str | None = None
     provider: str | None = None
-    input: Any | None = Field(None, description="Span input payload (any valid JSON)")
+    has_input: bool = Field(
+        ..., description="True when the span has a stored input payload"
+    )
     input_truncated: bool | None = None
     input_original_size_bytes: int | None = None
     input_truncation_reason: str | None = None
-    output: Any | None = Field(None, description="Span output payload (any valid JSON)")
+    has_output: bool = Field(
+        ..., description="True when the span has a stored output payload"
+    )
     output_truncated: bool | None = None
     output_original_size_bytes: int | None = None
     output_truncation_reason: str | None = None
+
+
+class SpanPayload(BaseModel):
+    input: Any | None = Field(None, description="Span input payload (any valid JSON)")
+    output: Any | None = Field(None, description="Span output payload (any valid JSON)")
     metadata: dict[str, Any] | None = None
 
 

@@ -337,6 +337,8 @@ func isPublicDemoReadRequest(method, path string) bool {
 		return true
 	case matchesPathPattern(path, "/api/traces/{id}/spans"):
 		return true
+	case matchesPathPattern(path, "/api/traces/{id}/spans/{span_uuid}/payload"):
+		return true
 	case matchesPathPattern(path, "/api/traces/{id}/events"):
 		return true
 	case path == "/api/sessions":

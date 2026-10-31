@@ -17,7 +17,7 @@ import { buildTraceLineageChain, getReturnToDestination } from '../utils/traceLi
 import { getProjectIdFromSearchParams } from '../utils/projectSearchParams';
 import { deriveVisibleRows } from '../utils/spanTree';
 import {
-  TIMELINE_POLL_INTERVAL_MS,
+  RUNNING_SPANS_REFRESH_INTERVAL_MS,
   useTraceTimeline,
 } from './useTraceTimeline';
 import { useEnginePendingWork } from './useEnginePendingWork';
@@ -99,8 +99,9 @@ function TraceDetailContent({ traceId }: TraceDetailContentProps) {
   const spansQuery = useQuery({
     queryKey: ['spans', traceId, projectQueryKey],
     queryFn: () => fetchSpans(traceId, currentProjectId),
+    // The timeline poll refreshes the list when it sees new events.
     refetchInterval:
-      liveTraceStatus === 'RUNNING' ? TIMELINE_POLL_INTERVAL_MS : false,
+      liveTraceStatus === 'RUNNING' ? RUNNING_SPANS_REFRESH_INTERVAL_MS : false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
