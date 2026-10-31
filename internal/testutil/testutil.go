@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -40,11 +42,7 @@ func TestDB(t *testing.T) *pgxpool.Pool {
 	}
 
 	ctx := context.Background()
-
-	dbURL := os.Getenv("TEST_DATABASE_URL")
-	if dbURL == "" {
-		dbURL = DefaultTestDBURL
-	}
+	dbURL := testDatabaseURL()
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -66,6 +64,13 @@ func TestDB(t *testing.T) *pgxpool.Pool {
 	})
 
 	return pool
+}
+
+func testDatabaseURL() string {
+	if dbURL := os.Getenv("TEST_DATABASE_URL"); dbURL != "" {
+		return dbURL
+	}
+	return DefaultTestDBURL
 }
 
 // CreateTestProject creates a test project and returns its ID.
@@ -165,11 +170,23 @@ func PgtypeNumericFromFloat64(f float64) pgtype.Numeric {
 	return n
 }
 
+// testMigrationLockKey is the advisory lock that serializes applyRepoMigrations
+// across parallel test package processes.
+const testMigrationLockKey int64 = 7_246_301_301
+
 func applyRepoMigrations(databaseURL string) error {
 	repoRoot, err := findRepoRoot()
 	if err != nil {
 		return err
 	}
+
+	ctx := context.Background()
+	lockConn, err := lockTestMigrations(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	// Closing the session releases its advisory lock.
+	defer func() { _ = lockConn.Close(ctx) }()
 
 	platformDir := filepath.Join(repoRoot, "db", "platform", "migrations", "postgres")
 	if err := applyMigrationsWithTable(databaseURL, os.DirFS(platformDir), ""); err != nil {
@@ -178,6 +195,30 @@ func applyRepoMigrations(databaseURL string) error {
 
 	engineDir := filepath.Join(repoRoot, "engine", "db", "migrations", "postgres")
 	return applyMigrationsWithTable(databaseURL, os.DirFS(engineDir), "engine_schema_migrations")
+}
+
+// lockTestMigrations holds testMigrationLockKey on a dedicated session.
+// golang-migrate waits for its own lock with a blocking pg_advisory_lock, and
+// that waiting statement holds a snapshot. The engine's CREATE INDEX
+// CONCURRENTLY migrations wait for every older snapshot, so the lock holder and
+// the waiter deadlock. Polling pg_try_advisory_lock holds no snapshot between
+// attempts, so the holder's migrations can finish.
+func lockTestMigrations(ctx context.Context, databaseURL string) (*pgx.Conn, error) {
+	conn, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("connect for migration lock: %w", err)
+	}
+	for {
+		var locked bool
+		if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", testMigrationLockKey).Scan(&locked); err != nil {
+			_ = conn.Close(ctx)
+			return nil, fmt.Errorf("try migration lock: %w", err)
+		}
+		if locked {
+			return conn, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func applyMigrationsWithTable(databaseURL string, fsys fs.FS, migrationsTable string) error {
