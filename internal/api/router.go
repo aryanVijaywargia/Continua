@@ -25,6 +25,9 @@ func NewRouter(server *Server, auth *middleware.Authenticator) http.Handler {
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
+	// The OTLP gate runs at the root because the metrics and logs paths it rejects are
+	// not mounted; group middleware would never see them.
+	r.Use(otlpRouteAvailabilityMiddleware(server))
 
 	// Public: health endpoint (NOT in OpenAPI - routed directly)
 	r.Get("/api/health", server.HealthCheck)
@@ -32,7 +35,6 @@ func NewRouter(server *Server, auth *middleware.Authenticator) http.Handler {
 	// Protected: all OpenAPI routes
 	r.Group(func(r chi.Router) {
 		r.Use(engineRouteAvailabilityMiddleware(server))
-		r.Use(otlpRouteAvailabilityMiddleware(server))
 		r.Use(auth.Middleware())
 		r.Use(enginePreviewHeaderMiddleware())
 

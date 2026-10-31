@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
@@ -62,6 +64,35 @@ func TestOTLPTraces_RouteIsPreviewGated(t *testing.T) {
 	enabledCode := call(enabled)
 	assert.NotEqual(t, http.StatusNotFound, enabledCode, "OTLP route must be mounted while the preview flag is on")
 	assert.Less(t, enabledCode, http.StatusInternalServerError, "enabled OTLP route must not 5xx on a valid export")
+}
+
+// An OTel SDK derives /v1/metrics and /v1/logs from the same endpoint as /v1/traces.
+// Those exports must fail visibly with a google.rpc.Status, never as a 200 SPA page,
+// whatever the OTLP preview flag says.
+func TestOTLPUnsupportedSignalsAreRejected(t *testing.T) {
+	s := store.New(testutil.TestDB(t))
+
+	for _, enabled := range []bool{false, true} {
+		server := NewServer(s, ingest.NewService(s, nil, ingest.NewProcessor(s, nil), nil))
+		server.otlpIngestEnabled = enabled
+		router := newAuthenticatedRouter(t, server, s)
+
+		for _, path := range []string{"/v1/metrics", "/v1/logs"} {
+			t.Run(fmt.Sprintf("%s otlp_enabled=%t", path, enabled), func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader([]byte("export")))
+				req.Header.Set("Content-Type", OTLPTracesContentType)
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
+
+				require.Equal(t, http.StatusNotImplemented, rec.Code, "body: %s", rec.Body.String())
+				assert.NotContains(t, rec.Header().Get("Content-Type"), "text/html")
+				var status spb.Status
+				require.NoError(t, proto.Unmarshal(rec.Body.Bytes(), &status))
+				assert.EqualValues(t, otlpCodeUnimplemented, status.GetCode())
+				assert.Contains(t, status.GetMessage(), OTLPTracesPath)
+			})
+		}
+	}
 }
 
 // Acceptance criterion: "An OTLP trace containing session.id and user.id populates the

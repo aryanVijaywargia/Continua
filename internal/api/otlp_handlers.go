@@ -36,6 +36,7 @@ const OTLPTracesJSONContentType = "application/json"
 const (
 	otlpCodeInvalidArgument   = 3
 	otlpCodeResourceExhausted = 8
+	otlpCodeUnimplemented     = 12
 	otlpCodeInternal          = 13
 )
 
@@ -45,13 +46,20 @@ var (
 	errOTLPUnknownEncoding = errors.New("unsupported Content-Encoding")
 )
 
-// otlpRouteAvailabilityMiddleware gates the preview OTLP ingestion surface the same way
-// engineRouteAvailabilityMiddleware gates /v1/engine: the route 404s while the flag is
-// off. Gating cannot rely on leaving the route unmounted, because the SPA fallback would
-// otherwise answer it with 200.
+// otlpRouteAvailabilityMiddleware owns the OTLP/HTTP signal paths. It gates the preview
+// trace surface the same way engineRouteAvailabilityMiddleware gates /v1/engine: the
+// route 404s while the flag is off. An OTel SDK derives the metrics and logs paths from
+// the same endpoint, so those always get a non-retryable Status naming the supported
+// signal, whatever the flag says; a bare 404 would hide why the export failed.
 func otlpRouteAvailabilityMiddleware(server *Server) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/metrics" || r.URL.Path == "/v1/logs" {
+				writeOTLPError(w, r, http.StatusNotImplemented, otlpCodeUnimplemented,
+					"Continua accepts only OTLP traces at "+OTLPTracesPath+"; "+r.URL.Path+" is not supported")
+				return
+			}
+
 			if r.URL.Path == OTLPTracesPath && !server.otlpIngestEnabled {
 				http.NotFound(w, r)
 				return
