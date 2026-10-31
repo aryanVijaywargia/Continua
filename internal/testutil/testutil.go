@@ -54,7 +54,7 @@ func TestDB(t *testing.T) *pgxpool.Pool {
 		t.Skipf("Skipping test: could not ping test database: %v", err)
 	}
 
-	if err := applyRepoMigrations(dbURL); err != nil {
+	if err := applyRepoMigrations(ctx, dbURL); err != nil {
 		pool.Close()
 		t.Fatalf("apply test migrations: %v", err)
 	}
@@ -170,23 +170,33 @@ func PgtypeNumericFromFloat64(f float64) pgtype.Numeric {
 	return n
 }
 
-// testMigrationLockKey is the advisory lock that serializes applyRepoMigrations
-// across parallel test package processes.
-const testMigrationLockKey int64 = 7_246_301_301
+const (
+	// testMigrationLockKey is the advisory lock that serializes
+	// applyRepoMigrations across parallel test package processes.
+	testMigrationLockKey int64 = 7_246_301_301
+	// testMigrationLockTimeout bounds the wait for the outer lock at
+	// golang-migrate's DefaultLockTimeout, which that lock would otherwise bypass.
+	testMigrationLockTimeout = 15 * time.Second
+	// testMigrationLockRetry is the pause between pg_try_advisory_lock attempts.
+	testMigrationLockRetry = 50 * time.Millisecond
+)
 
-func applyRepoMigrations(databaseURL string) error {
+// applyRepoMigrations applies the platform and engine migrations. ctx bounds
+// only the wait for the migration lock, because golang-migrate takes no context.
+func applyRepoMigrations(ctx context.Context, databaseURL string) error {
 	repoRoot, err := findRepoRoot()
 	if err != nil {
 		return err
 	}
 
-	ctx := context.Background()
-	lockConn, err := lockTestMigrations(ctx, databaseURL)
+	lockCtx, cancel := context.WithTimeout(ctx, testMigrationLockTimeout)
+	defer cancel()
+	lockConn, err := lockTestMigrations(lockCtx, databaseURL)
 	if err != nil {
 		return err
 	}
 	// Closing the session releases its advisory lock.
-	defer func() { _ = lockConn.Close(ctx) }()
+	defer func() { _ = lockConn.Close(context.Background()) }()
 
 	platformDir := filepath.Join(repoRoot, "db", "platform", "migrations", "postgres")
 	if err := applyMigrationsWithTable(databaseURL, os.DirFS(platformDir), ""); err != nil {
@@ -202,22 +212,34 @@ func applyRepoMigrations(databaseURL string) error {
 // that waiting statement holds a snapshot. The engine's CREATE INDEX
 // CONCURRENTLY migrations wait for every older snapshot, so the lock holder and
 // the waiter deadlock. Polling pg_try_advisory_lock holds no snapshot between
-// attempts, so the holder's migrations can finish.
-func lockTestMigrations(ctx context.Context, databaseURL string) (*pgx.Conn, error) {
+// attempts, so the holder's migrations can finish. It gives up when ctx ends
+// and closes the session on every error path.
+func lockTestMigrations(ctx context.Context, databaseURL string) (_ *pgx.Conn, err error) {
 	conn, err := pgx.Connect(ctx, databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("connect for migration lock: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			_ = conn.Close(context.Background())
+		}
+	}()
+
+	retry := time.NewTicker(testMigrationLockRetry)
+	defer retry.Stop()
 	for {
 		var locked bool
-		if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", testMigrationLockKey).Scan(&locked); err != nil {
-			_ = conn.Close(ctx)
+		if err = conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", testMigrationLockKey).Scan(&locked); err != nil {
 			return nil, fmt.Errorf("try migration lock: %w", err)
 		}
 		if locked {
 			return conn, nil
 		}
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("wait for migration lock: %w", ctx.Err())
+		case <-retry.C:
+		}
 	}
 }
 
