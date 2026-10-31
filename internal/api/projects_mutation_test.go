@@ -173,9 +173,9 @@ func TestDeleteProject_ReturnsNotFoundForUnknownID(t *testing.T) {
 }
 
 func TestCreateProject_BootstrapContextAllowedWhenProjectsExist(t *testing.T) {
-	// In Auth0-disabled local mode the bootstrap window stays open even after the
-	// first project exists: the operator owns the box and must always be able to
-	// mint a new project key (e.g. after losing the original).
+	// On loopback the bootstrap window stays open even after the first project
+	// exists: the operator owns the box and must always be able to mint a new
+	// project key (e.g. after losing the original).
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
 	platformStore := store.New(pool)

@@ -12,7 +12,6 @@ servers:
     description: Relative path (works with any host)
 
 security:
-  - auth0Bearer: []
   - apiKey: []
 
 paths:
@@ -1106,12 +1105,15 @@ paths:
   /api/auth/config:
     get:
       operationId: getAuthConfig
-      summary: Get Auth0 runtime configuration for the debugger
+      summary: Get the debugger's runtime access configuration
+      description: |
+        Reports which credential-free access modes the debugger may use for this
+        connection: the public read-only demo, and loopback-only local single-user mode.
       tags: [Auth]
       security: []
       responses:
         '200':
-          description: Runtime Auth0 bootstrap configuration
+          description: Runtime access configuration
           content:
             application/json:
               schema:
@@ -1123,8 +1125,7 @@ paths:
       summary: List all projects in the deployment
       description: |
         Returns every project the deployment knows about. Intended for the project-management
-        view in the debugger UI. In a remote multi-tenant deployment, pair this with operator
-        auth (Auth0) if API keys should not enumerate other projects.
+        view in the debugger UI.
       tags: [Projects]
       responses:
         '200':
@@ -1135,12 +1136,6 @@ paths:
                 $ref: '#/components/schemas/ProjectList'
         '401':
           description: Unauthorized - missing or invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: API-key callers are forbidden from project management when Auth0 is enabled
           content:
             application/json:
               schema:
@@ -1178,12 +1173,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '403':
-          description: API-key callers are forbidden from project management when Auth0 is enabled
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   /api/projects/{id}:
     patch:
@@ -1216,12 +1205,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '403':
-          description: API-key callers are forbidden from project management when Auth0 is enabled
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '404':
           description: Project not found
           content:
@@ -1245,12 +1228,6 @@ paths:
       responses:
         '204':
           description: Project deleted
-        '403':
-          description: API-key callers are forbidden from project management when Auth0 is enabled
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '404':
           description: Project not found
           content:
@@ -1286,12 +1263,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProjectWithKey'
-        '403':
-          description: API-key callers are forbidden from project management when Auth0 is enabled
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '404':
           description: Project not found
           content:
@@ -1793,7 +1764,7 @@ components:
     SelectedProjectId:
       name: project_id
       in: query
-      description: Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+      description: Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
       schema:
         type: string
         format: uuid
@@ -1802,26 +1773,12 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: API key for authentication
-    auth0Bearer:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: Auth0 access token for debugger operator authentication
+      description: 'Project API key. The server also accepts it as `Authorization: Bearer <key>`.'
 
   schemas:
     AuthConfig:
       type: object
-      required: [enabled]
       properties:
-        enabled:
-          type: boolean
-        domain:
-          type: string
-        client_id:
-          type: string
-        audience:
-          type: string
         public_demo_enabled:
           type: boolean
           description: Whether the deployment exposes a public read-only demo console.
@@ -1867,7 +1824,7 @@ components:
         authenticated_project_id:
           type: string
           format: uuid
-          description: Project bound to the current API key when the request is API-key authenticated. Omitted for operator or unauthenticated bootstrap requests.
+          description: Project bound to the current API key when the request is API-key authenticated. Omitted for local single-user or unauthenticated bootstrap requests.
         projects:
           type: array
           items:
