@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,55 +77,44 @@ func (p *Processor) ProcessBatch(
 	projectID uuid.UUID,
 	req *IngestRequest,
 ) (*ProcessedBatch, error) {
-	traceMap := make(map[string]uuid.UUID)
-	affectedTraceIDs := make(map[uuid.UUID]struct{})
+	// Every row lock this batch takes is on a session or a trace, or is reached through
+	// a trace it already holds: the span trigger bumps the parent trace's version, and
+	// span, event, and rollup inserts all key on the trace. Locking sessions, then every
+	// referenced trace, each sorted by external id, before any span or event write gives
+	// all concurrent batches one global lock order, so they queue instead of deadlocking.
+	sessionIDs, err := p.upsertSessions(ctx, tx, projectID, req.Traces)
+	if err != nil {
+		return nil, err
+	}
 
-	for i := range req.Traces {
-		trace := &req.Traces[i]
-		internalID, err := p.upsertTrace(ctx, tx, projectID, trace)
-		if err != nil {
-			return nil, fmt.Errorf("failed to upsert trace %s: %w", trace.TraceID, err)
-		}
-		traceMap[trace.TraceID] = internalID
-		affectedTraceIDs[internalID] = struct{}{}
+	traceMap, err := p.lockTraces(ctx, tx, projectID, req, sessionIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	for i := range req.Spans {
 		span := &req.Spans[i]
-		traceUUID, err := p.resolveTraceUUID(ctx, tx, projectID, traceMap, span.TraceID)
-		if err != nil {
-			return nil, err
-		}
-		if err := p.upsertSpan(ctx, tx, projectID, traceUUID, span); err != nil {
+		if err := p.upsertSpan(ctx, tx, projectID, traceMap[span.TraceID], span); err != nil {
 			return nil, fmt.Errorf("failed to upsert span %s: %w", span.SpanID, err)
 		}
-		affectedTraceIDs[traceUUID] = struct{}{}
 	}
 
 	actualEventInserts := int32(0)
 	for i := range req.Events {
 		event := &req.Events[i]
-		traceUUID, err := p.resolveTraceUUID(ctx, tx, projectID, traceMap, event.TraceID)
-		if err != nil {
-			return nil, err
-		}
-		inserted, err := p.insertEvent(ctx, tx, projectID, traceUUID, event)
+		inserted, err := p.insertEvent(ctx, tx, projectID, traceMap[event.TraceID], event)
 		if err != nil {
 			return nil, fmt.Errorf("failed to insert event for span %s: %w", event.SpanID, err)
 		}
 		if inserted {
 			actualEventInserts++
 		}
-		affectedTraceIDs[traceUUID] = struct{}{}
 	}
 
 	// Go randomizes map iteration, and callers enqueue a rollup per id inside this same
 	// transaction, so an unsorted slice means two concurrent batches touching the same
 	// traces can take the rollup insert locks in opposite orders and deadlock.
-	traceIDs := make([]uuid.UUID, 0, len(affectedTraceIDs))
-	for traceID := range affectedTraceIDs {
-		traceIDs = append(traceIDs, traceID)
-	}
+	traceIDs := slices.Collect(maps.Values(traceMap))
 	slices.SortFunc(traceIDs, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
 
 	traceCount := int32(len(req.Traces))
@@ -140,29 +131,92 @@ func (p *Processor) ProcessBatch(
 	}, nil
 }
 
-func (p *Processor) resolveTraceUUID(
+// upsertSessions materializes the session of every trace that names one and returns the
+// session UUID for each trace index. Traces are visited stably sorted by session id, so
+// session row locks follow one global order while each session still merges its traces'
+// context in request order.
+func (p *Processor) upsertSessions(
 	ctx context.Context,
 	tx *store.Tx,
 	projectID uuid.UUID,
-	traceMap map[string]uuid.UUID,
-	traceID string,
-) (uuid.UUID, error) {
-	if traceUUID, ok := traceMap[traceID]; ok {
-		return traceUUID, nil
-	}
-
-	traceUUID, err := tx.GetTraceUUID(ctx, projectID, traceID)
-	if err != nil {
-		if store.IsNotFound(err) {
-			return uuid.Nil, &DependencyNotReadyError{
-				Message: fmt.Sprintf("unknown trace reference: %s", traceID),
-			}
+	traces []TraceInput,
+) ([]pgtype.UUID, error) {
+	order := make([]int, 0, len(traces))
+	for i := range traces {
+		if traces[i].SessionID != nil && *traces[i].SessionID != "" {
+			order = append(order, i)
 		}
-		return uuid.Nil, fmt.Errorf("failed to lookup trace %s: %w", traceID, err)
 	}
+	slices.SortStableFunc(order, func(a, b int) int {
+		return strings.Compare(*traces[a].SessionID, *traces[b].SessionID)
+	})
 
-	traceMap[traceID] = traceUUID
-	return traceUUID, nil
+	sessionIDs := make([]pgtype.UUID, len(traces))
+	for _, i := range order {
+		trace := &traces[i]
+		session, err := tx.UpsertSessionContext(ctx, projectID, *trace.SessionID, store.SessionContextParams{
+			Name:     trace.SessionContext.Name,
+			UserID:   trace.SessionContext.UserID,
+			UserName: trace.SessionContext.UserName,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to upsert trace %s: resolve session: %w", trace.TraceID, err)
+		}
+		sessionIDs[i] = pgtype.UUID{Bytes: session.ID, Valid: true}
+	}
+	return sessionIDs, nil
+}
+
+// lockTraces upserts or row-locks every trace the batch references, sorted by external
+// trace id, and maps each external id to its internal UUID. A trace referenced only by
+// spans or events must already exist; otherwise the batch is not ready yet.
+func (p *Processor) lockTraces(
+	ctx context.Context,
+	tx *store.Tx,
+	projectID uuid.UUID,
+	req *IngestRequest,
+	sessionIDs []pgtype.UUID,
+) (map[string]uuid.UUID, error) {
+	inputs := make(map[string][]int, len(req.Traces))
+	externalIDs := make([]string, 0, len(req.Traces)+len(req.Spans)+len(req.Events))
+	for i := range req.Traces {
+		inputs[req.Traces[i].TraceID] = append(inputs[req.Traces[i].TraceID], i)
+		externalIDs = append(externalIDs, req.Traces[i].TraceID)
+	}
+	for i := range req.Spans {
+		externalIDs = append(externalIDs, req.Spans[i].TraceID)
+	}
+	for i := range req.Events {
+		externalIDs = append(externalIDs, req.Events[i].TraceID)
+	}
+	slices.Sort(externalIDs)
+	externalIDs = slices.Compact(externalIDs)
+
+	traceMap := make(map[string]uuid.UUID, len(externalIDs))
+	for _, traceID := range externalIDs {
+		if indices := inputs[traceID]; len(indices) > 0 {
+			for _, i := range indices {
+				internalID, err := p.upsertTrace(ctx, tx, projectID, &req.Traces[i], sessionIDs[i])
+				if err != nil {
+					return nil, fmt.Errorf("failed to upsert trace %s: %w", traceID, err)
+				}
+				traceMap[traceID] = internalID
+			}
+			continue
+		}
+
+		internalID, err := tx.LockTraceUUID(ctx, projectID, traceID)
+		if err != nil {
+			if store.IsNotFound(err) {
+				return nil, &DependencyNotReadyError{
+					Message: fmt.Sprintf("unknown trace reference: %s", traceID),
+				}
+			}
+			return nil, fmt.Errorf("failed to lookup trace %s: %w", traceID, err)
+		}
+		traceMap[traceID] = internalID
+	}
+	return traceMap, nil
 }
 
 func (p *Processor) validateBatch(req *IngestRequest) []string {
@@ -284,7 +338,13 @@ func isValidIngestEventLevel(level string) bool {
 	}
 }
 
-func (p *Processor) upsertTrace(ctx context.Context, tx *store.Tx, projectID uuid.UUID, input *TraceInput) (uuid.UUID, error) {
+func (p *Processor) upsertTrace(
+	ctx context.Context,
+	tx *store.Tx,
+	projectID uuid.UUID,
+	input *TraceInput,
+	sessionID pgtype.UUID,
+) (uuid.UUID, error) {
 	var metadata []byte
 	if input.Metadata != nil {
 		metadata, _ = json.Marshal(input.Metadata)
@@ -299,19 +359,6 @@ func (p *Processor) upsertTrace(ctx context.Context, tx *store.Tx, projectID uui
 	}
 	if input.EndTime != nil {
 		endTime = pgtype.Timestamptz{Time: *input.EndTime, Valid: true}
-	}
-
-	var sessionID pgtype.UUID
-	if input.SessionID != nil && *input.SessionID != "" {
-		session, err := tx.UpsertSessionContext(ctx, projectID, *input.SessionID, store.SessionContextParams{
-			Name:     input.SessionContext.Name,
-			UserID:   input.SessionContext.UserID,
-			UserName: input.SessionContext.UserName,
-		})
-		if err != nil {
-			return uuid.Nil, fmt.Errorf("resolve session: %w", err)
-		}
-		sessionID = pgtype.UUID{Bytes: session.ID, Valid: true}
 	}
 
 	// A trace with no status starts 'running', but the upsert has to tell that default
