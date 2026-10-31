@@ -31,15 +31,14 @@ function createSpan(overrides: Partial<Span> = {}): Span {
     error_message: overrides.error_message,
     model: overrides.model,
     provider: overrides.provider,
-    input: overrides.input,
+    has_input: overrides.has_input ?? false,
     input_truncated: overrides.input_truncated,
     input_original_size_bytes: overrides.input_original_size_bytes,
     input_truncation_reason: overrides.input_truncation_reason,
-    output: overrides.output,
+    has_output: overrides.has_output ?? false,
     output_truncated: overrides.output_truncated,
     output_original_size_bytes: overrides.output_original_size_bytes,
     output_truncation_reason: overrides.output_truncation_reason,
-    metadata: overrides.metadata,
     parent_span_id: overrides.parent_span_id,
   };
 }

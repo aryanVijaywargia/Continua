@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Span, TimelineEvent } from '../api/client';
+import { Span, SpanWithPayload, TimelineEvent } from '../api/client';
 import { CopyButton } from './CopyButton';
 import { DecisionValuePill } from './DecisionValuePill';
 import { StatusBadge } from './StatusBadge';
@@ -25,7 +25,8 @@ import { SpanBreadcrumb } from './SpanBreadcrumb';
 import { TruncationBanner } from './TruncationBanner';
 
 interface SpanDetailProps {
-  span: Span | null;
+  /** Payload fields render once the host has loaded them. */
+  span: SpanWithPayload | null;
   breadcrumbPath: BreadcrumbSegment[];
   onSelectSpan: (spanId: string) => void;
   spanIndex: ReadonlyMap<string, Span>;

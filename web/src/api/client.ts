@@ -704,16 +704,24 @@ export interface Span {
   error_message?: string;
   model?: string;
   provider?: string;
-  input?: JsonValue;
+  has_input: boolean;
   input_truncated?: boolean;
   input_original_size_bytes?: number;
   input_truncation_reason?: string;
-  output?: JsonValue;
+  has_output: boolean;
   output_truncated?: boolean;
   output_original_size_bytes?: number;
   output_truncation_reason?: string;
+}
+
+/** One span's payloads, loaded on demand; the span list omits them. */
+export interface SpanPayload {
+  input?: JsonValue;
+  output?: JsonValue;
   metadata?: Record<string, unknown>;
 }
+
+export type SpanWithPayload = Span & SpanPayload;
 
 export interface SpanList {
   spans: Span[];
@@ -1048,6 +1056,22 @@ export async function fetchSpans(
   }
   const query = params.size > 0 ? `?${params.toString()}` : '';
   return fetchAPI<SpanList>(`/api/traces/${traceId}/spans${query}`);
+}
+
+/**
+ * Fetch the input, output, and metadata payloads of one span.
+ */
+export async function fetchSpanPayload(
+  traceId: string,
+  spanUuid: string,
+  projectId?: string
+): Promise<SpanPayload> {
+  const params = new URLSearchParams();
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return fetchAPI<SpanPayload>(`/api/traces/${traceId}/spans/${spanUuid}/payload${query}`);
 }
 
 export interface FetchTimelineEventsOptions {
