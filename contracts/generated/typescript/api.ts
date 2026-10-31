@@ -3310,7 +3310,7 @@ export interface operations {
     getSpanPayload: {
         parameters: {
             query?: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;

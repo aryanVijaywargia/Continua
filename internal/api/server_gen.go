@@ -1514,7 +1514,7 @@ type ListSpansByTraceParams struct {
 
 // GetSpanPayloadParams defines parameters for GetSpanPayload.
 type GetSpanPayloadParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
@@ -2936,8 +2936,6 @@ func (siw *ServerInterfaceWrapper) GetSpanPayload(w http.ResponseWriter, r *http
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
