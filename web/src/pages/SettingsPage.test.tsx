@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -10,33 +9,8 @@ import { buildProjectPath } from '../utils/projectSearchParams';
 import { renderTraceRoutes } from './testUtils';
 import { SettingsPage } from './SettingsPage';
 
-const auth0State = vi.hoisted(() => ({
-  error: undefined as Error | undefined,
-  getAccessTokenSilently: vi.fn(async () => 'test-key'),
-  isAuthenticated: true,
-  isLoading: false,
-  loginWithRedirect: vi.fn(),
-  logout: vi.fn(),
-  user: {
-    email: 'operator@continua.dev',
-    name: 'Continua Operator',
-    sub: 'google-oauth2|operator',
-  },
-}));
-
-vi.mock('@auth0/auth0-react', () => ({
-  Auth0Provider: ({ children }: { children: ReactNode }) => children,
-  useAuth0: () => auth0State,
-}));
-
 beforeEach(() => {
   clearApiKey();
-  auth0State.logout.mockReset();
-  auth0State.user = {
-    email: 'operator@continua.dev',
-    name: 'Continua Operator',
-    sub: 'google-oauth2|operator',
-  };
 });
 
 afterEach(() => {
@@ -45,9 +19,7 @@ afterEach(() => {
 });
 
 describe('SettingsPage', () => {
-  it('shows the operator identity, theme controls, and sign-out action', async () => {
-    const user = userEvent.setup();
-
+  it('shows the local API-key settings and theme controls', async () => {
     renderTraceRoutes(['/settings']);
 
     expect(
@@ -56,24 +28,15 @@ describe('SettingsPage', () => {
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Auth is handled through Auth0. Theme controls and sign-out stay here.')
+      screen.getByText(
+        'Local self-host access uses a project API key. Theme controls stay here.'
+      )
     ).toBeInTheDocument();
-    expect(screen.getByText('operator@continua.dev')).toBeInTheDocument();
-    expect(screen.getByText('Continua Operator')).toBeInTheDocument();
-    expect(screen.getByText('google-oauth2|operator')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Local API key' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^System\b/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Light\b/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Dark\b/ })).toBeInTheDocument();
-    expect(screen.queryByLabelText('New API key')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save key' })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Sign out' }));
-
-    expect(auth0State.logout).toHaveBeenCalledWith({
-      logoutParams: {
-        returnTo: window.location.origin,
-      },
-    });
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
   });
 
   it('redirects the settings route back to the dashboard in public demo mode', () => {
@@ -82,7 +45,6 @@ describe('SettingsPage', () => {
         <RuntimeAuthStateProvider
           auth={{
             status: 'ready',
-            enabled: false,
             public_demo_enabled: true,
             public_demo_label: 'Sample data',
           }}
@@ -108,7 +70,6 @@ describe('SettingsPage', () => {
         <RuntimeAuthStateProvider
           auth={{
             status: 'ready',
-            enabled: true,
           }}
         >
           <MemoryRouter initialEntries={[`/settings?project_id=${projectId}`]}>
@@ -138,7 +99,6 @@ describe('SettingsPage', () => {
         <RuntimeAuthStateProvider
           auth={{
             status: 'ready',
-            enabled: false,
           }}
         >
           <MemoryRouter initialEntries={['/settings']}>

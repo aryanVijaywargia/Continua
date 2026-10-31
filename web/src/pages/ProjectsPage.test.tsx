@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -8,20 +7,9 @@ import {
   clearApiKey,
   rememberProjectApiKey,
   setApiKey,
-  setAuthProviderEnabled,
 } from '../api/client';
 import { ProjectsPage } from './ProjectsPage';
 import { jsonResponse, mockClipboard, type RequestInput } from './testUtils';
-
-vi.mock('@auth0/auth0-react', () => ({
-  Auth0Provider: ({ children }: { children: ReactNode }) => children,
-  useAuth0: () => ({
-    getAccessTokenSilently: vi.fn(async () => 'test-key'),
-    isAuthenticated: true,
-    isLoading: false,
-    user: { email: 'test@example.com' },
-  }),
-}));
 
 const EXISTING_PROJECT = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -45,13 +33,11 @@ function renderProjectsPage() {
 
 beforeEach(() => {
   window.localStorage.clear();
-  setAuthProviderEnabled(false);
   setApiKey('test-key');
 });
 
 afterEach(() => {
   clearApiKey();
-  setAuthProviderEnabled(false);
   vi.restoreAllMocks();
 });
 
@@ -556,7 +542,6 @@ describe('ProjectsPage', () => {
   it('explains a failed rotate as a missing project API key in local mode', async () => {
     const user = userEvent.setup();
     clearApiKey();
-    setAuthProviderEnabled(false);
 
     const fetchMock = mockProjectListOnly();
     vi.stubGlobal('fetch', fetchMock);
@@ -571,26 +556,9 @@ describe('ProjectsPage', () => {
     expect(mutationRequests(fetchMock)).toEqual([]);
   });
 
-  it('keeps sign-in wording for a failed rotate when Auth0 is enabled', async () => {
-    const user = userEvent.setup();
-    clearApiKey();
-    setAuthProviderEnabled(true);
-
-    const fetchMock = mockProjectListOnly();
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderProjectsPage();
-
-    await openRotateDialogAndSubmit(user);
-
-    expect(await screen.findByText(/sign in required/i)).toBeInTheDocument();
-    expect(mutationRequests(fetchMock)).toEqual([]);
-  });
-
   it('keeps rotate, rename, and delete protected when no project API key is available', async () => {
     const user = userEvent.setup();
     clearApiKey();
-    setAuthProviderEnabled(false);
 
     const fetchMock = mockProjectListOnly();
     vi.stubGlobal('fetch', fetchMock);

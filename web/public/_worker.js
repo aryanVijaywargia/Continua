@@ -2199,7 +2199,6 @@ function handleApi(url, method = 'GET') {
 
   if (url.pathname === '/api/auth/config') {
     return json({
-      enabled: false,
       public_demo_enabled: true,
       public_demo_label: 'OpenAI + durable engine demo',
     });

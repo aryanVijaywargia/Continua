@@ -78,7 +78,6 @@ export function AppShell() {
   const isProjectsRoute = location.pathname === '/projects';
   const canAttemptProjectBootstrap =
     runtimeAuth.status === 'ready' &&
-    !runtimeAuth.enabled &&
     !isAuthenticated &&
     isProjectsRoute;
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -127,9 +126,8 @@ export function AppShell() {
   }, [queryClient]);
 
   const staleKeyClearedFor = useRef<number | null>(null);
-  const isLocalMode = !isPublicDemo && !runtimeAuth.enabled;
   useEffect(() => {
-    if (!isLocalMode || !projectsQuery.error) {
+    if (isPublicDemo || !projectsQuery.error) {
       return;
     }
     if (!isAuthError(projectsQuery.error)) {
@@ -150,7 +148,7 @@ export function AppShell() {
     }
     clearApiKey();
   }, [
-    isLocalMode,
+    isPublicDemo,
     localAuthVersion,
     projectsQuery.error,
   ]);
@@ -162,7 +160,7 @@ export function AppShell() {
   }, [selectedProjectId]);
 
   useEffect(() => {
-    if (!isLocalMode || !projectsQuery.isSuccess) {
+    if (isPublicDemo || !projectsQuery.isSuccess) {
       return;
     }
 
@@ -185,7 +183,7 @@ export function AppShell() {
     // single-project fallback covers older servers that do not expose that
     // metadata yet.
     rememberProjectApiKey(authenticatedProjectId, currentLocalKey);
-  }, [isLocalMode, projects, projectsQuery.data, projectsQuery.isSuccess]);
+  }, [isPublicDemo, projects, projectsQuery.data, projectsQuery.isSuccess]);
 
   useEffect(() => {
     if (isPublicDemo) {

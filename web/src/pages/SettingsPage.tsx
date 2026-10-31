@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { clearApiKey, getApiKey, setApiKey } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
-import { useOperatorAuth, useRuntimeAuth } from '../auth/runtime';
+import { useRuntimeAuth } from '../auth/runtime';
 import { PageHeader } from '../components/DebuggerKit';
 import {
   buildProjectPath,
@@ -18,12 +18,7 @@ const THEME_OPTIONS = [
 export function SettingsPage() {
   const location = useLocation();
   const runtimeAuth = useRuntimeAuth();
-  const { logout, user } = useOperatorAuth();
   const { mode, resolvedTheme, setMode } = useTheme();
-  const isLocalApiKeyMode =
-    runtimeAuth.status === 'ready' &&
-    !runtimeAuth.enabled &&
-    runtimeAuth.public_demo_enabled !== true;
   const [localApiKeyDraft, setLocalApiKeyDraft] = useState(() => getApiKey() ?? '');
   const [localApiKeySaved, setLocalApiKeySaved] = useState(() => Boolean(getApiKey()));
   const projectId = getProjectIdFromSearchParams(new URLSearchParams(location.search));
@@ -35,11 +30,7 @@ export function SettingsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
-        description={
-          isLocalApiKeyMode
-            ? 'Local self-host access uses a project API key. Theme controls stay here.'
-            : 'Auth is handled through Auth0. Theme controls and sign-out stay here.'
-        }
+        description="Local self-host access uses a project API key. Theme controls stay here."
         title="Settings"
         tabs={[
           { id: 'general', label: 'General', active: true },
@@ -50,38 +41,25 @@ export function SettingsPage() {
 
       <div className="grid max-w-5xl gap-8 p-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
         <section>
-          {isLocalApiKeyMode ? (
-            <LocalApiKeySettings
-              draft={localApiKeyDraft}
-              saved={localApiKeySaved}
-              onDraftChange={setLocalApiKeyDraft}
-              onSave={() => {
-                const normalizedKey = localApiKeyDraft.trim();
-                if (!normalizedKey) {
-                  return;
-                }
-                setApiKey(normalizedKey);
-                setLocalApiKeyDraft(normalizedKey);
-                setLocalApiKeySaved(true);
-              }}
-              onClear={() => {
-                clearApiKey();
-                setLocalApiKeyDraft('');
-                setLocalApiKeySaved(false);
-              }}
-            />
-          ) : (
-            <OperatorAccountSettings
-              user={user}
-              onSignOut={() =>
-                logout({
-                  logoutParams: {
-                    returnTo: window.location.origin,
-                  },
-                })
+          <LocalApiKeySettings
+            draft={localApiKeyDraft}
+            saved={localApiKeySaved}
+            onDraftChange={setLocalApiKeyDraft}
+            onSave={() => {
+              const normalizedKey = localApiKeyDraft.trim();
+              if (!normalizedKey) {
+                return;
               }
-            />
-          )}
+              setApiKey(normalizedKey);
+              setLocalApiKeyDraft(normalizedKey);
+              setLocalApiKeySaved(true);
+            }}
+            onClear={() => {
+              clearApiKey();
+              setLocalApiKeyDraft('');
+              setLocalApiKeySaved(false);
+            }}
+          />
         </section>
 
         <section>
@@ -151,64 +129,6 @@ export function SettingsPage() {
         </section>
       </div>
     </div>
-  );
-}
-
-function OperatorAccountSettings({
-  user,
-  onSignOut,
-}: {
-  user: ReturnType<typeof useOperatorAuth>['user'];
-  onSignOut: () => void;
-}) {
-  return (
-    <>
-      <div className="mb-4">
-        <h2 className="text-xl font-black tight-headline text-[var(--continua-text-primary)]">
-          Operator account
-        </h2>
-        <p className="mt-1 text-sm text-[var(--continua-text-secondary)]">
-          Review the signed-in identity used for debugger access.
-        </p>
-      </div>
-
-      <dl className="space-y-4">
-        <div className="app-surface-muted p-4">
-          <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-            Email
-          </dt>
-          <dd className="mt-2 text-sm text-[var(--continua-text-primary)]">
-            {user?.email ?? 'Unavailable'}
-          </dd>
-        </div>
-
-        <div className="app-surface-muted p-4">
-          <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-            Name
-          </dt>
-          <dd className="mt-2 text-sm text-[var(--continua-text-primary)]">
-            {user?.name ?? user?.nickname ?? 'Unavailable'}
-          </dd>
-        </div>
-
-        <div className="app-surface-muted p-4">
-          <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--continua-text-muted)]">
-            Subject
-          </dt>
-          <dd className="mt-2 break-all font-mono text-xs text-[var(--continua-text-secondary)]">
-            {user?.sub ?? 'Unavailable'}
-          </dd>
-        </div>
-      </dl>
-
-      <button
-        type="button"
-        onClick={onSignOut}
-        className="app-button-secondary mt-5"
-      >
-        Sign out
-      </button>
-    </>
   );
 }
 
