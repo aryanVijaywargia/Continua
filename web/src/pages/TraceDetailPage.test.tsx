@@ -367,6 +367,26 @@ describe('TraceDetailPage', () => {
     );
   });
 
+  it('shows an unavailable end and duration for a completed trace without an end time', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', ended_at: undefined }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    const heading = await screen.findByRole('heading', { name: 'Checkout Trace' });
+    expect(
+      within(heading.parentElement as HTMLElement).getByTitle(
+        'Computed from the trace start and end timestamps.'
+      )
+    ).toHaveTextContent('—');
+    const inspector = screen.getByRole('complementary', { name: 'Inspector' });
+    expect(within(inspector).queryByText('Still running')).not.toBeInTheDocument();
+    expect(within(inspector).getByText('Ended').nextElementSibling).toHaveTextContent('—');
+  });
+
   it('renders engine projection, wait summary, tabs, and control actions', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(

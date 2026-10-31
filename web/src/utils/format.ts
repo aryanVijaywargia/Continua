@@ -2,6 +2,8 @@
  * Formatting utilities.
  */
 
+import type { Trace } from '../api/client';
+
 /**
  * Format a duration in milliseconds to a human-readable string.
  */
@@ -82,6 +84,28 @@ export function calculateDuration(
   const start = new Date(startedAt).getTime();
   const end = endedAt ? new Date(endedAt).getTime() : Date.now();
   return end - start;
+}
+
+/** Whether a trace is still running, and its derived duration. */
+export interface TraceTiming {
+  running: boolean;
+  durationMs: number | null;
+}
+
+/**
+ * Status decides whether a missing end time means "still running". A RUNNING
+ * trace without an end runs its duration to now; a terminal trace without an
+ * end has no known duration.
+ */
+export function getTraceTiming(
+  trace: Pick<Trace, 'status' | 'started_at' | 'ended_at'>
+): TraceTiming {
+  const running = trace.status === 'RUNNING' && !trace.ended_at;
+  return {
+    running,
+    durationMs:
+      running || trace.ended_at ? calculateDuration(trace.started_at, trace.ended_at) : null,
+  };
 }
 
 /**

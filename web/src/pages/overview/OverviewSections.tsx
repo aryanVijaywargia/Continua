@@ -4,7 +4,7 @@ import { ArrowRight, Check, Zap } from 'lucide-react';
 import type { Trace } from '../../api/client';
 import { Chip, DataTable, StatusDot, Td, Th, Tr } from '../../components/DebuggerKit';
 import { HonestyIcon, HonestyNote, HonestyRow } from '../../components/DataState';
-import { formatDerivedDuration, formatExactTime } from '../../utils/format';
+import { formatDerivedDuration, formatExactTime, getTraceTiming } from '../../utils/format';
 import { appendProjectToPath } from '../../utils/projectSearchParams';
 import {
   type CoverageRow,
@@ -253,6 +253,18 @@ function StepsCell({ steps }: { steps: RecentTraceRowData['steps'] }) {
   );
 }
 
+function DurationCell({ trace }: { trace: Trace }) {
+  const timing = getTraceTiming(trace);
+  if (timing.running) {
+    return <span className="font-sans text-[12px] text-[var(--c-text-muted)]">running</span>;
+  }
+  return (
+    <span title="Derived from recorded start and end times.">
+      {formatDerivedDuration(timing.durationMs)}
+    </span>
+  );
+}
+
 export function RecentTracesTable({
   projectId,
   returnTo,
@@ -306,15 +318,7 @@ export function RecentTracesTable({
                 <StepsCell steps={steps} />
               </Td>
               <Td align="right" mono>
-                {trace.ended_at ? (
-                  <span title="Derived from recorded start and end times.">
-                    {formatDerivedDuration(
-                      new Date(trace.ended_at).getTime() - new Date(trace.started_at).getTime()
-                    )}
-                  </span>
-                ) : (
-                  <span className="font-sans text-[12px] text-[var(--c-text-muted)]">running</span>
-                )}
+                <DurationCell trace={trace} />
               </Td>
               <Td align="right" dim>
                 <span title={trace.started_at}>{formatExactTime(trace.started_at)}</span>

@@ -27,7 +27,7 @@ import {
   localDateToISOEnd,
   localDateToISOStart,
 } from '../utils/tracesSearchParams';
-import { calculateDuration, formatDerivedDuration } from '../utils/format';
+import { formatDerivedDuration, getTraceTiming } from '../utils/format';
 import { appendProjectToPath } from '../utils/projectSearchParams';
 import { downloadJsonFile } from '../utils/downloadJson';
 import { TracesAdvancedPanel } from './traces/TracesAdvancedPanel';
@@ -557,6 +557,7 @@ function TraceRow({
 }) {
   const tracePath = appendProjectToPath(`/traces/${trace.id}`, projectId);
   const failedSteps = trace.error_count ?? 0;
+  const timing = getTraceTiming(trace);
 
   return (
     <Tr className="hover:bg-[var(--c-row-hover-bg)]">
@@ -593,12 +594,12 @@ function TraceRow({
         {failedSteps}
       </Td>
       <Td align="right" mono>
-        {trace.ended_at ? (
-          <span title="Derived from recorded start and end times.">
-            {formatDerivedDuration(calculateDuration(trace.started_at, trace.ended_at))}
-          </span>
-        ) : (
+        {timing.running ? (
           <span className="font-sans text-[12px] text-[var(--c-text-muted)]">running</span>
+        ) : (
+          <span title="Derived from recorded start and end times.">
+            {formatDerivedDuration(timing.durationMs)}
+          </span>
         )}
       </Td>
       <Td align="right" dim mono>
