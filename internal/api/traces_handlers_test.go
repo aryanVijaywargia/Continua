@@ -14,6 +14,7 @@ import (
 
 	"github.com/continua-ai/continua/db/gen/go/platform"
 	"github.com/continua-ai/continua/internal/api/middleware"
+	"github.com/continua-ai/continua/internal/config"
 	"github.com/continua-ai/continua/internal/store"
 	"github.com/continua-ai/continua/internal/testutil"
 )
@@ -683,6 +684,72 @@ func TestSpanPayloads_ListOmitsThemAndPayloadEndpointReturnsThem(t *testing.T) {
 			require.Equal(t, tt.wantStatus, rec.Code)
 			if tt.wantStatus == http.StatusOK {
 				assert.JSONEq(t, `{"input":{"prompt":"hello"},"output":{"answer":"world"},"metadata":{"source":"test"}}`, rec.Body.String())
+			}
+		})
+	}
+}
+
+// Issue #317: the public demo reads span payloads without credentials, but only from the demo project.
+func TestGetSpanPayload_PublicDemoRouterServesOnlyDemoProject(t *testing.T) {
+	ctx := context.Background()
+	s := store.New(testutil.TestDB(t))
+	q := s.Queries()
+
+	demoProjectID := testutil.CreateTestProject(t, ctx, q)
+	otherProjectID := testutil.CreateTestProject(t, ctx, q)
+	payloadPath := func(projectID uuid.UUID) string {
+		trace := upsertTraceRecord(ctx, t, q, platform.UpsertTraceParams{
+			ProjectID: projectID,
+			TraceID:   "demo-payload-" + uuid.NewString(),
+			Status:    "completed",
+			StartTime: testutil.PgtypeTimestamptz(time.Date(2026, 3, 7, 16, 0, 0, 0, time.UTC)),
+		})
+		span := upsertSpanRecord(ctx, t, q, platform.UpsertSpanParams{
+			ProjectID: projectID,
+			TraceID:   trace.ID,
+			SpanID:    "demo-span",
+			Name:      "Demo span",
+			Type:      "llm",
+			Status:    "completed",
+			Level:     "default",
+			StartTime: time.Date(2026, 3, 7, 16, 0, 1, 0, time.UTC),
+			Input:     []byte(`{"prompt":"secret"}`),
+			TotalCost: testutil.PgtypeNumericFromFloat64(0),
+		})
+		return "/api/traces/" + trace.ID.String() + "/spans/" + span.ID.String() + "/payload"
+	}
+	demoPath := payloadPath(demoProjectID)
+	otherPath := payloadPath(otherProjectID)
+
+	authenticator, err := middleware.NewAuthenticator(s, &config.Config{
+		PublicDemo: config.PublicDemoConfig{Enabled: true, ProjectID: demoProjectID},
+	})
+	require.NoError(t, err)
+	router := NewRouter(NewServer(s, nil), authenticator)
+
+	tests := []struct {
+		name       string
+		target     string
+		wantStatus int
+	}{
+		{name: "span in the demo project", target: demoPath, wantStatus: http.StatusOK},
+		{name: "span in another project", target: otherPath, wantStatus: http.StatusNotFound},
+		{
+			name:       "project_id query cannot leave the demo project",
+			target:     otherPath + "?project_id=" + otherProjectID.String(),
+			wantStatus: http.StatusNotFound,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.target, nil))
+
+			require.Equal(t, tt.wantStatus, rec.Code, rec.Body.String())
+			if tt.wantStatus == http.StatusOK {
+				assert.JSONEq(t, `{"input":{"prompt":"secret"}}`, rec.Body.String())
+			} else {
+				assert.NotContains(t, rec.Body.String(), "secret")
 			}
 		})
 	}
