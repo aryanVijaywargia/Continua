@@ -10,25 +10,28 @@ fit on individual endpoint pages.
 
 ## Authentication
 
-Continua accepts two auth schemes, depending on the endpoint:
+Continua has one credential: the project API key.
 
 ### API key (`apiKey`)
 
-- Header: `X-API-Key: <project-api-key>`
-- Used by SDKs, ingest, and most read endpoints.
+- Header: `X-API-Key: <project-api-key>`, or `Authorization: Bearer <project-api-key>`.
+- Used by SDKs, ingest, the debugger UI, and REST integrators.
 - The server hashes the key, looks it up in `projects`, and injects the owning
   `project_id` into request context.
 - API keys are project-scoped. There is no cross-project API-key access.
 
-### Auth0 bearer (`auth0Bearer`)
+### Credential-free modes
 
-- Header: `Authorization: Bearer <auth0-jwt>`
-- Used by the debugger UI when `AUTH0_ENABLED=true`.
-- Operators select a project explicitly via `selected_project_id` (query or header).
-- See [Auth0 setup](/guides/auth0-setup) for the configuration walk-through.
+The debugger can also run without a key in two opt-in modes:
 
-Some endpoints (project listing) are gated by auth scheme: for example, listing all
-projects requires Auth0, not an API key.
+- **Public demo** (`PUBLIC_DEMO_ENABLED=true`): a fixed set of read endpoints serves one
+  read-only project to anyone.
+- **Local single-user mode** (`LOCAL_SINGLE_USER_MODE=true`): requests from a loopback
+  peer need no key on `/api/*` and the engine console routes. `/v1/ingest` and the
+  engine worker routes still need an API key.
+
+On a loopback connection, `GET /api/projects` and `POST /api/projects` also work without
+a key while public demo mode is off. This lets a fresh install create its first project.
 
 ## Health checks
 
@@ -39,10 +42,10 @@ else is authenticated.
 
 | Header / query | Purpose |
 | --- | --- |
-| `X-API-Key` | Resolves to a single project; that becomes the request's `project_id` |
-| `selected_project_id` (header or query) | Operator (Auth0) flow only. Selects which project the operator is acting on |
+| `X-API-Key` or `Authorization: Bearer` | Resolves to a single project; that becomes the request's `project_id` |
+| `project_id` (query) | With an API key, it must match the key's project, or the server returns `403 project_scope_mismatch`. In local single-user mode it selects the project, and reads require it |
 
-When both an API key and an Auth0 token are present, the API key wins. There is no
+When both `X-API-Key` and `Authorization` are present, `X-API-Key` wins. There is no
 cross-project read endpoint today.
 
 ## Preview headers
@@ -90,7 +93,7 @@ Continua follows standard REST semantics:
 | `204` | Success without response body |
 | `400` | Validation failure. Body includes a structured error |
 | `401` | Missing or invalid auth |
-| `403` | Authenticated but not authorised for the resource (e.g. wrong project, email not allow-listed) |
+| `403` | Authenticated but not authorised for the resource (e.g. `project_id` does not match the API key's project) |
 | `404` | Resource doesn't exist or isn't visible to this caller |
 | `409` | Idempotency / conflict (e.g. `batch_key` mismatch) |
 | `413` | Payload too large (5MB limit on `POST /v1/ingest`) |

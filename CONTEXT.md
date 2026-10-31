@@ -91,9 +91,10 @@ exactly two shapes:
 > convention is the cross-tenant-read bug class this removes.
 
 **Operator (instance-admin)**
-An Auth0-authenticated caller. Treated as an **instance administrator with Unbounded
-scope**, not a project-scoped user. On operator routes, `project_id` is a
-selection/filter (which tenant to view), never a per-project authorization boundary.
+A caller treated as an **instance administrator with Unbounded scope**, not a
+project-scoped user. Hosted operator login was removed (#268, #308), so no request
+carries this mode today; only scoping tests inject it. On operator routes, `project_id`
+is a selection/filter (which tenant to view), never a per-project authorization boundary.
 
 > Decision (2026-05-30): operators are cross-tenant by design. There is no
 > operator→project grant model and we will not add one now; Auth0 operator auth is

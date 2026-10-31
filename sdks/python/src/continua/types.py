@@ -12,10 +12,6 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 
 
 class AuthConfig(BaseModel):
-    enabled: bool
-    domain: str | None = None
-    client_id: str | None = None
-    audience: str | None = None
     public_demo_enabled: bool | None = Field(
         None,
         description="Whether the deployment exposes a public read-only demo console.",
@@ -45,7 +41,7 @@ class Project(BaseModel):
 class ProjectList(BaseModel):
     authenticated_project_id: UUID | None = Field(
         None,
-        description="Project bound to the current API key when the request is API-key authenticated. Omitted for operator or unauthenticated bootstrap requests.",
+        description="Project bound to the current API key when the request is API-key authenticated. Omitted for local single-user or unauthenticated bootstrap requests.",
     )
     projects: list[Project]
 
