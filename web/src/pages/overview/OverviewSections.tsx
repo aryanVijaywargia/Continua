@@ -4,7 +4,12 @@ import { ArrowRight, Check, Zap } from 'lucide-react';
 import type { Trace } from '../../api/client';
 import { Chip, DataTable, StatusDot, Td, Th, Tr } from '../../components/DebuggerKit';
 import { HonestyIcon, HonestyNote, HonestyRow } from '../../components/DataState';
-import { formatDerivedDuration, formatExactTime, getTraceTiming } from '../../utils/format';
+import {
+  formatDerivedDuration,
+  formatExactTime,
+  getTraceTiming,
+  UNAVAILABLE_DURATION_TITLE,
+} from '../../utils/format';
 import { appendProjectToPath } from '../../utils/projectSearchParams';
 import {
   type CoverageRow,
@@ -259,7 +264,13 @@ function DurationCell({ trace }: { trace: Trace }) {
     return <span className="font-sans text-[12px] text-[var(--c-text-muted)]">running</span>;
   }
   return (
-    <span title="Derived from recorded start and end times.">
+    <span
+      title={
+        timing.durationMs == null
+          ? UNAVAILABLE_DURATION_TITLE
+          : 'Derived from recorded start and end times.'
+      }
+    >
       {formatDerivedDuration(timing.durationMs)}
     </span>
   );

@@ -10,6 +10,7 @@ import {
   formatDerivedDuration,
   formatTokens,
   getTraceTiming,
+  UNAVAILABLE_DURATION_TITLE,
 } from '../../utils/format';
 import { appendProjectToPath } from '../../utils/projectSearchParams';
 import { EngineWaitStateSummary } from './TraceDetailChrome';
@@ -61,7 +62,8 @@ export function TraceDetailHeader({
   const usageRecorded = hasRecordedUsage(trace);
   const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
   const status = timelineStatus ?? trace.status;
-  const duration = formatDerivedDuration(getTraceTiming({ ...trace, status }).durationMs);
+  const durationMs = getTraceTiming({ ...trace, status }).durationMs;
+  const duration = formatDerivedDuration(durationMs);
 
   const contextButton = (
     <button
@@ -172,7 +174,11 @@ export function TraceDetailHeader({
         <Divider />
         <span
           className="font-mono text-xs tabular-nums text-[var(--c-text-secondary)]"
-          title="Computed from the trace start and end timestamps."
+          title={
+            durationMs == null
+              ? UNAVAILABLE_DURATION_TITLE
+              : 'Computed from the trace start and end timestamps.'
+          }
         >
           {duration}
         </span>

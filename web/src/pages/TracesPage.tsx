@@ -27,7 +27,11 @@ import {
   localDateToISOEnd,
   localDateToISOStart,
 } from '../utils/tracesSearchParams';
-import { formatDerivedDuration, getTraceTiming } from '../utils/format';
+import {
+  formatDerivedDuration,
+  getTraceTiming,
+  UNAVAILABLE_DURATION_TITLE,
+} from '../utils/format';
 import { appendProjectToPath } from '../utils/projectSearchParams';
 import { downloadJsonFile } from '../utils/downloadJson';
 import { TracesAdvancedPanel } from './traces/TracesAdvancedPanel';
@@ -597,7 +601,13 @@ function TraceRow({
         {timing.running ? (
           <span className="font-sans text-[12px] text-[var(--c-text-muted)]">running</span>
         ) : (
-          <span title="Derived from recorded start and end times.">
+          <span
+            title={
+              timing.durationMs == null
+                ? UNAVAILABLE_DURATION_TITLE
+                : 'Derived from recorded start and end times.'
+            }
+          >
             {formatDerivedDuration(timing.durationMs)}
           </span>
         )}

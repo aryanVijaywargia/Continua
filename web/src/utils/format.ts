@@ -92,6 +92,9 @@ export interface TraceTiming {
   durationMs: number | null;
 }
 
+/** Tooltip for a terminal trace whose duration is unknown. */
+export const UNAVAILABLE_DURATION_TITLE = 'No end time recorded, so the duration is unavailable.';
+
 /**
  * Status decides whether a missing end time means "still running". A RUNNING
  * trace without an end runs its duration to now; a terminal trace without an

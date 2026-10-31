@@ -910,7 +910,10 @@ describe('TracesPage', () => {
     for (const name of [TRACE_ONE.name, TRACE_TWO.name]) {
       const row = (await screen.findByRole('link', { name })).closest('tr') as HTMLElement;
       expect(within(row).queryByText('running')).not.toBeInTheDocument();
-      expect(within(row).getByText('—')).toBeInTheDocument();
+      expect(within(row).getByText('—')).toHaveAttribute(
+        'title',
+        'No end time recorded, so the duration is unavailable.'
+      );
     }
   });
 

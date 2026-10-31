@@ -379,7 +379,7 @@ describe('TraceDetailPage', () => {
     const heading = await screen.findByRole('heading', { name: 'Checkout Trace' });
     expect(
       within(heading.parentElement as HTMLElement).getByTitle(
-        'Computed from the trace start and end timestamps.'
+        'No end time recorded, so the duration is unavailable.'
       )
     ).toHaveTextContent('—');
     const inspector = screen.getByRole('complementary', { name: 'Inspector' });
