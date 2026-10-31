@@ -41,15 +41,18 @@ See the [Managing projects guide](/guides/managing-projects) for end-to-end how-
 
 ## Project scoping on reads
 
-API-key and public-demo requests are always **Bound** to their project. Every read,
+These rules apply to the trace, session, and engine data endpoints. The project-management
+endpoints under `/api/projects` do not take or check `project_id`.
+
+API-key and public-demo requests are always **Bound** to their project. Every data read,
 including all `/v1/engine/*` reads, is filtered to that project. Requesting an id that
 belongs to another project returns `404`.
 
 On an API-key request, a `project_id` query parameter must match the key's project.
 A mismatch returns `403 project_scope_mismatch`.
 
-Local single-user requests carry no bound project. Every read names its project with
-`project_id`, and a read without it returns `400 missing_project_id`. The UI keeps the
+Local single-user requests carry no bound project. Every data read names its project with
+`project_id`, and a data read without it returns `400 missing_project_id`. The UI keeps the
 selected project in URL query params, so links remain shareable and the box owner can
 switch projects without a new key.
 
