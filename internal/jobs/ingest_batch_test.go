@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -114,6 +115,31 @@ func TestIngestBatchWorker_ReentryAfterCompletionIsNoOp(t *testing.T) {
 	assert.Equal(t, completed.Status, afterRetry.Status)
 	assert.Equal(t, completed.AttemptCount, afterRetry.AttemptCount)
 	assert.Equal(t, completed.ProcessingCompletedAt.Time, afterRetry.ProcessingCompletedAt.Time)
+}
+
+// Engine run termination and project deletion can still deadlock with an async batch.
+// The worker must requeue the batch as a database error and hand the error to River to
+// retry, never mark the batch failed.
+func TestIngestBatchWorker_DeadlockRequeuesBatchForRetry(t *testing.T) {
+	ctx := context.Background()
+	s, q, _, worker := newIngestBatchTestDeps(t)
+	projectID := testutil.CreateTestProject(t, ctx, q)
+	batchID := acceptAsyncBatchForWorker(t, s, worker, projectID, &ingest.IngestRequest{
+		BatchKey: "worker-deadlock-" + uuid.NewString()[:8],
+		Traces:   []ingest.TraceInput{{TraceID: "trace-" + uuid.NewString()}},
+	})
+	testutil.ForceInsertSQLState(t, s.Pool(), "traces", projectID, "40P01")
+
+	err := worker.Work(ctx, &river.Job[jobargs.IngestBatchArgs]{Args: jobargs.IngestBatchArgs{BatchID: batchID}})
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr, "River retries a job whose Work returns an error")
+	assert.Equal(t, "40P01", pgErr.Code)
+
+	batch, err := s.GetBatch(ctx, batchID)
+	require.NoError(t, err)
+	assert.Equal(t, "queued", batch.Status)
+	require.NotNil(t, batch.LastErrorCode)
+	assert.Equal(t, "db_error", *batch.LastErrorCode)
 }
 
 func TestIngestBatchWorker_RetriesDependencyUntilTraceBatchCommits(t *testing.T) {
