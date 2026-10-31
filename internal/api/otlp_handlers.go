@@ -14,6 +14,7 @@ import (
 
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/continua-ai/continua/internal/ingest"
@@ -72,20 +73,20 @@ func (s *Server) OTLPTraces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.ContentLength > MaxBodySize {
-		writeOTLPError(w, http.StatusRequestEntityTooLarge, otlpCodeResourceExhausted, errOTLPBodyTooLarge.Error())
+		writeOTLPError(w, r, http.StatusRequestEntityTooLarge, otlpCodeResourceExhausted, errOTLPBodyTooLarge.Error())
 		return
 	}
 
 	body, err := readOTLPExportBody(w, r)
 	switch {
 	case errors.Is(err, errOTLPBodyTooLarge):
-		writeOTLPError(w, http.StatusRequestEntityTooLarge, otlpCodeResourceExhausted, errOTLPBodyTooLarge.Error())
+		writeOTLPError(w, r, http.StatusRequestEntityTooLarge, otlpCodeResourceExhausted, errOTLPBodyTooLarge.Error())
 		return
 	case errors.Is(err, errOTLPUnknownEncoding):
-		writeOTLPError(w, http.StatusUnsupportedMediaType, otlpCodeInvalidArgument, err.Error())
+		writeOTLPError(w, r, http.StatusUnsupportedMediaType, otlpCodeInvalidArgument, err.Error())
 		return
 	case err != nil:
-		writeOTLPError(w, http.StatusBadRequest, otlpCodeInvalidArgument, "Failed to read request body: "+err.Error())
+		writeOTLPError(w, r, http.StatusBadRequest, otlpCodeInvalidArgument, "Failed to read request body: "+err.Error())
 		return
 	}
 
@@ -97,35 +98,32 @@ func (s *Server) OTLPTraces(w http.ResponseWriter, r *http.Request) {
 		// OTLP/JSON is spec-defined and a documented Collector option (`encoding: json`).
 		err = otlp.UnmarshalJSON(body, &export)
 	default:
-		writeOTLPError(w, http.StatusUnsupportedMediaType, otlpCodeInvalidArgument,
+		writeOTLPError(w, r, http.StatusUnsupportedMediaType, otlpCodeInvalidArgument,
 			"Unsupported Content-Type "+mediaType+"; expected "+OTLPTracesContentType+" or "+OTLPTracesJSONContentType)
 		return
 	}
 	if err != nil {
-		writeOTLPError(w, http.StatusBadRequest, otlpCodeInvalidArgument, "Failed to decode OTLP export: "+err.Error())
+		writeOTLPError(w, r, http.StatusBadRequest, otlpCodeInvalidArgument, "Failed to decode OTLP export: "+err.Error())
 		return
 	}
 
 	req, err := otlp.Normalize(&export, otlpBatchKey(body))
 	if err != nil {
-		writeOTLPError(w, http.StatusBadRequest, otlpCodeInvalidArgument, err.Error())
+		writeOTLPError(w, r, http.StatusBadRequest, otlpCodeInvalidArgument, err.Error())
 		return
 	}
 
 	if _, err := s.ingestService.Ingest(r.Context(), projectID, req); err != nil {
 		if ingest.IsValidationError(err) {
-			writeOTLPError(w, http.StatusBadRequest, otlpCodeInvalidArgument, err.Error())
+			writeOTLPError(w, r, http.StatusBadRequest, otlpCodeInvalidArgument, err.Error())
 			return
 		}
 		log.Printf("otlp trace ingest failed: %v", err)
-		writeOTLPError(w, http.StatusInternalServerError, otlpCodeInternal, "An internal error occurred")
+		writeOTLPError(w, r, http.StatusInternalServerError, otlpCodeInternal, "An internal error occurred")
 		return
 	}
 
-	response, _ := proto.Marshal(&coltracepb.ExportTraceServiceResponse{})
-	w.Header().Set("Content-Type", OTLPTracesContentType)
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(response)
+	writeOTLPMessage(w, r, http.StatusOK, &coltracepb.ExportTraceServiceResponse{})
 }
 
 // readOTLPExportBody reads the export bytes, decompressing the request body when the
@@ -186,15 +184,27 @@ func otlpMediaType(r *http.Request) string {
 	return mediaType
 }
 
-// writeOTLPError writes a protobuf-encoded google.rpc.Status, which the OTLP spec
-// requires of every 4xx/5xx on this endpoint. The Collector parses the body as a Status
-// and discards it when it cannot, so a JSON error body reaches the operator as a bare
+// writeOTLPError writes a google.rpc.Status, which the OTLP spec requires of every
+// 4xx/5xx on this endpoint. The Collector parses the body as a Status and discards it
+// when it cannot, so a Continua JSON error body reaches the operator as a bare
 // "permanent error: 400" with the explanation thrown away. Continua's JSON error shape
 // stays in place everywhere else.
-func writeOTLPError(w http.ResponseWriter, httpStatus int, code int32, message string) {
-	body, _ := proto.Marshal(&spb.Status{Code: code, Message: message})
+func writeOTLPError(w http.ResponseWriter, r *http.Request, httpStatus int, code int32, message string) {
+	writeOTLPMessage(w, r, httpStatus, &spb.Status{Code: code, Message: message})
+}
 
-	w.Header().Set("Content-Type", OTLPTracesContentType)
+// writeOTLPMessage encodes message the way the request was encoded: the OTLP spec
+// requires the response to use the request's Content-Type. An OTLP/JSON request gets
+// JSON; every other request, including one with an unsupported Content-Type, gets
+// protobuf.
+func writeOTLPMessage(w http.ResponseWriter, r *http.Request, httpStatus int, message proto.Message) {
+	contentType, marshal := OTLPTracesContentType, proto.Marshal
+	if otlpMediaType(r) == OTLPTracesJSONContentType {
+		contentType, marshal = OTLPTracesJSONContentType, protojson.Marshal
+	}
+	body, _ := marshal(message)
+
+	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(httpStatus)
 	_, _ = w.Write(body)
 }

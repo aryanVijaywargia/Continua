@@ -46,8 +46,10 @@ export interface paths {
          *
          *     Preview: the route 404s unless the server runs with `INGEST_OTLP_ENABLED=true`.
          *
-         *     Per the OTLP specification, the responses this handler writes are protobuf-encoded:
-         *     success is an `ExportTraceServiceResponse` and its errors are a `google.rpc.Status`.
+         *     Per the OTLP specification, the responses this handler writes use the request's
+         *     encoding: protobuf for a protobuf request and OTLP/JSON for an `application/json`
+         *     request. Success is an `ExportTraceServiceResponse` and its errors are a
+         *     `google.rpc.Status`. OTLP/JSON trace and span IDs are hex strings, not base64.
          *     `401` and the preview-gate `404` never reach the handler -- shared auth and
          *     route-gate middleware answer them with the platform's standard shapes (a JSON
          *     `Error` body, and the router's plain-text not found). Maximum body size is 5MB,
@@ -1687,22 +1689,24 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Export ingested; body is a protobuf ExportTraceServiceResponse */
+            /** @description Export ingested; body is an ExportTraceServiceResponse in the request's encoding */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/x-protobuf": string;
+                    "application/json": string;
                 };
             };
-            /** @description Malformed or unnormalizable export; body is a protobuf google.rpc.Status */
+            /** @description Malformed or unnormalizable export; body is a google.rpc.Status in the request's encoding */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/x-protobuf": string;
+                    "application/json": string;
                 };
             };
             /** @description Unauthorized - missing or invalid API key */
@@ -1721,22 +1725,24 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Export exceeds the 5MB limit; body is a protobuf google.rpc.Status */
+            /** @description Export exceeds the 5MB limit; body is a google.rpc.Status in the request's encoding */
             413: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/x-protobuf": string;
+                    "application/json": string;
                 };
             };
-            /** @description Unsupported Content-Type or Content-Encoding; body is a protobuf google.rpc.Status */
+            /** @description Unsupported Content-Type or Content-Encoding; body is a google.rpc.Status in the request's encoding (protobuf for an unsupported Content-Type) */
             415: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/x-protobuf": string;
+                    "application/json": string;
                 };
             };
         };

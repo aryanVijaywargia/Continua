@@ -22,6 +22,7 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -435,7 +436,8 @@ func TestOTLPTraces_UnsupportedContentTypeIsRejected(t *testing.T) {
 // M7: protobuf Status error bodies
 // ---------------------------------------------------------------------------
 
-// The OTLP spec requires 4xx/5xx bodies to be a protobuf-encoded google.rpc.Status.
+// The OTLP spec requires 4xx/5xx bodies to be a google.rpc.Status, protobuf-encoded for
+// a protobuf request.
 // The Collector parses the body as one and discards the details when it cannot,
 // which is what makes an encoding mismatch undiagnosable in the field.
 func TestOTLPTraces_ErrorResponsesAreProtobufStatus(t *testing.T) {
@@ -451,6 +453,46 @@ func TestOTLPTraces_ErrorResponsesAreProtobufStatus(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(rec.Body.Bytes(), &status),
 		"OTLP error bodies must be a protobuf google.rpc.Status")
 	assert.NotEmpty(t, status.GetMessage(), "the Status carries the explanation the Collector logs")
+}
+
+// The OTLP/HTTP spec requires the response to use the request's Content-Type, on
+// success and on failure, so an OTLP/JSON exporter can decode the Status it gets.
+func TestOTLPTraces_ResponsesUseTheRequestEncoding(t *testing.T) {
+	server, _, _, projectID := newOTLPServer(t)
+
+	start := time.Now().UTC().Add(-time.Second).UnixNano()
+	jsonExport := fmt.Sprintf(`{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":%q,
+		"spanId":"0123456789abcdef","name":"root","startTimeUnixNano":"%d","endTimeUnixNano":"%d"}]}]}]}`,
+		hex.EncodeToString(newRawTraceID()), start, start+int64(time.Millisecond))
+
+	tests := []struct {
+		name        string
+		contentType string
+		body        []byte
+		wantStatus  int
+		unmarshal   func([]byte, proto.Message) error
+	}{
+		{"protobuf success", OTLPTracesContentType, marshalExport(t, rawExport(newRawTraceID(), nil, nil, 1, "root")),
+			http.StatusOK, proto.Unmarshal},
+		{"protobuf error", OTLPTracesContentType, []byte("not an OTLP export"), http.StatusBadRequest, proto.Unmarshal},
+		{"json success", OTLPTracesJSONContentType, []byte(jsonExport), http.StatusOK, protojson.Unmarshal},
+		{"json error", OTLPTracesJSONContentType, []byte(`{}`), http.StatusBadRequest, protojson.Unmarshal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := postOTLP(t, server, projectID, tt.body, map[string]string{"Content-Type": tt.contentType})
+			require.Equal(t, tt.wantStatus, rec.Code, "body: %s", rec.Body.String())
+			assert.Equal(t, tt.contentType, rec.Header().Get("Content-Type"))
+
+			if tt.wantStatus == http.StatusOK {
+				require.NoError(t, tt.unmarshal(rec.Body.Bytes(), &coltracepb.ExportTraceServiceResponse{}))
+				return
+			}
+			var status spb.Status
+			require.NoError(t, tt.unmarshal(rec.Body.Bytes(), &status))
+			assert.NotEmpty(t, status.GetMessage())
+		})
+	}
 }
 
 // The protobuf claim only covers what the handler itself writes. Auth and the
