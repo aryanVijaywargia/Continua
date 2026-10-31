@@ -163,8 +163,7 @@ Demo / operator login (optional):
 | `PUBLIC_DEMO_ENABLED` | `false` | Enables read-only seeded demo mode |
 | `PUBLIC_DEMO_PROJECT_ID` | unset | UUID of the project shown in public demo mode (required when demo enabled) |
 | `PUBLIC_DEMO_LABEL` | unset | Demo workspace label in the UI |
-| `AUTH0_ENABLED` | `false` | Enable Auth0 operator login |
-| `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_AUDIENCE`, `AUTH0_ALLOWED_EMAILS` | unset | Auth0 tenant configuration (required when `AUTH0_ENABLED=true`). See [Auth0 setup](/guides/auth0-setup) |
+| `LOCAL_SINGLE_USER_MODE` | `false` | Lets loopback callers open the debugger without an API key. Cannot be combined with `PUBLIC_DEMO_ENABLED` |
 
 `config.example.yaml` is a reference template only. The server does not read YAML
 configuration at runtime.

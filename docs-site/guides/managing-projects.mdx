@@ -8,8 +8,7 @@ and ingest batch belongs to exactly one project.
 
 ## From the debugger UI
 
-The Projects page at `/projects` (sign in with Auth0 first if it's enabled) lists every
-project and lets you:
+The Projects page at `/projects` lists every project and lets you:
 
 - **Create** a project: name + description. On create, the UI shows the plaintext API
   key **once**. Copy it before you navigate away.
@@ -20,8 +19,9 @@ project and lets you:
 
 ## From the REST API
 
-All project endpoints live under `/api/projects` and accept either an API key or an
-Auth0 operator JWT (when Auth0 is enabled).
+All project endpoints live under `/api/projects` and accept a project API key. On a
+loopback connection, list and create also work without credentials, so a fresh install
+can create its first project.
 
 ### Create a project
 
@@ -86,8 +86,8 @@ curl https://continua.example.com/api/projects \
 ```
 
 <Note>
-  Listing all projects is forbidden for API-key callers when Auth0 is enabled: only
-  operator JWTs can list. API keys are scoped to the project they belong to.
+  The list includes every project in the deployment. For an API-key caller,
+  `authenticated_project_id` names the project that owns the key.
 </Note>
 
 ## Conventions worth adopting
@@ -105,6 +105,5 @@ curl https://continua.example.com/api/projects \
 - [Projects & auth](/concepts/projects-and-auth): the auth model end to end.
 - [Engine project provisioning](/guides/engine-project-provisioning): create a project
   before starting scoped engine workers.
-- [Auth0 setup](/guides/auth0-setup): operator login.
 - API reference: every project endpoint is listed under
   [API Reference → Endpoints](/api-reference/auth-and-headers).

@@ -1,23 +1,27 @@
 ---
 title: "Projects & auth"
-description: "How projects, API keys, Auth0 operator login, and demo mode fit together."
+description: "How projects, API keys, local single-user mode, and demo mode fit together."
 ---
 
 A **project** is the unit of multi-tenancy in Continua. Every trace, span, session, and
-ingest batch is scoped to exactly one project. Authentication determines whether a read
-is bound to one project or available across projects to an instance operator.
+ingest batch is scoped to exactly one project. Authentication determines which project a
+read is bound to.
 
 ## The three ways a request gets authenticated
 
 | Mechanism | Used by | How project_id is resolved |
 | --- | --- | --- |
-| **API key** (`X-API-Key`) | SDKs, ingest, REST integrators | Server hashes the key (SHA-256), looks it up in `projects`, injects the owning project into context |
-| **Auth0 bearer** (operator JWT) | Debugger UI when `AUTH0_ENABLED=true` | The UI picks a project explicitly via `selected_project_id` (query or header). Operator can switch projects |
+| **API key** (`X-API-Key` or `Authorization: Bearer`) | SDKs, ingest, the debugger UI, REST integrators | Server hashes the key (SHA-256), looks it up in `projects`, injects the owning project into context |
+| **Local single-user mode** (no credentials, loopback only) | Debugger UI on the machine that runs the server, when `LOCAL_SINGLE_USER_MODE=true` | No project is bound. The `project_id` query parameter selects the project, and reads require it |
 | **Public demo** (no credentials) | Read-only landing on the demo deployment | Project id is hard-coded in `PUBLIC_DEMO_PROJECT_ID` |
 
-API keys and Auth0 are not mutually exclusive. You can run Auth0 for the UI and still
-issue API keys for SDK ingest. Public demo mode is opt-in via env vars and serves a
-single read-only project to anyone.
+Both credential-free modes are opt-in via env vars, and the server refuses to start with
+both on. Public demo mode serves a single read-only project to anyone. Ingest
+(`/v1/ingest`) always needs an API key.
+
+On a loopback connection, `GET /api/projects` and `POST /api/projects` work without
+credentials while public demo mode is off, so a fresh install can create its first
+project and receive its key.
 
 ## Lifecycle of a project
 
@@ -41,25 +45,16 @@ API-key and public-demo requests are always **Bound** to their project. Every re
 including all `/v1/engine/*` reads, is filtered to that project. Requesting an id that
 belongs to another project returns `404`.
 
-Auth0 operators are instance administrators. Detail and run-scoped reads are
-**Unbounded** when an operator provides no `project_id`: the operator can read across all
-projects. This applies to platform trace and session detail, plus these engine surfaces:
+On an API-key request, a `project_id` query parameter must match the key's project.
+A mismatch returns `403 project_scope_mismatch`.
 
-- `/v1/engine/runs/{id}`
-- `/v1/engine/runs/{id}/history`
-- `/v1/engine/runs/{id}/result`
-- `/v1/engine/runs/{id}/pending-work`
-- `/v1/engine/instances/{key}`
+Local single-user requests carry no bound project. Every read names its project with
+`project_id`, and a read without it returns `400 missing_project_id`. The UI keeps the
+selected project in URL query params, so links remain shareable and the box owner can
+switch projects without a new key.
 
-This unbounded access is intentional operator convenience, not an authorization gap. On
-operator requests, `project_id` (or `selected_project_id`) is a selection filter rather
-than an authorization boundary: a mismatched project returns `404`. List endpoints still
-require a project id and return `400` without one. The UI persists the selected project
-in URL query params, so links remain shareable and operators can switch projects without
-re-authenticating.
-
-The `/v1/engine/activities/*` worker surface is API-key-bound only. Operator bearer
-tokens are rejected as unauthenticated.
+The `/v1/engine/activities/*` worker surface is API-key-bound only. Credential-free
+requests are rejected as unauthenticated.
 
 ## Demo mode in detail
 
@@ -76,6 +71,5 @@ traces, which is useful for evaluating Continua without standing up your own ing
 
 ## See also
 
-- [Auth0 setup guide](/guides/auth0-setup) for the operator login flow.
 - [Managing projects guide](/guides/managing-projects) for create / rotate / delete.
 - [Self-hosting](/guides/self-hosting) for the env vars behind all three modes.
