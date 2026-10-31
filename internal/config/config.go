@@ -221,8 +221,10 @@ func loadJobsConfig() (JobsConfig, error) {
 	if err != nil {
 		return JobsConfig{}, err
 	}
-	if fetchCooldown == 0 {
-		return JobsConfig{}, errors.New("RIVER_FETCH_COOLDOWN must be greater than zero")
+	// River rejects a cooldown below 1ms or above its fetch poll interval,
+	// which the client leaves at the 1s default.
+	if fetchCooldown < time.Millisecond || fetchCooldown > time.Second {
+		return JobsConfig{}, fmt.Errorf("RIVER_FETCH_COOLDOWN must be between 1ms and 1s, got %s", fetchCooldown)
 	}
 
 	return JobsConfig{

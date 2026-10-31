@@ -49,6 +49,10 @@ func TestLoad_RiverFetchCooldown(t *testing.T) {
 	}{
 		{name: "default", raw: "", want: 2 * time.Millisecond},
 		{name: "override", raw: "25ms", want: 25 * time.Millisecond},
+		{name: "river minimum accepted", raw: "1ms", want: time.Millisecond},
+		{name: "poll interval accepted", raw: "1s", want: time.Second},
+		{name: "below river minimum rejected", raw: "999us", wantErr: true},
+		{name: "above poll interval rejected", raw: "1001ms", wantErr: true},
 		{name: "zero rejected", raw: "0s", wantErr: true},
 		{name: "negative rejected", raw: "-1ms", wantErr: true},
 		{name: "unparseable rejected", raw: "fast", wantErr: true},

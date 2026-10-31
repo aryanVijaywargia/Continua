@@ -97,7 +97,8 @@ func TestNewClient_DefaultsDrainRollupBurstFasterThanFetchCadence(t *testing.T) 
 	)
 	client := newRetentionModuleTestClient(t, nil)
 	ctx := context.Background()
-	q := store.New(testutil.TestDB(t)).Queries()
+	pool := testutil.TestDB(t)
+	q := store.New(pool).Queries()
 	projectID := testutil.CreateTestProject(t, ctx, q)
 
 	params := make([]river.InsertManyParams, jobCount)
@@ -107,16 +108,25 @@ func TestNewClient_DefaultsDrainRollupBurstFasterThanFetchCadence(t *testing.T) 
 	}
 	inserted, err := client.InsertMany(ctx, params)
 	require.NoError(t, err)
+	jobIDs := make([]int64, 0, jobCount)
 	pending := make(map[int64]struct{}, jobCount)
 	for _, res := range inserted {
+		jobIDs = append(jobIDs, res.Job.ID)
 		pending[res.Job.ID] = struct{}{}
 	}
 
 	completed, cancel := client.Subscribe(river.EventKindJobCompleted)
 	t.Cleanup(cancel)
 	require.NoError(t, client.Start(ctx))
+	// Registered after TestDB, so it runs before the pools close.
 	t.Cleanup(func() {
-		_ = client.Stop(context.Background())
+		ctx := context.Background()
+		require.NoError(t, client.Stop(ctx))
+		_, err := pool.Exec(ctx, `DELETE FROM river_job WHERE id = ANY($1)`, jobIDs)
+		require.NoError(t, err)
+		// Traces cascade from the project.
+		_, err = pool.Exec(ctx, `DELETE FROM projects WHERE id = $1`, projectID)
+		require.NoError(t, err)
 	})
 
 	deadline := time.After(cadenceMinimum / 2)
