@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,6 +93,27 @@ func CreateTestProject(t *testing.T, ctx context.Context, q *platform.Queries) u
 	})
 
 	return project.ID
+}
+
+// ForceInsertSQLState makes every insert into table for projectID fail with sqlState
+// until the test ends. Tests use it to force a database error, such as a deadlock
+// (40P01), that no deterministic schedule of real writers could produce on demand.
+//
+//nolint:revive // Keep testing.T first in shared test helper signatures.
+func ForceInsertSQLState(t *testing.T, pool *pgxpool.Pool, table string, projectID uuid.UUID, sqlState string) {
+	t.Helper()
+	ctx := context.Background()
+	name := "force_" + table + "_" + strings.ReplaceAll(projectID.String(), "-", "")
+	_, err := pool.Exec(ctx, fmt.Sprintf(`
+		CREATE FUNCTION %[1]s() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN RAISE EXCEPTION 'forced SQLSTATE %[4]s' USING ERRCODE = '%[4]s'; END $$;
+		CREATE TRIGGER %[1]s BEFORE INSERT ON %[2]s FOR EACH ROW
+		WHEN (NEW.project_id = '%[3]s') EXECUTE FUNCTION %[1]s();`, name, table, projectID, sqlState))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, err := pool.Exec(ctx, fmt.Sprintf(`DROP TRIGGER %[1]s ON %[2]s; DROP FUNCTION %[1]s();`, name, table))
+		require.NoError(t, err)
+	})
 }
 
 // CreateTestTrace creates a test trace and returns its UUID.

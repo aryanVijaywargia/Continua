@@ -30,6 +30,7 @@ import (
 	"github.com/continua-ai/continua/db/gen/go/platform"
 	"github.com/continua-ai/continua/internal/api/middleware"
 	"github.com/continua-ai/continua/internal/otlp"
+	"github.com/continua-ai/continua/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -491,6 +492,39 @@ func TestOTLPTraces_ResponsesUseTheRequestEncoding(t *testing.T) {
 			var status spb.Status
 			require.NoError(t, tt.unmarshal(rec.Body.Bytes(), &status))
 			assert.NotEmpty(t, status.GetMessage())
+		})
+	}
+}
+
+// An OTLP exporter retries only the statuses the spec marks retryable. When an export
+// keeps losing lock conflicts with other writers, it must get 503 with google.rpc.Status
+// UNAVAILABLE in its own encoding, so it retries instead of dropping the spans.
+func TestOTLPTraces_ConflictRetryExhaustionReturnsUnavailable(t *testing.T) {
+	server, s, _, projectID := newOTLPServer(t)
+	testutil.ForceInsertSQLState(t, s.Pool(), "ingest_batches", projectID, "40P01")
+
+	jsonExport := fmt.Sprintf(`{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":%q,
+		"spanId":"0123456789abcdef","name":"root","startTimeUnixNano":"1"}]}]}]}`,
+		hex.EncodeToString(newRawTraceID()))
+
+	tests := []struct {
+		name        string
+		contentType string
+		body        []byte
+		unmarshal   func([]byte, proto.Message) error
+	}{
+		{"protobuf", OTLPTracesContentType, marshalExport(t, rawExport(newRawTraceID(), nil, nil, 1, "root")), proto.Unmarshal},
+		{"json", OTLPTracesJSONContentType, []byte(jsonExport), protojson.Unmarshal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := postOTLP(t, server, projectID, tt.body, map[string]string{"Content-Type": tt.contentType})
+			require.Equal(t, http.StatusServiceUnavailable, rec.Code, "body: %s", rec.Body.String())
+			assert.Equal(t, tt.contentType, rec.Header().Get("Content-Type"))
+
+			var status spb.Status
+			require.NoError(t, tt.unmarshal(rec.Body.Bytes(), &status))
+			assert.Equal(t, int32(14), status.GetCode(), "google.rpc.Code UNAVAILABLE")
 		})
 	}
 }

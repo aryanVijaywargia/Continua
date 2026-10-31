@@ -105,6 +105,7 @@ Continua follows standard REST semantics:
 | `409` | Idempotency / conflict (e.g. `batch_key` mismatch) |
 | `413` | Payload too large (5MB limit on `POST /v1/ingest`) |
 | `429` | Rate-limited |
+| `503` | An inline `POST /v1/ingest` (or OTLP export) lost a lock conflict with concurrent writes on every attempt. Nothing was stored. Retry the same batch |
 | `5xx` | Server error. Retry with backoff |
 
 ## Idempotency

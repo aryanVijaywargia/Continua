@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -97,6 +98,11 @@ func (s *Server) Ingest(w http.ResponseWriter, r *http.Request, params IngestPar
 	if err != nil {
 		if ingest.IsValidationError(err) {
 			writeError(w, http.StatusBadRequest, "validation_error", err.Error())
+			return
+		}
+		if errors.Is(err, ingest.ErrWriteConflict) {
+			writeError(w, http.StatusServiceUnavailable, "ingest_conflict",
+				"The batch conflicted with concurrent writes and was not stored; retry it")
 			return
 		}
 		slog.Error("ingest inline mode failed", "err", err)

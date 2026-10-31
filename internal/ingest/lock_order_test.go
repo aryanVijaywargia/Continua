@@ -244,6 +244,63 @@ func TestProcessBatch_ManyConcurrentBatchesDoNotDeadlock(t *testing.T) {
 	}
 }
 
+// Ingest's own batches lock in one global order, but other writers do not: engine run
+// termination and project deletion lock traces in their own order, and Postgres breaks
+// the resulting deadlock by aborting one transaction. When the batch is the victim,
+// Ingest must rerun the whole transaction, batch claim included, not fail the request.
+func TestServiceIngest_RetriesAfterLosingADeadlock(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	// One connection, so the backend pid read below is the one Ingest runs on.
+	ingestPool := newTestPool(t, pool, 1)
+	s := store.New(ingestPool)
+	processor := ingest.NewProcessor(s, nil)
+	service := ingest.NewService(s, nil, processor, nil)
+	projectID := testutil.CreateTestProject(t, ctx, s.Queries())
+	p := "retry-" + uuid.NewString()[:8] + "-"
+	traces := []ingest.TraceInput{{TraceID: p + "a"}, {TraceID: p + "b"}}
+
+	_, err := runBatch(ctx, s, processor, projectID, &ingest.IngestRequest{Traces: traces}, nil)
+	require.NoError(t, err)
+	var ingestPID int32
+	require.NoError(t, ingestPool.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&ingestPID))
+
+	const lockTrace = `SELECT 1 FROM traces WHERE project_id = $1 AND trace_id = $2 FOR UPDATE`
+	// The foreign writer takes b and then a, against the batch's sorted order.
+	writer, err := pool.Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = writer.Rollback(ctx) }()
+	_, err = writer.Exec(ctx, lockTrace, projectID, p+"b")
+	require.NoError(t, err)
+
+	type outcome struct {
+		resp *ingest.IngestResponse
+		err  error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		resp, err := service.Ingest(ctx, projectID, &ingest.IngestRequest{BatchKey: p + "batch", Traces: traces})
+		done <- outcome{resp, err}
+	}()
+	waitForLockWait(t, pool, ingestPID)
+
+	// The batch holds a and waits on b. It has waited longer than the writer will, so its
+	// deadlock check fires first and aborts it, which frees a for the writer.
+	_, err = writer.Exec(ctx, lockTrace, projectID, p+"a")
+	require.NoError(t, err, "the batch, not the writer, must be the deadlock victim")
+	require.NoError(t, writer.Rollback(ctx))
+
+	got := <-done
+	require.NoError(t, got.err)
+	assert.Equal(t, string(ingest.IngestStatusOK), got.resp.Status)
+	var completed int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM ingest_batches WHERE project_id = $1 AND batch_key = $2 AND status = 'completed'`,
+		projectID, p+"batch",
+	).Scan(&completed))
+	assert.Equal(t, 1, completed, "the retried claim must leave exactly one completed batch")
+}
+
 // newTestPool opens another pool on the test database, capped at maxConns connections.
 func newTestPool(t *testing.T, pool *pgxpool.Pool, maxConns int32) *pgxpool.Pool {
 	t.Helper()

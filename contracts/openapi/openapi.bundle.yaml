@@ -76,6 +76,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SizeError'
+        '503':
+          description: The inline batch lost a lock conflict with concurrent writes on every attempt and nothing was stored; retry the same batch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/traces:
     post:
       operationId: OTLPTraces
@@ -156,6 +162,17 @@ paths:
                 format: binary
         '415':
           description: Unsupported Content-Type or Content-Encoding; body is a google.rpc.Status in the request's encoding (protobuf for an unsupported Content-Type)
+          content:
+            application/x-protobuf:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+        '503':
+          description: The export lost a lock conflict with concurrent writes on every attempt and nothing was stored; body is a google.rpc.Status with code UNAVAILABLE in the request's encoding, which OTLP exporters retry
           content:
             application/x-protobuf:
               schema:

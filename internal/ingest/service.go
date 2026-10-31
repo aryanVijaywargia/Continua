@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/riverqueue/river"
 
@@ -29,7 +31,21 @@ const (
 	batchStatusQueued         = "queued"
 )
 
+const (
+	conflictAttempts = 3
+	// conflictBackoff is the backoff step between conflict retries. Retry n waits n
+	// steps plus up to one step of jitter.
+	conflictBackoff = 20 * time.Millisecond
+
+	sqlStateDeadlock             = "40P01"
+	sqlStateSerializationFailure = "40001"
+)
+
 var errUnknownBatchStatus = errors.New("unknown batch status")
+
+// ErrWriteConflict reports that an inline batch lost a lock conflict with concurrent
+// writers on every attempt. Nothing was written, and the client can resend the batch.
+var ErrWriteConflict = errors.New("ingest kept conflicting with concurrent writes")
 
 // Service handles synchronous and asynchronous batch ingestion flows.
 type Service struct {
@@ -100,12 +116,28 @@ func (s *Service) TrueAsyncDefault() bool {
 	return s.trueAsyncDefault
 }
 
-// Ingest processes a batch inline and returns once all writes are committed.
+// Ingest processes a batch inline and returns once all writes are committed. A batch
+// whose transaction loses a deadlock or serialization conflict runs again from the
+// start, batch claim included; when every attempt loses, the error wraps
+// ErrWriteConflict.
 func (s *Service) Ingest(ctx context.Context, projectID uuid.UUID, req *IngestRequest) (*IngestResponse, error) {
 	if err := s.processor.Validate(req); err != nil {
 		return nil, err
 	}
 
+	var resp *IngestResponse
+	err := retryOnConflict(ctx, projectID, req.BatchKey, func() error {
+		var err error
+		resp, err = s.ingestOnce(ctx, projectID, req)
+		return err
+	})
+	return resp, err
+}
+
+// ingestOnce claims and processes a batch in one transaction. A failed attempt rolls
+// back its claim along with every other write, so the next attempt claims afresh and
+// reports a duplicate only if another request committed the same batch key meanwhile.
+func (s *Service) ingestOnce(ctx context.Context, projectID uuid.UUID, req *IngestRequest) (*IngestResponse, error) {
 	tx, err := s.store.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -176,6 +208,50 @@ func (s *Service) Ingest(ctx context.Context, projectID uuid.UUID, req *IngestRe
 		AcceptedCount: result.AcceptedCount,
 		RejectedCount: result.RejectedCount,
 	}, nil
+}
+
+// retryOnConflict runs op up to conflictAttempts times while it fails with a deadlock
+// or serialization failure. Ingest locks rows in one global order, so ingest batches
+// never deadlock each other, but other writers do not follow it: engine run
+// termination and project deletion can still close a cycle with a batch, and Postgres
+// then aborts one transaction. Each retry waits a short jittered backoff, so the
+// winner can commit first.
+func retryOnConflict(ctx context.Context, projectID uuid.UUID, batchKey string, op func() error) error {
+	for attempt := 1; ; attempt++ {
+		err := op()
+		code := conflictSQLState(err)
+		if code == "" {
+			return err
+		}
+		if attempt == conflictAttempts {
+			return fmt.Errorf("%w: %d attempts, last SQLSTATE %s: %w", ErrWriteConflict, attempt, code, err)
+		}
+
+		slog.Warn("ingest_conflict_retry",
+			"batch_key", batchKey,
+			"project_id", projectID,
+			"attempt", attempt,
+			"sqlstate", code,
+			"err", err,
+		)
+		backoff := time.NewTimer(time.Duration(attempt)*conflictBackoff + rand.N(conflictBackoff))
+		select {
+		case <-ctx.Done():
+			backoff.Stop()
+			return fmt.Errorf("ingest retry after SQLSTATE %s: %w", code, ctx.Err())
+		case <-backoff.C:
+		}
+	}
+}
+
+// conflictSQLState returns the SQLSTATE of the deadlock or serialization failure in
+// err's chain, or "" when err is not one.
+func conflictSQLState(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && (pgErr.Code == sqlStateDeadlock || pgErr.Code == sqlStateSerializationFailure) {
+		return pgErr.Code
+	}
+	return ""
 }
 
 // AcceptAsync validates a batch, durably stores its payload, and enqueues a background job.

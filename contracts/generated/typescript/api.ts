@@ -1673,6 +1673,15 @@ export interface operations {
                     "application/json": components["schemas"]["SizeError"];
                 };
             };
+            /** @description The inline batch lost a lock conflict with concurrent writes on every attempt and nothing was stored; retry the same batch */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     OTLPTraces: {
@@ -1737,6 +1746,16 @@ export interface operations {
             };
             /** @description Unsupported Content-Type or Content-Encoding; body is a google.rpc.Status in the request's encoding (protobuf for an unsupported Content-Type) */
             415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-protobuf": string;
+                    "application/json": string;
+                };
+            };
+            /** @description The export lost a lock conflict with concurrent writes on every attempt and nothing was stored; body is a google.rpc.Status with code UNAVAILABLE in the request's encoding, which OTLP exporters retry */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
