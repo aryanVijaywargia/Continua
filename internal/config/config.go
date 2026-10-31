@@ -49,12 +49,23 @@ type IngestConfig struct {
 }
 
 // JobsConfig holds River queue worker configuration.
+//
+// A River queue fetches at most MaxWorkers jobs per fetch and fetches at most
+// once per FetchCooldown, so its throughput ceiling is
+// workers / FetchCooldown even when each job takes a few milliseconds.
 type JobsConfig struct {
 	IngestWorkers      int
 	RollupWorkers      int
 	MaintenanceWorkers int
 	DefaultWorkers     int
+	FetchCooldown      time.Duration
 }
+
+// DefaultRiverFetchCooldown is the RIVER_FETCH_COOLDOWN default. River's own
+// 100ms default caps a 10-worker queue at 100 jobs/s. Rollup jobs take ~1.5ms
+// and ingest jobs ~4ms, so at 2ms job cost and database capacity set the drain
+// rate. An idle queue still fetches only on insert notification or the 1s poll.
+const DefaultRiverFetchCooldown = 2 * time.Millisecond
 
 // EngineConfig holds public engine API rollout settings.
 type EngineConfig struct {
@@ -206,12 +217,20 @@ func loadJobsConfig() (JobsConfig, error) {
 	if err != nil {
 		return JobsConfig{}, err
 	}
+	fetchCooldown, err := loadDuration("RIVER_FETCH_COOLDOWN", DefaultRiverFetchCooldown)
+	if err != nil {
+		return JobsConfig{}, err
+	}
+	if fetchCooldown == 0 {
+		return JobsConfig{}, errors.New("RIVER_FETCH_COOLDOWN must be greater than zero")
+	}
 
 	return JobsConfig{
 		IngestWorkers:      ingestWorkers,
 		RollupWorkers:      rollupWorkers,
 		MaintenanceWorkers: maintenanceWorkers,
 		DefaultWorkers:     defaultWorkers,
+		FetchCooldown:      fetchCooldown,
 	}, nil
 }
 

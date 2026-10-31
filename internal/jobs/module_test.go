@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -83,6 +84,51 @@ func TestNewClient_WithRetentionConfig_DoesNotRunRetentionOnStart(t *testing.T) 
 
 	waitForJobKindCount(t, client, jobargs.CleanupArgs{}.Kind(), 1)
 	assertJobKindCount(t, client, jobargs.RetentionArgs{}.Kind(), 0)
+}
+
+// River's 100ms default fetch cooldown capped a 10-worker queue at 100 jobs/s
+// no matter how cheap each job was (#316).
+func TestNewClient_DefaultsDrainRollupBurstFasterThanFetchCadence(t *testing.T) {
+	const (
+		jobCount       = 500
+		rollupWorkers  = 10
+		riverCooldown  = 100 * time.Millisecond
+		cadenceMinimum = (jobCount/rollupWorkers - 1) * riverCooldown
+	)
+	client := newRetentionModuleTestClient(t, nil)
+	ctx := context.Background()
+	q := store.New(testutil.TestDB(t)).Queries()
+	projectID := testutil.CreateTestProject(t, ctx, q)
+
+	params := make([]river.InsertManyParams, jobCount)
+	for i := range params {
+		traceID := testutil.CreateTestTrace(t, ctx, q, projectID, "drain-"+uuid.NewString())
+		params[i] = river.InsertManyParams{Args: jobargs.TraceRollupArgs{TraceID: traceID}}
+	}
+	inserted, err := client.InsertMany(ctx, params)
+	require.NoError(t, err)
+	pending := make(map[int64]struct{}, jobCount)
+	for _, res := range inserted {
+		pending[res.Job.ID] = struct{}{}
+	}
+
+	completed, cancel := client.Subscribe(river.EventKindJobCompleted)
+	t.Cleanup(cancel)
+	require.NoError(t, client.Start(ctx))
+	t.Cleanup(func() {
+		_ = client.Stop(context.Background())
+	})
+
+	deadline := time.After(cadenceMinimum / 2)
+	for len(pending) > 0 {
+		select {
+		case event := <-completed:
+			delete(pending, event.Job.ID)
+		case <-deadline:
+			t.Fatalf("%d of %d rollup jobs still pending after %s; the queue drains at fetch cadence, not job cost",
+				len(pending), jobCount, cadenceMinimum/2)
+		}
+	}
 }
 
 func newRetentionModuleTestClient(t *testing.T, cfg *config.Config) *river.Client[pgx.Tx] {

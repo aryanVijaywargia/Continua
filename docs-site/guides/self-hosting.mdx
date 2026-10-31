@@ -28,6 +28,7 @@ The server reads configuration from environment variables (see
 | `RIVER_QUEUE_ROLLUP_WORKERS` | `10` | Rollup job concurrency |
 | `RIVER_QUEUE_MAINTENANCE_WORKERS` | `1` | Cleanup / maintenance job concurrency |
 | `RIVER_QUEUE_DEFAULT_WORKERS` | `1` | Catch-all queue concurrency |
+| `RIVER_FETCH_COOLDOWN` | `2ms` | Minimum gap between job fetches per queue. A queue drains at most workers ÷ cooldown jobs/s |
 
 Set `HOST=0.0.0.0` explicitly when you intend to expose the server on all network interfaces. If a reverse proxy forwards to `127.0.0.1:8080`, every request appears to come from a loopback peer, which exposes anonymous project bootstrap through the proxy.
 
@@ -102,7 +103,17 @@ binary to deploy today. The implemented queues are:
 - **rollups**: recomputes trace-level aggregates (status, duration, cost, token counts)
 - **cleanup**: deletes processed async payload blobs after retention
 
-Scale by increasing process count or tuning `RIVER_QUEUE_*` pool sizes.
+Each queue fetches at most its worker count of jobs per fetch, and fetches at most once
+per `RIVER_FETCH_COOLDOWN`. Its ceiling is therefore workers ÷ cooldown: with the defaults,
+2,000 ingest batches/s and 5,000 rollups/s. Below that ceiling, job cost and Postgres set the
+rate. On an Apple-silicon laptop the defaults drained 700 to 900 five-span async batches/s and
+4,000 to 4,600 rollups/s. Raising the cooldown lowers the ceiling; an idle queue fetches only on an
+insert notification or its 1-second poll, whatever the cooldown.
+
+Workers share the server's Postgres pool, which is fixed at 25 connections (a `pool_max_conns`
+in `DATABASE_URL` is ignored). A busy worker holds one connection, so raising the combined
+`RIVER_QUEUE_*_WORKERS` well past 20 makes workers and API requests wait for connections
+instead of draining faster. Scale beyond that by running more server processes.
 
 ## Health check
 
