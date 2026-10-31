@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { formatDuration } from '../../utils/format';
+import { formatDuration, getTraceTiming } from '../../utils/format';
 import {
   buildTimelinePhases,
   buildTimelineRows,
@@ -10,6 +10,7 @@ import {
   type TimelineRowLevel,
   type TimelineRowType,
 } from '../../utils/timelineRows';
+import { deriveWaterfallWindow } from '../../utils/waterfallTime';
 import { InspectorEmptyState } from './CompactPayloadInspector';
 import { useTraceDetailWorkspace } from './traceDetailWorkspaceContext';
 
@@ -31,9 +32,20 @@ export function TraceTimelineSection() {
     () => new Date(trace.started_at).getTime(),
     [trace.started_at]
   );
+  const { running } = getTraceTiming(trace);
+  // A terminal trace without an end time is bounded by its last recorded activity.
+  const boundedByActivity = !running && !trace.ended_at;
   const traceEndMs = useMemo(
-    () => (trace.ended_at ? new Date(trace.ended_at).getTime() : Date.now()),
-    [trace.ended_at]
+    () =>
+      running
+        ? Date.now()
+        : (deriveWaterfallWindow({
+            traceStartedAt: trace.started_at,
+            traceEndedAt: trace.ended_at,
+            spans,
+            events,
+          })?.endMs ?? traceStartMs),
+    [events, running, spans, trace.ended_at, trace.started_at, traceStartMs]
   );
   const totalMs = Math.max(traceEndMs - traceStartMs, 1);
 
@@ -153,7 +165,13 @@ export function TraceTimelineSection() {
           <span>{formatDuration(totalMs * 0.25)}</span>
           <span>{formatDuration(totalMs * 0.5)}</span>
           <span>{formatDuration(totalMs * 0.75)}</span>
-          <span>{formatDuration(totalMs)}</span>
+          {boundedByActivity ? (
+            <span title="No end time recorded. The range ends at the last recorded span or event.">
+              {`${formatDuration(totalMs)} · last activity`}
+            </span>
+          ) : (
+            <span>{formatDuration(totalMs)}</span>
+          )}
         </div>
       </div>
 

@@ -6,10 +6,11 @@ import { ReadOnlyBadge, UnverifiedPill } from '../../components/DataState';
 import { Btn, Chip, StatusDot } from '../../components/DebuggerKit';
 import { hasRecordedUsage } from '../../components/trace/traceSteps';
 import {
-  calculateDuration,
   formatCost,
   formatDerivedDuration,
   formatTokens,
+  getTraceTiming,
+  UNAVAILABLE_DURATION_TITLE,
 } from '../../utils/format';
 import { appendProjectToPath } from '../../utils/projectSearchParams';
 import { EngineWaitStateSummary } from './TraceDetailChrome';
@@ -57,11 +58,12 @@ export function TraceDetailHeader({
     trace,
   } = useTraceDetailWorkspace();
 
-  const duration = formatDerivedDuration(calculateDuration(trace.started_at, trace.ended_at));
   const label = returnLabel(returnTo);
   const usageRecorded = hasRecordedUsage(trace);
   const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
   const status = timelineStatus ?? trace.status;
+  const durationMs = getTraceTiming({ ...trace, status }).durationMs;
+  const duration = formatDerivedDuration(durationMs);
 
   const contextButton = (
     <button
@@ -172,7 +174,11 @@ export function TraceDetailHeader({
         <Divider />
         <span
           className="font-mono text-xs tabular-nums text-[var(--c-text-secondary)]"
-          title="Computed from the trace start and end timestamps."
+          title={
+            durationMs == null
+              ? UNAVAILABLE_DURATION_TITLE
+              : 'Computed from the trace start and end timestamps.'
+          }
         >
           {duration}
         </span>

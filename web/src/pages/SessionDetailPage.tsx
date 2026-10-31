@@ -41,11 +41,11 @@ import {
 } from '../utils/tracesSearchParams';
 import { appendProjectToPath } from '../utils/projectSearchParams';
 import {
-  calculateDuration,
   formatCost,
   formatDerivedDuration,
   formatExactTime,
   formatTokens,
+  getTraceTiming,
 } from '../utils/format';
 import { summarizeTimelineEvent } from '../utils/timeline';
 import {
@@ -1525,7 +1525,7 @@ function SessionTraceRow({
   trace: Trace;
   returnTo: string;
 }) {
-  const duration = calculateDuration(trace.started_at, trace.ended_at);
+  const duration = getTraceTiming(trace).durationMs;
   const totalTokens = (trace.total_tokens_in ?? 0) + (trace.total_tokens_out ?? 0);
   const usageVerified = !isUsageUnverified([
     trace.total_tokens_in,

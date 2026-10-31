@@ -12,7 +12,7 @@ import { ReadablePayloadView } from '../../components/trace/ReadablePayloadView'
 import { formatPreciseTime } from '../../components/trace/traceSteps';
 import type { StepDuration } from '../../components/trace/traceSteps';
 import type { StepDurations } from '../../components/trace/useStepDurations';
-import { formatCost, formatDerivedDuration, formatTokens } from '../../utils/format';
+import { formatCost, formatDerivedDuration, formatTokens, getTraceTiming } from '../../utils/format';
 import { appendProjectToPath } from '../../utils/projectSearchParams';
 import { CompactPayloadInspector, InspectorEmptyState } from './CompactPayloadInspector';
 import { TraceStatePanels } from './TraceStatePanels';
@@ -155,7 +155,7 @@ function TraceSummaryInspector() {
             </KeyValueRow>
             <KeyValueRow label="Ended">
               <span className="font-mono">
-                {trace.ended_at ? formatPreciseTime(trace.ended_at) : 'Still running'}
+                {getTraceTiming(trace).running ? 'Still running' : formatPreciseTime(trace.ended_at)}
               </span>
             </KeyValueRow>
             {trace.user_id ? (

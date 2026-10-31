@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
-import { formatCost, formatDuration, formatTokens } from '../../utils/format';
+import { formatCost, formatDuration, formatTokens, getTraceTiming } from '../../utils/format';
 import {
   bucketLatencies,
   buildSpanMetricSeries,
@@ -46,9 +46,7 @@ export function TraceMetricsSection() {
     (event) => event.event_type === 'error' || event.event_type === 'exception',
   ).length;
 
-  const traceDuration = trace.ended_at
-    ? new Date(trace.ended_at).getTime() - new Date(trace.started_at).getTime()
-    : 0;
+  const timing = getTraceTiming(trace);
   const errorRate = totalSpans === 0 ? 0 : (failedSpans / totalSpans) * 100;
   const tokensIn = trace.total_tokens_in ?? 0;
   const tokensOut = trace.total_tokens_out ?? 0;
@@ -64,9 +62,12 @@ export function TraceMetricsSection() {
   const cards: MetricCardSpec[] = [
     {
       label: 'Duration',
-      value: formatDuration(traceDuration || totalLatencyMs),
-      delta:
-        traceDuration > 0 ? `${formatDuration(totalLatencyMs)} span time` : 'Trace still running',
+      value: formatDuration(timing.durationMs),
+      delta: timing.running
+        ? 'Trace still running'
+        : timing.durationMs == null
+          ? 'No end time recorded'
+          : `${formatDuration(totalLatencyMs)} span time`,
       tone: trace.status === 'FAILED' ? 'red' : trace.status === 'RUNNING' ? 'amber' : 'muted',
       series: series.latency.length > 0 ? series.latency : [0],
       anomaly: trace.status === 'FAILED',

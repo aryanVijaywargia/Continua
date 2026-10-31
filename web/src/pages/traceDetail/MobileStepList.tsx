@@ -5,7 +5,7 @@ import {
   isSlowStep,
 } from '../../components/trace/traceSteps';
 import type { StepDurations } from '../../components/trace/useStepDurations';
-import { calculateDuration, formatDerivedDuration } from '../../utils/format';
+import { formatDerivedDuration, getTraceTiming } from '../../utils/format';
 import { TraceStatePanels } from './TraceStatePanels';
 import { useTraceDetailWorkspace } from './traceDetailWorkspaceContext';
 
@@ -19,7 +19,7 @@ export function MobileStepList({
 }) {
   const { selectedSpanId, spans, trace } = useTraceDetailWorkspace();
   const [showFast, setShowFast] = useState(false);
-  const traceMs = calculateDuration(trace.started_at, trace.ended_at);
+  const traceMs = getTraceTiming(trace).durationMs;
 
   const { fast, slow } = useMemo(() => {
     const sorted = [...spans].sort(

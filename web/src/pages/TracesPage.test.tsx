@@ -891,6 +891,32 @@ describe('TracesPage', () => {
     expect(link).toHaveAttribute('href', `/traces/${TRACE_ONE.id}`);
   });
 
+  it('shows no duration instead of running for terminal traces without an end time', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        list: () =>
+          jsonResponse({
+            traces: [
+              { ...TRACE_ONE, status: 'COMPLETED', ended_at: undefined },
+              { ...TRACE_TWO, status: 'FAILED', ended_at: undefined },
+            ],
+            total: 2,
+          }),
+      })
+    );
+
+    renderTraceRoutes(['/traces']);
+
+    for (const name of [TRACE_ONE.name, TRACE_TWO.name]) {
+      const row = (await screen.findByRole('link', { name })).closest('tr') as HTMLElement;
+      expect(within(row).queryByText('running')).not.toBeInTheDocument();
+      expect(within(row).getByText('—')).toHaveAttribute(
+        'title',
+        'No end time recorded, so the duration is unavailable.'
+      );
+    }
+  });
+
   it('renders trace ID as the secondary trace row identifier', async () => {
     fetchMock.mockImplementation(buildFetchHandler());
 
