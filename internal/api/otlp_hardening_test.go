@@ -22,7 +22,6 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -394,22 +393,32 @@ func TestNativeIngest_ExplicitRunningStatusReopensACompletedTrace(t *testing.T) 
 // M6: Content-Type
 // ---------------------------------------------------------------------------
 
-// OTLP/JSON is a spec-defined encoding and a documented Collector option.
+// OTLP/JSON is a spec-defined encoding and a documented Collector option. It encodes
+// traceId and spanId as case-insensitive hex, not the base64 that the standard protobuf
+// JSON mapping uses for bytes, so the fixture is written by hand rather than with
+// protojson.Marshal.
 func TestOTLPTraces_JSONEncodedExportIsIngested(t *testing.T) {
 	server, _, q, projectID := newOTLPServer(t)
 
-	traceID := newRawTraceID()
-	export := rawExport(traceID, []*commonpb.KeyValue{stringKV("service.name", "json-agent")},
-		[]*commonpb.KeyValue{stringKV(otelAttrSessionID, "json-session")}, 1, "json-root")
+	traceID := hex.EncodeToString(newRawTraceID())
+	start := time.Now().UTC().Add(-time.Second).UnixNano()
+	body := fmt.Sprintf(`{"resourceSpans":[{"scopeSpans":[{"spans":[
+		{"traceId":%[1]q,"spanId":"0123456789abcdef","parentSpanId":"","name":"json-root",
+		 "startTimeUnixNano":"%[3]d","endTimeUnixNano":"%[4]d"},
+		{"traceId":%[2]q,"spanId":"0a0b0c0d0e0f1011","parentSpanId":"0123456789ABCDEF","name":"json-child",
+		 "startTimeUnixNano":"%[3]d","endTimeUnixNano":"%[4]d",
+		 "links":[{"traceId":%[2]q,"spanId":"FEDCBA9876543210"}]}]}]}]}`,
+		traceID, strings.ToUpper(traceID), start, start+int64(time.Millisecond))
 
-	body, err := protojson.Marshal(export)
-	require.NoError(t, err)
+	rec := postOTLP(t, server, projectID, []byte(body), map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", errorMessageOf(t, rec))
 
-	rec := postOTLP(t, server, projectID, body, map[string]string{"Content-Type": "application/json"})
-	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
-
-	trace := requireTraceByExternalID(t, q, projectID, hex.EncodeToString(traceID))
-	assert.Equal(t, hex.EncodeToString(traceID), trace.TraceID)
+	spans := spansByExternalID(t, q, requireTraceByExternalID(t, q, projectID, traceID))
+	require.Contains(t, spans, "0123456789abcdef")
+	require.Contains(t, spans, "0a0b0c0d0e0f1011")
+	child := spans["0a0b0c0d0e0f1011"]
+	require.NotNil(t, child.ParentSpanID)
+	assert.Equal(t, "0123456789abcdef", *child.ParentSpanID)
 }
 
 func TestOTLPTraces_UnsupportedContentTypeIsRejected(t *testing.T) {

@@ -14,7 +14,6 @@ import (
 
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/continua-ai/continua/internal/ingest"
@@ -96,8 +95,7 @@ func (s *Server) OTLPTraces(w http.ResponseWriter, r *http.Request) {
 		err = proto.Unmarshal(body, &export)
 	case OTLPTracesJSONContentType:
 		// OTLP/JSON is spec-defined and a documented Collector option (`encoding: json`).
-		// Unknown fields are discarded so a newer exporter is not rejected wholesale.
-		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(body, &export)
+		err = otlp.UnmarshalJSON(body, &export)
 	default:
 		writeOTLPError(w, http.StatusUnsupportedMediaType, otlpCodeInvalidArgument,
 			"Unsupported Content-Type "+mediaType+"; expected "+OTLPTracesContentType+" or "+OTLPTracesJSONContentType)
