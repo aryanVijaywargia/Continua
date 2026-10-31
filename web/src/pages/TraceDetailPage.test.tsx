@@ -387,6 +387,47 @@ describe('TraceDetailPage', () => {
     expect(within(inspector).getByText('Ended').nextElementSibling).toHaveTextContent('—');
   });
 
+  it('shows an unavailable metrics duration for a completed trace without an end time', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', ended_at: undefined }),
+        spans: () => jsonResponse({ spans: [createSpan({ latency_ms: 1500 })] }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    const sectionTabs = await screen.findByRole('navigation', { name: 'Trace detail sections' });
+    await userEvent.click(within(sectionTabs).getByRole('button', { name: /Metrics/i }));
+    const durationCard = screen.getByText('Duration').closest('div')!.parentElement as HTMLElement;
+    expect(within(durationCard).queryByText('Trace still running')).not.toBeInTheDocument();
+    expect(within(durationCard).queryByText('1.5s')).not.toBeInTheDocument();
+    expect(within(durationCard).getByText('No end time recorded')).toBeInTheDocument();
+  });
+
+  it('bounds the timeline of a completed trace without an end time by its last recorded activity', async () => {
+    fetchMock.mockImplementation(
+      buildFetchHandler({
+        detail: () => jsonResponse({ ...TRACE_DETAIL, status: 'COMPLETED', ended_at: undefined }),
+        timeline: () =>
+          jsonResponse({
+            events: [createTimelineEvent({ timestamp: '2026-03-14T10:00:03.000Z' })],
+            trace_status: 'COMPLETED',
+            has_more: false,
+          }),
+      })
+    );
+
+    renderTraceRoutes([`/traces/${TRACE_ONE.id}`]);
+
+    const sectionTabs = await screen.findByRole('navigation', { name: 'Trace detail sections' });
+    await userEvent.click(within(sectionTabs).getByRole('button', { name: /Events/i }));
+    expect(await screen.findByText('3.0s · last activity')).toHaveAttribute(
+      'title',
+      'No end time recorded. The range ends at the last recorded span or event.'
+    );
+  });
+
   it('renders engine projection, wait summary, tabs, and control actions', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(
