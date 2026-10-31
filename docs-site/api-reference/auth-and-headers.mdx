@@ -82,6 +82,13 @@ platform's standard shapes - a JSON `Error` body for `401`, the router's plain-t
 found for `404`. Making that middleware speak protobuf for one path would change every
 other endpoint.
 
+Continua ingests only the trace signal. `POST /v1/metrics` and `POST /v1/logs`, which an
+OpenTelemetry SDK derives from the same endpoint, return `501 Not Implemented` with a
+`google.rpc.Status` that names `/v1/traces`, whether or not `INGEST_OTLP_ENABLED` is set.
+Like the trace handler's errors, the Status uses the request's encoding: JSON for an
+`application/json` request, protobuf otherwise. An exporter reports this as a permanent
+error.
+
 ## Response codes
 
 Continua follows standard REST semantics:
