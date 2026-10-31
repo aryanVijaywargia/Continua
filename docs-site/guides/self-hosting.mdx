@@ -69,8 +69,8 @@ The durable engine surface ships behind a preview flag. See
 
 OTLP/HTTP trace ingestion ships behind its own preview flag. While it is off,
 `POST /v1/traces` returns `404`. Metrics and logs are not supported:
-`POST /v1/metrics` and `POST /v1/logs` always return `501` with a protobuf
-`google.rpc.Status`.
+`POST /v1/metrics` and `POST /v1/logs` always return `501` with a
+`google.rpc.Status` in the request's encoding, JSON or protobuf.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
