@@ -394,22 +394,32 @@ func TestNativeIngest_ExplicitRunningStatusReopensACompletedTrace(t *testing.T) 
 // M6: Content-Type
 // ---------------------------------------------------------------------------
 
-// OTLP/JSON is a spec-defined encoding and a documented Collector option.
+// OTLP/JSON is a spec-defined encoding and a documented Collector option. It encodes
+// traceId and spanId as case-insensitive hex, not the base64 that the standard protobuf
+// JSON mapping uses for bytes, so the fixture is written by hand rather than with
+// protojson.Marshal.
 func TestOTLPTraces_JSONEncodedExportIsIngested(t *testing.T) {
 	server, _, q, projectID := newOTLPServer(t)
 
-	traceID := newRawTraceID()
-	export := rawExport(traceID, []*commonpb.KeyValue{stringKV("service.name", "json-agent")},
-		[]*commonpb.KeyValue{stringKV(otelAttrSessionID, "json-session")}, 1, "json-root")
+	traceID := hex.EncodeToString(newRawTraceID())
+	start := time.Now().UTC().Add(-time.Second).UnixNano()
+	body := fmt.Sprintf(`{"resourceSpans":[{"scopeSpans":[{"spans":[
+		{"traceId":%[1]q,"spanId":"0123456789abcdef","parentSpanId":"","name":"json-root",
+		 "startTimeUnixNano":"%[3]d","endTimeUnixNano":"%[4]d"},
+		{"traceId":%[2]q,"spanId":"0a0b0c0d0e0f1011","parentSpanId":"0123456789ABCDEF","name":"json-child",
+		 "startTimeUnixNano":"%[3]d","endTimeUnixNano":"%[4]d",
+		 "links":[{"traceId":%[2]q,"spanId":"FEDCBA9876543210"}]}]}]}]}`,
+		traceID, strings.ToUpper(traceID), start, start+int64(time.Millisecond))
 
-	body, err := protojson.Marshal(export)
-	require.NoError(t, err)
+	rec := postOTLP(t, server, projectID, []byte(body), map[string]string{"Content-Type": "application/json"})
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", errorMessageOf(t, rec))
 
-	rec := postOTLP(t, server, projectID, body, map[string]string{"Content-Type": "application/json"})
-	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
-
-	trace := requireTraceByExternalID(t, q, projectID, hex.EncodeToString(traceID))
-	assert.Equal(t, hex.EncodeToString(traceID), trace.TraceID)
+	spans := spansByExternalID(t, q, requireTraceByExternalID(t, q, projectID, traceID))
+	require.Contains(t, spans, "0123456789abcdef")
+	require.Contains(t, spans, "0a0b0c0d0e0f1011")
+	child := spans["0a0b0c0d0e0f1011"]
+	require.NotNil(t, child.ParentSpanID)
+	assert.Equal(t, "0123456789abcdef", *child.ParentSpanID)
 }
 
 func TestOTLPTraces_UnsupportedContentTypeIsRejected(t *testing.T) {
@@ -426,7 +436,8 @@ func TestOTLPTraces_UnsupportedContentTypeIsRejected(t *testing.T) {
 // M7: protobuf Status error bodies
 // ---------------------------------------------------------------------------
 
-// The OTLP spec requires 4xx/5xx bodies to be a protobuf-encoded google.rpc.Status.
+// The OTLP spec requires 4xx/5xx bodies to be a google.rpc.Status, protobuf-encoded for
+// a protobuf request.
 // The Collector parses the body as one and discards the details when it cannot,
 // which is what makes an encoding mismatch undiagnosable in the field.
 func TestOTLPTraces_ErrorResponsesAreProtobufStatus(t *testing.T) {
@@ -442,6 +453,46 @@ func TestOTLPTraces_ErrorResponsesAreProtobufStatus(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(rec.Body.Bytes(), &status),
 		"OTLP error bodies must be a protobuf google.rpc.Status")
 	assert.NotEmpty(t, status.GetMessage(), "the Status carries the explanation the Collector logs")
+}
+
+// The OTLP/HTTP spec requires the response to use the request's Content-Type, on
+// success and on failure, so an OTLP/JSON exporter can decode the Status it gets.
+func TestOTLPTraces_ResponsesUseTheRequestEncoding(t *testing.T) {
+	server, _, _, projectID := newOTLPServer(t)
+
+	start := time.Now().UTC().Add(-time.Second).UnixNano()
+	jsonExport := fmt.Sprintf(`{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":%q,
+		"spanId":"0123456789abcdef","name":"root","startTimeUnixNano":"%d","endTimeUnixNano":"%d"}]}]}]}`,
+		hex.EncodeToString(newRawTraceID()), start, start+int64(time.Millisecond))
+
+	tests := []struct {
+		name        string
+		contentType string
+		body        []byte
+		wantStatus  int
+		unmarshal   func([]byte, proto.Message) error
+	}{
+		{"protobuf success", OTLPTracesContentType, marshalExport(t, rawExport(newRawTraceID(), nil, nil, 1, "root")),
+			http.StatusOK, proto.Unmarshal},
+		{"protobuf error", OTLPTracesContentType, []byte("not an OTLP export"), http.StatusBadRequest, proto.Unmarshal},
+		{"json success", OTLPTracesJSONContentType, []byte(jsonExport), http.StatusOK, protojson.Unmarshal},
+		{"json error", OTLPTracesJSONContentType, []byte(`{}`), http.StatusBadRequest, protojson.Unmarshal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := postOTLP(t, server, projectID, tt.body, map[string]string{"Content-Type": tt.contentType})
+			require.Equal(t, tt.wantStatus, rec.Code, "body: %s", rec.Body.String())
+			assert.Equal(t, tt.contentType, rec.Header().Get("Content-Type"))
+
+			if tt.wantStatus == http.StatusOK {
+				require.NoError(t, tt.unmarshal(rec.Body.Bytes(), &coltracepb.ExportTraceServiceResponse{}))
+				return
+			}
+			var status spb.Status
+			require.NoError(t, tt.unmarshal(rec.Body.Bytes(), &status))
+			assert.NotEmpty(t, status.GetMessage())
+		})
+	}
 }
 
 // The protobuf claim only covers what the handler itself writes. Auth and the

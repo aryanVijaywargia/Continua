@@ -15,8 +15,8 @@ import { AppShell } from './components/AppShell';
 import { OverviewPage } from './pages/OverviewPage';
 import { LandingPage } from './pages/LandingPage';
 import {
-  Auth0RuntimeProvider,
   ConsoleRoute,
+  RuntimeAuthProvider,
   useRuntimeAuthState,
 } from './auth/runtime';
 
@@ -29,7 +29,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <BrowserRouter>
-          <Auth0RuntimeProvider auth={auth}>
+          <RuntimeAuthProvider auth={auth}>
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route element={<ConsoleRoute auth={auth} />}>
@@ -48,7 +48,7 @@ export function App() {
                 </Route>
               </Route>
             </Routes>
-          </Auth0RuntimeProvider>
+          </RuntimeAuthProvider>
         </BrowserRouter>
       </ThemeProvider>
     </QueryClientProvider>

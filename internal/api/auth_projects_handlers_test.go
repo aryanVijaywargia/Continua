@@ -15,7 +15,7 @@ import (
 	"github.com/continua-ai/continua/internal/testutil"
 )
 
-func TestGetAuthConfig_DisabledReturnsOnlyEnabledFalse(t *testing.T) {
+func TestGetAuthConfig_DefaultReturnsEmptyObject(t *testing.T) {
 	server := NewServer(nil, nil)
 
 	rec := httptest.NewRecorder()
@@ -23,14 +23,7 @@ func TestGetAuthConfig_DisabledReturnsOnlyEnabledFalse(t *testing.T) {
 
 	server.GetAuthConfig(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
-
-	resp := decodeJSONBody[AuthConfig](t, rec)
-	assert.False(t, resp.Enabled)
-	assert.Nil(t, resp.Domain)
-	assert.Nil(t, resp.ClientId)
-	assert.Nil(t, resp.Audience)
-	assert.Nil(t, resp.PublicDemoEnabled)
-	assert.Nil(t, resp.PublicDemoLabel)
+	assert.JSONEq(t, `{}`, rec.Body.String())
 }
 
 func TestGetAuthConfig_PublicDemoReturnsDemoFields(t *testing.T) {
@@ -47,10 +40,6 @@ func TestGetAuthConfig_PublicDemoReturnsDemoFields(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	resp := decodeJSONBody[AuthConfig](t, rec)
-	assert.False(t, resp.Enabled)
-	assert.Nil(t, resp.Domain)
-	assert.Nil(t, resp.ClientId)
-	assert.Nil(t, resp.Audience)
 	require.NotNil(t, resp.PublicDemoEnabled)
 	require.NotNil(t, resp.PublicDemoLabel)
 	assert.True(t, *resp.PublicDemoEnabled)

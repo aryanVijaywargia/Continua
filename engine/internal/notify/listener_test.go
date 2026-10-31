@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	enginenotify "github.com/continua-ai/continua/engine/internal/notify"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
 	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
@@ -44,11 +46,25 @@ func TestListenerReconnectsAfterBackendKill(t *testing.T) {
 	waitForListenerHealthy(t, listener, done, 5*time.Second)
 	drainWakes(runsWake)
 
+	// A runtime listener on another database shares the application name and
+	// must survive the termination below.
+	bystanderConfig, err := pgx.ParseConfig(enginetest.NewTestDatabase(t).DatabaseURL)
+	if err != nil {
+		t.Fatalf("parse bystander database URL error = %v", err)
+	}
+	bystanderConfig.RuntimeParams["application_name"] = "continua-engine-notify"
+	bystander, err := pgx.ConnectConfig(context.Background(), bystanderConfig)
+	if err != nil {
+		t.Fatalf("connect bystander error = %v", err)
+	}
+	t.Cleanup(func() { _ = bystander.Close(context.Background()) })
+
 	var killed bool
 	if err := db.Pool.QueryRow(context.Background(), `
 		SELECT COALESCE(bool_or(pg_terminate_backend(pid)), false)
 		FROM pg_stat_activity
 		WHERE application_name = 'continua-engine-notify'
+		  AND datname = current_database()
 		  AND pid <> pg_backend_pid()
 	`).Scan(&killed); err != nil {
 		t.Fatalf("terminate listener backend error = %v", err)
@@ -64,6 +80,10 @@ func TestListenerReconnectsAfterBackendKill(t *testing.T) {
 		t.Fatalf("pg_notify(%s) after reconnect error = %v", publicnotify.ChannelRuns, err)
 	}
 	assertWake(t, runsWake, 3*time.Second)
+
+	if err := bystander.Ping(context.Background()); err != nil {
+		t.Fatalf("bystander listener on another database was terminated: %v", err)
+	}
 }
 
 func discardLogger() *slog.Logger {

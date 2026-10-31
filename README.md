@@ -88,7 +88,7 @@ It's most useful when you need to answer: what failed first, what changed during
 - **Durable ingest path**: project-scoped API key auth, idempotent batches via `batch_key`, sync ingest, opt-in async ingest (`X-Continua-Async-Version: 2`), and batch polling.
 - **Background processing**: River workers handle async ingest, trace rollups, and payload cleanup.
 - **Embedded operator console**: the Vite React app is built into `internal/web/static/` and served by the Go binary. Includes a `⌘K` command palette, dark/light/system theming, and URL-driven filter state.
-- **Project & operator auth**: first-class `POST /api/projects` with rotate/delete/list endpoints, plus optional Auth0 operator login gated by an email allow-list (see [Auth0 setup](./docs-site/guides/auth0-setup.mdx)).
+- **Project & API-key auth**: first-class `POST /api/projects` with rotate/delete/list endpoints, project-scoped API keys, and an opt-in API-key-free local single-user mode for loopback callers (see [projects & auth](./docs-site/concepts/projects-and-auth.mdx)).
 - **Engine runs console**: `/engine/runs` lists durable engine runs, surfaces pending activity and inbox work, and exposes signal / suspend / resume / cancel / terminate against the engine control endpoints (preview).
 - **Python SDK**: `trace`, `span`, `session`, `event`, batching, retries, and async polling live under `sdks/python`. SDK also exports engine-control helpers for the preview engine surface; see [Roadmap](./docs-site/roadmap.mdx) before relying on them in production.
 - **Typed events**: Continua emits 11 event kinds (`log`, `error`, `exception`, `message`, `metric`, `custom`, `state_change`, `decision`, `effect`, `wait`, `snapshot_marker`); see the [events concept guide](./docs-site/concepts/events.mdx).
@@ -176,7 +176,7 @@ After changing OpenAPI, sqlc queries, WebSocket schemas, or migrations that affe
 
 Continua is in alpha. The authoritative status breakdown of what's shippable, what's preview, and what's coming next lives at [`docs-site/roadmap.mdx`](./docs-site/roadmap.mdx).
 
-Shippable today: authenticated REST ingest, Postgres persistence, River background jobs, trace/session/timeline/compare read APIs, the embedded React debugger (incl. engine runs console), project & API-key management, Auth0 operator login, and the Python SDK.
+Shippable today: authenticated REST ingest, Postgres persistence, River background jobs, trace/session/timeline/compare read APIs, the embedded React debugger (incl. engine runs console), project & API-key management, and the Python SDK.
 
 Preview: durable engine workflow execution: the `continua-engine` worker runtime runs Go-defined workflows end-to-end with crash-recovery (event-sourced history + replay, activities, timers, signals, child workflows), but the public `/v1/engine/*` REST control plane is preview-gated, authoring is Go-only, and there's no production path for registering arbitrary workflow definitions yet.
 
@@ -188,7 +188,7 @@ Early stub (don't rely on yet): the TypeScript SDK (`sdks/typescript`) has real 
 
 The full documentation site lives under [`docs-site/`](./docs-site/) (Mintlify) and is organised into six tabs:
 
-- **Guides**: quickstart, [instrument your app](./docs-site/guides/instrument-your-app.mdx), [installation](./docs-site/guides/installation.mdx), [self-hosting](./docs-site/guides/self-hosting.mdx), [Auth0 setup](./docs-site/guides/auth0-setup.mdx), [managing projects](./docs-site/guides/managing-projects.mdx), and failure-debugging workflows.
+- **Guides**: quickstart, [instrument your app](./docs-site/guides/instrument-your-app.mdx), [installation](./docs-site/guides/installation.mdx), [self-hosting](./docs-site/guides/self-hosting.mdx), [managing projects](./docs-site/guides/managing-projects.mdx), and failure-debugging workflows.
 - **Concepts**: [architecture overview](./docs-site/concepts/overview.mdx), [data model](./docs-site/concepts/data-model.mdx), [traces / spans / sessions](./docs-site/concepts/traces-spans-sessions.mdx), [events](./docs-site/concepts/events.mdx), [ingest lifecycle](./docs-site/concepts/ingest-lifecycle.mdx), [cost & tokens](./docs-site/concepts/cost-and-tokens.mdx), [projects & auth](./docs-site/concepts/projects-and-auth.mdx), [engine foundation](./docs-site/concepts/engine-foundation.mdx).
 - **Debugger**: [tour of the UI](./docs-site/debugger/overview.mdx) plus per-page references for traces, trace detail, sessions, session compare, engine runs, command palette, and settings.
 - **Python SDK**: [overview](./docs-site/sdk/python/overview.mdx), tracing, sessions, span events, batching & ingest modes, exceptions.

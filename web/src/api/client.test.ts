@@ -11,7 +11,6 @@ import {
   getKnownProjectApiKey,
   rememberProjectApiKey,
   setAccessTokenProvider,
-  setAuthProviderEnabled,
   setLocalApiKeyMode,
   setLocalSingleUserMode,
   setPublicDemoMode,
@@ -30,7 +29,6 @@ beforeEach(() => {
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
   setLocalSingleUserMode(false);
-  setAuthProviderEnabled(false);
   setSelectedProjectIdProvider(null);
 });
 
@@ -39,7 +37,6 @@ afterEach(() => {
   setAccessTokenProvider(null);
   setPublicDemoMode(false);
   setLocalSingleUserMode(false);
-  setAuthProviderEnabled(false);
   setSelectedProjectIdProvider(null);
   vi.unstubAllGlobals();
 });
@@ -174,10 +171,7 @@ describe('client', () => {
     fetchMock.mockResolvedValue(
       new Response(
         JSON.stringify({
-          enabled: true,
-          domain: 'continua.us.auth0.com',
-          client_id: 'client-id',
-          audience: 'https://continua/api',
+          local_mode_enabled: true,
         }),
         {
           status: 200,
@@ -191,10 +185,7 @@ describe('client', () => {
     const config = await fetchRuntimeAuthConfig();
 
     expect(config).toEqual({
-      enabled: true,
-      domain: 'continua.us.auth0.com',
-      client_id: 'client-id',
-      audience: 'https://continua/api',
+      local_mode_enabled: true,
     });
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/config');
   });
@@ -212,24 +203,11 @@ describe('client', () => {
     const config = await fetchRuntimeAuthConfig();
 
     expect(config).toEqual({
-      enabled: false,
       console_available: false,
     });
   });
 
-  it('fails fast when no operator token provider is installed', async () => {
-    setAuthProviderEnabled(true);
-
-    await expect(fetchAPI('/api/traces')).rejects.toMatchObject({
-      status: 401,
-      code: 'unauthorized',
-      message: 'Sign in required',
-    } satisfies Partial<ApiError>);
-  });
-
-  it('reports missing credentials as a project API-key issue when no sign-in provider is configured', async () => {
-    setAuthProviderEnabled(false);
-
+  it('reports missing credentials as a project API-key issue', async () => {
     const rejection = await fetchAPI('/api/traces').then(
       () => {
         throw new Error('expected fetchAPI to reject');
@@ -247,19 +225,7 @@ describe('client', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('keeps sign-in wording for missing credentials when a sign-in provider is configured', async () => {
-    setAuthProviderEnabled(true);
-
-    await expect(fetchAPI('/api/traces')).rejects.toMatchObject({
-      status: 401,
-      code: 'unauthorized',
-      message: 'Sign in required',
-    } satisfies Partial<ApiError>);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('reports an unresolved token as a project API-key issue when no sign-in provider is configured', async () => {
-    setAuthProviderEnabled(false);
+  it('reports an unresolved token as a project API-key issue', async () => {
     setAccessTokenProvider(async () => null);
 
     const rejection = await fetchAPI('/api/traces').then(
@@ -278,21 +244,7 @@ describe('client', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('keeps sign-in wording for an unresolved token when a sign-in provider is configured', async () => {
-    setAuthProviderEnabled(true);
-    setAccessTokenProvider(async () => null);
-
-    await expect(fetchAPI('/api/traces')).rejects.toMatchObject({
-      status: 401,
-      code: 'unauthorized',
-      message: 'Sign in required',
-    } satisfies Partial<ApiError>);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('reports a credential-free project delete as a project API-key issue in local mode', async () => {
-    setAuthProviderEnabled(false);
-
+  it('reports a credential-free project delete as a project API-key issue', async () => {
     const rejection = await deleteProject('project-to-delete').then(
       () => {
         throw new Error('expected deleteProject to reject');
@@ -309,32 +261,7 @@ describe('client', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('keeps sign-in wording for a credential-free project delete when a sign-in provider is configured', async () => {
-    setAuthProviderEnabled(true);
-
-    await expect(deleteProject('project-to-delete')).rejects.toMatchObject({
-      status: 401,
-      code: 'unauthorized',
-      message: 'Sign in required',
-    } satisfies Partial<ApiError>);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('defaults to project API-key wording before any sign-in provider is announced', async () => {
-    // Import a pristine module instance so the assertion covers the module
-    // default, without the setter ever being called for it.
-    vi.resetModules();
-    const pristineClient = await import('./client');
-
-    await expect(pristineClient.fetchAPI('/api/traces')).rejects.toMatchObject({
-      status: 401,
-      code: 'api_key_required',
-      message: 'Project API key required',
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('uses a stored local API key when no operator token provider is installed', async () => {
+  it('uses a stored local API key when no token provider is installed', async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ traces: [], total: 0 }), {
         status: 200,
@@ -402,32 +329,6 @@ describe('client', () => {
       (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
     ).toMatchObject({
       Authorization: 'Bearer pk_A',
-    });
-  });
-
-  it('does not substitute a project API key in Auth0 operator mode', async () => {
-    const selectedProjectId = '44444444-4444-4444-4444-444444444444';
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ traces: [], total: 0 }), {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-    );
-    window.localStorage.setItem('continua_api_key', 'pk_A');
-    rememberProjectApiKey(selectedProjectId, 'pk_B');
-    setSelectedProjectIdProvider(() => selectedProjectId);
-    setAccessTokenProvider(async () => 'auth0-operator-token');
-    setLocalApiKeyMode(false);
-
-    await fetchAPI('/api/traces');
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
-    ).toMatchObject({
-      Authorization: 'Bearer auth0-operator-token',
     });
   });
 

@@ -116,7 +116,6 @@ function LocationProbe() {
 
 const DEFAULT_RUNTIME_AUTH: RuntimeAuthState = {
   status: 'ready',
-  enabled: false,
 };
 
 function renderEngineRunsPage(
@@ -492,7 +491,6 @@ describe('EngineRunsPage', () => {
 
     renderEngineRunsPage('/engine/runs', {
       status: 'ready',
-      enabled: false,
       public_demo_enabled: true,
       public_demo_label: 'Sample data',
     });
@@ -509,7 +507,6 @@ describe('EngineRunsPage', () => {
 
     renderEngineRunsPage('/engine/runs', {
       status: 'ready',
-      enabled: false,
       public_demo_enabled: true,
       public_demo_label: 'Sample data',
     });

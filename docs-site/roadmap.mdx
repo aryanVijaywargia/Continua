@@ -18,7 +18,7 @@ shape. Everything in the rest of this docs site assumes they exist.
 | **REST ingest** | `POST /v1/ingest` (sync + true-async with durable batches and idempotency), `GET /v1/ingest/batches/{id}` for polling |
 | **REST reads** | Traces, spans, span events / merged timeline, sessions, session narrative, session compare |
 | **Project management** | Create / update / delete / rotate-key endpoints under `/api/projects`, API-key auth via `X-API-Key` |
-| **Auth0 operator login** | Optional bearer-auth for the debugger UI gated by `AUTH0_ALLOWED_EMAILS` |
+| **Local single-user mode** | Optional API-key-free debugger access for loopback callers via `LOCAL_SINGLE_USER_MODE` |
 | **Public demo mode** | Read-only seeded project for evaluations |
 | **Python SDK** | Decorators, context managers, batching, sync / async / server-default ingest modes, polling helpers |
 | **Debugger UI** | Traces list, trace detail (waterfall, span tree, timeline, payload inspector), sessions list / detail / compare, settings, command palette, theming |

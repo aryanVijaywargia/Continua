@@ -228,12 +228,6 @@ const TRACE_TIMELINE = {
 
 async function bootstrapOperatorSession(page: Page) {
   await page.addInitScript((operatorToken) => {
-    const e2eWindow = window as typeof window & {
-      __CONTINUA_E2E_AUTH_BYPASS__?: boolean;
-      __CONTINUA_E2E_AUTH_TOKEN__?: string;
-    };
-    e2eWindow.__CONTINUA_E2E_AUTH_BYPASS__ = true;
-    e2eWindow.__CONTINUA_E2E_AUTH_TOKEN__ = operatorToken;
     window.localStorage.setItem('continua_api_key', operatorToken);
     window.localStorage.setItem('continua_theme_mode', 'light');
   }, E2E_OPERATOR_TOKEN);
@@ -274,7 +268,7 @@ async function mockLocalSingleUserRoutes(page: Page) {
     const url = new URL(route.request().url());
 
     if (url.pathname === '/api/auth/config') {
-      return fulfillJson(route, { enabled: false, local_mode_enabled: true });
+      return fulfillJson(route, { local_mode_enabled: true });
     }
 
     // The whole point of the mode: no credential ever leaves the browser.
@@ -427,18 +421,12 @@ async function mockApiRoutes(page: Page, mode: 'operator' | 'public-demo' = 'ope
     if (url.pathname === '/api/auth/config') {
       if (mode === 'public-demo') {
         return fulfillJson(route, {
-          enabled: false,
           public_demo_enabled: true,
           public_demo_label: 'Sample data',
         });
       }
 
-      return fulfillJson(route, {
-        enabled: true,
-        domain: 'continua.us.auth0.com',
-        client_id: 'e2e-client-id',
-        audience: 'https://continua/e2e',
-      });
+      return fulfillJson(route, {});
     }
 
     if (mode === 'operator') {
@@ -541,7 +529,7 @@ async function mockLocalProjectRoutes(page: Page) {
     const url = new URL(route.request().url());
 
     if (url.pathname === '/api/auth/config') {
-      return fulfillJson(route, { enabled: false });
+      return fulfillJson(route, {});
     }
 
     if (url.pathname === '/api/projects') {
@@ -853,9 +841,8 @@ test('opens the console with no API key and switches projects in local single-us
   });
 });
 
-// Auth0 disabled and no project API key in the browser: the rotate failure has
-// to name the missing project API key instead of pointing at a sign-in flow this
-// deployment does not have.
+// No project API key in the browser: the rotate failure has to name the missing
+// project API key instead of pointing at a sign-in flow the console does not have.
 test('explains a failed rotate as a missing project API key in local mode', async ({
   page,
 }, testInfo) => {
@@ -869,7 +856,7 @@ test('explains a failed rotate as a missing project API key in local mode', asyn
     }
 
     if (url.pathname === '/api/auth/config') {
-      return fulfillJson(route, { enabled: false });
+      return fulfillJson(route, {});
     }
 
     if (method === 'GET' && url.pathname === '/api/projects') {
@@ -920,7 +907,7 @@ test('rotates a project key in local mode when an API key is present', async ({
     const url = new URL(route.request().url());
 
     if (url.pathname === '/api/auth/config') {
-      return fulfillJson(route, { enabled: false });
+      return fulfillJson(route, {});
     }
 
     const project = {

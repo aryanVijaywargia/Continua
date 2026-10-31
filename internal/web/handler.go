@@ -19,9 +19,17 @@ func Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Serve API routes separately (this handler shouldn't receive them)
-		if strings.HasPrefix(path, "/api/") {
+		// An API path reaches this fallback only when no route matched its path and
+		// method, so it must fail as an API error, never as the SPA page.
+		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/v1/") {
 			http.NotFound(w, r)
+			return
+		}
+
+		// The SPA only answers page reads.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
 

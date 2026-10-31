@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -20,25 +19,6 @@ import { AppShell } from './AppShell';
 
 const PRIMARY_PROJECT_ID = '11111111-1111-1111-1111-111111111111';
 const SECONDARY_PROJECT_ID = '22222222-2222-2222-2222-222222222222';
-
-const auth0State = vi.hoisted(() => ({
-  error: undefined as Error | undefined,
-  getAccessTokenSilently: vi.fn(async () => 'test-key'),
-  isAuthenticated: true,
-  isLoading: false,
-  loginWithRedirect: vi.fn(),
-  logout: vi.fn(),
-  user: {
-    email: 'operator@continua.dev',
-    name: 'Continua Operator',
-    sub: 'google-oauth2|operator',
-  },
-}));
-
-vi.mock('@auth0/auth0-react', () => ({
-  Auth0Provider: ({ children }: { children: ReactNode }) => children,
-  useAuth0: () => auth0State,
-}));
 
 function createQueryClient() {
   return new QueryClient({
@@ -69,7 +49,6 @@ async function renderShell(
   const queryClient = createQueryClient();
   const runtimeAuth: RuntimeAuthState = {
     status: 'ready',
-    enabled: true,
     ...auth,
   };
 
@@ -191,17 +170,6 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   clearApiKey();
   setApiKey('test-key');
-  auth0State.error = undefined;
-  auth0State.getAccessTokenSilently.mockResolvedValue('test-key');
-  auth0State.isAuthenticated = true;
-  auth0State.isLoading = false;
-  auth0State.loginWithRedirect.mockReset();
-  auth0State.logout.mockReset();
-  auth0State.user = {
-    email: 'operator@continua.dev',
-    name: 'Continua Operator',
-    sub: 'google-oauth2|operator',
-  };
 });
 
 afterEach(() => {
@@ -211,11 +179,11 @@ afterEach(() => {
 });
 
 describe('AppShell', () => {
-  it('renders the operator shell, project switcher, and project-aware navigation', async () => {
+  it('renders the console shell, project switcher, and project-aware navigation', async () => {
     await renderShell(`/sessions?project_id=${PRIMARY_PROJECT_ID}`);
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
-    expect(screen.getByText('operator@continua.dev')).toBeInTheDocument();
+    expect(screen.getByText('Local API key')).toBeInTheDocument();
     expect(screen.getByText('Session list content')).toBeInTheDocument();
     expect(screen.getByText('Session list content').closest('.console-theme')).not.toBeNull();
 
@@ -305,24 +273,7 @@ describe('AppShell', () => {
     });
   });
 
-  it('loads projects with a saved local API key when Auth0 is disabled', async () => {
-    auth0State.isAuthenticated = false;
-    await renderShell('/dashboard', {
-      enabled: false,
-    });
-
-    expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
-    expect(screen.getByText('Local API key')).toBeInTheDocument();
-    expect(await screen.findByText('Overview content')).toBeInTheDocument();
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers
-    ).toMatchObject({
-      Authorization: 'Bearer test-key',
-    });
-  });
-
   it('shows the projects route for local first-run when no key exists', async () => {
-    auth0State.isAuthenticated = false;
     clearApiKey();
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ projects: [] }), {
@@ -333,9 +284,7 @@ describe('AppShell', () => {
       })
     );
 
-    await renderShell('/projects', {
-      enabled: false,
-    });
+    await renderShell('/projects');
 
     expect(await screen.findByText('Projects content')).toBeInTheDocument();
     expect(
@@ -355,9 +304,7 @@ describe('AppShell', () => {
       })
     );
 
-    await renderShell('/dashboard', {
-      enabled: false,
-    });
+    await renderShell('/dashboard');
 
     expect(await screen.findByText('Project loading failed')).toBeInTheDocument();
     expect(screen.getByText('Database unreachable')).toBeInTheDocument();
@@ -376,9 +323,7 @@ describe('AppShell', () => {
 
     setApiKey('stale-key');
 
-    await renderShell('/dashboard', {
-      enabled: false,
-    });
+    await renderShell('/dashboard');
 
     await waitFor(() => {
       expect(window.localStorage.getItem('continua_api_key')).toBeNull();
@@ -387,7 +332,6 @@ describe('AppShell', () => {
   });
 
   it('switches to a remembered fallback key when the current local key goes stale', async () => {
-    auth0State.isAuthenticated = false;
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ code: 'invalid_api_key', message: 'Invalid API key' }), {
         status: 401,
@@ -398,9 +342,7 @@ describe('AppShell', () => {
     setApiKey('stale-key');
     rememberProjectApiKey(SECONDARY_PROJECT_ID, 'pk_fallback');
 
-    await renderShell('/dashboard', {
-      enabled: false,
-    });
+    await renderShell('/dashboard');
 
     await waitFor(() => {
       expect(window.localStorage.getItem('continua_api_key')).toBe('pk_fallback');
@@ -408,7 +350,6 @@ describe('AppShell', () => {
   });
 
   it('learns a pasted local key when the deployment has exactly one project', async () => {
-    auth0State.isAuthenticated = false;
     setApiKey('pk_manually_pasted');
     fetchMock.mockResolvedValueOnce(
       new Response(
@@ -429,9 +370,7 @@ describe('AppShell', () => {
       )
     );
 
-    await renderShell('/dashboard', {
-      enabled: false,
-    });
+    await renderShell('/dashboard');
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
     await waitFor(() => {
@@ -440,7 +379,6 @@ describe('AppShell', () => {
   });
 
   it('learns the active local key owner from project metadata when multiple projects exist', async () => {
-    auth0State.isAuthenticated = false;
     setApiKey('pk_manually_pasted');
     fetchMock.mockResolvedValueOnce(
       new Response(
@@ -468,9 +406,7 @@ describe('AppShell', () => {
       )
     );
 
-    await renderShell('/dashboard', {
-      enabled: false,
-    });
+    await renderShell('/dashboard');
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
     await waitFor(() => {
@@ -479,7 +415,6 @@ describe('AppShell', () => {
   });
 
   it('auto-clears a stale local API key when a project-list refetch returns 401', async () => {
-    auth0State.isAuthenticated = false;
     fetchMock
       .mockResolvedValueOnce(
         new Response(
@@ -508,9 +443,7 @@ describe('AppShell', () => {
 
     setApiKey('stale-key');
 
-    const { queryClient } = await renderShell('/dashboard', {
-      enabled: false,
-    });
+    const { queryClient } = await renderShell('/dashboard');
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
 
@@ -524,7 +457,6 @@ describe('AppShell', () => {
   });
 
   it('refetches projects when the local API key changes', async () => {
-    auth0State.isAuthenticated = false;
     fetchMock.mockImplementation(async (_input, init) => {
       const headers = init?.headers as Record<string, string> | undefined;
       const token = headers?.Authorization;
@@ -551,9 +483,7 @@ describe('AppShell', () => {
       });
     });
 
-    await renderShell('/dashboard', {
-      enabled: false,
-    });
+    await renderShell('/dashboard');
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
 
@@ -573,10 +503,7 @@ describe('AppShell', () => {
   });
 
   it('leaves the mounted shell when the local API key is cleared', async () => {
-    auth0State.isAuthenticated = false;
-    await renderShell('/dashboard', {
-      enabled: false,
-    });
+    await renderShell('/dashboard');
 
     expect(await screen.findByDisplayValue('Primary Project')).toBeInTheDocument();
 
@@ -624,7 +551,6 @@ describe('AppShell', () => {
     setMatchMediaMatches(true);
 
     await renderShell('/dashboard', {
-      enabled: false,
       public_demo_enabled: true,
       public_demo_label: 'Sample data',
     });
@@ -636,7 +562,7 @@ describe('AppShell', () => {
       screen.getByRole('link', { name: 'Run locally' })
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Active project')).not.toBeInTheDocument();
-    expect(screen.queryByText('operator@continua.dev')).not.toBeInTheDocument();
+    expect(screen.queryByText('Local API key')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });

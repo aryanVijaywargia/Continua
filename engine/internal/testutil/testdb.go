@@ -197,6 +197,11 @@ func withDatabaseName(databaseURL, databaseName string) (string, error) {
 		return "", err
 	}
 	parsed.Path = "/" + databaseName
+	// pgx lets a dbname or database query parameter override the path.
+	query := parsed.Query()
+	query.Del("dbname")
+	query.Del("database")
+	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil
 }
 

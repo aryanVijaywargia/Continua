@@ -21,17 +21,17 @@ This page is a map. Each section links to a deeper page covering that surface.
 | [Engine runs](/debugger/engine-runs) | `/engine/runs` | Inspect durable engine workflow runs |
 | Projection repair | `/tools/engine-projections` | Operator tool for repairing engine projection state |
 | Projects | `/projects` | Create projects, rotate API keys |
-| [Settings](/debugger/settings-and-theming) | `/settings` | API key, sign-out, theme |
+| [Settings](/debugger/settings-and-theming) | `/settings` | API key, theme |
 
-## Two modes the UI can run in
+## Modes the UI can run in
 
 **Local self-host (default).** The UI prompts for a project API key on the
 [Settings](/debugger/settings-and-theming) page and stores it in `localStorage`. Use this
 for single-operator deployments.
 
-**Auth0 operator login.** When `AUTH0_ENABLED=true`, the UI redirects to Auth0 for
-sign-in and checks the email against `AUTH0_ALLOWED_EMAILS`. See
-[Auth0 setup](/guides/auth0-setup).
+**Local single-user mode.** When `LOCAL_SINGLE_USER_MODE=true`, a browser on the same
+machine as the server opens the console without an API key. The project selector picks
+which project each read uses.
 
 **Public demo mode.** When `PUBLIC_DEMO_ENABLED=true`, the UI loads a single read-only
 project without prompting for credentials. Useful for evaluations.
@@ -41,7 +41,7 @@ project without prompting for credentials. Useful for evaluations.
 - [Command palette](/debugger/command-palette-and-shortcuts): `⌘K` / `Ctrl+K` opens a
   quick navigator.
 - [Settings & theming](/debugger/settings-and-theming): dark / light / system theme,
-  API-key management, sign-out.
+  API-key management.
 - URL-driven state: every filter on Traces, Sessions, and Engine runs lives in the URL.
   Bookmark and share links freely.
 

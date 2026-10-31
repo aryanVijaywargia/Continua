@@ -34,7 +34,6 @@ class MockIntersectionObserver implements IntersectionObserver {
 function renderLandingPage(auth?: Partial<RuntimeAuthState>) {
   const runtimeAuth: RuntimeAuthState = {
     status: 'ready',
-    enabled: false,
     ...auth,
   };
 

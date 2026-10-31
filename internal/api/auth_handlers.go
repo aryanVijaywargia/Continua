@@ -6,13 +6,10 @@ import (
 	"github.com/continua-ai/continua/internal/api/middleware"
 )
 
-// GetAuthConfig returns the runtime bootstrap configuration for the web debugger.
-// Hosted operator login was removed, so the Auth0 fields are always empty; the
-// response shape stays so existing debuggers keep parsing it.
+// GetAuthConfig tells the web debugger which credential-free access modes this
+// connection may use: the public demo and loopback local single-user mode.
 func (s *Server) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
-	response := AuthConfig{
-		Enabled: false,
-	}
+	var response AuthConfig
 
 	// Only ever advertise the credential-free bypass to a caller that could
 	// actually use it. A remote client must not learn the mode exists.

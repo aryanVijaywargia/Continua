@@ -498,9 +498,9 @@ def api_headers() -> dict[str, str]:
 def resolve_api_key() -> str:
     """Resolve a working local demo API key.
 
-    If CONTINUA_API_KEY is unset, bootstrap a local project against an
-    Auth0-disabled development server. Hosted or authenticated deployments should
-    pass CONTINUA_API_KEY explicitly.
+    If CONTINUA_API_KEY is unset, bootstrap a local project through the
+    loopback-only project bootstrap of a local development server. Remote
+    deployments should pass CONTINUA_API_KEY explicitly.
     """
     candidates = [API_KEY]
 

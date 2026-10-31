@@ -316,6 +316,18 @@ func normalizeSpan(
 		return ingest.SpanInput{}, err
 	}
 
+	// Links are not stored, but a malformed one still marks a malformed export. Unlike a
+	// span's own IDs, an all-zero link ID is allowed: the OTel trace API asks SDKs to
+	// record links to an invalid SpanContext that carry attributes or a TraceState.
+	for _, link := range span.GetLinks() {
+		if err := checkIDWidth(link.GetTraceId(), 16, "link trace id"); err != nil {
+			return ingest.SpanInput{}, err
+		}
+		if err := checkIDWidth(link.GetSpanId(), 8, "link span id"); err != nil {
+			return ingest.SpanInput{}, err
+		}
+	}
+
 	input := ingest.SpanInput{
 		TraceID:      traceIDHex,
 		SpanID:       spanIDHex,
@@ -372,11 +384,22 @@ func spanTimestamp(unixNano uint64) time.Time {
 	return time.Unix(0, int64(unixNano)).UTC()
 }
 
+// encodeID hex-encodes a span's trace or span ID. OTLP defines an all-zero ID as invalid.
 func encodeID(id []byte, size int, label string) (string, error) {
-	if len(id) != size {
-		return "", fmt.Errorf("%w: %s must be %d bytes, got %d", ErrInvalidExport, label, size, len(id))
+	if err := checkIDWidth(id, size, label); err != nil {
+		return "", err
+	}
+	if isZeroID(id) {
+		return "", fmt.Errorf("%w: %s must not be all zeros", ErrInvalidExport, label)
 	}
 	return hex.EncodeToString(id), nil
+}
+
+func checkIDWidth(id []byte, size int, label string) error {
+	if len(id) != size {
+		return fmt.Errorf("%w: %s must be %d bytes, got %d", ErrInvalidExport, label, size, len(id))
+	}
+	return nil
 }
 
 // parentSpanIDHex resolves the parent link. Root spans carry either an empty parent

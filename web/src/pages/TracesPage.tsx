@@ -27,7 +27,11 @@ import {
   localDateToISOEnd,
   localDateToISOStart,
 } from '../utils/tracesSearchParams';
-import { calculateDuration, formatDerivedDuration } from '../utils/format';
+import {
+  formatDerivedDuration,
+  getTraceTiming,
+  UNAVAILABLE_DURATION_TITLE,
+} from '../utils/format';
 import { appendProjectToPath } from '../utils/projectSearchParams';
 import { downloadJsonFile } from '../utils/downloadJson';
 import { TracesAdvancedPanel } from './traces/TracesAdvancedPanel';
@@ -557,18 +561,20 @@ function TraceRow({
 }) {
   const tracePath = appendProjectToPath(`/traces/${trace.id}`, projectId);
   const failedSteps = trace.error_count ?? 0;
+  const timing = getTraceTiming(trace);
 
   return (
     <Tr className="hover:bg-[var(--c-row-hover-bg)]">
       <Td>
         <article className="flex min-w-0 items-center gap-2">
+          {/* Ingest accepts traces without a name; the detail link still needs text. */}
           <Link
-            aria-label={trace.name}
+            aria-label={trace.name || `Unnamed trace ${shortTraceId(trace.id)}`}
             to={tracePath}
             state={{ returnTo }}
             className="min-w-0 truncate font-mono text-[12.5px] font-medium text-[var(--c-text-primary)] hover:text-[var(--c-accent-text)]"
           >
-            {trace.name}
+            {trace.name || 'Unnamed trace'}
           </Link>
           <span
             className="shrink-0 font-mono text-[11px] text-[var(--c-text-muted)]"
@@ -592,12 +598,18 @@ function TraceRow({
         {failedSteps}
       </Td>
       <Td align="right" mono>
-        {trace.ended_at ? (
-          <span title="Derived from recorded start and end times.">
-            {formatDerivedDuration(calculateDuration(trace.started_at, trace.ended_at))}
-          </span>
-        ) : (
+        {timing.running ? (
           <span className="font-sans text-[12px] text-[var(--c-text-muted)]">running</span>
+        ) : (
+          <span
+            title={
+              timing.durationMs == null
+                ? UNAVAILABLE_DURATION_TITLE
+                : 'Derived from recorded start and end times.'
+            }
+          >
+            {formatDerivedDuration(timing.durationMs)}
+          </span>
         )}
       </Td>
       <Td align="right" dim mono>

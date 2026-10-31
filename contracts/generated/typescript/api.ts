@@ -46,8 +46,10 @@ export interface paths {
          *
          *     Preview: the route 404s unless the server runs with `INGEST_OTLP_ENABLED=true`.
          *
-         *     Per the OTLP specification, the responses this handler writes are protobuf-encoded:
-         *     success is an `ExportTraceServiceResponse` and its errors are a `google.rpc.Status`.
+         *     Per the OTLP specification, the responses this handler writes use the request's
+         *     encoding: protobuf for a protobuf request and OTLP/JSON for an `application/json`
+         *     request. Success is an `ExportTraceServiceResponse` and its errors are a
+         *     `google.rpc.Status`. OTLP/JSON trace and span IDs are hex strings, not base64.
          *     `401` and the preview-gate `404` never reach the handler -- shared auth and
          *     route-gate middleware answer them with the platform's standard shapes (a JSON
          *     `Error` body, and the router's plain-text not found). Maximum body size is 5MB,
@@ -463,7 +465,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Auth0 runtime configuration for the debugger */
+        /**
+         * Get the debugger's runtime access configuration
+         * @description Reports which credential-free access modes the debugger may use for this
+         *     connection: the public read-only demo, and loopback-only local single-user mode.
+         *
+         */
         get: operations["getAuthConfig"];
         put?: never;
         post?: never;
@@ -483,8 +490,7 @@ export interface paths {
         /**
          * List all projects in the deployment
          * @description Returns every project the deployment knows about. Intended for the project-management
-         *     view in the debugger UI. In a remote multi-tenant deployment, pair this with operator
-         *     auth (Auth0) if API keys should not enumerate other projects.
+         *     view in the debugger UI.
          *
          */
         get: operations["listProjects"];
@@ -689,10 +695,6 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AuthConfig: {
-            enabled: boolean;
-            domain?: string;
-            client_id?: string;
-            audience?: string;
             /** @description Whether the deployment exposes a public read-only demo console. */
             public_demo_enabled?: boolean;
             /** @description Display label for the public demo banner shown in the debugger shell. */
@@ -716,7 +718,7 @@ export interface components {
         ProjectList: {
             /**
              * Format: uuid
-             * @description Project bound to the current API key when the request is API-key authenticated. Omitted for operator or unauthenticated bootstrap requests.
+             * @description Project bound to the current API key when the request is API-key authenticated. Omitted for local single-user or unauthenticated bootstrap requests.
              */
             authenticated_project_id?: string;
             projects: components["schemas"]["Project"][];
@@ -1595,7 +1597,7 @@ export interface components {
     };
     responses: never;
     parameters: {
-        /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+        /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
         SelectedProjectId: string;
     };
     requestBodies: never;
@@ -1687,22 +1689,24 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Export ingested; body is a protobuf ExportTraceServiceResponse */
+            /** @description Export ingested; body is an ExportTraceServiceResponse in the request's encoding */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/x-protobuf": string;
+                    "application/json": string;
                 };
             };
-            /** @description Malformed or unnormalizable export; body is a protobuf google.rpc.Status */
+            /** @description Malformed or unnormalizable export; body is a google.rpc.Status in the request's encoding */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/x-protobuf": string;
+                    "application/json": string;
                 };
             };
             /** @description Unauthorized - missing or invalid API key */
@@ -1721,22 +1725,24 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Export exceeds the 5MB limit; body is a protobuf google.rpc.Status */
+            /** @description Export exceeds the 5MB limit; body is a google.rpc.Status in the request's encoding */
             413: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/x-protobuf": string;
+                    "application/json": string;
                 };
             };
-            /** @description Unsupported Content-Type or Content-Encoding; body is a protobuf google.rpc.Status */
+            /** @description Unsupported Content-Type or Content-Encoding; body is a google.rpc.Status in the request's encoding (protobuf for an unsupported Content-Type) */
             415: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/x-protobuf": string;
+                    "application/json": string;
                 };
             };
         };
@@ -2887,7 +2893,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Runtime Auth0 bootstrap configuration */
+            /** @description Runtime access configuration */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2918,15 +2924,6 @@ export interface operations {
             };
             /** @description Unauthorized - missing or invalid credentials */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2976,15 +2973,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
         };
     };
     deleteProject: {
@@ -3004,15 +2992,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
             };
             /** @description Project not found */
             404: {
@@ -3067,15 +3046,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Project not found */
             404: {
                 headers: {
@@ -3107,15 +3077,6 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectWithKey"];
                 };
             };
-            /** @description API-key callers are forbidden from project management when Auth0 is enabled */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Project not found */
             404: {
                 headers: {
@@ -3130,7 +3091,7 @@ export interface operations {
     listTraces: {
         parameters: {
             query?: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
                 limit?: number;
                 offset?: number;
@@ -3214,7 +3175,7 @@ export interface operations {
     getTrace: {
         parameters: {
             query?: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;
@@ -3266,7 +3227,7 @@ export interface operations {
     listSpansByTrace: {
         parameters: {
             query?: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;
@@ -3318,7 +3279,7 @@ export interface operations {
     getTraceEvents: {
         parameters: {
             query?: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
                 /** @description Opaque cursor returned by a previous timeline response */
                 after?: string;
@@ -3383,7 +3344,7 @@ export interface operations {
     listSessions: {
         parameters: {
             query?: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
                 limit?: number;
                 offset?: number;
@@ -3434,7 +3395,7 @@ export interface operations {
     getSession: {
         parameters: {
             query?: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;
@@ -3486,7 +3447,7 @@ export interface operations {
     getSessionNarrative: {
         parameters: {
             query?: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
             };
             header?: never;
@@ -3538,7 +3499,7 @@ export interface operations {
     getSessionCompare: {
         parameters: {
             query: {
-                /** @description Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
+                /** @description Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch. */
                 project_id?: components["parameters"]["SelectedProjectId"];
                 baseline_trace_id: string;
                 candidate_trace_id: string;

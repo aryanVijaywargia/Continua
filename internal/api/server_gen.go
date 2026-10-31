@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	ApiKeyScopes      = "apiKey.Scopes"
-	Auth0BearerScopes = "auth0Bearer.Scopes"
+	ApiKeyScopes = "apiKey.Scopes"
 )
 
 // Defines values for BatchStatusResponseStatus.
@@ -326,11 +325,6 @@ const (
 
 // AuthConfig defines model for AuthConfig.
 type AuthConfig struct {
-	Audience *string `json:"audience,omitempty"`
-	ClientId *string `json:"client_id,omitempty"`
-	Domain   *string `json:"domain,omitempty"`
-	Enabled  bool    `json:"enabled"`
-
 	// LocalModeEnabled Whether API-key-free single-user local mode is active for this connection. True only when the server has local single-user mode enabled and the requesting connection originates from loopback.
 	LocalModeEnabled *bool `json:"local_mode_enabled,omitempty"`
 
@@ -1029,7 +1023,7 @@ type Project struct {
 
 // ProjectList defines model for ProjectList.
 type ProjectList struct {
-	// AuthenticatedProjectId Project bound to the current API key when the request is API-key authenticated. Omitted for operator or unauthenticated bootstrap requests.
+	// AuthenticatedProjectId Project bound to the current API key when the request is API-key authenticated. Omitted for local single-user or unauthenticated bootstrap requests.
 	AuthenticatedProjectId *openapi_types.UUID `json:"authenticated_project_id,omitempty"`
 	Projects               []Project           `json:"projects"`
 }
@@ -1359,7 +1353,7 @@ type SelectedProjectId = openapi_types.UUID
 
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 	Limit     *int               `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset    *int               `form:"offset,omitempty" json:"offset,omitempty"`
@@ -1385,13 +1379,13 @@ type ListSessionsParamsSortDir string
 
 // GetSessionParams defines parameters for GetSession.
 type GetSessionParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
 // GetSessionCompareParams defines parameters for GetSessionCompare.
 type GetSessionCompareParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId        *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 	BaselineTraceId  openapi_types.UUID `form:"baseline_trace_id" json:"baseline_trace_id"`
 	CandidateTraceId openapi_types.UUID `form:"candidate_trace_id" json:"candidate_trace_id"`
@@ -1399,13 +1393,13 @@ type GetSessionCompareParams struct {
 
 // GetSessionNarrativeParams defines parameters for GetSessionNarrative.
 type GetSessionNarrativeParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
 // ListTracesParams defines parameters for ListTraces.
 type ListTracesParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId  `form:"project_id,omitempty" json:"project_id,omitempty"`
 	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset    *int                `form:"offset,omitempty" json:"offset,omitempty"`
@@ -1486,13 +1480,13 @@ type ListTracesParamsEngineRunStatus string
 
 // GetTraceParams defines parameters for GetTrace.
 type GetTraceParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
 // GetTraceEventsParams defines parameters for GetTraceEvents.
 type GetTraceEventsParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 
 	// After Opaque cursor returned by a previous timeline response
@@ -1504,7 +1498,7 @@ type GetTraceEventsParams struct {
 
 // ListSpansByTraceParams defines parameters for ListSpansByTrace.
 type ListSpansByTraceParams struct {
-	// ProjectId Required as a selection filter when authenticating with an Auth0 bearer token. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
@@ -1802,7 +1796,7 @@ func (a EngineWaitState) MarshalJSON() ([]byte, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Get Auth0 runtime configuration for the debugger
+	// Get the debugger's runtime access configuration
 	// (GET /api/auth/config)
 	GetAuthConfig(w http.ResponseWriter, r *http.Request)
 	// List all projects in the deployment
@@ -1919,7 +1913,7 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
-// Get Auth0 runtime configuration for the debugger
+// Get the debugger's runtime access configuration
 // (GET /api/auth/config)
 func (_ Unimplemented) GetAuthConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2169,8 +2163,6 @@ func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.R
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2190,8 +2182,6 @@ func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.R
 func (siw *ServerInterfaceWrapper) CreateProject(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -2224,8 +2214,6 @@ func (siw *ServerInterfaceWrapper) DeleteProject(w http.ResponseWriter, r *http.
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2256,8 +2244,6 @@ func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -2290,8 +2276,6 @@ func (siw *ServerInterfaceWrapper) RotateProjectAPIKey(w http.ResponseWriter, r 
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2313,8 +2297,6 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 	var err error
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -2406,8 +2388,6 @@ func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Req
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2449,8 +2429,6 @@ func (siw *ServerInterfaceWrapper) GetSessionCompare(w http.ResponseWriter, r *h
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -2524,8 +2502,6 @@ func (siw *ServerInterfaceWrapper) GetSessionNarrative(w http.ResponseWriter, r 
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2558,8 +2534,6 @@ func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Req
 	var err error
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -2787,8 +2761,6 @@ func (siw *ServerInterfaceWrapper) GetTrace(w http.ResponseWriter, r *http.Reque
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -2830,8 +2802,6 @@ func (siw *ServerInterfaceWrapper) GetTraceEvents(w http.ResponseWriter, r *http
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -2890,8 +2860,6 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3135,8 +3103,6 @@ func (siw *ServerInterfaceWrapper) ListEngineDefinitions(w http.ResponseWriter, 
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3156,8 +3122,6 @@ func (siw *ServerInterfaceWrapper) ListEngineDefinitions(w http.ResponseWriter, 
 func (siw *ServerInterfaceWrapper) GetEngineHealth(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3190,8 +3154,6 @@ func (siw *ServerInterfaceWrapper) GetEngineInstance(w http.ResponseWriter, r *h
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3213,8 +3175,6 @@ func (siw *ServerInterfaceWrapper) BackfillEngineProjections(w http.ResponseWrit
 	var err error
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3261,8 +3221,6 @@ func (siw *ServerInterfaceWrapper) StartEngineRun(w http.ResponseWriter, r *http
 	var err error
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3319,8 +3277,6 @@ func (siw *ServerInterfaceWrapper) GetEngineRun(w http.ResponseWriter, r *http.R
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3351,8 +3307,6 @@ func (siw *ServerInterfaceWrapper) CancelEngineRun(w http.ResponseWriter, r *htt
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3409,8 +3363,6 @@ func (siw *ServerInterfaceWrapper) GetEngineRunHistory(w http.ResponseWriter, r 
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3461,8 +3413,6 @@ func (siw *ServerInterfaceWrapper) GetEngineRunPendingWork(w http.ResponseWriter
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3493,8 +3443,6 @@ func (siw *ServerInterfaceWrapper) PurgeEngineRun(w http.ResponseWriter, r *http
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3551,8 +3499,6 @@ func (siw *ServerInterfaceWrapper) RepairEngineRun(w http.ResponseWriter, r *htt
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3608,8 +3554,6 @@ func (siw *ServerInterfaceWrapper) GetEngineRunResult(w http.ResponseWriter, r *
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3640,8 +3584,6 @@ func (siw *ServerInterfaceWrapper) ResumeEngineRun(w http.ResponseWriter, r *htt
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
@@ -3698,8 +3640,6 @@ func (siw *ServerInterfaceWrapper) SignalEngineRun(w http.ResponseWriter, r *htt
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3755,8 +3695,6 @@ func (siw *ServerInterfaceWrapper) SuspendEngineRun(w http.ResponseWriter, r *ht
 
 	ctx := r.Context()
 
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
-
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
 	r = r.WithContext(ctx)
@@ -3811,8 +3749,6 @@ func (siw *ServerInterfaceWrapper) TerminateEngineRun(w http.ResponseWriter, r *
 	}
 
 	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, Auth0BearerScopes, []string{})
 
 	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
 
