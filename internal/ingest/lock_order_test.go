@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -248,19 +249,46 @@ func TestProcessBatch_ManyConcurrentBatchesDoNotDeadlock(t *testing.T) {
 // termination and project deletion lock traces in their own order, and Postgres breaks
 // the resulting deadlock by aborting one transaction. When the batch is the victim,
 // Ingest must rerun the whole transaction, batch claim included, not fail the request.
+// The first claim insert fails on demand, so the batch is always the victim.
 func TestServiceIngest_RetriesAfterLosingADeadlock(t *testing.T) {
 	pool := testutil.TestDB(t)
 	ctx := context.Background()
+	s := store.New(pool)
+	service := ingest.NewService(s, nil, ingest.NewProcessor(s, nil), nil)
+
+	for _, sqlState := range []string{"40P01", "40001"} {
+		t.Run(sqlState, func(t *testing.T) {
+			projectID := testutil.CreateTestProject(t, ctx, s.Queries())
+			claims := testutil.ForceInsertSQLStateOnce(t, pool, "ingest_batches", projectID, sqlState)
+			p := "retry-" + uuid.NewString()[:8] + "-"
+
+			resp, err := service.Ingest(ctx, projectID, twoTraceBatch(p))
+			require.NoError(t, err)
+			assert.Equal(t, string(ingest.IngestStatusOK), resp.Status)
+			assert.Equal(t, int64(2), claims(), "the failed claim and its retry")
+			assertIngestedOnce(t, pool, projectID, p)
+		})
+	}
+}
+
+// The same deadlock against a real foreign writer. Postgres aborts whichever side's
+// deadlock check fires first, which depends on deadlock_timeout and scheduling, so
+// either may lose: the batch retries, or the writer aborts and frees the batch. Both
+// ways the batch must commit exactly once, and nothing may hang.
+func TestServiceIngest_CommitsOnceWhicheverSideLosesADeadlock(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	// One connection, so the backend pid read below is the one Ingest runs on.
 	ingestPool := newTestPool(t, pool, 1)
 	s := store.New(ingestPool)
 	processor := ingest.NewProcessor(s, nil)
 	service := ingest.NewService(s, nil, processor, nil)
 	projectID := testutil.CreateTestProject(t, ctx, s.Queries())
-	p := "retry-" + uuid.NewString()[:8] + "-"
-	traces := []ingest.TraceInput{{TraceID: p + "a"}, {TraceID: p + "b"}}
+	p := "victim-" + uuid.NewString()[:8] + "-"
 
-	_, err := runBatch(ctx, s, processor, projectID, &ingest.IngestRequest{Traces: traces}, nil)
+	_, err := runBatch(ctx, s, processor, projectID,
+		&ingest.IngestRequest{Traces: []ingest.TraceInput{{TraceID: p + "a"}, {TraceID: p + "b"}}}, nil)
 	require.NoError(t, err)
 	var ingestPID int32
 	require.NoError(t, ingestPool.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&ingestPID))
@@ -269,7 +297,7 @@ func TestServiceIngest_RetriesAfterLosingADeadlock(t *testing.T) {
 	// The foreign writer takes b and then a, against the batch's sorted order.
 	writer, err := pool.Begin(ctx)
 	require.NoError(t, err)
-	defer func() { _ = writer.Rollback(ctx) }()
+	defer func() { _ = writer.Rollback(context.Background()) }()
 	_, err = writer.Exec(ctx, lockTrace, projectID, p+"b")
 	require.NoError(t, err)
 
@@ -279,26 +307,59 @@ func TestServiceIngest_RetriesAfterLosingADeadlock(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		resp, err := service.Ingest(ctx, projectID, &ingest.IngestRequest{BatchKey: p + "batch", Traces: traces})
+		resp, err := service.Ingest(ctx, projectID, twoTraceBatch(p))
 		done <- outcome{resp, err}
 	}()
 	waitForLockWait(t, pool, ingestPID)
 
-	// The batch holds a and waits on b. It has waited longer than the writer will, so its
-	// deadlock check fires first and aborts it, which frees a for the writer.
+	// The batch holds a and waits on b, so this closes the cycle.
 	_, err = writer.Exec(ctx, lockTrace, projectID, p+"a")
-	require.NoError(t, err, "the batch, not the writer, must be the deadlock victim")
+	if err != nil {
+		var pgErr *pgconn.PgError
+		require.ErrorAs(t, err, &pgErr)
+		require.Equal(t, "40P01", pgErr.Code, "the writer may lose only to the deadlock")
+	}
 	require.NoError(t, writer.Rollback(ctx))
 
-	got := <-done
-	require.NoError(t, got.err)
-	assert.Equal(t, string(ingest.IngestStatusOK), got.resp.Status)
-	var completed int
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM ingest_batches WHERE project_id = $1 AND batch_key = $2 AND status = 'completed'`,
-		projectID, p+"batch",
-	).Scan(&completed))
-	assert.Equal(t, 1, completed, "the retried claim must leave exactly one completed batch")
+	select {
+	case got := <-done:
+		require.NoError(t, got.err)
+		assert.Equal(t, string(ingest.IngestStatusOK), got.resp.Status)
+	case <-ctx.Done():
+		t.Fatal("ingest did not finish after the deadlock")
+	}
+	assertIngestedOnce(t, pool, projectID, p)
+}
+
+// twoTraceBatch builds batch p+"batch" with traces p+"a" and p+"b" and one span on each.
+func twoTraceBatch(p string) *ingest.IngestRequest {
+	req := &ingest.IngestRequest{BatchKey: p + "batch"}
+	for _, suffix := range []string{"a", "b"} {
+		req.Traces = append(req.Traces, ingest.TraceInput{TraceID: p + suffix})
+		req.Spans = append(req.Spans, ingest.SpanInput{
+			TraceID: p + suffix, SpanID: "span-" + suffix, Name: "op", StartTime: time.Now().UTC(),
+		})
+	}
+	return req
+}
+
+// assertIngestedOnce checks that twoTraceBatch(p) committed exactly once: one completed
+// claim, and one copy of each of its two traces and two spans.
+func assertIngestedOnce(t *testing.T, pool *pgxpool.Pool, projectID uuid.UUID, p string) {
+	t.Helper()
+	var batches, completed, traceRows, spanRows int
+	require.NoError(t, pool.QueryRow(context.Background(), `
+		SELECT
+			(SELECT count(*) FROM ingest_batches WHERE project_id = $1 AND batch_key = $2),
+			(SELECT count(*) FROM ingest_batches WHERE project_id = $1 AND batch_key = $2 AND status = 'completed'),
+			(SELECT count(*) FROM traces WHERE project_id = $1 AND trace_id LIKE $3),
+			(SELECT count(*) FROM spans WHERE project_id = $1)`,
+		projectID, p+"batch", p+"%",
+	).Scan(&batches, &completed, &traceRows, &spanRows))
+	assert.Equal(t, 1, batches, "batch claims")
+	assert.Equal(t, 1, completed, "completed batch claims")
+	assert.Equal(t, 2, traceRows, "traces")
+	assert.Equal(t, 2, spanRows, "spans")
 }
 
 // newTestPool opens another pool on the test database, capped at maxConns connections.

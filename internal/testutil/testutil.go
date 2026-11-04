@@ -102,18 +102,55 @@ func CreateTestProject(t *testing.T, ctx context.Context, q *platform.Queries) u
 //nolint:revive // Keep testing.T first in shared test helper signatures.
 func ForceInsertSQLState(t *testing.T, pool *pgxpool.Pool, table string, projectID uuid.UUID, sqlState string) {
 	t.Helper()
+	forceInsertSQLState(t, pool, table, projectID, sqlState, false)
+}
+
+// ForceInsertSQLStateOnce makes only the first insert into table for projectID fail with
+// sqlState, so a caller that retries succeeds on its next attempt. The returned func
+// reports how many inserts the trigger has seen. A sequence counts them, because
+// nextval survives the rollback of the transaction that failed.
+//
+//nolint:revive // Keep testing.T first in shared test helper signatures.
+func ForceInsertSQLStateOnce(
+	t *testing.T, pool *pgxpool.Pool, table string, projectID uuid.UUID, sqlState string,
+) (inserts func() int64) {
+	t.Helper()
+	name := forceInsertSQLState(t, pool, table, projectID, sqlState, true)
+	return func() int64 {
+		var n int64
+		require.NoError(t, pool.QueryRow(context.Background(),
+			fmt.Sprintf(`SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM %s`, name)).Scan(&n))
+		return n
+	}
+}
+
+// forceInsertSQLState installs the trigger behind ForceInsertSQLState and
+// ForceInsertSQLStateOnce, and returns the name of its function, trigger, and counting sequence.
+func forceInsertSQLState(t *testing.T, pool *pgxpool.Pool, table string, projectID uuid.UUID, sqlState string, once bool) string {
+	t.Helper()
 	ctx := context.Background()
 	name := "force_" + table + "_" + strings.ReplaceAll(projectID.String(), "-", "")
+	fail := "TRUE"
+	if once {
+		fail = fmt.Sprintf("nextval('%s') = 1", name)
+	}
 	_, err := pool.Exec(ctx, fmt.Sprintf(`
+		CREATE SEQUENCE %[1]s;
 		CREATE FUNCTION %[1]s() RETURNS trigger LANGUAGE plpgsql AS $$
-		BEGIN RAISE EXCEPTION 'forced SQLSTATE %[4]s' USING ERRCODE = '%[4]s'; END $$;
+		BEGIN
+			IF %[5]s THEN
+				RAISE EXCEPTION 'forced SQLSTATE %[4]s' USING ERRCODE = '%[4]s';
+			END IF;
+			RETURN NEW;
+		END $$;
 		CREATE TRIGGER %[1]s BEFORE INSERT ON %[2]s FOR EACH ROW
-		WHEN (NEW.project_id = '%[3]s') EXECUTE FUNCTION %[1]s();`, name, table, projectID, sqlState))
+		WHEN (NEW.project_id = '%[3]s') EXECUTE FUNCTION %[1]s();`, name, table, projectID, sqlState, fail))
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, err := pool.Exec(ctx, fmt.Sprintf(`DROP TRIGGER %[1]s ON %[2]s; DROP FUNCTION %[1]s();`, name, table))
+		_, err := pool.Exec(ctx, fmt.Sprintf(`DROP TRIGGER %[1]s ON %[2]s; DROP FUNCTION %[1]s(); DROP SEQUENCE %[1]s;`, name, table))
 		require.NoError(t, err)
 	})
+	return name
 }
 
 // CreateTestTrace creates a test trace and returns its UUID.
