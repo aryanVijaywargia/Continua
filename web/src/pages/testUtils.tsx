@@ -79,6 +79,7 @@ export function buildFetchHandler({
   sessionCompare,
   sessionNarrative,
   spans,
+  spanPayload,
   timeline,
   engineHistory,
   enginePendingWork,
@@ -92,6 +93,7 @@ export function buildFetchHandler({
   sessionCompare?: JsonHandler;
   sessionNarrative?: JsonHandler;
   spans?: JsonHandler;
+  spanPayload?: JsonHandler;
   timeline?: JsonHandler;
   engineHistory?: JsonHandler;
   enginePendingWork?: JsonHandler;
@@ -113,6 +115,10 @@ export function buildFetchHandler({
 
     if (/^\/api\/traces\/[^/]+\/spans$/.test(url.pathname)) {
       return spans?.(url, init) ?? jsonResponse({ spans: [] });
+    }
+
+    if (/^\/api\/traces\/[^/]+\/spans\/[^/]+\/payload$/.test(url.pathname)) {
+      return spanPayload?.(url, init) ?? jsonResponse({});
     }
 
     if (/^\/api\/traces\/[^/]+\/events$/.test(url.pathname)) {

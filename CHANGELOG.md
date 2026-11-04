@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** `GET /api/traces/{id}/spans` no longer returns span `input`, `output`, or `metadata`; each span carries `has_input`/`has_output`, and `GET /api/traces/{id}/spans/{span_uuid}/payload` returns one span's payloads (#317)
 - Redesign operator console with M3 editorial design language: top-nav layout replacing sidebar, Inter 900 bold headlines, landing page replica of ux_design.html, full M3 color token system, and Material Symbols icons
 
 ### Added

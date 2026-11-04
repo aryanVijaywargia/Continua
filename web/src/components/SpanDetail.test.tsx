@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { Span, TimelineEvent } from '../api/client';
+import type { SpanWithPayload, TimelineEvent } from '../api/client';
 import {
   getAccessibleSummary,
   getReasonExplanation,
@@ -9,7 +9,7 @@ import {
 } from '../utils/retrySafety';
 import { SpanDetail } from './SpanDetail';
 
-function createSpan(overrides: Partial<Span> = {}): Span {
+function createSpan(overrides: Partial<SpanWithPayload> = {}): SpanWithPayload {
   const spanId = overrides.span_id ?? 'span-1';
 
   return {
@@ -29,10 +29,12 @@ function createSpan(overrides: Partial<Span> = {}): Span {
     error_message: overrides.error_message,
     model: overrides.model,
     provider: overrides.provider,
+    has_input: overrides.input !== undefined,
     input: overrides.input,
     input_truncated: overrides.input_truncated,
     input_original_size_bytes: overrides.input_original_size_bytes,
     input_truncation_reason: overrides.input_truncation_reason,
+    has_output: overrides.output !== undefined,
     output: overrides.output,
     output_truncated: overrides.output_truncated,
     output_original_size_bytes: overrides.output_original_size_bytes,

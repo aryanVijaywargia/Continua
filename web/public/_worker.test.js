@@ -121,3 +121,59 @@ describe('public demo worker engine fixtures', () => {
     });
   });
 });
+
+describe('public demo worker span payloads', () => {
+  const traceId = 'e4271b6e-9b16-4c3d-a42a-07d04c0e5fa4';
+
+  it('lists span summaries with presence flags and no inline payloads', async () => {
+    const response = await request('/api/traces/' + traceId + '/spans');
+    expect(response.status).toBe(200);
+    const { spans } = await response.json();
+
+    expect(spans.length).toBeGreaterThan(0);
+    for (const span of spans) {
+      expect(span).not.toHaveProperty('input');
+      expect(span).not.toHaveProperty('output');
+      expect(span).not.toHaveProperty('metadata');
+      expect(span.has_input).toBe(true);
+      expect(span.has_output).toBe(true);
+    }
+
+    const chainResponse = await request(
+      '/api/traces/88e6b423-cb06-47dc-a649-dd9737b47ee5/spans'
+    );
+    const chain = (await chainResponse.json()).spans.find(
+      (span) => span.name === 'code_analysis_chain'
+    );
+    expect(chain).toMatchObject({ has_input: false, has_output: false });
+  });
+
+  it('serves the captured payload of a known span', async () => {
+    const listResponse = await request('/api/traces/' + traceId + '/spans');
+    const [span] = (await listResponse.json()).spans;
+
+    const response = await request(
+      '/api/traces/' + traceId + '/spans/' + span.id + '/payload'
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.input[1]).toEqual({
+      content: 'Plan the first dependency check for a stalled agent workflow.',
+      role: 'user',
+    });
+    expect(payload.output.first_check).toMatch(/external dependencies/);
+  });
+
+  it('returns 404 for a span outside the trace', async () => {
+    const otherSpanId = 'ad6a8500-16d5-490b-9ae9-370e335b2ac0';
+    const response = await request(
+      '/api/traces/' + traceId + '/spans/' + otherSpanId + '/payload'
+    );
+    expect(response.status).toBe(404);
+
+    const unknownTrace = await request(
+      '/api/traces/no-such-trace/spans/' + otherSpanId + '/payload'
+    );
+    expect(unknownTrace.status).toBe(404);
+  });
+});

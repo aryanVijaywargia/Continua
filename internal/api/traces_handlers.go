@@ -133,7 +133,7 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 		return
 	}
 
-	spans, err := s.store.ListSpansByTrace(r.Context(), scope, id)
+	spans, err := s.store.ListSpanSummariesByTrace(r.Context(), scope, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list spans")
 		return
@@ -148,6 +148,30 @@ func (s *Server) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id ope
 		Spans: apiSpans,
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// GetSpanPayload returns the input, output, and metadata payloads of one span.
+func (s *Server) GetSpanPayload(w http.ResponseWriter, r *http.Request, id, spanUUID openapi_types.UUID, _ GetSpanPayloadParams) {
+	scope, ok := scopeFromRequest(w, r, scopePolicyAllowUnbounded)
+	if !ok {
+		return
+	}
+
+	if _, ok := s.getScopedTrace(r.Context(), w, scope, id); !ok {
+		return
+	}
+
+	payload, err := s.store.GetSpanPayload(r.Context(), scope, id, spanUUID)
+	if store.IsNotFound(err) {
+		writeError(w, http.StatusNotFound, "not_found", "Span not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to get span payload")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, spanPayloadToAPI(&payload))
 }
 
 // GetTraceEvents returns merged explicit and synthetic timeline events for a trace.
@@ -173,7 +197,7 @@ func (s *Server) GetTraceEvents(w http.ResponseWriter, r *http.Request, id opena
 		return
 	}
 
-	spans, err := s.store.ListSpansByTrace(r.Context(), scope, id)
+	spans, err := s.store.ListSpanSummariesByTrace(r.Context(), scope, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Failed to list spans")
 		return

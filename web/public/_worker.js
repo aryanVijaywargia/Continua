@@ -2119,6 +2119,11 @@ function readOnly() {
   );
 }
 
+// The span list carries presence flags; the payload route serves the captured payloads.
+function spanSummary({ input, output, metadata: _metadata, ...summary }) {
+  return { ...summary, has_input: input !== undefined, has_output: output !== undefined };
+}
+
 function filterTraces(url) {
   let filtered = [...traces];
   const session = url.searchParams.get('session_id');
@@ -2217,7 +2222,18 @@ function handleApi(url, method = 'GET') {
     if (!traceDetails.has(traceId)) {
       return notFound();
     }
-    return json(traceSpansByTrace.get(traceId) ?? emptySpans);
+    const { spans } = traceSpansByTrace.get(traceId) ?? emptySpans;
+    return json({ spans: spans.map(spanSummary) });
+  }
+
+  if (/^\/api\/traces\/[^/]+\/spans\/[^/]+\/payload$/.test(url.pathname)) {
+    const [, , , traceId, , spanUuid] = url.pathname.split('/');
+    const span = traceSpansByTrace.get(traceId)?.spans.find((item) => item.id === spanUuid);
+    if (!span) {
+      return notFound();
+    }
+    const { input, output, metadata } = span;
+    return json({ input, output, metadata });
   }
 
   if (/^\/api\/traces\/[^/]+\/events$/.test(url.pathname)) {

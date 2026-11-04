@@ -213,6 +213,128 @@ func (q *Queries) GetSpanByExternalID(ctx context.Context, arg GetSpanByExternal
 	return i, err
 }
 
+const getSpanPayload = `-- name: GetSpanPayload :one
+SELECT input, output, metadata FROM spans
+WHERE id = $1
+  AND trace_id = $2
+  AND ($3::uuid IS NULL OR project_id = $3::uuid)
+`
+
+type GetSpanPayloadParams struct {
+	ID              uuid.UUID   `json:"id"`
+	TraceID         uuid.UUID   `json:"trace_id"`
+	ProjectFilterID pgtype.UUID `json:"project_filter_id"`
+}
+
+type GetSpanPayloadRow struct {
+	Input    []byte `json:"input"`
+	Output   []byte `json:"output"`
+	Metadata []byte `json:"metadata"`
+}
+
+func (q *Queries) GetSpanPayload(ctx context.Context, arg GetSpanPayloadParams) (GetSpanPayloadRow, error) {
+	row := q.db.QueryRow(ctx, getSpanPayload, arg.ID, arg.TraceID, arg.ProjectFilterID)
+	var i GetSpanPayloadRow
+	err := row.Scan(&i.Input, &i.Output, &i.Metadata)
+	return i, err
+}
+
+const listSpanSummariesByTrace = `-- name: ListSpanSummariesByTrace :many
+SELECT
+    id, trace_id, span_id, parent_span_id, name, type, status, status_message,
+    start_time, end_time, duration_ms,
+    (input IS NOT NULL)::boolean AS has_input,
+    input_truncated, input_original_size_bytes, input_truncation_reason,
+    (output IS NOT NULL)::boolean AS has_output,
+    output_truncated, output_original_size_bytes, output_truncation_reason,
+    model, provider, prompt_tokens, completion_tokens, total_cost, created_at
+FROM spans
+WHERE trace_id = $1
+  AND ($2::uuid IS NULL OR project_id = $2::uuid)
+ORDER BY COALESCE(start_time, server_received_at) ASC, sequence NULLS LAST
+`
+
+type ListSpanSummariesByTraceParams struct {
+	TraceID         uuid.UUID   `json:"trace_id"`
+	ProjectFilterID pgtype.UUID `json:"project_filter_id"`
+}
+
+type ListSpanSummariesByTraceRow struct {
+	ID                      uuid.UUID          `json:"id"`
+	TraceID                 uuid.UUID          `json:"trace_id"`
+	SpanID                  string             `json:"span_id"`
+	ParentSpanID            *string            `json:"parent_span_id"`
+	Name                    string             `json:"name"`
+	Type                    string             `json:"type"`
+	Status                  string             `json:"status"`
+	StatusMessage           *string            `json:"status_message"`
+	StartTime               time.Time          `json:"start_time"`
+	EndTime                 pgtype.Timestamptz `json:"end_time"`
+	DurationMs              *int64             `json:"duration_ms"`
+	HasInput                bool               `json:"has_input"`
+	InputTruncated          *bool              `json:"input_truncated"`
+	InputOriginalSizeBytes  *int64             `json:"input_original_size_bytes"`
+	InputTruncationReason   *string            `json:"input_truncation_reason"`
+	HasOutput               bool               `json:"has_output"`
+	OutputTruncated         *bool              `json:"output_truncated"`
+	OutputOriginalSizeBytes *int64             `json:"output_original_size_bytes"`
+	OutputTruncationReason  *string            `json:"output_truncation_reason"`
+	Model                   *string            `json:"model"`
+	Provider                *string            `json:"provider"`
+	PromptTokens            *int64             `json:"prompt_tokens"`
+	CompletionTokens        *int64             `json:"completion_tokens"`
+	TotalCost               pgtype.Numeric     `json:"total_cost"`
+	CreatedAt               time.Time          `json:"created_at"`
+}
+
+// Reads no payload column (input, output, thinking, metadata, search_vector),
+// so the cost of a list read does not grow with payload size.
+func (q *Queries) ListSpanSummariesByTrace(ctx context.Context, arg ListSpanSummariesByTraceParams) ([]ListSpanSummariesByTraceRow, error) {
+	rows, err := q.db.Query(ctx, listSpanSummariesByTrace, arg.TraceID, arg.ProjectFilterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSpanSummariesByTraceRow{}
+	for rows.Next() {
+		var i ListSpanSummariesByTraceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TraceID,
+			&i.SpanID,
+			&i.ParentSpanID,
+			&i.Name,
+			&i.Type,
+			&i.Status,
+			&i.StatusMessage,
+			&i.StartTime,
+			&i.EndTime,
+			&i.DurationMs,
+			&i.HasInput,
+			&i.InputTruncated,
+			&i.InputOriginalSizeBytes,
+			&i.InputTruncationReason,
+			&i.HasOutput,
+			&i.OutputTruncated,
+			&i.OutputOriginalSizeBytes,
+			&i.OutputTruncationReason,
+			&i.Model,
+			&i.Provider,
+			&i.PromptTokens,
+			&i.CompletionTokens,
+			&i.TotalCost,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSpansByTrace = `-- name: ListSpansByTrace :many
 SELECT id, project_id, trace_id, span_id, parent_span_id, name, type, status, status_message, level, start_time, end_time, server_received_at, duration_ms, input, input_truncated, input_original_size_bytes, input_truncation_reason, output, output_truncated, output_original_size_bytes, output_truncation_reason, thinking, thinking_truncated, model, provider, prompt_tokens, completion_tokens, total_tokens, total_cost, metadata, sequence, depth, version, created_at, updated_at, search_vector FROM spans
 WHERE trace_id = $1

@@ -27,12 +27,26 @@ func (t *Tx) GetSpanByExternalID(ctx context.Context, traceUUID uuid.UUID, spanI
 	return span, err
 }
 
-// ListSpansByTrace returns all spans for a trace within the supplied scope.
-func (s *Store) ListSpansByTrace(ctx context.Context, scope Scope, traceUUID uuid.UUID) ([]platform.Span, error) {
-	return s.q.ListSpansByTrace(ctx, platform.ListSpansByTraceParams{
+// ListSpanSummariesByTrace returns all spans for a trace within the supplied
+// scope, without their payload columns.
+func (s *Store) ListSpanSummariesByTrace(ctx context.Context, scope Scope, traceUUID uuid.UUID) ([]platform.ListSpanSummariesByTraceRow, error) {
+	return s.q.ListSpanSummariesByTrace(ctx, platform.ListSpanSummariesByTraceParams{
 		TraceID:         traceUUID,
 		ProjectFilterID: scope.nullableProjectFilter(),
 	})
+}
+
+// GetSpanPayload returns the input, output, and metadata of one span of a trace.
+func (s *Store) GetSpanPayload(ctx context.Context, scope Scope, traceUUID, spanUUID uuid.UUID) (platform.GetSpanPayloadRow, error) {
+	payload, err := s.q.GetSpanPayload(ctx, platform.GetSpanPayloadParams{
+		ID:              spanUUID,
+		TraceID:         traceUUID,
+		ProjectFilterID: scope.nullableProjectFilter(),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return platform.GetSpanPayloadRow{}, ErrNotFound
+	}
+	return payload, err
 }
 
 // UpdateSpanStatusTx updates span status within a transaction.

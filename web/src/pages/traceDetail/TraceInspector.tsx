@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Braces, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
-import type { Span } from '../../api/client';
+import { fetchSpanPayload, type Span, type SpanWithPayload } from '../../api/client';
 import { CopyButton } from '../../components/CopyButton';
 import { DerivedTag } from '../../components/DataState';
 import { Chip, StatusDot } from '../../components/DebuggerKit';
@@ -186,6 +187,7 @@ function TraceSummaryInspector() {
 }
 
 type StepTab = 'input' | 'output' | 'details';
+type PayloadLoadState = 'loading' | 'error' | 'ready';
 
 function StepInspector({
   duration,
@@ -203,7 +205,31 @@ function StepInspector({
     selectSpanAndShowDetails,
     selectedBreadcrumbPath,
     spanIndex,
+    projectId,
+    traceId,
   } = useTraceDetailWorkspace();
+  const payloadQuery = useQuery({
+    // The span list omits payloads, so load them for the selected span only.
+    // Status and presence flags in the key refetch them when a live span changes.
+    queryKey: [
+      'span-payload',
+      traceId,
+      span.id,
+      projectId ?? null,
+      span.status,
+      span.has_input,
+      span.has_output,
+    ],
+    queryFn: () => fetchSpanPayload(traceId, span.id, projectId),
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
+  });
+  const detail: SpanWithPayload = { ...span, ...payloadQuery.data };
+  const payloadLoadState: PayloadLoadState = payloadQuery.data
+    ? 'ready'
+    : payloadQuery.isError
+      ? 'error'
+      : 'loading';
   const [activeTab, setActiveTab] = useState<StepTab>('input');
   const [showRaw, setShowRaw] = useState(false);
   const spanEvents = events.filter(
@@ -216,7 +242,7 @@ function StepInspector({
     { id: 'output', label: 'Output' },
     { id: 'details', label: 'Details', count: spanEvents.length || undefined },
   ];
-  const payload = activeTab === 'input' ? span.input : span.output;
+  const payload = activeTab === 'input' ? detail.input : detail.output;
 
   return (
     <>
@@ -306,6 +332,8 @@ function StepInspector({
         {activeTab === 'input' ? (
           <PayloadPane
             emptyLabel="No input payload was recorded for this step."
+            hasPayload={span.has_input}
+            loadState={payloadLoadState}
             showRaw={showRaw}
             truncation={
               <TruncationBanner
@@ -315,7 +343,7 @@ function StepInspector({
                 reason={span.input_truncation_reason}
               />
             }
-            value={span.input}
+            value={detail.input}
           />
         ) : null}
 
@@ -326,6 +354,8 @@ function StepInspector({
                 ? 'No output was recorded. The step failed with the error above.'
                 : 'No output payload was recorded for this step.'
             }
+            hasPayload={span.has_output}
+            loadState={payloadLoadState}
             showRaw={showRaw}
             truncation={
               <TruncationBanner
@@ -335,7 +365,7 @@ function StepInspector({
                 reason={span.output_truncation_reason}
               />
             }
-            value={span.output}
+            value={detail.output}
           />
         ) : null}
 
@@ -343,7 +373,7 @@ function StepInspector({
           <div className="space-y-5">
             <SpanDetail
               variant="details"
-              span={span}
+              span={detail}
               breadcrumbPath={selectedBreadcrumbPath}
               onSelectSpan={selectSpanAndShowDetails}
               spanIndex={spanIndex}
@@ -390,16 +420,26 @@ function StepInspector({
 
 function PayloadPane({
   emptyLabel,
+  hasPayload,
+  loadState,
   showRaw,
   truncation,
   value,
 }: {
   emptyLabel: string;
+  hasPayload: boolean;
+  loadState: PayloadLoadState;
   showRaw: boolean;
   truncation: ReactNode;
   value: unknown;
 }) {
   if (value === undefined) {
+    if (hasPayload && loadState === 'loading') {
+      return <InspectorEmptyState>Loading payload...</InspectorEmptyState>;
+    }
+    if (hasPayload && loadState === 'error') {
+      return <InspectorEmptyState>Could not load this payload.</InspectorEmptyState>;
+    }
     return <InspectorEmptyState>{emptyLabel}</InspectorEmptyState>;
   }
 

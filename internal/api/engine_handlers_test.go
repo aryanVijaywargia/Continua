@@ -250,7 +250,7 @@ func TestStartEngineRun_CreatesProjectedShellAndReplaysDedupe(t *testing.T) {
 	assert.Equal(t, "after", metadata["replace"])
 	assert.Equal(t, "value", metadata["new"])
 
-	spans, err := platformStore.ListSpansByTrace(ctx, store.BoundScope(projectID), trace.ID)
+	spans, err := platformStore.ListSpanSummariesByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, spans, 1)
 	assert.Equal(t, "engine:root:"+first.RunId.String(), spans[0].SpanID)
@@ -1959,7 +1959,7 @@ func TestPurgeEngineRun_ProjectionOnlyThenFullPreservesShell(t *testing.T) {
 	assert.False(t, idempotentProjectionOnly.Deleted)
 	assert.Equal(t, SummaryOnly, idempotentProjectionOnly.ProjectionState)
 
-	remainingSpans, err := platformStore.ListSpansByTrace(ctx, store.BoundScope(projectID), trace.ID)
+	remainingSpans, err := platformStore.ListSpanSummariesByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, remainingSpans, 1)
 	assert.Equal(t, "engine:root:"+start.RunId.String(), remainingSpans[0].SpanID)
@@ -2730,7 +2730,7 @@ func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
 	markEngineRunCompleted(t, ctx, platformStore, start.RunId, trace.ID)
 	setEngineProjectionCheckpoint(t, ctx, platformStore, trace.ID, "summary_only", activityHistory.ID, historyBefore[0].ID)
 
-	spansBefore, err := platformStore.ListSpansByTrace(ctx, store.BoundScope(projectID), trace.ID)
+	spansBefore, err := platformStore.ListSpanSummariesByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, spansBefore, 1)
 
@@ -2748,7 +2748,7 @@ func TestRepairEngineRun_ProjectorEventuallyRebuildsPurgedDetail(t *testing.T) {
 
 	waitForProjectedTraceCaughtUp(t, ctx, platformStore.Pool(), trace.ID, activityHistory.ID)
 
-	spansAfter, err := platformStore.ListSpansByTrace(ctx, store.BoundScope(projectID), trace.ID)
+	spansAfter, err := platformStore.ListSpanSummariesByTrace(ctx, store.BoundScope(projectID), trace.ID)
 	require.NoError(t, err)
 	require.Len(t, spansAfter, 2)
 

@@ -11,6 +11,12 @@ const TIMELINE_PAGE_LIMIT = 100;
 const TEST_TIMELINE_POLL_INTERVAL_MS = 25;
 export const TIMELINE_POLL_INTERVAL_MS =
   import.meta.env.MODE === 'test' ? TEST_TIMELINE_POLL_INTERVAL_MS : 3000;
+/**
+ * Fallback refresh for the span list of a running trace. A poll with new events
+ * refreshes the list at once; this interval catches span updates that add no
+ * event after the poll cursor, such as a late completion of an earlier span.
+ */
+export const RUNNING_SPANS_REFRESH_INTERVAL_MS = 15_000;
 
 interface TimelineSnapshot {
   events: TimelineEvent[];
@@ -80,6 +86,8 @@ export function useTraceTimeline(traceId: string, projectId?: string) {
         queryClient.invalidateQueries({ queryKey: ['spans', traceId, projectQueryKey] }),
       ]);
       setNeedsTerminalRefresh(true);
+    } else if (pollResult.events.length > 0) {
+      void queryClient.invalidateQueries({ queryKey: ['spans', traceId, projectQueryKey] });
     }
 
     setTimelineSnapshot((current) => {

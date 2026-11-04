@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -83,6 +84,61 @@ func TestNewClient_WithRetentionConfig_DoesNotRunRetentionOnStart(t *testing.T) 
 
 	waitForJobKindCount(t, client, jobargs.CleanupArgs{}.Kind(), 1)
 	assertJobKindCount(t, client, jobargs.RetentionArgs{}.Kind(), 0)
+}
+
+// River's 100ms default fetch cooldown capped a 10-worker queue at 100 jobs/s
+// no matter how cheap each job was (#316).
+func TestNewClient_DefaultsDrainRollupBurstFasterThanFetchCadence(t *testing.T) {
+	const (
+		jobCount       = 500
+		rollupWorkers  = 10
+		riverCooldown  = 100 * time.Millisecond
+		cadenceMinimum = (jobCount/rollupWorkers - 1) * riverCooldown
+	)
+	client := newRetentionModuleTestClient(t, nil)
+	ctx := context.Background()
+	pool := testutil.TestDB(t)
+	q := store.New(pool).Queries()
+	projectID := testutil.CreateTestProject(t, ctx, q)
+
+	params := make([]river.InsertManyParams, jobCount)
+	for i := range params {
+		traceID := testutil.CreateTestTrace(t, ctx, q, projectID, "drain-"+uuid.NewString())
+		params[i] = river.InsertManyParams{Args: jobargs.TraceRollupArgs{TraceID: traceID}}
+	}
+	inserted, err := client.InsertMany(ctx, params)
+	require.NoError(t, err)
+	jobIDs := make([]int64, 0, jobCount)
+	pending := make(map[int64]struct{}, jobCount)
+	for _, res := range inserted {
+		jobIDs = append(jobIDs, res.Job.ID)
+		pending[res.Job.ID] = struct{}{}
+	}
+
+	completed, cancel := client.Subscribe(river.EventKindJobCompleted)
+	t.Cleanup(cancel)
+	require.NoError(t, client.Start(ctx))
+	// Registered after TestDB, so it runs before the pools close.
+	t.Cleanup(func() {
+		ctx := context.Background()
+		require.NoError(t, client.Stop(ctx))
+		_, err := pool.Exec(ctx, `DELETE FROM river_job WHERE id = ANY($1)`, jobIDs)
+		require.NoError(t, err)
+		// Traces cascade from the project.
+		_, err = pool.Exec(ctx, `DELETE FROM projects WHERE id = $1`, projectID)
+		require.NoError(t, err)
+	})
+
+	deadline := time.After(cadenceMinimum / 2)
+	for len(pending) > 0 {
+		select {
+		case event := <-completed:
+			delete(pending, event.Job.ID)
+		case <-deadline:
+			t.Fatalf("%d of %d rollup jobs still pending after %s; the queue drains at fetch cadence, not job cost",
+				len(pending), jobCount, cadenceMinimum/2)
+		}
+	}
 }
 
 func newRetentionModuleTestClient(t *testing.T, cfg *config.Config) *river.Client[pgx.Tx] {

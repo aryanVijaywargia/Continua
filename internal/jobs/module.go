@@ -3,6 +3,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -104,6 +105,7 @@ func NewClient(
 			jobargs.QueueMaintenance: {MaxWorkers: queueWorkers(cfg, func(c *config.Config) int { return c.Jobs.MaintenanceWorkers }, 1)},
 			river.QueueDefault:       {MaxWorkers: queueWorkers(cfg, func(c *config.Config) int { return c.Jobs.DefaultWorkers }, 1)},
 		},
+		FetchCooldown:               fetchCooldown(cfg),
 		PeriodicJobs:                periodicJobs,
 		Workers:                     workers,
 		JobTimeout:                  5 * time.Minute,
@@ -113,7 +115,7 @@ func NewClient(
 		DiscardedJobRetentionPeriod: retentionPeriod,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create river client: %w", err)
 	}
 
 	ingestWorker.client = client
@@ -125,6 +127,13 @@ func queueWorkers(cfg *config.Config, getter func(*config.Config) int, fallback 
 		return fallback
 	}
 	return getter(cfg)
+}
+
+func fetchCooldown(cfg *config.Config) time.Duration {
+	if cfg == nil || cfg.Jobs.FetchCooldown <= 0 {
+		return config.DefaultRiverFetchCooldown
+	}
+	return cfg.Jobs.FetchCooldown
 }
 
 func failedPayloadRetention(cfg *config.Config) time.Duration {

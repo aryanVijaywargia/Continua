@@ -386,6 +386,10 @@ class ContinuaReadClient:
             raise AssertionError(f"Expected span list for trace {trace_id}")
         return spans
 
+    def span_payload(self, trace_id: str, span_uuid: str) -> dict[str, Any]:
+        """Fetch one span's input, output, and metadata payloads."""
+        return self.get_json(f"/api/traces/{trace_id}/spans/{span_uuid}/payload")
+
     def timeline(self, trace_id: str) -> dict[str, Any]:
         """Fetch a single large timeline page for an internal trace UUID."""
         return self.get_json(f"/api/traces/{trace_id}/events", params={"limit": 500})
@@ -1092,8 +1096,10 @@ class StressRunner:
             assert_at_least(int(span_obj.get("tokens_out") or 0), 1)
 
         for span_name in expected.required_payload_spans:
-            span_obj = spans_by_name[span_name]
-            if span_obj.get("input") is None and span_obj.get("output") is None:
+            payload = self.read_client.span_payload(
+                str(trace_record["id"]), str(spans_by_name[span_name]["id"])
+            )
+            if payload.get("input") is None and payload.get("output") is None:
                 raise AssertionError(f"Span {span_name!r} did not preserve input/output payload")
 
         timeline = self.read_client.timeline(str(trace_record["id"]))

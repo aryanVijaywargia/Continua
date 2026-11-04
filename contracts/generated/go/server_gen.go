@@ -1171,29 +1171,29 @@ type SizeError struct {
 	Error string `json:"error"`
 }
 
-// Span defines model for Span.
+// Span A span without its payloads. has_input and has_output tell whether a
+// payload is stored; getSpanPayload returns the payloads.
 type Span struct {
-	CostUsd      *float32           `json:"cost_usd,omitempty"`
-	EndedAt      *time.Time         `json:"ended_at,omitempty"`
-	ErrorMessage *string            `json:"error_message,omitempty"`
-	Id           openapi_types.UUID `json:"id"`
+	CostUsd      *float32   `json:"cost_usd,omitempty"`
+	EndedAt      *time.Time `json:"ended_at,omitempty"`
+	ErrorMessage *string    `json:"error_message,omitempty"`
 
-	// Input Span input payload (any valid JSON)
-	Input                  interface{}             `json:"input,omitempty"`
-	InputOriginalSizeBytes *int64                  `json:"input_original_size_bytes,omitempty"`
-	InputTruncated         *bool                   `json:"input_truncated,omitempty"`
-	InputTruncationReason  *string                 `json:"input_truncation_reason,omitempty"`
-	Kind                   SpanKind                `json:"kind"`
-	LatencyMs              *int                    `json:"latency_ms,omitempty"`
-	Metadata               *map[string]interface{} `json:"metadata,omitempty"`
-	Model                  *string                 `json:"model,omitempty"`
-	Name                   string                  `json:"name"`
+	// HasInput True when the span has a stored input payload
+	HasInput bool `json:"has_input"`
 
-	// Output Span output payload (any valid JSON)
-	Output                  interface{} `json:"output,omitempty"`
-	OutputOriginalSizeBytes *int64      `json:"output_original_size_bytes,omitempty"`
-	OutputTruncated         *bool       `json:"output_truncated,omitempty"`
-	OutputTruncationReason  *string     `json:"output_truncation_reason,omitempty"`
+	// HasOutput True when the span has a stored output payload
+	HasOutput               bool               `json:"has_output"`
+	Id                      openapi_types.UUID `json:"id"`
+	InputOriginalSizeBytes  *int64             `json:"input_original_size_bytes,omitempty"`
+	InputTruncated          *bool              `json:"input_truncated,omitempty"`
+	InputTruncationReason   *string            `json:"input_truncation_reason,omitempty"`
+	Kind                    SpanKind           `json:"kind"`
+	LatencyMs               *int               `json:"latency_ms,omitempty"`
+	Model                   *string            `json:"model,omitempty"`
+	Name                    string             `json:"name"`
+	OutputOriginalSizeBytes *int64             `json:"output_original_size_bytes,omitempty"`
+	OutputTruncated         *bool              `json:"output_truncated,omitempty"`
+	OutputTruncationReason  *string            `json:"output_truncation_reason,omitempty"`
 
 	// ParentSpanId External parent span identifier
 	ParentSpanId *string `json:"parent_span_id,omitempty"`
@@ -1229,6 +1229,16 @@ type SpanDiffRow struct {
 // SpanList defines model for SpanList.
 type SpanList struct {
 	Spans []Span `json:"spans"`
+}
+
+// SpanPayload defines model for SpanPayload.
+type SpanPayload struct {
+	// Input Span input payload (any valid JSON)
+	Input    interface{}             `json:"input,omitempty"`
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+
+	// Output Span output payload (any valid JSON)
+	Output interface{} `json:"output,omitempty"`
 }
 
 // TimelineEvent defines model for TimelineEvent.
@@ -1498,6 +1508,12 @@ type GetTraceEventsParams struct {
 
 // ListSpansByTraceParams defines parameters for ListSpansByTrace.
 type ListSpansByTraceParams struct {
+	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
+	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
+// GetSpanPayloadParams defines parameters for GetSpanPayload.
+type GetSpanPayloadParams struct {
 	// ProjectId Required as a selection filter in local single-user mode. For API-key requests, it must match the key's project; a mismatch is rejected with 403 project_scope_mismatch.
 	ProjectId *SelectedProjectId `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
@@ -1838,6 +1854,9 @@ type ServerInterface interface {
 	// List spans for a trace
 	// (GET /api/traces/{id}/spans)
 	ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params ListSpansByTraceParams)
+	// Get the input, output, and metadata payloads of one span
+	// (GET /api/traces/{id}/spans/{span_uuid}/payload)
+	GetSpanPayload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, spanUuid openapi_types.UUID, params GetSpanPayloadParams)
 	// Claim remote engine activity tasks
 	// (POST /v1/engine/activities/claim)
 	ClaimRemoteActivityTasks(w http.ResponseWriter, r *http.Request, params ClaimRemoteActivityTasksParams)
@@ -1994,6 +2013,12 @@ func (_ Unimplemented) GetTraceEvents(w http.ResponseWriter, r *http.Request, id
 // List spans for a trace
 // (GET /api/traces/{id}/spans)
 func (_ Unimplemented) ListSpansByTrace(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params ListSpansByTraceParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get the input, output, and metadata payloads of one span
+// (GET /api/traces/{id}/spans/{span_uuid}/payload)
+func (_ Unimplemented) GetSpanPayload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, spanUuid openapi_types.UUID, params GetSpanPayloadParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2878,6 +2903,57 @@ func (siw *ServerInterfaceWrapper) ListSpansByTrace(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListSpansByTrace(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSpanPayload operation middleware
+func (siw *ServerInterfaceWrapper) GetSpanPayload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "span_uuid" -------------
+	var spanUuid openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "span_uuid", chi.URLParam(r, "span_uuid"), &spanUuid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "span_uuid", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ApiKeyScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSpanPayloadParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSpanPayload(w, r, id, spanUuid, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4048,6 +4124,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/traces/{id}/spans", wrapper.ListSpansByTrace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/traces/{id}/spans/{span_uuid}/payload", wrapper.GetSpanPayload)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/engine/activities/claim", wrapper.ClaimRemoteActivityTasks)

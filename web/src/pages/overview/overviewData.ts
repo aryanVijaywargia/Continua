@@ -196,7 +196,7 @@ export function deriveCoverage({
   const hasCapturedPayloads =
     loadedDetails.some((detail) => hasPayload(detail.input) || hasPayload(detail.output)) ||
     loadedSpans.some((spans) =>
-      spans.some((span) => hasPayload(span.input) || hasPayload(span.output))
+      spans.some((span) => span.has_input || span.has_output)
     );
   const payloadsChecked = loadedDetails.length > 0 || loadedSpans.length > 0;
 
