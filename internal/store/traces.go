@@ -120,9 +120,10 @@ func (s *Store) GetTraceUUID(ctx context.Context, projectID uuid.UUID, traceID s
 	return id, err
 }
 
-// GetTraceUUIDTx retrieves the internal UUID within a transaction.
-func (t *Tx) GetTraceUUID(ctx context.Context, projectID uuid.UUID, traceID string) (uuid.UUID, error) {
-	id, err := t.q.GetTraceUUID(ctx, platform.GetTraceUUIDParams{
+// LockTraceUUID retrieves the internal UUID and holds the trace row lock until the
+// transaction ends.
+func (t *Tx) LockTraceUUID(ctx context.Context, projectID uuid.UUID, traceID string) (uuid.UUID, error) {
+	id, err := t.q.LockTraceUUID(ctx, platform.LockTraceUUIDParams{
 		ProjectID: projectID,
 		TraceID:   traceID,
 	})

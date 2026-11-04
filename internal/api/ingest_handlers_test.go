@@ -309,6 +309,20 @@ func TestIngest_InvalidAsyncVersionReturnsBadRequest(t *testing.T) {
 	assert.Equal(t, "unsupported_async_version", resp.Code)
 }
 
+// When an inline batch keeps losing lock conflicts with other writers, its retries run
+// out. That is transient, so the client must get a retryable 503, not a 500.
+func TestIngest_ConflictRetryExhaustionReturnsServiceUnavailable(t *testing.T) {
+	server, s, _, projectID := newOTLPServer(t)
+	testutil.ForceInsertSQLState(t, s.Pool(), "ingest_batches", projectID, "40P01")
+
+	sync := true
+	rec := invokeIngest(t, server, projectID,
+		`{"batch_key":"batch-conflict","traces":[{"trace_id":"trace-conflict"}]}`, IngestParams{Sync: &sync}, nil)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code, "body: %s", rec.Body.String())
+	assert.Equal(t, "ingest_conflict", decodeJSONBody[Error](t, rec).Code)
+}
+
 func TestGetBatchStatus_ReturnsProcessing(t *testing.T) {
 	server, s, q, projectID := newAsyncIngestServer(t)
 	batchID, err := q.ClaimBatch(context.Background(), platform.ClaimBatchParams{

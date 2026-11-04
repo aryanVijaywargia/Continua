@@ -38,6 +38,7 @@ const (
 	otlpCodeResourceExhausted = 8
 	otlpCodeUnimplemented     = 12
 	otlpCodeInternal          = 13
+	otlpCodeUnavailable       = 14
 )
 
 // Body-decoding failures the handler maps onto a status code.
@@ -124,6 +125,11 @@ func (s *Server) OTLPTraces(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.ingestService.Ingest(r.Context(), projectID, req); err != nil {
 		if ingest.IsValidationError(err) {
 			writeOTLPError(w, r, http.StatusBadRequest, otlpCodeInvalidArgument, err.Error())
+			return
+		}
+		if errors.Is(err, ingest.ErrWriteConflict) {
+			writeOTLPError(w, r, http.StatusServiceUnavailable, otlpCodeUnavailable,
+				"The export conflicted with concurrent writes and was not stored; retry it")
 			return
 		}
 		log.Printf("otlp trace ingest failed: %v", err)

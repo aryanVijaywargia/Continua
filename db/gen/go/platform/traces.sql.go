@@ -908,6 +908,24 @@ func (q *Queries) ListTracesBySessionAsc(ctx context.Context, arg ListTracesBySe
 	return items, nil
 }
 
+const lockTraceUUID = `-- name: LockTraceUUID :one
+SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2 FOR NO KEY UPDATE
+`
+
+type LockTraceUUIDParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	TraceID   string    `json:"trace_id"`
+}
+
+// Resolve a trace by external ID and take the same row lock an UPDATE takes, so ingest
+// can lock every trace it writes under in one deterministic order before writing.
+func (q *Queries) LockTraceUUID(ctx context.Context, arg LockTraceUUIDParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockTraceUUID, arg.ProjectID, arg.TraceID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const updateEngineTraceSummary = `-- name: UpdateEngineTraceSummary :one
 UPDATE traces
 SET engine_run_status = $2,

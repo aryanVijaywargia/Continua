@@ -22,6 +22,11 @@ FOR UPDATE;
 -- name: GetTraceUUID :one
 SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2;
 
+-- name: LockTraceUUID :one
+-- Resolve a trace by external ID and take the same row lock an UPDATE takes, so ingest
+-- can lock every trace it writes under in one deterministic order before writing.
+SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2 FOR NO KEY UPDATE;
+
 -- name: ListTraces :many
 SELECT sqlc.embed(t), s.external_id AS session_external_id
 FROM traces t
