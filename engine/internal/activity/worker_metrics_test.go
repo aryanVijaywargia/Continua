@@ -47,11 +47,11 @@ func TestWorkerRecordsRetryAndFailureAttempts(t *testing.T) {
 	}
 
 	worker := NewWorker(store, activityRegistry, time.Minute, nil)
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() first attempt error = %v", err)
 	}
 	time.Sleep(20 * time.Millisecond)
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() second attempt error = %v", err)
 	}
 
