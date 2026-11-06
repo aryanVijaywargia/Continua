@@ -17,6 +17,7 @@ import {
   type ReplayStepStatus,
 } from '../../utils/replaySteps';
 import { orderSpansByStart } from '../../utils/traceMetrics';
+import { deriveWaterfallWindow, getTimestampPercent } from '../../utils/waterfallTime';
 import { useTraceDetailWorkspace } from './traceDetailWorkspaceContext';
 
 type ReplayMode = 'from-start' | 'from-cp';
@@ -35,6 +36,16 @@ export function TraceReplaySection() {
     [spans],
   );
   const orderedSpans = useMemo(() => orderSpansByStart(spans), [spans]);
+  const checkpointWindow = useMemo(
+    () =>
+      deriveWaterfallWindow({
+        traceStartedAt: trace.started_at,
+        traceEndedAt: trace.ended_at,
+        spans,
+        events,
+      }),
+    [events, spans, trace.ended_at, trace.started_at],
+  );
 
   const [mode, setMode] = useState<ReplayMode>(checkpoints.length > 0 ? 'from-cp' : 'from-start');
   const [selectedCheckpoint, setSelectedCheckpoint] = useState<string | undefined>(
@@ -229,11 +240,9 @@ export function TraceReplaySection() {
               style={{ width: `${progress}%` }}
             />
             {checkpoints.map((checkpoint, index) => {
-              const ts = new Date(checkpoint.timestamp).getTime();
-              const start = new Date(trace.started_at).getTime();
-              const end = trace.ended_at ? new Date(trace.ended_at).getTime() : ts;
-              const total = Math.max(end - start, 1);
-              const pct = Math.min(Math.max(((ts - start) / total) * 100, 0), 100);
+              const pct = checkpointWindow
+                ? getTimestampPercent(checkpoint.timestamp, checkpointWindow)
+                : 0;
               const active = checkpoint.id === selectedCheckpoint;
               return (
                 <div

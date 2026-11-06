@@ -7,6 +7,7 @@ import {
 import {
   buildWaterfallTicks,
   deriveWaterfallWindow,
+  getTimestampPercent,
   getWaterfallBarLayout,
 } from './waterfallTime';
 
@@ -119,5 +120,35 @@ describe('waterfallTime', () => {
       { label: '0ms', leftPercent: 0 },
       { label: '1ms', leftPercent: 100 },
     ]);
+  });
+
+  it('places timestamps of an open-ended trace on one shared window', () => {
+    const window = deriveWaterfallWindow({
+      traceStartedAt: '2026-03-14T10:00:00.000Z',
+      traceEndedAt: undefined,
+      spans: [
+        createSpan({
+          started_at: '2026-03-14T10:00:00.000Z',
+          ended_at: '2026-03-14T10:00:40.000Z',
+        }),
+      ],
+      events: [
+        createTimelineEvent({ timestamp: '2026-03-14T10:00:10.000Z' }),
+        createTimelineEvent({ timestamp: '2026-03-14T10:00:30.000Z' }),
+      ],
+    });
+
+    if (!window) {
+      throw new Error('expected waterfall window');
+    }
+
+    expect(
+      [
+        '2026-03-14T10:00:10.000Z',
+        '2026-03-14T10:00:30.000Z',
+        '2026-03-14T09:59:59.000Z',
+        'not-a-date',
+      ].map((timestamp) => getTimestampPercent(timestamp, window))
+    ).toEqual([25, 75, 0, 0]);
   });
 });

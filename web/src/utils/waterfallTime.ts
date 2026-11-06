@@ -112,6 +112,22 @@ export function getWaterfallBarLayout(
   };
 }
 
+export function getTimestampPercent(
+  timestamp: string,
+  window: WaterfallWindow
+): number {
+  const timestampMs = parseTimestamp(timestamp);
+  if (timestampMs === null) {
+    return 0;
+  }
+
+  return (
+    ((clamp(timestampMs, window.startMs, window.endMs) - window.startMs) /
+      window.durationMs) *
+    100
+  );
+}
+
 export function buildWaterfallTicks(
   window: WaterfallWindow,
   tickCount = DEFAULT_TICK_COUNT
