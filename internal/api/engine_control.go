@@ -872,8 +872,10 @@ func (s *engineControlService) TerminateRun(
 		return engineRunSummary{}, err
 	}
 
+	descendantRuns := make([]enginedb.EngineRun, len(descendants))
+	subtreeRunIDs := []uuid.UUID{run.ID}
 	for i := range descendants {
-		descendantRun, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+		descendantRuns[i], err = engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
 			ProjectID: projectID,
 			ID:        descendants[i].CurrentChildRunID,
 		})
@@ -883,7 +885,19 @@ func (s *engineControlService) TerminateRun(
 			}
 			return engineRunSummary{}, err
 		}
-		if _, err := terminateLockedRun(ctx, tx, engineTx, &descendantRun, false); err != nil {
+		subtreeRunIDs = append(subtreeRunIDs, descendantRuns[i].ID)
+	}
+
+	// The updates below touch the subtree's traces in depth order, but platform ingest
+	// locks traces in external trace id order. Taking every subtree trace lock up front in
+	// ingest's order, after all run locks, makes a concurrent batch queue instead of
+	// deadlocking.
+	if err := tx.LockEngineRunTraces(ctx, projectID, subtreeRunIDs); err != nil {
+		return engineRunSummary{}, fmt.Errorf("lock subtree traces: %w", err)
+	}
+
+	for i := range descendantRuns {
+		if _, err := terminateLockedRun(ctx, tx, engineTx, &descendantRuns[i], false); err != nil {
 			return engineRunSummary{}, err
 		}
 	}

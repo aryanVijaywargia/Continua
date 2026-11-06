@@ -908,6 +908,28 @@ func (q *Queries) ListTracesBySessionAsc(ctx context.Context, arg ListTracesBySe
 	return items, nil
 }
 
+const lockEngineRunTraces = `-- name: LockEngineRunTraces :exec
+SELECT id FROM traces
+WHERE project_id = $1
+  AND engine_run_id = ANY($2::uuid[])
+ORDER BY project_id, trace_id COLLATE "C"
+FOR NO KEY UPDATE
+`
+
+type LockEngineRunTracesParams struct {
+	ProjectID    uuid.UUID   `json:"project_id"`
+	EngineRunIds []uuid.UUID `json:"engine_run_ids"`
+}
+
+// Lock the projected traces of several engine runs in ingest's lock order: the lock
+// LockTraceUUID takes, by project, then external trace id in byte order (ingest sorts the
+// ids in Go, hence COLLATE "C"). A subtree write and an ingest batch over the same traces
+// then queue instead of deadlocking.
+func (q *Queries) LockEngineRunTraces(ctx context.Context, arg LockEngineRunTracesParams) error {
+	_, err := q.db.Exec(ctx, lockEngineRunTraces, arg.ProjectID, arg.EngineRunIds)
+	return err
+}
+
 const lockTraceUUID = `-- name: LockTraceUUID :one
 SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2 FOR NO KEY UPDATE
 `
