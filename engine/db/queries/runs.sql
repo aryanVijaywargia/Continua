@@ -91,6 +91,25 @@ WHERE r.id = sqlc.arg(run_id)
 FOR NO KEY UPDATE OF r
 FOR UPDATE OF t;
 
+-- name: ListContinuedRunsWithActiveChildren :many
+-- Earlier runs of the instances (each one continued as new) that still have an active
+-- child, in run lock order: instance id, then the newest run first. The read takes no
+-- lock. A run that continued as new never gets a new child, and a child relationship
+-- never becomes active again, so a run this read skips has no active child later either.
+SELECT r.id, r.instance_id
+FROM engine.runs AS r
+WHERE r.project_id = sqlc.arg(project_id)
+  AND r.instance_id = ANY(sqlc.arg(instance_ids)::uuid[])
+  AND r.status = 'continued_as_new'
+  AND EXISTS (
+      SELECT 1
+      FROM engine.child_workflows AS cw
+      WHERE cw.project_id = r.project_id
+        AND cw.parent_run_id = r.id
+        AND cw.status = 'active'
+  )
+ORDER BY r.instance_id, r.run_number DESC;
+
 -- name: ListRunsByInstance :many
 SELECT *
 FROM engine.runs

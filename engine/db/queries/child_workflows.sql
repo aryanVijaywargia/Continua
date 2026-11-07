@@ -77,23 +77,16 @@ WHERE project_id = $1
   AND parent_run_id = $2
 ORDER BY child_key ASC, created_at ASC;
 
--- name: ListActiveChildWorkflowsByParentRun :many
-SELECT *
-FROM engine.child_workflows
-WHERE project_id = $1
-  AND parent_run_id = $2
-  AND status = 'active'
-ORDER BY child_key ASC, created_at ASC;
-
 -- name: ListActiveChildWorkflowsByParentRuns :many
--- Active children of several runs, in run id order. Children of runs at one depth share a
--- depth, so this is the run lock order (child_depth, then id).
+-- Active children of several runs, in child instance id order. Children of runs at one
+-- depth share a depth, so this is the run lock order (child_depth, instance id, then
+-- run_number descending) of their current runs.
 SELECT *
 FROM engine.child_workflows
 WHERE project_id = sqlc.arg(project_id)
   AND parent_run_id = ANY(sqlc.arg(parent_run_ids)::uuid[])
   AND status = 'active'
-ORDER BY current_child_run_id;
+ORDER BY child_instance_id;
 
 -- name: UpdateChildWorkflowTerminal :one
 UPDATE engine.child_workflows

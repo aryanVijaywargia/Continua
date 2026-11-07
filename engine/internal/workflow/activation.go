@@ -148,9 +148,16 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 // lockRunAfterParent locks a run for its activation, and first locks its parent run.
 //
 // Lock order for parent/child work, shared by every engine and platform path:
-//  1. Run rows, ancestor before descendant: by child_depth, then run id. A child's
-//     terminal commit wakes its parent, so the child locks the parent run before its
-//     own; parent_run_id never changes, so an unlocked read finds the parent.
+//  1. Run rows, ancestor before descendant: by child_depth, then instance id, then
+//     run_number descending. So within one depth, the runs of one instance come
+//     together, the current run before its earlier runs (those that continued as new),
+//     newest first. Every key is immutable, so the order never changes under a held lock.
+//     A child's terminal commit wakes its parent, so the child locks the parent run
+//     before its own; parent_run_id never changes, so an unlocked read finds the parent.
+//     A cancelled run's cascade and TerminateRun then lock the earlier runs of an
+//     instance that still have active children (lockCancelCascadeRuns), because those
+//     children's relationships name the earlier run, and every write that replaces or
+//     ends such a child holds that earlier run.
 //     Every run lock is FOR NO KEY UPDATE. It serializes run writers, but does not
 //     conflict with the FOR KEY SHARE that a foreign key check takes when a new row
 //     names a run (root_run_id on a new child or continue-as-new run, run_id on a
@@ -203,6 +210,14 @@ func (a *Activator) commitDecision(
 	workerClaimedBy *string,
 	decision *activationDecision,
 ) error {
+	// The cascade's run locks come before the trace locks below.
+	var cascadeRunIDs []uuid.UUID
+	if decision.Kind == decisionCancelled {
+		var err error
+		if cascadeRunIDs, err = lockCancelCascadeRuns(ctx, tx, run); err != nil {
+			return err
+		}
+	}
 	if run.ParentRunID.Valid && decisionMayWakeParent(decision.Kind) {
 		parentRunID := uuid.UUID(run.ParentRunID.Bytes)
 		if err := publicprojection.NewWriter(tx.Tx()).LockRunTraces(ctx, run.ProjectID, []uuid.UUID{run.ID, parentRunID}); err != nil {
@@ -388,7 +403,7 @@ func (a *Activator) commitDecision(
 		if _, err := tx.DiscardOpenInboxItemsByRun(ctx, run.ID); err != nil {
 			return err
 		}
-		if err := a.enqueueChildCancelCascade(ctx, tx, &updatedRun); err != nil {
+		if err := a.enqueueChildCancelCascade(ctx, tx, run.ProjectID, cascadeRunIDs); err != nil {
 			return err
 		}
 		if err := a.commitChildTerminalTransition(ctx, tx, &updatedRun, enginedb.EngineChildWorkflowStatusCancelled); err != nil {
@@ -826,11 +841,36 @@ func (a *Activator) getOrCreateChildInstance(
 	return instance, false, nil
 }
 
-func (a *Activator) enqueueChildCancelCascade(ctx context.Context, tx *store.Tx, run *enginedb.EngineRun) error {
-	if run == nil {
-		return errors.New("run is required")
+// lockCancelCascadeRuns returns the runs whose active children a cancelled run's cascade
+// reaches: the run itself, which the activation already holds, and each earlier run of
+// its instance that still has an active child, locked newest first.
+//
+// The workflow instance is the logical parent. Continue-as-new leaves a run's active
+// children in place, and their relationships keep naming the earlier run, so cancelling
+// the instance's current run must reach them too. A child's continue-as-new or terminal
+// commit holds its parent run, so the cascade lists an earlier run's children only after
+// it holds that run. Otherwise it can enqueue the cancel on a child run that is being
+// replaced, and the run that replaces it never sees the cancel.
+func lockCancelCascadeRuns(ctx context.Context, tx *store.Tx, run *enginedb.EngineRun) ([]uuid.UUID, error) {
+	earlier, err := tx.ListContinuedRunsWithActiveChildren(ctx, run.ProjectID, []uuid.UUID{run.InstanceID})
+	if err != nil {
+		return nil, err
 	}
-	children, err := tx.ListActiveChildWorkflowsByParentRun(ctx, run.ProjectID, run.ID)
+	runIDs := make([]uuid.UUID, 0, len(earlier)+1)
+	runIDs = append(runIDs, run.ID)
+	for i := range earlier {
+		if _, err := tx.GetRunForUpdate(ctx, earlier[i].ID); err != nil {
+			return nil, fmt.Errorf("lock earlier run: %w", err)
+		}
+		runIDs = append(runIDs, earlier[i].ID)
+	}
+	return runIDs, nil
+}
+
+// enqueueChildCancelCascade asks every active child of the runs to cancel. The caller
+// holds each run's lock, so the list of children is final.
+func (a *Activator) enqueueChildCancelCascade(ctx context.Context, tx *store.Tx, projectID uuid.UUID, runIDs []uuid.UUID) error {
+	children, err := tx.ListActiveChildWorkflowsByParentRuns(ctx, projectID, runIDs)
 	if err != nil {
 		return err
 	}

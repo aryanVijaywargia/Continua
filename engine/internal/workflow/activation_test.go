@@ -1703,10 +1703,10 @@ func TestActivatorCancelledDecisionEnqueuesActiveChildCancelIdempotently(t *test
 	if err != nil {
 		t.Fatalf("GetRun(parent cancelled) error = %v", err)
 	}
-	if err := activator.enqueueChildCancelCascade(ctx, tx, &parentAfterCancel); err != nil {
+	if err := activator.enqueueChildCancelCascade(ctx, tx, parentAfterCancel.ProjectID, []uuid.UUID{parentAfterCancel.ID}); err != nil {
 		t.Fatalf("enqueueChildCancelCascade() second error = %v", err)
 	}
-	if err := activator.enqueueChildCancelCascade(ctx, tx, &parentAfterCancel); err != nil {
+	if err := activator.enqueueChildCancelCascade(ctx, tx, parentAfterCancel.ProjectID, []uuid.UUID{parentAfterCancel.ID}); err != nil {
 		t.Fatalf("enqueueChildCancelCascade() third error = %v", err)
 	}
 	if err := tx.Commit(ctx); err != nil {

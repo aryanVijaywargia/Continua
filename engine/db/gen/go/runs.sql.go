@@ -539,6 +539,56 @@ func (q *Queries) GetRunForUpdate(ctx context.Context, id uuid.UUID) (EngineRun,
 	return i, err
 }
 
+const listContinuedRunsWithActiveChildren = `-- name: ListContinuedRunsWithActiveChildren :many
+SELECT r.id, r.instance_id
+FROM engine.runs AS r
+WHERE r.project_id = $1
+  AND r.instance_id = ANY($2::uuid[])
+  AND r.status = 'continued_as_new'
+  AND EXISTS (
+      SELECT 1
+      FROM engine.child_workflows AS cw
+      WHERE cw.project_id = r.project_id
+        AND cw.parent_run_id = r.id
+        AND cw.status = 'active'
+  )
+ORDER BY r.instance_id, r.run_number DESC
+`
+
+type ListContinuedRunsWithActiveChildrenParams struct {
+	ProjectID   uuid.UUID   `json:"project_id"`
+	InstanceIds []uuid.UUID `json:"instance_ids"`
+}
+
+type ListContinuedRunsWithActiveChildrenRow struct {
+	ID         uuid.UUID `json:"id"`
+	InstanceID uuid.UUID `json:"instance_id"`
+}
+
+// Earlier runs of the instances (each one continued as new) that still have an active
+// child, in run lock order: instance id, then the newest run first. The read takes no
+// lock. A run that continued as new never gets a new child, and a child relationship
+// never becomes active again, so a run this read skips has no active child later either.
+func (q *Queries) ListContinuedRunsWithActiveChildren(ctx context.Context, arg ListContinuedRunsWithActiveChildrenParams) ([]ListContinuedRunsWithActiveChildrenRow, error) {
+	rows, err := q.db.Query(ctx, listContinuedRunsWithActiveChildren, arg.ProjectID, arg.InstanceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListContinuedRunsWithActiveChildrenRow{}
+	for rows.Next() {
+		var i ListContinuedRunsWithActiveChildrenRow
+		if err := rows.Scan(&i.ID, &i.InstanceID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRetainableTerminalRunIDs = `-- name: ListRetainableTerminalRunIDs :many
 SELECT r.id
 FROM engine.runs AS r

@@ -76,14 +76,14 @@ func (o *storeOps) ListChildWorkflowsByParentRun(
 	})
 }
 
-func (o *storeOps) ListActiveChildWorkflowsByParentRun(
+func (o *storeOps) ListActiveChildWorkflowsByParentRuns(
 	ctx context.Context,
 	projectID uuid.UUID,
-	parentRunID uuid.UUID,
+	parentRunIDs []uuid.UUID,
 ) ([]enginedb.EngineChildWorkflow, error) {
-	return o.q.ListActiveChildWorkflowsByParentRun(ctx, enginedb.ListActiveChildWorkflowsByParentRunParams{
-		ProjectID:   projectID,
-		ParentRunID: parentRunID,
+	return o.q.ListActiveChildWorkflowsByParentRuns(ctx, enginedb.ListActiveChildWorkflowsByParentRunsParams{
+		ProjectID:    projectID,
+		ParentRunIds: parentRunIDs,
 	})
 }
 

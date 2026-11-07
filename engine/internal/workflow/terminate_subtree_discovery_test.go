@@ -95,7 +95,7 @@ func TestTerminateRunTerminatesRunsAddedWhileItWaits(t *testing.T) {
 			}
 
 			terminate := startAsync(t, cancel, func() error { return terminateRunOverAPI(ctx, handler, rootRunID) })
-			waitForTerminateRunLockWait(t, ctx, pool, terminate)
+			waitForRunLockWait(t, ctx, pool, terminate, "GetRunByProjectAndIDForUpdate")
 
 			close(release)
 			if err := activation.wait(ctx); err != nil {
@@ -146,22 +146,23 @@ func terminateRunOverAPI(ctx context.Context, handler http.Handler, runID uuid.U
 	return nil
 }
 
-// waitForTerminateRunLockWait waits until TerminateRun queues for a run lock that another
-// backend holds. If termination finishes instead, the assertions after the wait report it.
+// waitForRunLockWait waits until op queues for a run lock that another backend holds,
+// taken by the named query (GetRunByProjectAndIDForUpdate in TerminateRun). If op finishes
+// instead, the assertions after the wait report it.
 //
 //nolint:revive // Keep testing.T first in test helper signatures.
-func waitForTerminateRunLockWait(t *testing.T, ctx context.Context, pool *pgxpool.Pool, terminate *asyncOp) {
+func waitForRunLockWait(t *testing.T, ctx context.Context, pool *pgxpool.Pool, op *asyncOp, lockQuery string) {
 	t.Helper()
-	for !terminate.finished() {
+	for !op.finished() {
 		var waiting bool
 		if err := pool.QueryRow(ctx, `
 			SELECT EXISTS (
 			    SELECT 1 FROM pg_stat_activity
 			    WHERE datname = current_database()
-			      AND query LIKE '%GetRunByProjectAndIDForUpdate%'
+			      AND query LIKE '%-- name: ' || $1 || ' %'
 			      AND cardinality(pg_blocking_pids(pid)) > 0
 			)
-		`).Scan(&waiting); err != nil {
+		`, lockQuery).Scan(&waiting); err != nil {
 			t.Fatalf("read run lock waits: %v", err)
 		}
 		if waiting {

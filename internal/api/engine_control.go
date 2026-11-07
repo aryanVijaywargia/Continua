@@ -857,7 +857,8 @@ func (s *engineControlService) TerminateRun(
 		return engineRunSummary{}, err
 	}
 
-	// Run locks go ancestor before descendant, by child_depth and then run id, and come
+	// Run locks go ancestor before descendant, by child_depth, then instance id, then
+	// run_number descending (an instance's current run before its earlier runs), and come
 	// before every trace lock: the order engine activations use (lockRunAfterParent in
 	// the engine's workflow activator). Terminating a child wakes its parent, so
 	// the parent run is locked first. parent_run_id never changes, so the unlocked read
@@ -933,18 +934,36 @@ func (s *engineControlService) TerminateRun(
 // lockActiveDescendantRuns locks the active subtree under a locked run and returns it
 // one level per depth, shallowest first. It lists a run's children only after it holds
 // that run. Every write that adds or replaces a child of run X holds X's run lock: X's
-// own activation starts a child, and a child's activation that continues as new locks X
-// before itself. So once X is locked its active children are final, and the next
+// own activation starts a child, and a child's activation that continues as new or ends
+// locks X before itself. So once X is locked its active children are final, and the next
 // statement sees every committed one; a subtree listed before waiting for a lock can miss
-// a run added during the wait. A level's children share one child_depth and come in run
-// id order, so the locks follow the global run order.
+// a run added during the wait.
+//
+// The workflow instance is the logical parent. Continue-as-new leaves a run's active
+// children in place, under relationships that still name the earlier run. So at every
+// level, including the target, the subtree also takes the active children of each
+// visited instance's earlier runs. Those earlier runs are already terminal: they are
+// locked only to list their children, and are not terminated again.
+//
+// A level's runs share one child_depth. Its children come in instance id order, and each
+// child's current run is locked before its instance's earlier runs, newest first, so the
+// locks follow the global run order.
 func lockActiveDescendantRuns(
 	ctx context.Context,
 	engineTx *enginedb.Queries,
 	run *enginedb.EngineRun,
 ) ([][]enginedb.EngineRun, error) {
+	earlier, err := listEarlierRunsWithActiveChildren(ctx, engineTx, run.ProjectID, []uuid.UUID{run.InstanceID})
+	if err != nil {
+		return nil, err
+	}
+	parentRunIDs, _, err := lockEarlierRuns(ctx, engineTx, run.ProjectID, run.InstanceID, earlier, []uuid.UUID{run.ID})
+	if err != nil {
+		return nil, err
+	}
+
 	var levels [][]enginedb.EngineRun
-	for parentRunIDs := []uuid.UUID{run.ID}; len(parentRunIDs) > 0; {
+	for len(parentRunIDs) > 0 {
 		children, err := engineTx.ListActiveChildWorkflowsByParentRuns(ctx, enginedb.ListActiveChildWorkflowsByParentRunsParams{
 			ProjectID:    run.ProjectID,
 			ParentRunIds: parentRunIDs,
@@ -952,8 +971,22 @@ func lockActiveDescendantRuns(
 		if err != nil {
 			return nil, fmt.Errorf("list active children: %w", err)
 		}
+		if len(children) == 0 {
+			break
+		}
+		// Reading the earlier runs before locking the children is safe: an instance gets
+		// a new earlier run only when its current run continues as new, which locks the
+		// relationship's parent, held here.
+		instanceIDs := make([]uuid.UUID, len(children))
+		for i := range children {
+			instanceIDs[i] = children[i].ChildInstanceID
+		}
+		earlier, err = listEarlierRunsWithActiveChildren(ctx, engineTx, run.ProjectID, instanceIDs)
+		if err != nil {
+			return nil, err
+		}
 		level := make([]enginedb.EngineRun, 0, len(children))
-		parentRunIDs = make([]uuid.UUID, 0, len(children))
+		parentRunIDs = make([]uuid.UUID, 0, len(children)+len(earlier))
 		for i := range children {
 			childRun, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
 				ProjectID: run.ProjectID,
@@ -968,15 +1001,61 @@ func lockActiveDescendantRuns(
 			// The lock returns the run's latest committed status. Every write that ends a
 			// child run also holds its parent, so a listed child is not terminal; skip one
 			// rather than fail the terminate if that ever stops holding.
-			if publicprojection.IsTerminalRunStatus(childRun.Status) {
-				continue
+			if !publicprojection.IsTerminalRunStatus(childRun.Status) {
+				level = append(level, childRun)
+				parentRunIDs = append(parentRunIDs, childRun.ID)
 			}
-			level = append(level, childRun)
-			parentRunIDs = append(parentRunIDs, childRun.ID)
+			parentRunIDs, earlier, err = lockEarlierRuns(ctx, engineTx, run.ProjectID, children[i].ChildInstanceID, earlier, parentRunIDs)
+			if err != nil {
+				return nil, err
+			}
 		}
 		levels = append(levels, level)
 	}
 	return levels, nil
+}
+
+// listEarlierRunsWithActiveChildren reads, without a lock, the earlier runs of the
+// instances that still have an active child, in run lock order. Each one continued as
+// new, so it never gets a new child, and a child relationship never becomes active
+// again: a run this read skips has no active child to terminate later either.
+func listEarlierRunsWithActiveChildren(
+	ctx context.Context,
+	engineTx *enginedb.Queries,
+	projectID uuid.UUID,
+	instanceIDs []uuid.UUID,
+) ([]enginedb.ListContinuedRunsWithActiveChildrenRow, error) {
+	earlier, err := engineTx.ListContinuedRunsWithActiveChildren(ctx, enginedb.ListContinuedRunsWithActiveChildrenParams{
+		ProjectID:   projectID,
+		InstanceIds: instanceIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list earlier runs with active children: %w", err)
+	}
+	return earlier, nil
+}
+
+// lockEarlierRuns locks the leading runs of earlier that belong to the instance, newest
+// first, appends their ids to runIDs, and returns the rest of earlier.
+func lockEarlierRuns(
+	ctx context.Context,
+	engineTx *enginedb.Queries,
+	projectID uuid.UUID,
+	instanceID uuid.UUID,
+	earlier []enginedb.ListContinuedRunsWithActiveChildrenRow,
+	runIDs []uuid.UUID,
+) ([]uuid.UUID, []enginedb.ListContinuedRunsWithActiveChildrenRow, error) {
+	for len(earlier) > 0 && earlier[0].InstanceID == instanceID {
+		if _, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+			ProjectID: projectID,
+			ID:        earlier[0].ID,
+		}); err != nil {
+			return nil, nil, fmt.Errorf("lock earlier run %s: %w", earlier[0].ID, err)
+		}
+		runIDs = append(runIDs, earlier[0].ID)
+		earlier = earlier[1:]
+	}
+	return runIDs, earlier, nil
 }
 
 func (s *engineControlService) SuspendRun(
