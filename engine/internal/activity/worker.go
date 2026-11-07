@@ -44,14 +44,15 @@ func NewWorker(engineStore *store.Store, registry *Registry, activityLeaseTTL ti
 	}
 }
 
-func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
+// PollOnce claims and runs at most one activity task and reports whether it claimed one.
+func (w *Worker) PollOnce(ctx context.Context, workerID string) (bool, error) {
 	task, err := w.store.ClaimNextActivityTask(ctx, workerID, w.activityLeaseTTL)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			w.store.Metrics().IncClaim("activity_task", "empty")
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
 	w.store.Metrics().IncClaim("activity_task", "claimed")
 
@@ -59,22 +60,22 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 	if !ok {
 		code := "activity_not_registered"
 		message := "no handler registered for activity type " + task.ActivityType
-		return w.failTask(ctx, task.ID, task.RunID, workerID, &code, &message)
+		return true, w.failTask(ctx, task.ID, task.RunID, workerID, &code, &message)
 	}
 
 	output, handlerErr := w.runHandlerWithHeartbeat(ctx, handler, &task, workerID)
 	if handlerErr != nil {
 		if w.shouldRetryTask(&task, handlerErr) {
-			return w.retryTask(ctx, &task, workerID, handlerErr)
+			return true, w.retryTask(ctx, &task, workerID, handlerErr)
 		}
 		code := "activity_failed"
 		message := handlerErr.Error()
-		return w.failTask(ctx, task.ID, task.RunID, workerID, &code, &message)
+		return true, w.failTask(ctx, task.ID, task.RunID, workerID, &code, &message)
 	}
 
 	tx, err := w.store.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return err
+		return true, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -90,25 +91,25 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 				"task_id", task.ID,
 				"event", "stale_completion",
 			)
-			return nil
+			return true, nil
 		}
-		return err
+		return true, err
 	}
 
 	wake, err := tx.WakeWaitingRun(ctx, task.RunID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return err
+		return true, err
 	}
 	if err == nil {
 		if syncErr := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &wake.Run); syncErr != nil {
-			return syncErr
+			return true, syncErr
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return true, err
 	}
 	w.store.Metrics().IncActivityAttempt("completed")
-	return nil
+	return true, nil
 }
 
 type handlerResult struct {

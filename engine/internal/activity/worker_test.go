@@ -44,7 +44,8 @@ func TestWorkerLateCompletionAfterTerminateReturnsNoOp(t *testing.T) {
 	worker := NewWorker(store, registry, time.Minute, nil)
 	workerDone := make(chan error, 1)
 	go func() {
-		workerDone <- worker.PollOnce(ctx, "activity-worker")
+		_, err := worker.PollOnce(ctx, "activity-worker")
+		workerDone <- err
 	}()
 
 	select {
@@ -166,7 +167,8 @@ func TestWorkerLongRunningLocalActivityHeartbeatsLease(t *testing.T) {
 	worker := NewWorker(store, registry, leaseTTL, nil)
 	workerDone := make(chan error, 1)
 	go func() {
-		workerDone <- worker.PollOnce(ctx, "activity-worker")
+		_, err := worker.PollOnce(ctx, "activity-worker")
+		workerDone <- err
 	}()
 
 	select {
@@ -270,7 +272,8 @@ func TestWorkerLocalActivityLeaseLossCancelsHandlerContext(t *testing.T) {
 	worker := NewWorker(store, registry, 200*time.Millisecond, nil)
 	workerDone := make(chan error, 1)
 	go func() {
-		workerDone <- worker.PollOnce(ctx, "activity-worker")
+		_, err := worker.PollOnce(ctx, "activity-worker")
+		workerDone <- err
 	}()
 
 	select {
@@ -409,7 +412,7 @@ func TestWorkerRetryableFailureSchedulesRetryWithoutWakingRun(t *testing.T) {
 
 	before := time.Now()
 	worker := NewWorker(store, registry, time.Minute, nil)
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
 	}
 
@@ -510,7 +513,7 @@ func TestWorkerRetryScheduledSequenceContinuesFromMaxHistory(t *testing.T) {
 	}
 
 	worker := NewWorker(store, registry, time.Minute, nil)
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
 	}
 
@@ -561,7 +564,7 @@ func TestWorkerSingleAttemptFailureWakesWaitingRun(t *testing.T) {
 	}
 
 	worker := NewWorker(store, registry, time.Minute, nil)
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
 	}
 
@@ -612,7 +615,7 @@ func TestWorkerNonRetryableFailureBypassesRetry(t *testing.T) {
 	}
 
 	worker := NewWorker(store, registry, time.Minute, nil)
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
 	}
 
@@ -669,13 +672,13 @@ func TestWorkerExhaustedRetriesWakesWaitingRun(t *testing.T) {
 	}
 
 	worker := NewWorker(store, registry, time.Minute, nil)
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() first attempt error = %v", err)
 	}
 
 	time.Sleep(20 * time.Millisecond)
 
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() second attempt error = %v", err)
 	}
 
@@ -741,7 +744,7 @@ func TestWorkerMissingHandlerFailsImmediatelyWithoutRetry(t *testing.T) {
 	}
 
 	worker := NewWorker(store, registry, time.Minute, nil)
-	if err := worker.PollOnce(ctx, "activity-worker"); err != nil {
+	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
 	}
 
@@ -811,7 +814,8 @@ func TestWorkerStaleRetryClaimReturnsNil(t *testing.T) {
 	worker := NewWorker(store, registry, time.Minute, nil)
 	workerDone := make(chan error, 1)
 	go func() {
-		workerDone <- worker.PollOnce(ctx, "activity-worker")
+		_, err := worker.PollOnce(ctx, "activity-worker")
+		workerDone <- err
 	}()
 
 	select {

@@ -330,7 +330,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 				groupCtx,
 				cfg.Runtime.MetricsSampleInterval,
 				"metrics:"+runtimeID,
-				trackIterations(tracker, "metrics", observeIterations(recorder, "metrics", maintenanceWorker.PollMetricsOnce)),
+				trackIterations(tracker, "metrics", observeIterations(recorder, "metrics", engineworker.Idle(maintenanceWorker.PollMetricsOnce))),
 			)
 		})
 	}
@@ -340,7 +340,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 				groupCtx,
 				cfg.Runtime.MaintenancePollInterval,
 				"retention:"+runtimeID,
-				observeIterations(recorder, "retention", retentionWorker.PollOnce),
+				observeIterations(recorder, "retention", engineworker.Idle(retentionWorker.PollOnce)),
 			)
 		})
 	}
@@ -349,7 +349,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			groupCtx,
 			cfg.Runtime.MaintenancePollInterval,
 			"maintenance:"+runtimeID,
-			trackIterations(tracker, "maintenance", observeIterations(recorder, "maintenance", maintenanceWorker.PollOnce)),
+			trackIterations(tracker, "maintenance", observeIterations(recorder, "maintenance", engineworker.Idle(maintenanceWorker.PollOnce))),
 		)
 	})
 	group.Go(func() error {
@@ -357,9 +357,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 			groupCtx,
 			cfg.Runtime.MaintenancePollInterval,
 			"catalog-heartbeat:"+runtimeID,
-			trackIterations(tracker, "catalog-heartbeat", observeIterations(recorder, "catalog-heartbeat", func(ctx context.Context, _ string) error {
+			trackIterations(tracker, "catalog-heartbeat", observeIterations(recorder, "catalog-heartbeat", engineworker.Idle(func(ctx context.Context, _ string) error {
 				return catalog.HeartbeatStoreDefinitions(ctx, store, r.definitions.List())
-			})),
+			}))),
 		)
 	})
 	group.Go(func() error {
@@ -367,7 +367,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			groupCtx,
 			cfg.Runtime.WorkflowPollInterval,
 			"projector:"+runtimeID,
-			trackIterations(tracker, "projector", observeIterations(recorder, "projector", projectorWorker.PollOnce)),
+			trackIterations(tracker, "projector", observeIterations(recorder, "projector", engineworker.Idle(projectorWorker.PollOnce))),
 		)
 	})
 	var serverGroup errgroup.Group
@@ -488,7 +488,7 @@ func observeIterations(
 	worker string,
 	fn engineworker.IterationFunc,
 ) engineworker.IterationFunc {
-	return func(ctx context.Context, workerID string) (err error) {
+	return func(ctx context.Context, workerID string) (claimed bool, err error) {
 		startedAt := time.Now()
 		defer func() {
 			recorder.ObserveWorkerIteration(worker, time.Since(startedAt))
@@ -501,15 +501,15 @@ func observeIterations(
 }
 
 func trackIterations(tracker *health.Tracker, worker string, fn engineworker.IterationFunc) engineworker.IterationFunc {
-	return func(ctx context.Context, workerID string) error {
-		err := fn(ctx, workerID)
+	return func(ctx context.Context, workerID string) (bool, error) {
+		claimed, err := fn(ctx, workerID)
 		tracker.MarkIteration(worker)
-		return err
+		return claimed, err
 	}
 }
 
 func withIterationContext(ctx context.Context, fn engineworker.IterationFunc) engineworker.IterationFunc {
-	return func(_ context.Context, workerID string) error {
+	return func(_ context.Context, workerID string) (bool, error) {
 		return fn(ctx, workerID)
 	}
 }

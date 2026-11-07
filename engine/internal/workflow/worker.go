@@ -33,19 +33,20 @@ func (w *Worker) WithDepthLimits(limits DepthLimits) *Worker {
 	return w
 }
 
-func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
+// PollOnce claims and activates at most one ready run and reports whether it claimed one.
+func (w *Worker) PollOnce(ctx context.Context, workerID string) (bool, error) {
 	metrics := w.store.Metrics()
 	run, err := w.store.ClaimNextRun(ctx, workerID, w.runLeaseTTL)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			metrics.IncClaim("run", "empty")
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
 	metrics.IncClaim("run", "claimed")
 	if err := applyTestClaimHook(ctx); err != nil {
-		return err
+		return true, err
 	}
 
 	if err := w.activator.Activate(ctx, &run); err != nil {
@@ -58,10 +59,10 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) error {
 				"run_id", run.ID,
 				"event", "stale_claim",
 			)
-			return nil
+			return true, nil
 		}
-		return err
+		return true, err
 	}
 
-	return nil
+	return true, nil
 }

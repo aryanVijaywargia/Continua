@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	"github.com/continua-ai/continua/engine/internal/activity"
@@ -47,22 +48,10 @@ func TestPollFallbackProgressesWhenNotificationsSuppressed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workflow.NewRegistry() error = %v", err)
 	}
-	activities, err := activity.NewRegistry(map[string]activity.Handler{
-		"notifychaos.step": func(_ context.Context, raw json.RawMessage) (json.RawMessage, error) {
-			var value fallbackValue
-			if err := json.Unmarshal(raw, &value); err != nil {
-				return nil, err
-			}
-			return json.Marshal(fallbackValue{Value: value.Value + 1})
-		},
-	})
-	if err != nil {
-		t.Fatalf("activity.NewRegistry() error = %v", err)
-	}
-	run := seedFallbackRun(t, store, projectID, definition)
+	run := seedFallbackRun(t, store, projectID, definition, "notify-chaos-fallback")
 
 	workflowWorker := engineworkflow.NewWorker(store, definitions, time.Second, discardLogger())
-	activityWorker := activity.NewWorker(store, activities, time.Second, discardLogger())
+	activityWorker := activity.NewWorker(store, fallbackActivities(t), time.Second, discardLogger())
 	loopsCtx, cancelLoops := context.WithCancel(context.Background())
 	workflowWake := mergeWakeChannels(loopsCtx, runsWake, inboxWake)
 	loopDone := make(chan error, 2)
@@ -120,6 +109,87 @@ func TestPollFallbackProgressesWhenNotificationsSuppressed(t *testing.T) {
 	}
 }
 
+func TestPollFallbackDrainsReadyBacklogBackToBack(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	projectID := uuid.New()
+	enginetest.EnsurePlatformProject(t, db.Pool, projectID)
+	store := enginestore.New(db.Pool).WithNotifyDisabled()
+	definition := fallbackWorkflowDefinition()
+	definitions, err := engineworkflow.NewRegistry(definition)
+	if err != nil {
+		t.Fatalf("workflow.NewRegistry() error = %v", err)
+	}
+	const backlog = 100
+	for i := range backlog {
+		seedFallbackRun(t, store, projectID, definition, fmt.Sprintf("notify-chaos-backlog-%d", i))
+	}
+
+	// A healthy listener with no notifications leaves only the fallback interval,
+	// so each queue drains in time only if every claim triggers the next poll.
+	loopsCtx, cancelLoops := context.WithCancel(context.Background())
+	var loops errgroup.Group
+	t.Cleanup(func() {
+		cancelLoops()
+		if err := loops.Wait(); err != nil {
+			t.Errorf("RunLoopWithWake() cleanup error = %v", err)
+		}
+	})
+	runLoop := func(ctx context.Context, workerID string, fn engineworker.IterationFunc) error {
+		return engineworker.RunLoopWithWake(ctx, time.Minute, time.Minute, func() bool { return true }, nil, workerID, fn)
+	}
+	waitForQueues := func(runsReady, tasksPending int64) {
+		t.Helper()
+		var snapshot enginestore.RuntimeMetricsSnapshot
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			snapshot, err = store.SampleRuntimeMetrics(context.Background())
+			if err != nil {
+				t.Fatalf("SampleRuntimeMetrics() error = %v", err)
+			}
+			if snapshot.RunsReady == runsReady && snapshot.ActivityTasksPending == tasksPending {
+				return
+			}
+		}
+		t.Fatalf("queues after 10s: runs_ready = %d, activity_tasks_pending = %d; want %d, %d",
+			snapshot.RunsReady, snapshot.ActivityTasksPending, runsReady, tasksPending)
+	}
+
+	// Stop and join the workflow loop before the activity phase, so it cannot
+	// claim the runs that activity completions requeue.
+	workflowCtx, stopWorkflow := context.WithCancel(loopsCtx)
+	workflowDone := make(chan error, 1)
+	go func() {
+		workflowDone <- runLoop(workflowCtx, "backlog-workflow", engineworkflow.NewWorker(store, definitions, time.Minute, discardLogger()).PollOnce)
+	}()
+	waitForQueues(0, backlog)
+	stopWorkflow()
+	if err := <-workflowDone; err != nil {
+		t.Fatalf("workflow RunLoopWithWake() error = %v", err)
+	}
+
+	loops.Go(func() error {
+		return runLoop(loopsCtx, "backlog-activity", activity.NewWorker(store, fallbackActivities(t), time.Minute, discardLogger()).PollOnce)
+	})
+	waitForQueues(backlog, 0)
+}
+
+func fallbackActivities(t *testing.T) *activity.Registry {
+	t.Helper()
+
+	activities, err := activity.NewRegistry(map[string]activity.Handler{
+		"notifychaos.step": func(_ context.Context, raw json.RawMessage) (json.RawMessage, error) {
+			var value fallbackValue
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return nil, err
+			}
+			return json.Marshal(fallbackValue{Value: value.Value + 1})
+		},
+	})
+	if err != nil {
+		t.Fatalf("activity.NewRegistry() error = %v", err)
+	}
+	return activities
+}
+
 type fallbackValue struct {
 	Value int `json:"value"`
 }
@@ -151,13 +221,14 @@ func seedFallbackRun(
 	store *enginestore.Store,
 	projectID uuid.UUID,
 	definition publicworkflow.Definition,
+	instanceKey string,
 ) enginedb.EngineRun {
 	t.Helper()
 
 	ctx := context.Background()
 	instance, err := store.CreateInstance(ctx, enginedb.CreateInstanceParams{
 		ProjectID:      projectID,
-		InstanceKey:    "notify-chaos-fallback",
+		InstanceKey:    instanceKey,
 		DefinitionName: definition.Name,
 	})
 	if err != nil {

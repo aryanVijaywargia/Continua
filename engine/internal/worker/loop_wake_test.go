@@ -14,9 +14,9 @@ func TestRunLoopWithWakeTriggersImmediateIteration(t *testing.T) {
 	iterations := make(chan time.Time, 4)
 	done := make(chan error, 1)
 	go func() {
-		done <- RunLoopWithWake(ctx, time.Minute, time.Minute, func() bool { return true }, wake, "wake-test", func(context.Context, string) error {
+		done <- RunLoopWithWake(ctx, time.Minute, time.Minute, func() bool { return true }, wake, "wake-test", func(context.Context, string) (bool, error) {
 			iterations <- time.Now()
-			return nil
+			return false, nil
 		})
 	}()
 
@@ -43,9 +43,9 @@ func TestRunLoopWithWakeUsesBaseIntervalWhenUnhealthy(t *testing.T) {
 	var iterations atomic.Int64
 	done := make(chan error, 1)
 	go func() {
-		done <- RunLoopWithWake(ctx, 100*time.Millisecond, time.Minute, healthy.Load, nil, "health-test", func(context.Context, string) error {
+		done <- RunLoopWithWake(ctx, 100*time.Millisecond, time.Minute, healthy.Load, nil, "health-test", func(context.Context, string) (bool, error) {
 			iterations.Add(1)
-			return nil
+			return false, nil
 		})
 	}()
 
@@ -74,9 +74,9 @@ func TestRunLoopWithWakeNilWakeStillPolls(t *testing.T) {
 	var iterations atomic.Int64
 	done := make(chan error, 1)
 	go func() {
-		done <- RunLoopWithWake(ctx, 50*time.Millisecond, 50*time.Millisecond, func() bool { return true }, nil, "nil-wake-test", func(context.Context, string) error {
+		done <- RunLoopWithWake(ctx, 50*time.Millisecond, 50*time.Millisecond, func() bool { return true }, nil, "nil-wake-test", func(context.Context, string) (bool, error) {
 			iterations.Add(1)
-			return nil
+			return false, nil
 		})
 	}()
 
@@ -100,9 +100,9 @@ func TestRunLoopWithWakeClosedChannelFallsBackToTimer(t *testing.T) {
 	var iterations atomic.Int64
 	done := make(chan error, 1)
 	go func() {
-		done <- RunLoopWithWake(ctx, time.Second, time.Second, func() bool { return true }, wake, "closed-wake-test", func(context.Context, string) error {
+		done <- RunLoopWithWake(ctx, time.Second, time.Second, func() bool { return true }, wake, "closed-wake-test", func(context.Context, string) (bool, error) {
 			iterations.Add(1)
-			return nil
+			return false, nil
 		})
 	}()
 
