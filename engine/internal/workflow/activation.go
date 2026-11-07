@@ -62,7 +62,7 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 		_ = tx.Rollback(ctx)
 	}()
 
-	run, err := tx.GetRunForUpdate(ctx, claimedRun.ID)
+	run, err := lockRunAfterParent(ctx, tx, claimedRun.ID)
 	if err != nil {
 		return err
 	}
@@ -145,6 +145,43 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 	return tx.Commit(ctx)
 }
 
+// lockRunAfterParent locks a run for its activation, and first locks its parent run.
+//
+// Lock order for parent/child work, shared by every engine and platform path:
+//  1. Run rows, ancestor before descendant: by child_depth, then run id. A child's
+//     terminal commit wakes its parent, so the child locks the parent run before its
+//     own; parent_run_id never changes, so an unlocked read finds the parent.
+//  2. Then the projected trace rows, all of them in one statement in platform ingest's
+//     order (project, then external trace id in byte order), before writing any.
+//
+// Every write about a parent/child pair (the parent's activation and its wait, a child's
+// terminal or continuation commit, a terminate) holds the parent run lock first. So a
+// parent that reads a child as active commits its wait before that child can check for
+// a waiting parent, and no wake is lost.
+func lockRunAfterParent(ctx context.Context, tx *store.Tx, runID uuid.UUID) (enginedb.EngineRun, error) {
+	unlocked, err := tx.GetRun(ctx, runID)
+	if err != nil {
+		return enginedb.EngineRun{}, err
+	}
+	if unlocked.ParentRunID.Valid {
+		if _, err := tx.GetRunForUpdate(ctx, unlocked.ParentRunID.Bytes); err != nil {
+			return enginedb.EngineRun{}, fmt.Errorf("lock parent run: %w", err)
+		}
+	}
+	return tx.GetRunForUpdate(ctx, runID)
+}
+
+// decisionMayWakeParent reports whether committing the decision can wake the run's
+// parent, which then writes the parent's projected trace as well as the run's own.
+func decisionMayWakeParent(kind decisionKind) bool {
+	switch kind {
+	case decisionCompleted, decisionFailed, decisionCancelled, decisionContinuedAsNew:
+		return true
+	default:
+		return false
+	}
+}
+
 func nextHistorySequence(historyRows []enginedb.EngineHistory) int32 {
 	if len(historyRows) == 0 {
 		return 1
@@ -160,6 +197,13 @@ func (a *Activator) commitDecision(
 	workerClaimedBy *string,
 	decision *activationDecision,
 ) error {
+	if run.ParentRunID.Valid && decisionMayWakeParent(decision.Kind) {
+		parentRunID := uuid.UUID(run.ParentRunID.Bytes)
+		if err := publicprojection.NewWriter(tx.Tx()).LockRunTraces(ctx, run.ProjectID, []uuid.UUID{run.ID, parentRunID}); err != nil {
+			return err
+		}
+	}
+
 	sequence := decision.NextSequence
 	var activityHistoryID *int64
 	var timerHistoryID *int64
@@ -451,10 +495,7 @@ func (a *Activator) commitContinuationDecision(
 			return err
 		}
 		if childWorkflow.ContinuationCount >= a.maxContinuationFollowDepth && !childWorkflow.ParentWaitFailedAt.Valid {
-			if _, err := tx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
-				ID:       childWorkflow.ParentRunID,
-				ChildKey: childWorkflow.ChildKey,
-			}); err != nil {
+			if err := wakeParentWaitingOnChild(ctx, tx, &childWorkflow); err != nil {
 				return err
 			}
 		}
@@ -846,11 +887,21 @@ func (a *Activator) commitChildTerminalTransition(
 	if childWorkflow.ParentWaitFailedAt.Valid {
 		return nil
 	}
-	_, err = tx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
+	return wakeParentWaitingOnChild(ctx, tx, &childWorkflow)
+}
+
+// wakeParentWaitingOnChild queues a parent run that waits on this child and projects the
+// parent's new status: the wake appends no parent history row for the projector to
+// follow. The caller already holds the parent run lock and both trace locks.
+func wakeParentWaitingOnChild(ctx context.Context, tx *store.Tx, childWorkflow *enginedb.EngineChildWorkflow) error {
+	woken, err := tx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
 		ID:       childWorkflow.ParentRunID,
 		ChildKey: childWorkflow.ChildKey,
 	})
-	return err
+	if err != nil || !woken.Applied {
+		return err
+	}
+	return publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &woken.Run)
 }
 
 func updateRunInstanceStatus(
