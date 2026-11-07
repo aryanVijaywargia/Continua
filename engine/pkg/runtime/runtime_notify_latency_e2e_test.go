@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 	engineruntime "github.com/continua-ai/continua/engine/pkg/runtime"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
 )
@@ -60,6 +64,145 @@ func TestRuntimeNotifyLatencyE2E(t *testing.T) {
 	if result.CompletedSteps != 3 {
 		t.Fatalf("run result completed_steps = %d, want 3", result.CompletedSteps)
 	}
+}
+
+func TestRuntimeLostActivityCompletionNotifyStillWakesRun(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	projectID := uuid.New()
+	enginetest.EnsurePlatformProject(t, db.Pool, projectID)
+	definition := notifyLatencyWorkflow("notifytest.lost-completion", 1)
+
+	// The runtime resolves the unqualified pg_notify to this shadow, which drops
+	// every run wake, so the only run NOTIFY in this test, the one sent by the
+	// activity completion, never reaches the listener.
+	if _, err := db.Pool.Exec(context.Background(), `
+		CREATE SCHEMA chaos;
+		CREATE TABLE chaos.dropped_notifies (channel text NOT NULL);
+		CREATE FUNCTION chaos.pg_notify(channel text, payload text) RETURNS void
+		LANGUAGE plpgsql AS $$
+		BEGIN
+			IF channel = '`+publicnotify.ChannelRuns+`' THEN
+				INSERT INTO chaos.dropped_notifies VALUES (channel);
+			ELSE
+				PERFORM pg_catalog.pg_notify(channel, payload);
+			END IF;
+		END $$;
+	`); err != nil {
+		t.Fatalf("create pg_notify shadow error = %v", err)
+	}
+
+	// The activity blocks until the workflow loop is idle. Without the gate, a
+	// fast completion can land before the loop's next drain poll, and that poll
+	// claims the run without any wake.
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startOnce sync.Once
+	activities := map[string]engineruntime.ActivityHandler{
+		notifyLatencyActivityType: func(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
+			startOnce.Do(func() { close(started) })
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return notifyLatencyActivities()[notifyLatencyActivityType](ctx, raw)
+		},
+	}
+
+	const fallback = 30 * time.Second
+	registry := prometheus.NewRegistry()
+	databaseURL, err := url.Parse(db.DatabaseURL)
+	if err != nil {
+		t.Fatalf("parse database URL: %v", err)
+	}
+	query := databaseURL.Query()
+	query.Set("search_path", "chaos,pg_catalog,public")
+	databaseURL.RawQuery = query.Encode()
+	rt, err := engineruntime.New(engineruntime.Options{
+		DatabaseURL:             databaseURL.String(),
+		Workflows:               []workflow.Definition{definition},
+		Activities:              activities,
+		ProjectID:               &projectID,
+		MetricsRegistry:         registry,
+		WorkflowPollInterval:    fallback,
+		ActivityPollInterval:    fallback,
+		MaintenancePollInterval: fallback,
+		NotifyFallbackInterval:  fallback,
+	})
+	if err != nil {
+		t.Fatalf("runtime.New() error = %v", err)
+	}
+
+	store := enginestore.New(db.Pool)
+	run := seedNotifyLatencyRun(t, store, projectID, definition, "notify-lost-completion")
+	cancel, done := runNotifyRuntime(t, rt)
+	defer stopNotifyRuntime(t, cancel, done)
+
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("activity did not start within 10s")
+	}
+	waitForIdleWorkflowLoop(t, store, registry, run.ID)
+	close(release)
+
+	waitForNotifyRun(t, store, run.ID, 5*time.Second)
+	var dropped int
+	if err := db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM chaos.dropped_notifies").Scan(&dropped); err != nil {
+		t.Fatalf("count dropped notifications error = %v", err)
+	}
+	if dropped == 0 {
+		t.Fatal("no run notification was dropped, so the test did not exercise a lost wake")
+	}
+}
+
+// waitForIdleWorkflowLoop returns when the run waits on its activity and the
+// workflow loop has polled at least once after the claim and then stopped. Every
+// poll after the claim finds no ready run, so a stable count means the loop is
+// idle until a wake or the fallback tick.
+func waitForIdleWorkflowLoop(t *testing.T, store *enginestore.Store, registry *prometheus.Registry, runID uuid.UUID) {
+	t.Helper()
+
+	const stableFor = 250 * time.Millisecond
+	deadline := time.Now().Add(10 * time.Second)
+	lastCount, stableSince := uint64(0), time.Now()
+	for time.Now().Before(deadline) {
+		run, err := store.GetRun(context.Background(), runID)
+		if err != nil {
+			t.Fatalf("GetRun() error = %v", err)
+		}
+		count := workflowIterationCount(t, registry)
+		if count != lastCount {
+			lastCount, stableSince = count, time.Now()
+		}
+		if run.Status == enginedb.EngineRunLifecycleStatusWaiting && count >= 2 && time.Since(stableSince) >= stableFor {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("workflow loop did not become idle within 10s; iterations = %d", lastCount)
+}
+
+func workflowIterationCount(t *testing.T, registry *prometheus.Registry) uint64 {
+	t.Helper()
+
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("registry.Gather() error = %v", err)
+	}
+	for _, family := range families {
+		if family.GetName() != "continua_engine_worker_iteration_duration_seconds" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			for _, label := range metric.GetLabel() {
+				if label.GetName() == "worker" && label.GetValue() == "workflow" {
+					return metric.GetHistogram().GetSampleCount()
+				}
+			}
+		}
+	}
+	return 0
 }
 
 func TestRuntimeDisableNotifyStillCompletes(t *testing.T) {
