@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -110,8 +111,15 @@ func TestRuntimeLostActivityCompletionNotifyStillWakesRun(t *testing.T) {
 
 	const fallback = 30 * time.Second
 	registry := prometheus.NewRegistry()
+	databaseURL, err := url.Parse(db.DatabaseURL)
+	if err != nil {
+		t.Fatalf("parse database URL: %v", err)
+	}
+	query := databaseURL.Query()
+	query.Set("search_path", "chaos,pg_catalog,public")
+	databaseURL.RawQuery = query.Encode()
 	rt, err := engineruntime.New(engineruntime.Options{
-		DatabaseURL:             db.DatabaseURL + "&search_path=chaos,pg_catalog,public",
+		DatabaseURL:             databaseURL.String(),
 		Workflows:               []workflow.Definition{definition},
 		Activities:              activities,
 		ProjectID:               &projectID,
