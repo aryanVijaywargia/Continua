@@ -5,6 +5,7 @@ sql:
     schema:
       - "../../db/platform/migrations/postgres/000001_initial_schema.up.sql"
       - "../../db/platform/migrations/postgres/000013_engine_trace_linkage.up.sql"
+      - "../../db/platform/migrations/postgres/000015_engine_projected_summary.up.sql"
       - "migrations/postgres/"
     gen:
       go:

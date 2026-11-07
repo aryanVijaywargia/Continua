@@ -14,14 +14,7 @@ import (
 )
 
 const claimNextRun = `-- name: ClaimNextRun :one
-UPDATE engine.runs
-SET status = 'running',
-    claimed_by = $1,
-    claimed_at = NOW(),
-    lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
-    attempt_count = attempt_count + 1,
-    updated_at = NOW()
-WHERE id = (
+WITH next_run AS (
     SELECT id
     FROM engine.runs
     WHERE (status = 'queued' AND ready_at <= NOW())
@@ -29,7 +22,21 @@ WHERE id = (
     ORDER BY ready_at ASC, id ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
+), projected AS (
+    UPDATE public.traces
+    SET engine_run_status = 'running',
+        updated_at = NOW(),
+        version = COALESCE(version, 1) + 1
+    WHERE engine_run_id = (SELECT id FROM next_run)
 )
+UPDATE engine.runs
+SET status = 'running',
+    claimed_by = $1,
+    claimed_at = NOW(),
+    lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
+    attempt_count = attempt_count + 1,
+    updated_at = NOW()
+WHERE id = (SELECT id FROM next_run)
 RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
@@ -38,6 +45,11 @@ type ClaimNextRunParams struct {
 	LeaseDurationMicros int64   `json:"lease_duration_micros"`
 }
 
+// A claim appends no history row, so the projector never sees it. The statement
+// mirrors the new status onto the run's trace itself (#347): next_run takes the
+// run lock (SKIP LOCKED) before the trace write, which touches one trace row.
+// The write is unconditional: a status filter would read the statement snapshot,
+// so a release that commits before the run lock would leave the trace queued.
 func (q *Queries) ClaimNextRun(ctx context.Context, arg ClaimNextRunParams) (EngineRun, error) {
 	row := q.db.QueryRow(ctx, claimNextRun, arg.ClaimedBy, arg.LeaseDurationMicros)
 	var i EngineRun
@@ -72,14 +84,7 @@ func (q *Queries) ClaimNextRun(ctx context.Context, arg ClaimNextRunParams) (Eng
 }
 
 const claimNextRunByProject = `-- name: ClaimNextRunByProject :one
-UPDATE engine.runs
-SET status = 'running',
-    claimed_by = $1,
-    claimed_at = NOW(),
-    lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
-    attempt_count = attempt_count + 1,
-    updated_at = NOW()
-WHERE id = (
+WITH next_run AS (
     SELECT candidate.id
     FROM engine.runs AS candidate
     WHERE candidate.project_id = $3
@@ -88,7 +93,21 @@ WHERE id = (
     ORDER BY candidate.ready_at ASC, candidate.id ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
+), projected AS (
+    UPDATE public.traces
+    SET engine_run_status = 'running',
+        updated_at = NOW(),
+        version = COALESCE(version, 1) + 1
+    WHERE engine_run_id = (SELECT id FROM next_run)
 )
+UPDATE engine.runs
+SET status = 'running',
+    claimed_by = $1,
+    claimed_at = NOW(),
+    lease_expires_at = NOW() + ($2::bigint * INTERVAL '1 microsecond'),
+    attempt_count = attempt_count + 1,
+    updated_at = NOW()
+WHERE id = (SELECT id FROM next_run)
 RETURNING id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 `
 
@@ -98,6 +117,7 @@ type ClaimNextRunByProjectParams struct {
 	ProjectFilterID     uuid.UUID `json:"project_filter_id"`
 }
 
+// Same as ClaimNextRun, limited to one project.
 func (q *Queries) ClaimNextRunByProject(ctx context.Context, arg ClaimNextRunByProjectParams) (EngineRun, error) {
 	row := q.db.QueryRow(ctx, claimNextRunByProject, arg.ClaimedBy, arg.LeaseDurationMicros, arg.ProjectFilterID)
 	var i EngineRun
@@ -615,6 +635,23 @@ func (q *Queries) ListRunsByInstance(ctx context.Context, arg ListRunsByInstance
 	return items, nil
 }
 
+const lockRunTraces = `-- name: LockRunTraces :exec
+SELECT id
+FROM public.traces
+WHERE engine_run_id = ANY($1::uuid[])
+ORDER BY project_id, trace_id COLLATE "C"
+FOR NO KEY UPDATE
+`
+
+// Lock the projected traces of several runs in platform ingest's trace lock
+// order (project, then external trace id in byte order), as the platform query
+// LockEngineRunTraces does. Take it after the run locks and before any trace
+// write, so a concurrent ingest batch queues instead of deadlocking.
+func (q *Queries) LockRunTraces(ctx context.Context, runIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockRunTraces, runIds)
+	return err
+}
+
 const releaseRunsByClaimant = `-- name: ReleaseRunsByClaimant :many
 UPDATE engine.runs
 SET status = 'queued',
@@ -671,6 +708,22 @@ func (q *Queries) ReleaseRunsByClaimant(ctx context.Context, claimedBy *string) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const syncProjectedRunStatuses = `-- name: SyncProjectedRunStatuses :exec
+UPDATE public.traces AS t
+SET engine_run_status = r.status::text,
+    updated_at = NOW(),
+    version = COALESCE(t.version, 1) + 1
+FROM engine.runs AS r
+WHERE r.id = t.engine_run_id
+  AND t.engine_run_id = ANY($1::uuid[])
+`
+
+// Mirror engine.runs.status onto the projected traces of the given runs.
+func (q *Queries) SyncProjectedRunStatuses(ctx context.Context, runIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, syncProjectedRunStatuses, runIds)
+	return err
 }
 
 const transitionRunToCancelled = `-- name: TransitionRunToCancelled :one
