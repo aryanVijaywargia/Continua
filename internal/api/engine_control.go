@@ -1,13 +1,10 @@
 package api
 
 import (
-	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -891,38 +888,18 @@ func (s *engineControlService) TerminateRun(
 		return terminalRunSummaryFromRun(&run), nil
 	}
 
-	descendants, err := engineTx.ListActiveChildWorkflowDescendants(ctx, enginedb.ListActiveChildWorkflowDescendantsParams{
-		ProjectID:   projectID,
-		ParentRunID: run.ID,
-	})
+	levels, err := lockActiveDescendantRuns(ctx, engineTx, &run)
 	if err != nil {
 		return engineRunSummary{}, err
 	}
-
-	// The list comes deepest first, the order the runs are terminated in. Lock them in
-	// the global run order instead.
-	lockOrder := slices.Clone(descendants)
-	slices.SortFunc(lockOrder, func(a, b enginedb.ListActiveChildWorkflowDescendantsRow) int {
-		return cmp.Or(cmp.Compare(a.ChildDepth, b.ChildDepth), bytes.Compare(a.CurrentChildRunID[:], b.CurrentChildRunID[:]))
-	})
-	descendantRuns := make(map[uuid.UUID]enginedb.EngineRun, len(lockOrder))
 	traceRunIDs := []uuid.UUID{run.ID}
 	if run.ParentRunID.Valid {
 		traceRunIDs = append(traceRunIDs, run.ParentRunID.Bytes)
 	}
-	for i := range lockOrder {
-		descendantRun, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
-			ProjectID: projectID,
-			ID:        lockOrder[i].CurrentChildRunID,
-		})
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return engineRunSummary{}, fmt.Errorf("terminate descendant invariant failed for run %s", lockOrder[i].CurrentChildRunID)
-			}
-			return engineRunSummary{}, err
+	for _, level := range levels {
+		for i := range level {
+			traceRunIDs = append(traceRunIDs, level[i].ID)
 		}
-		descendantRuns[descendantRun.ID] = descendantRun
-		traceRunIDs = append(traceRunIDs, descendantRun.ID)
 	}
 
 	// The updates below touch the subtree's traces in depth order, and the parent wake
@@ -933,10 +910,12 @@ func (s *engineControlService) TerminateRun(
 		return engineRunSummary{}, fmt.Errorf("lock subtree traces: %w", err)
 	}
 
-	for i := range descendants {
-		descendantRun := descendantRuns[descendants[i].CurrentChildRunID]
-		if _, err := terminateLockedRun(ctx, tx, engineTx, &descendantRun, false); err != nil {
-			return engineRunSummary{}, err
+	// Terminate the deepest runs first.
+	for i := len(levels) - 1; i >= 0; i-- {
+		for j := range levels[i] {
+			if _, err := terminateLockedRun(ctx, tx, engineTx, &levels[i][j], false); err != nil {
+				return engineRunSummary{}, err
+			}
 		}
 	}
 
@@ -949,6 +928,55 @@ func (s *engineControlService) TerminateRun(
 		return engineRunSummary{}, err
 	}
 	return terminalRunSummaryFromRun(&updatedRun), nil
+}
+
+// lockActiveDescendantRuns locks the active subtree under a locked run and returns it
+// one level per depth, shallowest first. It lists a run's children only after it holds
+// that run. Every write that adds or replaces a child of run X holds X's run lock: X's
+// own activation starts a child, and a child's activation that continues as new locks X
+// before itself. So once X is locked its active children are final, and the next
+// statement sees every committed one; a subtree listed before waiting for a lock can miss
+// a run added during the wait. A level's children share one child_depth and come in run
+// id order, so the locks follow the global run order.
+func lockActiveDescendantRuns(
+	ctx context.Context,
+	engineTx *enginedb.Queries,
+	run *enginedb.EngineRun,
+) ([][]enginedb.EngineRun, error) {
+	var levels [][]enginedb.EngineRun
+	for parentRunIDs := []uuid.UUID{run.ID}; len(parentRunIDs) > 0; {
+		children, err := engineTx.ListActiveChildWorkflowsByParentRuns(ctx, enginedb.ListActiveChildWorkflowsByParentRunsParams{
+			ProjectID:    run.ProjectID,
+			ParentRunIds: parentRunIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list active children: %w", err)
+		}
+		level := make([]enginedb.EngineRun, 0, len(children))
+		parentRunIDs = make([]uuid.UUID, 0, len(children))
+		for i := range children {
+			childRun, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+				ProjectID: run.ProjectID,
+				ID:        children[i].CurrentChildRunID,
+			})
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return nil, fmt.Errorf("terminate descendant invariant failed for run %s", children[i].CurrentChildRunID)
+				}
+				return nil, err
+			}
+			// The lock returns the run's latest committed status. Every write that ends a
+			// child run also holds its parent, so a listed child is not terminal; skip one
+			// rather than fail the terminate if that ever stops holding.
+			if publicprojection.IsTerminalRunStatus(childRun.Status) {
+				continue
+			}
+			level = append(level, childRun)
+			parentRunIDs = append(parentRunIDs, childRun.ID)
+		}
+		levels = append(levels, level)
+	}
+	return levels, nil
 }
 
 func (s *engineControlService) SuspendRun(
