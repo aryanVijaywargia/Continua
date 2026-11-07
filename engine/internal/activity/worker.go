@@ -24,11 +24,19 @@ type Worker struct {
 	activityLeaseTTL time.Duration
 	logger           *slog.Logger
 	retryWaker       func(time.Duration)
+	runWaker         func()
 }
 
 // WithRetryWaker schedules an activity poll when a local retry becomes available.
 func (w *Worker) WithRetryWaker(waker func(time.Duration)) *Worker {
 	w.retryWaker = waker
+	return w
+}
+
+// WithRunWaker schedules a workflow poll after a task outcome makes its run ready,
+// so the run does not depend only on the NOTIFY that the commit sends.
+func (w *Worker) WithRunWaker(waker func()) *Worker {
+	w.runWaker = waker
 	return w
 }
 
@@ -108,6 +116,7 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) (bool, error) {
 	if err := tx.Commit(ctx); err != nil {
 		return true, err
 	}
+	w.wakeRun(wake.Applied)
 	w.store.Metrics().IncActivityAttempt("completed")
 	return true, nil
 }
@@ -272,6 +281,12 @@ func (w *Worker) retryTask(
 	return nil
 }
 
+func (w *Worker) wakeRun(applied bool) {
+	if applied && w.runWaker != nil {
+		w.runWaker()
+	}
+}
+
 func (w *Worker) shouldRetryTask(task *enginedb.EngineActivityTask, handlerErr error) bool {
 	if task == nil || handlerErr == nil {
 		return false
@@ -355,6 +370,7 @@ func (w *Worker) failTask(
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
+	w.wakeRun(wake.Applied)
 	w.store.Metrics().IncActivityAttempt("failed")
 	return nil
 }

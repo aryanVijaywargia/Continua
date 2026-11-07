@@ -1,6 +1,8 @@
 // writer.go holds the projection Writer: the single owner of every engine-run
 // write into the platform debugger tables (public.traces, public.spans, and
-// public.span_events).
+// public.span_events). One exception: run claim and shutdown release mirror
+// engine_run_status from the claim and release queries in
+// engine/db/queries/runs.sql, so the hot claim path stays one statement.
 //
 // The Writer sits at the engine→platform seam and has exactly two adapters:
 //

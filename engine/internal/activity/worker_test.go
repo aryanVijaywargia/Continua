@@ -411,9 +411,13 @@ func TestWorkerRetryableFailureSchedulesRetryWithoutWakingRun(t *testing.T) {
 	}
 
 	before := time.Now()
-	worker := NewWorker(store, registry, time.Minute, nil)
+	runWakes := 0
+	worker := NewWorker(store, registry, time.Minute, nil).WithRunWaker(func() { runWakes++ })
 	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
+	}
+	if runWakes != 0 {
+		t.Fatalf("run waker calls = %d, want 0 while a retry is scheduled", runWakes)
 	}
 
 	retriedTask, err := store.GetActivityTask(ctx, task.ID)
@@ -563,9 +567,13 @@ func TestWorkerSingleAttemptFailureWakesWaitingRun(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 
-	worker := NewWorker(store, registry, time.Minute, nil)
+	runWakes := 0
+	worker := NewWorker(store, registry, time.Minute, nil).WithRunWaker(func() { runWakes++ })
 	if _, err := worker.PollOnce(ctx, "activity-worker"); err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
+	}
+	if runWakes != 1 {
+		t.Fatalf("run waker calls = %d, want 1 after the failure wakes the run", runWakes)
 	}
 
 	failedTask, err := store.GetActivityTask(ctx, task.ID)

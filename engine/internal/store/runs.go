@@ -211,11 +211,39 @@ func (o *storeOps) ClaimNextRun(
 	}))
 }
 
-func (o *storeOps) ReleaseRunsByClaimant(
+// ReleaseRunsByClaimant requeues every run the claimant still holds. The release
+// appends no history row, so it projects the queued status onto the runs'
+// traces in the same transaction (#347). The release UPDATE takes the run locks
+// first; then all trace locks are taken in platform ingest's order before any
+// trace write.
+func (s *Store) ReleaseRunsByClaimant(
 	ctx context.Context,
 	claimant string,
 ) ([]enginedb.EngineRun, error) {
-	return o.q.ReleaseRunsByClaimant(ctx, &claimant)
+	tx, err := s.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	runs, err := tx.q.ReleaseRunsByClaimant(ctx, &claimant)
+	if err != nil {
+		return nil, err
+	}
+	runIDs := make([]uuid.UUID, len(runs))
+	for i := range runs {
+		runIDs[i] = runs[i].ID
+	}
+	if err := tx.q.LockRunTraces(ctx, runIDs); err != nil {
+		return nil, fmt.Errorf("lock released run traces: %w", err)
+	}
+	if err := tx.q.SyncProjectedRunStatuses(ctx, runIDs); err != nil {
+		return nil, fmt.Errorf("project released run status: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return runs, nil
 }
 
 func (o *storeOps) classifyRunCASMiss(ctx context.Context, id uuid.UUID, err error) error {
