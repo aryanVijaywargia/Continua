@@ -87,17 +87,6 @@ func (o *storeOps) ListActiveChildWorkflowsByParentRun(
 	})
 }
 
-func (o *storeOps) ListActiveChildWorkflowDescendants(
-	ctx context.Context,
-	projectID uuid.UUID,
-	parentRunID uuid.UUID,
-) ([]enginedb.ListActiveChildWorkflowDescendantsRow, error) {
-	return o.q.ListActiveChildWorkflowDescendants(ctx, enginedb.ListActiveChildWorkflowDescendantsParams{
-		ProjectID:   projectID,
-		ParentRunID: parentRunID,
-	})
-}
-
 func (o *storeOps) UpdateChildWorkflowTerminal(
 	ctx context.Context,
 	arg enginedb.UpdateChildWorkflowTerminalParams,

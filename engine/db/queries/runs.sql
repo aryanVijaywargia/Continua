@@ -47,17 +47,20 @@ WHERE project_id = $1
   AND id = $2;
 
 -- name: GetRunForUpdate :one
+-- Run coordination locks (this and GetRunByProjectAndIDForUpdate) take FOR NO KEY UPDATE:
+-- they serialize run writers, but do not block the FOR KEY SHARE that a foreign key check
+-- takes on a run that a new row names. No runtime path changes a run's keys or deletes it.
 SELECT *
 FROM engine.runs
 WHERE id = $1
-FOR UPDATE;
+FOR NO KEY UPDATE;
 
 -- name: GetRunByProjectAndIDForUpdate :one
 SELECT *
 FROM engine.runs
 WHERE project_id = $1
   AND id = $2
-FOR UPDATE;
+FOR NO KEY UPDATE;
 
 -- name: ListRetainableTerminalRunIDs :many
 SELECT r.id
@@ -85,7 +88,8 @@ WHERE r.id = sqlc.arg(run_id)
   AND t.engine_last_projected_history_id IS NOT NULL
   AND t.engine_last_projected_history_id >= t.engine_latest_history_id
   AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
-FOR UPDATE OF r, t;
+FOR NO KEY UPDATE OF r
+FOR UPDATE OF t;
 
 -- name: ListRunsByInstance :many
 SELECT *
@@ -293,7 +297,9 @@ RETURNING *;
 -- name: ClaimNextRun :one
 -- A claim appends no history row, so the projector never sees it. The statement
 -- mirrors the new status onto the run's trace itself (#347): next_run takes the
--- run lock (SKIP LOCKED) before the trace write, which touches one trace row.
+-- run lock (FOR NO KEY UPDATE SKIP LOCKED, the run coordination lock mode, so a
+-- foreign key check that names the run does not make the claim skip it) before
+-- the trace write, which touches one trace row.
 -- The write is unconditional: a status filter would read the statement snapshot,
 -- so a release that commits before the run lock would leave the trace queued.
 WITH next_run AS (
@@ -303,7 +309,7 @@ WITH next_run AS (
        OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
     ORDER BY ready_at ASC, id ASC
     LIMIT 1
-    FOR UPDATE SKIP LOCKED
+    FOR NO KEY UPDATE SKIP LOCKED
 ), projected AS (
     UPDATE public.traces
     SET engine_run_status = 'running',
@@ -331,7 +337,7 @@ WITH next_run AS (
         OR (candidate.status = 'running' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
     ORDER BY candidate.ready_at ASC, candidate.id ASC
     LIMIT 1
-    FOR UPDATE SKIP LOCKED
+    FOR NO KEY UPDATE SKIP LOCKED
 ), projected AS (
     UPDATE public.traces
     SET engine_run_status = 'running',

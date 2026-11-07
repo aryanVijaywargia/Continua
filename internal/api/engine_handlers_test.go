@@ -4208,7 +4208,7 @@ func waitForEngineRunLockWaiter(t *testing.T, pool interface {
 				WHERE datname = current_database()
 				  AND wait_event_type = 'Lock'
 				  AND query LIKE '%FROM engine.runs%'
-				  AND query LIKE '%FOR UPDATE%'
+				  AND query LIKE '%FOR NO KEY UPDATE%'
 			)
 		`).Scan(&waiting)
 		require.NoError(t, err)

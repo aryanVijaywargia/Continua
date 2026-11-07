@@ -251,6 +251,23 @@ func (w *Writer) WriteTerminalSummary(
 	})
 }
 
+// LockRunTraces locks the projected traces of several runs until the transaction ends,
+// in platform ingest's trace lock order: by project, then external trace id in byte
+// order (ingest sorts the ids in Go, hence COLLATE "C"). It takes FOR UPDATE, the
+// strongest lock any later write in an activation takes (LoadContinuationSeed), so no
+// lock is upgraded mid-transaction.
+func (w *Writer) LockRunTraces(ctx context.Context, projectID uuid.UUID, runIDs []uuid.UUID) error {
+	_, err := w.tx.Exec(ctx, `
+		SELECT id
+		FROM public.traces
+		WHERE project_id = $1
+		  AND engine_run_id = ANY($2::uuid[])
+		ORDER BY project_id, trace_id COLLATE "C"
+		FOR UPDATE
+	`, projectID, runIDs)
+	return err
+}
+
 // SyncRunSummary refreshes the projected engine summary columns (run status,
 // custom status, wait state, pending-work counters) on the trace shell.
 func (w *Writer) SyncRunSummary(ctx context.Context, run *enginedb.EngineRun) error {

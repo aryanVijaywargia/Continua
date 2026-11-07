@@ -842,7 +842,7 @@ func (s *engineControlService) TerminateRun(
 	}()
 
 	engineTx := enginedb.New(tx.Tx())
-	run, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+	target, err := engineTx.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
 		ProjectID: projectID,
 		ID:        runID,
 	})
@@ -857,6 +857,30 @@ func (s *engineControlService) TerminateRun(
 		return engineRunSummary{}, err
 	}
 
+	// Run locks go ancestor before descendant, by child_depth and then run id, and come
+	// before every trace lock: the order engine activations use (lockRunAfterParent in
+	// the engine's workflow activator). Terminating a child wakes its parent, so
+	// the parent run is locked first. parent_run_id never changes, so the unlocked read
+	// above finds it. Holding the parent's lock also orders this terminate against the
+	// parent's own activation committing a wait on this child, so no wake is lost.
+	// Every run lock here is FOR NO KEY UPDATE, like the engine's. It does not conflict
+	// with the FOR KEY SHARE that a foreign key check takes when another transaction
+	// inserts a row that names one of these runs (a descendant's new child or
+	// continue-as-new run names the root, a cancel inbox item names its run). So a
+	// subtree run this terminate holds never makes such an insert wait.
+	if target.ParentRunID.Valid {
+		if _, err := engineTx.GetRunForUpdate(ctx, target.ParentRunID.Bytes); err != nil {
+			return engineRunSummary{}, fmt.Errorf("lock parent run: %w", err)
+		}
+	}
+	run, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		return engineRunSummary{}, err
+	}
+
 	if publicprojection.IsTerminalRunStatus(run.Status) {
 		if err := tx.Commit(ctx); err != nil {
 			return engineRunSummary{}, err
@@ -864,41 +888,34 @@ func (s *engineControlService) TerminateRun(
 		return terminalRunSummaryFromRun(&run), nil
 	}
 
-	descendants, err := engineTx.ListActiveChildWorkflowDescendants(ctx, enginedb.ListActiveChildWorkflowDescendantsParams{
-		ProjectID:   projectID,
-		ParentRunID: run.ID,
-	})
+	levels, err := lockActiveDescendantRuns(ctx, engineTx, &run)
 	if err != nil {
 		return engineRunSummary{}, err
 	}
-
-	descendantRuns := make([]enginedb.EngineRun, len(descendants))
-	subtreeRunIDs := []uuid.UUID{run.ID}
-	for i := range descendants {
-		descendantRuns[i], err = engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
-			ProjectID: projectID,
-			ID:        descendants[i].CurrentChildRunID,
-		})
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return engineRunSummary{}, fmt.Errorf("terminate descendant invariant failed for run %s", descendants[i].CurrentChildRunID)
-			}
-			return engineRunSummary{}, err
+	traceRunIDs := []uuid.UUID{run.ID}
+	if run.ParentRunID.Valid {
+		traceRunIDs = append(traceRunIDs, run.ParentRunID.Bytes)
+	}
+	for _, level := range levels {
+		for i := range level {
+			traceRunIDs = append(traceRunIDs, level[i].ID)
 		}
-		subtreeRunIDs = append(subtreeRunIDs, descendantRuns[i].ID)
 	}
 
-	// The updates below touch the subtree's traces in depth order, but platform ingest
-	// locks traces in external trace id order. Taking every subtree trace lock up front in
-	// ingest's order, after all run locks, makes a concurrent batch queue instead of
-	// deadlocking.
-	if err := tx.LockEngineRunTraces(ctx, projectID, subtreeRunIDs); err != nil {
+	// The updates below touch the subtree's traces in depth order, and the parent wake
+	// writes the external parent's trace, but platform ingest locks traces in external
+	// trace id order. Taking every one of those trace locks up front in ingest's order,
+	// after all run locks, makes a concurrent batch queue instead of deadlocking.
+	if err := tx.LockEngineRunTraces(ctx, projectID, traceRunIDs); err != nil {
 		return engineRunSummary{}, fmt.Errorf("lock subtree traces: %w", err)
 	}
 
-	for i := range descendantRuns {
-		if _, err := terminateLockedRun(ctx, tx, engineTx, &descendantRuns[i], false); err != nil {
-			return engineRunSummary{}, err
+	// Terminate the deepest runs first.
+	for i := len(levels) - 1; i >= 0; i-- {
+		for j := range levels[i] {
+			if _, err := terminateLockedRun(ctx, tx, engineTx, &levels[i][j], false); err != nil {
+				return engineRunSummary{}, err
+			}
 		}
 	}
 
@@ -911,6 +928,55 @@ func (s *engineControlService) TerminateRun(
 		return engineRunSummary{}, err
 	}
 	return terminalRunSummaryFromRun(&updatedRun), nil
+}
+
+// lockActiveDescendantRuns locks the active subtree under a locked run and returns it
+// one level per depth, shallowest first. It lists a run's children only after it holds
+// that run. Every write that adds or replaces a child of run X holds X's run lock: X's
+// own activation starts a child, and a child's activation that continues as new locks X
+// before itself. So once X is locked its active children are final, and the next
+// statement sees every committed one; a subtree listed before waiting for a lock can miss
+// a run added during the wait. A level's children share one child_depth and come in run
+// id order, so the locks follow the global run order.
+func lockActiveDescendantRuns(
+	ctx context.Context,
+	engineTx *enginedb.Queries,
+	run *enginedb.EngineRun,
+) ([][]enginedb.EngineRun, error) {
+	var levels [][]enginedb.EngineRun
+	for parentRunIDs := []uuid.UUID{run.ID}; len(parentRunIDs) > 0; {
+		children, err := engineTx.ListActiveChildWorkflowsByParentRuns(ctx, enginedb.ListActiveChildWorkflowsByParentRunsParams{
+			ProjectID:    run.ProjectID,
+			ParentRunIds: parentRunIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list active children: %w", err)
+		}
+		level := make([]enginedb.EngineRun, 0, len(children))
+		parentRunIDs = make([]uuid.UUID, 0, len(children))
+		for i := range children {
+			childRun, err := engineTx.GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+				ProjectID: run.ProjectID,
+				ID:        children[i].CurrentChildRunID,
+			})
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return nil, fmt.Errorf("terminate descendant invariant failed for run %s", children[i].CurrentChildRunID)
+				}
+				return nil, err
+			}
+			// The lock returns the run's latest committed status. Every write that ends a
+			// child run also holds its parent, so a listed child is not terminal; skip one
+			// rather than fail the terminate if that ever stops holding.
+			if publicprojection.IsTerminalRunStatus(childRun.Status) {
+				continue
+			}
+			level = append(level, childRun)
+			parentRunIDs = append(parentRunIDs, childRun.ID)
+		}
+		levels = append(levels, level)
+	}
+	return levels, nil
 }
 
 func (s *engineControlService) SuspendRun(
@@ -1047,7 +1113,7 @@ func terminateLockedRun(
 	}); err != nil {
 		return enginedb.EngineRun{}, err
 	}
-	if err := terminateChildRelationship(ctx, engineTx, &updatedRun, wakeParent); err != nil {
+	if err := terminateChildRelationship(ctx, tx, engineTx, &updatedRun, wakeParent); err != nil {
 		return enginedb.EngineRun{}, err
 	}
 	return updatedRun, nil
@@ -1055,6 +1121,7 @@ func terminateLockedRun(
 
 func terminateChildRelationship(
 	ctx context.Context,
+	tx *store.Tx,
 	engineTx *enginedb.Queries,
 	run *enginedb.EngineRun,
 	wakeParent bool,
@@ -1074,13 +1141,19 @@ func terminateChildRelationship(
 	if !wakeParent || childWorkflow.ParentWaitFailedAt.Valid {
 		return nil
 	}
-	if _, err := engineTx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
+	woken, err := engineTx.WakeWaitingChildWorkflowRun(ctx, enginedb.WakeWaitingChildWorkflowRunParams{
 		ID:       childWorkflow.ParentRunID,
 		ChildKey: childWorkflow.ChildKey,
-	}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
-	return nil
+	// The wake appends no parent history row for the projector to follow, so project the
+	// parent's new status here, under the trace lock TerminateRun already holds.
+	return syncProjectedTraceSummary(ctx, tx, engineTx, &woken)
 }
 
 func (s *engineControlService) ResumeRun(

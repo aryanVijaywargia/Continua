@@ -331,65 +331,29 @@ func (q *Queries) GetChildWorkflowOutcomeByParentRunAndKey(ctx context.Context, 
 	return i, err
 }
 
-const listActiveChildWorkflowDescendants = `-- name: ListActiveChildWorkflowDescendants :many
-WITH RECURSIVE descendants AS (
-    SELECT cw.id, cw.project_id, cw.parent_instance_id, cw.parent_run_id, cw.child_key, cw.requested_definition_name, cw.requested_definition_version, cw.child_instance_id, cw.child_instance_key, cw.current_child_run_id, cw.terminal_child_run_id, cw.root_run_id, cw.child_depth, cw.continuation_count, cw.status, cw.parent_wait_failed_at, cw.parent_wait_error_code, cw.parent_wait_error_message, cw.created_at, cw.updated_at
-    FROM engine.child_workflows AS cw
-    WHERE cw.project_id = $1
-      AND cw.parent_run_id = $2
-      AND cw.status = 'active'
-
-    UNION ALL
-
-    SELECT child.id, child.project_id, child.parent_instance_id, child.parent_run_id, child.child_key, child.requested_definition_name, child.requested_definition_version, child.child_instance_id, child.child_instance_key, child.current_child_run_id, child.terminal_child_run_id, child.root_run_id, child.child_depth, child.continuation_count, child.status, child.parent_wait_failed_at, child.parent_wait_error_code, child.parent_wait_error_message, child.created_at, child.updated_at
-    FROM engine.child_workflows AS child
-    INNER JOIN descendants AS parent
-        ON parent.project_id = child.project_id
-       AND parent.current_child_run_id = child.parent_run_id
-    WHERE child.status = 'active'
-)
+const listActiveChildWorkflowsByParentRun = `-- name: ListActiveChildWorkflowsByParentRun :many
 SELECT id, project_id, parent_instance_id, parent_run_id, child_key, requested_definition_name, requested_definition_version, child_instance_id, child_instance_key, current_child_run_id, terminal_child_run_id, root_run_id, child_depth, continuation_count, status, parent_wait_failed_at, parent_wait_error_code, parent_wait_error_message, created_at, updated_at
-FROM descendants
-ORDER BY child_depth DESC, created_at DESC
+FROM engine.child_workflows
+WHERE project_id = $1
+  AND parent_run_id = $2
+  AND status = 'active'
+ORDER BY child_key ASC, created_at ASC
 `
 
-type ListActiveChildWorkflowDescendantsParams struct {
+type ListActiveChildWorkflowsByParentRunParams struct {
 	ProjectID   uuid.UUID `json:"project_id"`
 	ParentRunID uuid.UUID `json:"parent_run_id"`
 }
 
-type ListActiveChildWorkflowDescendantsRow struct {
-	ID                         uuid.UUID                 `json:"id"`
-	ProjectID                  uuid.UUID                 `json:"project_id"`
-	ParentInstanceID           uuid.UUID                 `json:"parent_instance_id"`
-	ParentRunID                uuid.UUID                 `json:"parent_run_id"`
-	ChildKey                   string                    `json:"child_key"`
-	RequestedDefinitionName    string                    `json:"requested_definition_name"`
-	RequestedDefinitionVersion string                    `json:"requested_definition_version"`
-	ChildInstanceID            uuid.UUID                 `json:"child_instance_id"`
-	ChildInstanceKey           string                    `json:"child_instance_key"`
-	CurrentChildRunID          uuid.UUID                 `json:"current_child_run_id"`
-	TerminalChildRunID         pgtype.UUID               `json:"terminal_child_run_id"`
-	RootRunID                  uuid.UUID                 `json:"root_run_id"`
-	ChildDepth                 int32                     `json:"child_depth"`
-	ContinuationCount          int32                     `json:"continuation_count"`
-	Status                     EngineChildWorkflowStatus `json:"status"`
-	ParentWaitFailedAt         pgtype.Timestamptz        `json:"parent_wait_failed_at"`
-	ParentWaitErrorCode        *string                   `json:"parent_wait_error_code"`
-	ParentWaitErrorMessage     *string                   `json:"parent_wait_error_message"`
-	CreatedAt                  time.Time                 `json:"created_at"`
-	UpdatedAt                  time.Time                 `json:"updated_at"`
-}
-
-func (q *Queries) ListActiveChildWorkflowDescendants(ctx context.Context, arg ListActiveChildWorkflowDescendantsParams) ([]ListActiveChildWorkflowDescendantsRow, error) {
-	rows, err := q.db.Query(ctx, listActiveChildWorkflowDescendants, arg.ProjectID, arg.ParentRunID)
+func (q *Queries) ListActiveChildWorkflowsByParentRun(ctx context.Context, arg ListActiveChildWorkflowsByParentRunParams) ([]EngineChildWorkflow, error) {
+	rows, err := q.db.Query(ctx, listActiveChildWorkflowsByParentRun, arg.ProjectID, arg.ParentRunID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListActiveChildWorkflowDescendantsRow{}
+	items := []EngineChildWorkflow{}
 	for rows.Next() {
-		var i ListActiveChildWorkflowDescendantsRow
+		var i EngineChildWorkflow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
@@ -422,22 +386,24 @@ func (q *Queries) ListActiveChildWorkflowDescendants(ctx context.Context, arg Li
 	return items, nil
 }
 
-const listActiveChildWorkflowsByParentRun = `-- name: ListActiveChildWorkflowsByParentRun :many
+const listActiveChildWorkflowsByParentRuns = `-- name: ListActiveChildWorkflowsByParentRuns :many
 SELECT id, project_id, parent_instance_id, parent_run_id, child_key, requested_definition_name, requested_definition_version, child_instance_id, child_instance_key, current_child_run_id, terminal_child_run_id, root_run_id, child_depth, continuation_count, status, parent_wait_failed_at, parent_wait_error_code, parent_wait_error_message, created_at, updated_at
 FROM engine.child_workflows
 WHERE project_id = $1
-  AND parent_run_id = $2
+  AND parent_run_id = ANY($2::uuid[])
   AND status = 'active'
-ORDER BY child_key ASC, created_at ASC
+ORDER BY current_child_run_id
 `
 
-type ListActiveChildWorkflowsByParentRunParams struct {
-	ProjectID   uuid.UUID `json:"project_id"`
-	ParentRunID uuid.UUID `json:"parent_run_id"`
+type ListActiveChildWorkflowsByParentRunsParams struct {
+	ProjectID    uuid.UUID   `json:"project_id"`
+	ParentRunIds []uuid.UUID `json:"parent_run_ids"`
 }
 
-func (q *Queries) ListActiveChildWorkflowsByParentRun(ctx context.Context, arg ListActiveChildWorkflowsByParentRunParams) ([]EngineChildWorkflow, error) {
-	rows, err := q.db.Query(ctx, listActiveChildWorkflowsByParentRun, arg.ProjectID, arg.ParentRunID)
+// Active children of several runs, in run id order. Children of runs at one depth share a
+// depth, so this is the run lock order (child_depth, then id).
+func (q *Queries) ListActiveChildWorkflowsByParentRuns(ctx context.Context, arg ListActiveChildWorkflowsByParentRunsParams) ([]EngineChildWorkflow, error) {
+	rows, err := q.db.Query(ctx, listActiveChildWorkflowsByParentRuns, arg.ProjectID, arg.ParentRunIds)
 	if err != nil {
 		return nil, err
 	}

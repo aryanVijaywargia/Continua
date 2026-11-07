@@ -21,7 +21,7 @@ WITH next_run AS (
        OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
     ORDER BY ready_at ASC, id ASC
     LIMIT 1
-    FOR UPDATE SKIP LOCKED
+    FOR NO KEY UPDATE SKIP LOCKED
 ), projected AS (
     UPDATE public.traces
     SET engine_run_status = 'running',
@@ -47,7 +47,9 @@ type ClaimNextRunParams struct {
 
 // A claim appends no history row, so the projector never sees it. The statement
 // mirrors the new status onto the run's trace itself (#347): next_run takes the
-// run lock (SKIP LOCKED) before the trace write, which touches one trace row.
+// run lock (FOR NO KEY UPDATE SKIP LOCKED, the run coordination lock mode, so a
+// foreign key check that names the run does not make the claim skip it) before
+// the trace write, which touches one trace row.
 // The write is unconditional: a status filter would read the statement snapshot,
 // so a release that commits before the run lock would leave the trace queued.
 func (q *Queries) ClaimNextRun(ctx context.Context, arg ClaimNextRunParams) (EngineRun, error) {
@@ -92,7 +94,7 @@ WITH next_run AS (
         OR (candidate.status = 'running' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
     ORDER BY candidate.ready_at ASC, candidate.id ASC
     LIMIT 1
-    FOR UPDATE SKIP LOCKED
+    FOR NO KEY UPDATE SKIP LOCKED
 ), projected AS (
     UPDATE public.traces
     SET engine_run_status = 'running',
@@ -348,7 +350,8 @@ WHERE r.id = $1
   AND t.engine_last_projected_history_id IS NOT NULL
   AND t.engine_last_projected_history_id >= t.engine_latest_history_id
   AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
-FOR UPDATE OF r, t
+FOR NO KEY UPDATE OF r
+FOR UPDATE OF t
 `
 
 type GetRetainableTerminalRunForUpdateParams struct {
@@ -452,7 +455,7 @@ SELECT id, project_id, instance_id, run_number, definition_version, status, read
 FROM engine.runs
 WHERE project_id = $1
   AND id = $2
-FOR UPDATE
+FOR NO KEY UPDATE
 `
 
 type GetRunByProjectAndIDForUpdateParams struct {
@@ -497,9 +500,12 @@ const getRunForUpdate = `-- name: GetRunForUpdate :one
 SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
 WHERE id = $1
-FOR UPDATE
+FOR NO KEY UPDATE
 `
 
+// Run coordination locks (this and GetRunByProjectAndIDForUpdate) take FOR NO KEY UPDATE:
+// they serialize run writers, but do not block the FOR KEY SHARE that a foreign key check
+// takes on a run that a new row names. No runtime path changes a run's keys or deletes it.
 func (q *Queries) GetRunForUpdate(ctx context.Context, id uuid.UUID) (EngineRun, error) {
 	row := q.db.QueryRow(ctx, getRunForUpdate, id)
 	var i EngineRun
