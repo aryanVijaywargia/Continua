@@ -293,8 +293,9 @@ RETURNING *;
 -- name: ClaimNextRun :one
 -- A claim appends no history row, so the projector never sees it. The statement
 -- mirrors the new status onto the run's trace itself (#347): next_run takes the
--- run lock (SKIP LOCKED) before the trace write, which touches one trace row and
--- skips it when the trace already shows running (a lease reclaim).
+-- run lock (SKIP LOCKED) before the trace write, which touches one trace row.
+-- The write is unconditional: a status filter would read the statement snapshot,
+-- so a release that commits before the run lock would leave the trace queued.
 WITH next_run AS (
     SELECT id
     FROM engine.runs
@@ -309,7 +310,6 @@ WITH next_run AS (
         updated_at = NOW(),
         version = COALESCE(version, 1) + 1
     WHERE engine_run_id = (SELECT id FROM next_run)
-      AND engine_run_status IS DISTINCT FROM 'running'
 )
 UPDATE engine.runs
 SET status = 'running',
@@ -338,7 +338,6 @@ WITH next_run AS (
         updated_at = NOW(),
         version = COALESCE(version, 1) + 1
     WHERE engine_run_id = (SELECT id FROM next_run)
-      AND engine_run_status IS DISTINCT FROM 'running'
 )
 UPDATE engine.runs
 SET status = 'running',

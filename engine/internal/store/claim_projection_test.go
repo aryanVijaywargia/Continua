@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -105,5 +106,132 @@ func TestReleaseRunsByClaimantProjectsQueuedStatus(t *testing.T) {
 		if got := ts.projectedRunStatus(t, runID); got != string(enginedb.EngineRunLifecycleStatusQueued) {
 			t.Fatalf("projected status of run %s after release = %q, want queued", runID, got)
 		}
+	}
+}
+
+// A shutdown release can commit after a claim takes its statement snapshot but
+// before it locks the run. The claim must still project running onto the
+// trace, which the release has just set to queued.
+func TestClaimNextRunProjectsRunningAfterConcurrentRelease(t *testing.T) {
+	ts := newTestStore(t)
+	projectID := uuidOrFatal(t)
+	run := ts.createProjectedRun(t, projectID, "claim-after-release")
+	if _, err := ts.db.Pool.Exec(ts.ctx, `
+		UPDATE engine.runs
+		SET status = 'running', claimed_by = 'old-worker', claimed_at = NOW() - INTERVAL '1 hour',
+		    lease_expires_at = NOW() - INTERVAL '1 minute'
+		WHERE id = $1
+	`, run.ID); err != nil {
+		t.Fatalf("expire run lease: %v", err)
+	}
+	if _, err := ts.db.Pool.Exec(ts.ctx, `UPDATE public.traces SET engine_run_status = 'running' WHERE engine_run_id = $1`, run.ID); err != nil {
+		t.Fatalf("mark projected run running: %v", err)
+	}
+
+	// The claim connection resolves NOW() to this shadow. Its first call, made
+	// after the statement snapshot is taken and before any row lock, waits on an
+	// advisory lock that the test holds.
+	const barrierKey = 347001
+	if _, err := ts.db.Pool.Exec(ts.ctx, `
+		CREATE SCHEMA claim_barrier;
+		CREATE FUNCTION claim_barrier.now() RETURNS timestamptz LANGUAGE plpgsql VOLATILE AS $$
+		BEGIN
+			IF current_setting('claim_barrier.pause', true) = 'on' THEN
+				PERFORM set_config('claim_barrier.pause', 'off', false);
+				PERFORM pg_catalog.pg_advisory_lock(347001);
+				PERFORM pg_catalog.pg_advisory_unlock(347001);
+			END IF;
+			RETURN pg_catalog.now();
+		END $$;
+	`); err != nil {
+		t.Fatalf("create now() barrier: %v", err)
+	}
+	blocker, err := ts.db.Pool.Acquire(ts.ctx)
+	if err != nil {
+		t.Fatalf("acquire blocker connection: %v", err)
+	}
+	defer blocker.Release()
+	if _, err := blocker.Exec(ts.ctx, "SELECT pg_advisory_lock($1)", barrierKey); err != nil {
+		t.Fatalf("take barrier lock: %v", err)
+	}
+	unlocked := false
+	unlock := func() {
+		if unlocked {
+			return
+		}
+		unlocked = true
+		if _, err := blocker.Exec(ts.ctx, "SELECT pg_advisory_unlock($1)", barrierKey); err != nil {
+			t.Errorf("release barrier lock: %v", err)
+		}
+	}
+	defer unlock()
+
+	claimConn, err := ts.db.Pool.Acquire(ts.ctx)
+	if err != nil {
+		t.Fatalf("acquire claim connection: %v", err)
+	}
+	defer func() {
+		_, _ = claimConn.Exec(context.WithoutCancel(ts.ctx), "RESET search_path; RESET claim_barrier.pause")
+		claimConn.Release()
+	}()
+	if _, err := claimConn.Exec(ts.ctx, "SET search_path TO claim_barrier, pg_catalog, public; SET claim_barrier.pause TO 'on'"); err != nil {
+		t.Fatalf("arm claim barrier: %v", err)
+	}
+	claimPID := claimConn.Conn().PgConn().PID()
+	claimedBy := "new-worker"
+	done := make(chan error, 1)
+	go func() {
+		_, err := enginedb.New(claimConn).ClaimNextRun(ts.ctx, enginedb.ClaimNextRunParams{
+			ClaimedBy:           &claimedBy,
+			LeaseDurationMicros: time.Minute.Microseconds(),
+		})
+		done <- err
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var waiting bool
+		if err := ts.db.Pool.QueryRow(ts.ctx, `
+			SELECT COALESCE(wait_event_type = 'Lock' AND wait_event = 'advisory', false)
+			FROM pg_stat_activity WHERE pid = $1
+		`, claimPID).Scan(&waiting); err != nil {
+			t.Fatalf("read claim wait state: %v", err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("claim finished before the barrier: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("claim did not reach the barrier within 10s")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if _, err := ts.store.ReleaseRunsByClaimant(ts.ctx, "old-worker"); err != nil {
+		t.Fatalf("ReleaseRunsByClaimant() error = %v", err)
+	}
+	unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("ClaimNextRun() error = %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("claim did not finish within 10s after the release")
+	}
+
+	claimed, err := ts.store.GetRun(ts.ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun() error = %v", err)
+	}
+	if claimed.Status != enginedb.EngineRunLifecycleStatusRunning {
+		t.Fatalf("run status after claim = %q, want running", claimed.Status)
+	}
+	if got := ts.projectedRunStatus(t, run.ID); got != string(enginedb.EngineRunLifecycleStatusRunning) {
+		t.Fatalf("projected run status after claim = %q, want running", got)
 	}
 }
