@@ -271,7 +271,7 @@ func (a *Activator) commitDecision(
 
 	switch decision.Kind {
 	case decisionWaiting:
-		_, err := tx.TransitionRunToWaiting(ctx, enginedb.TransitionRunToWaitingParams{
+		updatedRun, err := tx.TransitionRunToWaiting(ctx, enginedb.TransitionRunToWaitingParams{
 			ID:           run.ID,
 			ClaimedBy:    workerClaimedBy,
 			WaitingFor:   decision.WaitingFor,
@@ -280,7 +280,9 @@ func (a *Activator) commitDecision(
 		if err != nil {
 			return err
 		}
-		return nil
+		// The projector only follows new history rows, and a waiting activation
+		// may append none, so project the status change here.
+		return publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &updatedRun)
 	case decisionCompleted:
 		updatedRun, err := tx.TransitionRunToCompleted(ctx, enginedb.TransitionRunToCompletedParams{
 			ID:           run.ID,
