@@ -2,14 +2,19 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	"github.com/continua-ai/continua/engine/internal/activity"
+	enginehistory "github.com/continua-ai/continua/engine/internal/history"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
 	publicworkflow "github.com/continua-ai/continua/engine/pkg/workflow"
@@ -201,7 +206,7 @@ func TestActivatorChildTerminalLocksParentRunBeforeChildRun(t *testing.T) {
 	if err := terminate.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&terminatePID); err != nil {
 		t.Fatalf("terminate-like tx pid: %v", err)
 	}
-	if _, err := terminate.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR UPDATE`, fixture.parentRun.ID); err != nil {
+	if _, err := terminate.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR NO KEY UPDATE`, fixture.parentRun.ID); err != nil {
 		t.Fatalf("lock parent run: %v", err)
 	}
 
@@ -209,7 +214,7 @@ func TestActivatorChildTerminalLocksParentRunBeforeChildRun(t *testing.T) {
 	activation := startAsync(t, cancel, func() error { return fixture.activator.Activate(ctx, &claimed) })
 	waitForLockQueue(t, ctx, pool, terminatePID, activation)
 
-	if _, err := terminate.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR UPDATE`, fixture.childRunID); err != nil {
+	if _, err := terminate.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR NO KEY UPDATE`, fixture.childRunID); err != nil {
 		t.Fatalf("terminate-like tx lost a run lock-order conflict on the child: %v", err)
 	}
 	if err := terminate.Rollback(ctx); err != nil {
@@ -224,8 +229,8 @@ func TestActivatorChildTerminalLocksParentRunBeforeChildRun(t *testing.T) {
 // A grandchild's activation can insert a run that names the root run through the
 // root_run_id foreign key: the next run of a continue-as-new, or a new child. The foreign
 // key check locks the root row (KEY SHARE). TerminateRun on the root locks the root, then
-// waits for the child, which the grandchild's activation holds as its parent. The
-// activation must lock the root before the child, or the two deadlock (40P01).
+// waits for the child, which the grandchild's activation holds as its parent. Run locks
+// are FOR NO KEY UPDATE, which KEY SHARE does not wait for, or the two deadlock (40P01).
 func TestActivatorGrandchildLocksRootRunBeforeParentRun(t *testing.T) {
 	testCases := []struct {
 		name          string
@@ -300,7 +305,7 @@ func TestActivatorGrandchildLocksRootRunBeforeParentRun(t *testing.T) {
 			}
 			terminateLocks := startAsync(t, cancel, func() error {
 				for _, runID := range []uuid.UUID{rootRunID, fixture.childRunID, grandchildRunID} {
-					if _, err := terminate.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR UPDATE`, runID); err != nil {
+					if _, err := terminate.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR NO KEY UPDATE`, runID); err != nil {
 						return err
 					}
 				}
@@ -345,6 +350,148 @@ func waitUntilBlocked(t *testing.T, ctx context.Context, pool *pgxpool.Pool, pid
 		if blocked {
 			return
 		}
+	}
+}
+
+// A parent's cancelled activation enqueues a cancel inbox item for each active child.
+// The item names the child run, so its foreign key check locks that run (KEY SHARE),
+// after the activation locked the traces. An activity retry on the child holds the
+// child's run and then waits for the child's trace, which ingest holds while it waits for
+// the parent's trace, which the activation holds. If the run lock blocked KEY SHARE, the
+// three would deadlock (40P01) and roll back the cancellation.
+func TestActivatorCancelCascadeDoesNotWaitForChildRunLock(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	billing := func(ctx publicworkflow.Context) error {
+		err := ctx.ChildWorkflow("issue-receipt", "receipts", "v1", nil, nil)
+		if ctx.CancellationRequested() {
+			return publicworkflow.ErrCancelled
+		}
+		return err
+	}
+	fixture := newParentWakeFixture(t, ctx, billing)
+	pool := fixture.db.Pool
+	activator := NewActivator(fixture.store, mustRegistry(t,
+		childWaitingParentDefinition("checkout-parent-wake", nil),
+		publicworkflow.Definition{Name: "billing", Version: "v1", Run: billing},
+		publicworkflow.Definition{Name: "receipts", Version: "v1", Run: func(ctx publicworkflow.Context) error {
+			return ctx.ActivityWithOptions("print", "print", nil, nil, publicworkflow.ActivityOptions{
+				RetryPolicy: &publicworkflow.RetryPolicy{MaxAttempts: 2, InitialBackoff: time.Millisecond, MaxBackoff: time.Second, BackoffMultiplier: 1},
+			})
+		}},
+	))
+	billingRunID := fixture.childRunID
+	activateRunByID(t, ctx, pool, fixture.store, activator, billingRunID, "worker-billing")
+	var receiptsRunID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT current_child_run_id FROM engine.child_workflows WHERE parent_run_id = $1`,
+		billingRunID).Scan(&receiptsRunID); err != nil {
+		t.Fatalf("read receipts run: %v", err)
+	}
+	activateRunByID(t, ctx, pool, fixture.store, activator, receiptsRunID, "worker-receipts")
+
+	// Ingest locks the receipts trace before the billing trace.
+	for runID, traceID := range map[uuid.UUID]string{receiptsRunID: "engine:0-receipts", billingRunID: "engine:1-billing"} {
+		if _, err := pool.Exec(ctx, `UPDATE public.traces SET trace_id = $2 WHERE engine_run_id = $1`, runID, traceID); err != nil {
+			t.Fatalf("rename trace of run %s: %v", runID, err)
+		}
+	}
+	// At the continuation-follow limit, billing observes its cancellation while receipts
+	// is still active.
+	if _, err := pool.Exec(ctx, `UPDATE engine.child_workflows SET continuation_count = $2 WHERE current_child_run_id = $1`,
+		receiptsRunID, maxContinuationFollowDepth); err != nil {
+		t.Fatalf("set continuation count: %v", err)
+	}
+	billingRun, err := fixture.store.GetRun(ctx, billingRunID)
+	if err != nil {
+		t.Fatalf("GetRun(billing) error = %v", err)
+	}
+	cancelPayload, err := enginehistory.MarshalPayload(enginehistory.CancelRequestedPayload{})
+	if err != nil {
+		t.Fatalf("marshal cancel payload: %v", err)
+	}
+	if _, err := fixture.store.CreateInboxItem(ctx, enginedb.CreateInboxItemParams{
+		ProjectID:   billingRun.ProjectID,
+		InstanceID:  billingRun.InstanceID,
+		RunID:       pgtype.UUID{Bytes: billingRunID, Valid: true},
+		Kind:        "cancel",
+		Payload:     cancelPayload,
+		AvailableAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("request billing cancellation: %v", err)
+	}
+	billingClaim := forceClaimRun(t, ctx, pool, fixture.store, billingRunID, "worker-cancel")
+
+	// The activity fails once. Its retry locks the receipts run, then queues on the gate,
+	// which holds the activity task row.
+	entered, release := make(chan struct{}), make(chan struct{})
+	registry, err := activity.NewRegistry(map[string]activity.Handler{"print": func(context.Context, json.RawMessage) (json.RawMessage, error) {
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("printer jammed")
+	}})
+	if err != nil {
+		t.Fatalf("activity registry: %v", err)
+	}
+	worker := activity.NewWorker(fixture.store, registry, time.Minute, nil)
+	retry := startAsync(t, cancel, func() error {
+		_, err := worker.PollOnce(ctx, "worker-activity")
+		return err
+	})
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatalf("activity never ran: %v", ctx.Err())
+	}
+	tasks, err := fixture.store.ListActivityTasksByRun(ctx, receiptsRunID)
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("ListActivityTasksByRun(receipts) = %d tasks, error %v; want 1 task", len(tasks), err)
+	}
+	gate, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin gate: %v", err)
+	}
+	defer func() { _ = gate.Rollback(context.Background()) }()
+	var gatePID int32
+	if err := gate.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&gatePID); err != nil {
+		t.Fatalf("gate pid: %v", err)
+	}
+	if _, err := gate.Exec(ctx, `SELECT id FROM engine.activity_tasks WHERE id = $1 FOR UPDATE`, tasks[0].ID); err != nil {
+		t.Fatalf("gate lock activity task: %v", err)
+	}
+	close(release)
+	waitForLockQueue(t, ctx, pool, gatePID, retry)
+
+	activation := startAsync(t, cancel, func() error { return activator.Activate(ctx, &billingClaim) })
+	waitForLockQueue(t, ctx, pool, gatePID, retry, activation)
+	batch := startIngestBatch(t, ctx, pool, "engine:0-receipts", "engine:1-billing")
+	waitForLockQueue(t, ctx, pool, gatePID, retry, activation, batch)
+
+	if err := gate.Rollback(ctx); err != nil {
+		t.Fatalf("release gate: %v", err)
+	}
+	for name, op := range map[string]*asyncOp{"billing cancel activation": activation, "ingest": batch, "activity retry": retry} {
+		if err := op.wait(ctx); err != nil {
+			t.Fatalf("%s error = %v", name, err)
+		}
+	}
+	cancelled, err := fixture.store.GetRun(ctx, billingRunID)
+	if err != nil {
+		t.Fatalf("GetRun(billing) error = %v", err)
+	}
+	if cancelled.Status != enginedb.EngineRunLifecycleStatusCancelled {
+		t.Fatalf("expected billing to be cancelled, got status %q", cancelled.Status)
+	}
+	var cascaded int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM engine.inbox WHERE run_id = $1 AND kind = 'cancel'`,
+		receiptsRunID).Scan(&cascaded); err != nil {
+		t.Fatalf("count receipts cancel items: %v", err)
+	}
+	if cascaded != 1 {
+		t.Fatalf("expected one cancel item for receipts, got %d", cascaded)
 	}
 }
 

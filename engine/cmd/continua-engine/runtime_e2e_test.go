@@ -1024,7 +1024,7 @@ func waitForRunLockWaiter(t *testing.T, db *enginetest.TestDatabase) {
 				WHERE datname = current_database()
 				  AND wait_event_type = 'Lock'
 				  AND query LIKE '%FROM engine.runs%'
-				  AND query LIKE '%FOR UPDATE%'
+				  AND query LIKE '%FOR NO KEY UPDATE%'
 			)
 		`).Scan(&waiting); err != nil {
 			t.Fatalf("check pg_stat_activity: %v", err)

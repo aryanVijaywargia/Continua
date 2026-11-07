@@ -47,23 +47,20 @@ WHERE project_id = $1
   AND id = $2;
 
 -- name: GetRunForUpdate :one
+-- Run coordination locks (this and GetRunByProjectAndIDForUpdate) take FOR NO KEY UPDATE:
+-- they serialize run writers, but do not block the FOR KEY SHARE that a foreign key check
+-- takes on a run that a new row names. No runtime path changes a run's keys or deletes it.
 SELECT *
 FROM engine.runs
 WHERE id = $1
-FOR UPDATE;
-
--- name: LockRunForKeyShare :exec
-SELECT id
-FROM engine.runs
-WHERE id = $1
-FOR KEY SHARE;
+FOR NO KEY UPDATE;
 
 -- name: GetRunByProjectAndIDForUpdate :one
 SELECT *
 FROM engine.runs
 WHERE project_id = $1
   AND id = $2
-FOR UPDATE;
+FOR NO KEY UPDATE;
 
 -- name: ListRetainableTerminalRunIDs :many
 SELECT r.id
@@ -91,7 +88,8 @@ WHERE r.id = sqlc.arg(run_id)
   AND t.engine_last_projected_history_id IS NOT NULL
   AND t.engine_last_projected_history_id >= t.engine_latest_history_id
   AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
-FOR UPDATE OF r, t;
+FOR NO KEY UPDATE OF r
+FOR UPDATE OF t;
 
 -- name: ListRunsByInstance :many
 SELECT *

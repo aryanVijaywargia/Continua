@@ -76,7 +76,7 @@ func TestTerminateEngineRun_WaitsForParentCommittingWaitOnChild(t *testing.T) {
 	defer func() { _ = parentActivation.Rollback(context.Background()) }()
 	var parentPID int32
 	require.NoError(t, parentActivation.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&parentPID))
-	_, err = parentActivation.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR UPDATE`, parentRun.ID)
+	_, err = parentActivation.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR NO KEY UPDATE`, parentRun.ID)
 	require.NoError(t, err)
 
 	terminate := startTerminateEngineRun(t, ctx, cancel, server, projectID, childRun.ID)
@@ -97,7 +97,9 @@ func TestTerminateEngineRun_WaitsForParentCommittingWaitOnChild(t *testing.T) {
 // Run locks follow one order: ancestor before descendant. A grandchild's activation locks
 // its parent (the child) and then itself. Terminating the root must lock the child before
 // the grandchild, not in the deepest-first order it terminates them in, or the two
-// deadlock.
+// deadlock. The grandchild's activation can also insert a run that names the root
+// (root_run_id), whose foreign key check locks the root FOR KEY SHARE while the terminate
+// holds the root, so the terminate's run locks must not block KEY SHARE.
 func TestTerminateEngineRun_LocksDescendantRunsAncestorFirst(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -124,14 +126,16 @@ func TestTerminateEngineRun_LocksDescendantRunsAncestorFirst(t *testing.T) {
 	defer func() { _ = grandchildActivation.Rollback(context.Background()) }()
 	var activationPID int32
 	require.NoError(t, grandchildActivation.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&activationPID))
-	_, err = grandchildActivation.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR UPDATE`, childRun.ID)
+	_, err = grandchildActivation.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR NO KEY UPDATE`, childRun.ID)
 	require.NoError(t, err)
 
 	terminate := startTerminateEngineRun(t, ctx, cancel, server, projectID, rootRun.ID)
 	waitForTerminateLockQueue(t, ctx, pool, activationPID, terminate)
 
-	_, err = grandchildActivation.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR UPDATE`, grandchildRun.ID)
+	_, err = grandchildActivation.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR NO KEY UPDATE`, grandchildRun.ID)
 	require.NoError(t, err, "grandchild activation lost a run lock-order conflict")
+	_, err = grandchildActivation.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR KEY SHARE`, rootRun.ID)
+	require.NoError(t, err, "grandchild activation lost a root_run_id foreign key lock conflict")
 	require.NoError(t, grandchildActivation.Rollback(ctx))
 	require.NoError(t, terminate.wait(ctx), "terminate")
 	require.Equal(t, http.StatusOK, terminate.rec.Code, terminate.rec.Body.String())

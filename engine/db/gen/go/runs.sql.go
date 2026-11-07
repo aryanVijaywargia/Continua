@@ -328,7 +328,8 @@ WHERE r.id = $1
   AND t.engine_last_projected_history_id IS NOT NULL
   AND t.engine_last_projected_history_id >= t.engine_latest_history_id
   AND COALESCE(t.engine_projection_state, '') <> 'journal_expired'
-FOR UPDATE OF r, t
+FOR NO KEY UPDATE OF r
+FOR UPDATE OF t
 `
 
 type GetRetainableTerminalRunForUpdateParams struct {
@@ -432,7 +433,7 @@ SELECT id, project_id, instance_id, run_number, definition_version, status, read
 FROM engine.runs
 WHERE project_id = $1
   AND id = $2
-FOR UPDATE
+FOR NO KEY UPDATE
 `
 
 type GetRunByProjectAndIDForUpdateParams struct {
@@ -477,9 +478,12 @@ const getRunForUpdate = `-- name: GetRunForUpdate :one
 SELECT id, project_id, instance_id, run_number, definition_version, status, ready_at, attempt_count, last_error_code, last_error_message, claimed_by, claimed_at, lease_expires_at, created_at, updated_at, result, custom_status, waiting_for, completed_at, continued_from_run_id, continued_to_run_id, parent_run_id, root_run_id, child_key, child_depth
 FROM engine.runs
 WHERE id = $1
-FOR UPDATE
+FOR NO KEY UPDATE
 `
 
+// Run coordination locks (this and GetRunByProjectAndIDForUpdate) take FOR NO KEY UPDATE:
+// they serialize run writers, but do not block the FOR KEY SHARE that a foreign key check
+// takes on a run that a new row names. No runtime path changes a run's keys or deletes it.
 func (q *Queries) GetRunForUpdate(ctx context.Context, id uuid.UUID) (EngineRun, error) {
 	row := q.db.QueryRow(ctx, getRunForUpdate, id)
 	var i EngineRun
@@ -613,18 +617,6 @@ func (q *Queries) ListRunsByInstance(ctx context.Context, arg ListRunsByInstance
 		return nil, err
 	}
 	return items, nil
-}
-
-const lockRunForKeyShare = `-- name: LockRunForKeyShare :exec
-SELECT id
-FROM engine.runs
-WHERE id = $1
-FOR KEY SHARE
-`
-
-func (q *Queries) LockRunForKeyShare(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, lockRunForKeyShare, id)
-	return err
 }
 
 const releaseRunsByClaimant = `-- name: ReleaseRunsByClaimant :many
