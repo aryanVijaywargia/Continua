@@ -21,7 +21,7 @@ WITH next_run AS (
        OR (status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW())
     ORDER BY ready_at ASC, id ASC
     LIMIT 1
-    FOR UPDATE SKIP LOCKED
+    FOR NO KEY UPDATE SKIP LOCKED
 ), projected AS (
     UPDATE public.traces
     SET engine_run_status = 'running',
@@ -47,7 +47,9 @@ type ClaimNextRunParams struct {
 
 // A claim appends no history row, so the projector never sees it. The statement
 // mirrors the new status onto the run's trace itself (#347): next_run takes the
-// run lock (SKIP LOCKED) before the trace write, which touches one trace row.
+// run lock (FOR NO KEY UPDATE SKIP LOCKED, the run coordination lock mode, so a
+// foreign key check that names the run does not make the claim skip it) before
+// the trace write, which touches one trace row.
 // The write is unconditional: a status filter would read the statement snapshot,
 // so a release that commits before the run lock would leave the trace queued.
 func (q *Queries) ClaimNextRun(ctx context.Context, arg ClaimNextRunParams) (EngineRun, error) {
@@ -92,7 +94,7 @@ WITH next_run AS (
         OR (candidate.status = 'running' AND candidate.lease_expires_at IS NOT NULL AND candidate.lease_expires_at < NOW()))
     ORDER BY candidate.ready_at ASC, candidate.id ASC
     LIMIT 1
-    FOR UPDATE SKIP LOCKED
+    FOR NO KEY UPDATE SKIP LOCKED
 ), projected AS (
     UPDATE public.traces
     SET engine_run_status = 'running',
