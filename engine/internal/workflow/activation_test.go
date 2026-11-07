@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1962,7 +1963,9 @@ func TestActivatorRejectsStaleClaimAfterTerminate(t *testing.T) {
 	}
 }
 
-func TestActivatorWaitingDecisionDoesNotMutateProjectedTraceSummary(t *testing.T) {
+// A waiting activation that appends no history gives the projector nothing to
+// pick up, so the activation itself must project the run summary (#322).
+func TestActivatorWaitingDecisionWithoutNewHistorySyncsProjectedRunSummary(t *testing.T) {
 	db := enginetest.NewTestDatabase(t)
 	store := enginestore.New(db.Pool)
 	ctx := context.Background()
@@ -2008,29 +2011,44 @@ func TestActivatorWaitingDecisionDoesNotMutateProjectedTraceSummary(t *testing.T
 		t.Fatalf("Activate() error = %v", err)
 	}
 
+	historyAfter, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+	if len(historyAfter) != len(historyRows) {
+		t.Fatalf("expected the signal wait to append no history, got %+v", historyAfter)
+	}
+
 	var engineRunStatus string
 	var waitState []byte
 	var pendingActivityTasks int64
 	var pendingInboxItems int64
+	var latestHistoryID int64
+	var lastProjectedHistoryID int64
 	if err := db.Pool.QueryRow(ctx, `
 		SELECT engine_run_status,
 		       engine_wait_state,
 		       engine_pending_activity_tasks,
-		       engine_pending_inbox_items
+		       engine_pending_inbox_items,
+		       engine_latest_history_id,
+		       engine_last_projected_history_id
 		FROM public.traces
 		WHERE engine_run_id = $1
-	`, run.ID).Scan(&engineRunStatus, &waitState, &pendingActivityTasks, &pendingInboxItems); err != nil {
+	`, run.ID).Scan(&engineRunStatus, &waitState, &pendingActivityTasks, &pendingInboxItems, &latestHistoryID, &lastProjectedHistoryID); err != nil {
 		t.Fatalf("query projected trace summary: %v", err)
 	}
 
-	if engineRunStatus != string(enginedb.EngineRunLifecycleStatusQueued) {
-		t.Fatalf("expected projected summary to remain unchanged before projector catch-up, got %q", engineRunStatus)
+	if engineRunStatus != string(enginedb.EngineRunLifecycleStatusWaiting) {
+		t.Fatalf("expected projected run status %q after activation, got %q", enginedb.EngineRunLifecycleStatusWaiting, engineRunStatus)
+	}
+	if latestHistoryID != lastProjectedHistoryID {
+		t.Fatalf("expected no projector lag, got latest=%d last_projected=%d", latestHistoryID, lastProjectedHistoryID)
 	}
 	if pendingActivityTasks != 0 || pendingInboxItems != 0 {
 		t.Fatalf("expected no pending work for signal wait, got activity=%d inbox=%d", pendingActivityTasks, pendingInboxItems)
 	}
-	if len(waitState) != 0 {
-		t.Fatalf("expected projected wait state to remain nil before projector catch-up, got %s", waitState)
+	if !bytes.Contains(waitState, []byte(`"approval"`)) {
+		t.Fatalf("expected projected wait state to name the approval signal, got %s", waitState)
 	}
 }
 
