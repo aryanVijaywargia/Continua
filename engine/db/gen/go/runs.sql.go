@@ -615,6 +615,18 @@ func (q *Queries) ListRunsByInstance(ctx context.Context, arg ListRunsByInstance
 	return items, nil
 }
 
+const lockRunForKeyShare = `-- name: LockRunForKeyShare :exec
+SELECT id
+FROM engine.runs
+WHERE id = $1
+FOR KEY SHARE
+`
+
+func (q *Queries) LockRunForKeyShare(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockRunForKeyShare, id)
+	return err
+}
+
 const releaseRunsByClaimant = `-- name: ReleaseRunsByClaimant :many
 UPDATE engine.runs
 SET status = 'queued',

@@ -866,6 +866,10 @@ func (s *engineControlService) TerminateRun(
 	// the parent run is locked first. parent_run_id never changes, so the unlocked read
 	// above finds it. Holding the parent's lock also orders this terminate against the
 	// parent's own activation committing a wait on this child, so no wake is lost.
+	// Activations below depth 1 also lock their root run (FOR KEY SHARE, for the
+	// root_run_id foreign key) before their parent. So when this terminate holds the
+	// root, those activations queue on it before they hold any run it waits for. Every
+	// key this terminate writes names a run it already holds.
 	if target.ParentRunID.Valid {
 		if _, err := engineTx.GetRunForUpdate(ctx, target.ParentRunID.Bytes); err != nil {
 			return engineRunSummary{}, fmt.Errorf("lock parent run: %w", err)

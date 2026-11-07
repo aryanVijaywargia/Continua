@@ -145,12 +145,18 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 	return tx.Commit(ctx)
 }
 
-// lockRunAfterParent locks a run for its activation, and first locks its parent run.
+// lockRunAfterParent locks a run for its activation, and first locks its root and parent
+// runs.
 //
 // Lock order for parent/child work, shared by every engine and platform path:
 //  1. Run rows, ancestor before descendant: by child_depth, then run id. A child's
 //     terminal commit wakes its parent, so the child locks the parent run before its
 //     own; parent_run_id never changes, so an unlocked read finds the parent.
+//     Foreign keys count: a run inserted by the activation (a continue-as-new run, a
+//     new child) names root_run_id, and the key check locks the root row FOR KEY SHARE.
+//     TerminateRun locks the root FOR UPDATE, which conflicts, so a descendant below
+//     depth 1 takes that KEY SHARE lock itself, first. Every other row an activation's
+//     keys name is the run itself, its parent, or a row it inserts.
 //  2. Then the projected trace rows, all of them in one statement in platform ingest's
 //     order (project, then external trace id in byte order), before writing any.
 //
@@ -164,6 +170,14 @@ func lockRunAfterParent(ctx context.Context, tx *store.Tx, runID uuid.UUID) (eng
 		return enginedb.EngineRun{}, err
 	}
 	if unlocked.ParentRunID.Valid {
+		// KEY SHARE, not FOR UPDATE: descendants then do not queue behind each other on
+		// the root. At depth 1 the root is the parent, locked FOR UPDATE below, so the
+		// transaction never holds KEY SHARE on a row it later locks FOR UPDATE.
+		if unlocked.RootRunID != uuid.UUID(unlocked.ParentRunID.Bytes) {
+			if err := tx.LockRunForKeyShare(ctx, unlocked.RootRunID); err != nil {
+				return enginedb.EngineRun{}, fmt.Errorf("lock root run: %w", err)
+			}
+		}
 		if _, err := tx.GetRunForUpdate(ctx, unlocked.ParentRunID.Bytes); err != nil {
 			return enginedb.EngineRun{}, fmt.Errorf("lock parent run: %w", err)
 		}

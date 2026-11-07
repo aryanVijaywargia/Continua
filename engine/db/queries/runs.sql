@@ -52,6 +52,12 @@ FROM engine.runs
 WHERE id = $1
 FOR UPDATE;
 
+-- name: LockRunForKeyShare :exec
+SELECT id
+FROM engine.runs
+WHERE id = $1
+FOR KEY SHARE;
+
 -- name: GetRunByProjectAndIDForUpdate :one
 SELECT *
 FROM engine.runs

@@ -221,6 +221,133 @@ func TestActivatorChildTerminalLocksParentRunBeforeChildRun(t *testing.T) {
 	assertParentQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
 }
 
+// A grandchild's activation can insert a run that names the root run through the
+// root_run_id foreign key: the next run of a continue-as-new, or a new child. The foreign
+// key check locks the root row (KEY SHARE). TerminateRun on the root locks the root, then
+// waits for the child, which the grandchild's activation holds as its parent. The
+// activation must lock the root before the child, or the two deadlock (40P01).
+func TestActivatorGrandchildLocksRootRunBeforeParentRun(t *testing.T) {
+	testCases := []struct {
+		name          string
+		grandchildRun func(publicworkflow.Context) error
+	}{
+		{
+			name: "grandchild continues as new",
+			grandchildRun: func(publicworkflow.Context) error {
+				return publicworkflow.ContinueAsNew(nil)
+			},
+		},
+		{
+			name: "grandchild starts a child",
+			grandchildRun: func(ctx publicworkflow.Context) error {
+				return ctx.ChildWorkflow("print-receipt", "printer", "v1", nil, nil)
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			billing := func(ctx publicworkflow.Context) error {
+				return ctx.ChildWorkflow("issue-receipt", "receipts", "v1", nil, nil)
+			}
+			fixture := newParentWakeFixture(t, ctx, billing)
+			pool := fixture.db.Pool
+			rootRunID := fixture.parentRun.ID
+
+			// The grandchild pauses inside its activation, after the activation took its run
+			// locks and before it commits the decision that inserts the new run.
+			paused, release := make(chan struct{}), make(chan struct{})
+			activator := NewActivator(fixture.store, mustRegistry(t,
+				childWaitingParentDefinition("checkout-parent-wake", nil),
+				publicworkflow.Definition{Name: "billing", Version: "v1", Run: billing},
+				publicworkflow.Definition{Name: "receipts", Version: "v1", Run: func(wctx publicworkflow.Context) error {
+					close(paused)
+					select {
+					case <-release:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+					return testCase.grandchildRun(wctx)
+				}},
+				publicworkflow.Definition{Name: "printer", Version: "v1", Run: func(publicworkflow.Context) error { return nil }},
+			))
+			activateRunByID(t, ctx, pool, fixture.store, activator, fixture.childRunID, "worker-child")
+			var grandchildRunID uuid.UUID
+			if err := pool.QueryRow(ctx, `SELECT current_child_run_id FROM engine.child_workflows WHERE parent_run_id = $1`,
+				fixture.childRunID).Scan(&grandchildRunID); err != nil {
+				t.Fatalf("read grandchild run: %v", err)
+			}
+
+			claimed := forceClaimRun(t, ctx, pool, fixture.store, grandchildRunID, "worker-grandchild")
+			activation := startAsync(t, cancel, func() error { return activator.Activate(ctx, &claimed) })
+			select {
+			case <-paused:
+			case <-ctx.Done():
+				t.Fatalf("grandchild activation never ran its workflow: %v", ctx.Err())
+			}
+
+			// TerminateRun(root) locks the root, then the descendants by depth.
+			terminate, err := pool.Begin(ctx)
+			if err != nil {
+				t.Fatalf("begin terminate-like tx: %v", err)
+			}
+			defer func() { _ = terminate.Rollback(context.Background()) }()
+			var terminatePID int32
+			if err := terminate.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&terminatePID); err != nil {
+				t.Fatalf("terminate-like tx pid: %v", err)
+			}
+			terminateLocks := startAsync(t, cancel, func() error {
+				for _, runID := range []uuid.UUID{rootRunID, fixture.childRunID, grandchildRunID} {
+					if _, err := terminate.Exec(ctx, `SELECT id FROM engine.runs WHERE id = $1 FOR UPDATE`, runID); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			waitUntilBlocked(t, ctx, pool, terminatePID)
+
+			close(release)
+			if err := activation.wait(ctx); err != nil {
+				t.Fatalf("Activate(grandchild) error = %v", err)
+			}
+			if err := terminateLocks.wait(ctx); err != nil {
+				t.Fatalf("terminate-like tx lost a run lock-order conflict: %v", err)
+			}
+			if err := terminate.Rollback(ctx); err != nil {
+				t.Fatalf("release terminate-like tx: %v", err)
+			}
+			var inserted int
+			if err := pool.QueryRow(ctx, `
+				SELECT count(*) FROM engine.runs
+				WHERE root_run_id = $1 AND (continued_from_run_id = $2 OR parent_run_id = $2)
+			`, rootRunID, grandchildRunID).Scan(&inserted); err != nil {
+				t.Fatalf("count runs inserted by the grandchild: %v", err)
+			}
+			if inserted != 1 {
+				t.Fatalf("expected the grandchild to insert one run under root %s, got %d", rootRunID, inserted)
+			}
+		})
+	}
+}
+
+// waitUntilBlocked waits until the backend pid queues behind another backend's lock.
+//
+//nolint:revive // Keep testing.T first in test helper signatures.
+func waitUntilBlocked(t *testing.T, ctx context.Context, pool *pgxpool.Pool, pid int32) {
+	t.Helper()
+	for {
+		var blocked bool
+		if err := pool.QueryRow(ctx, `SELECT cardinality(pg_blocking_pids($1)) > 0`, pid).Scan(&blocked); err != nil {
+			t.Fatalf("read blockers of pid %d: %v", pid, err)
+		}
+		if blocked {
+			return
+		}
+	}
+}
+
 type asyncOp struct {
 	done chan struct{}
 	err  error

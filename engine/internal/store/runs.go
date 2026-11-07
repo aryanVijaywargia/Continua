@@ -48,6 +48,10 @@ func (o *storeOps) GetRunForUpdate(ctx context.Context, id uuid.UUID) (enginedb.
 	return mapResult(o.q.GetRunForUpdate(ctx, id))
 }
 
+func (o *storeOps) LockRunForKeyShare(ctx context.Context, id uuid.UUID) error {
+	return o.q.LockRunForKeyShare(ctx, id)
+}
+
 func (o *storeOps) ListRunsByInstance(
 	ctx context.Context,
 	arg enginedb.ListRunsByInstanceParams,
