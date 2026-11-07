@@ -263,10 +263,20 @@ func (r *Runtime) Run(ctx context.Context) error {
 	activityIteration := withIterationContext(workCtx, trackIterations(tracker, "activity", observeIterations(recorder, "activity", activityWorker.PollOnce)))
 	if cfg.Runtime.NotifyEnabled {
 		listener := enginenotify.NewListener(pool, logger)
+		// A local activity outcome wakes the workflow loop directly, so a lost
+		// run NOTIFY does not stall the run for a full fallback interval.
+		runReadyWake := make(chan struct{}, 1)
+		activityWorker.WithRunWaker(func() {
+			select {
+			case runReadyWake <- struct{}{}:
+			default:
+			}
+		})
 		workflowWake := mergeWakeChannels(
 			groupCtx,
 			listener.Subscribe(publicnotify.ChannelRuns),
 			listener.Subscribe(publicnotify.ChannelInbox),
+			runReadyWake,
 		)
 		activityRetryWake := make(chan struct{}, 64)
 		activityWake := mergeWakeChannels(
@@ -558,30 +568,26 @@ func workerStaleAfter(pollInterval time.Duration) time.Duration {
 	return staleAfter
 }
 
-func mergeWakeChannels(ctx context.Context, first, second <-chan struct{}) <-chan struct{} {
+func mergeWakeChannels(ctx context.Context, inputs ...<-chan struct{}) <-chan struct{} {
 	merged := make(chan struct{}, 1)
-	go func() {
-		for first != nil || second != nil {
-			select {
-			case <-ctx.Done():
-				return
-			case _, ok := <-first:
-				if !ok {
-					first = nil
-					continue
+	for _, input := range inputs {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case _, ok := <-input:
+					if !ok {
+						return
+					}
 				}
-			case _, ok := <-second:
-				if !ok {
-					second = nil
-					continue
+				select {
+				case merged <- struct{}{}:
+				default:
 				}
 			}
-			select {
-			case merged <- struct{}{}:
-			default:
-			}
-		}
-	}()
+		}()
+	}
 	return merged
 }
 

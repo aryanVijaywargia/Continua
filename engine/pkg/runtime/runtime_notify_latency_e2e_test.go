@@ -13,6 +13,7 @@ import (
 	enginehistory "github.com/continua-ai/continua/engine/internal/history"
 	enginestore "github.com/continua-ai/continua/engine/internal/store"
 	enginetest "github.com/continua-ai/continua/engine/internal/testutil"
+	publicnotify "github.com/continua-ai/continua/engine/pkg/notify"
 	engineruntime "github.com/continua-ai/continua/engine/pkg/runtime"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
 )
@@ -59,6 +60,61 @@ func TestRuntimeNotifyLatencyE2E(t *testing.T) {
 	}
 	if result.CompletedSteps != 3 {
 		t.Fatalf("run result completed_steps = %d, want 3", result.CompletedSteps)
+	}
+}
+
+func TestRuntimeLostActivityCompletionNotifyStillWakesRun(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	projectID := uuid.New()
+	enginetest.EnsurePlatformProject(t, db.Pool, projectID)
+	definition := notifyLatencyWorkflow("notifytest.lost-completion", 1)
+
+	// The runtime resolves the unqualified pg_notify to this shadow, which drops
+	// every run wake, so the only run NOTIFY in this test, the one sent by the
+	// activity completion, never reaches the listener.
+	if _, err := db.Pool.Exec(context.Background(), `
+		CREATE SCHEMA chaos;
+		CREATE TABLE chaos.dropped_notifies (channel text NOT NULL);
+		CREATE FUNCTION chaos.pg_notify(channel text, payload text) RETURNS void
+		LANGUAGE plpgsql AS $$
+		BEGIN
+			IF channel = '`+publicnotify.ChannelRuns+`' THEN
+				INSERT INTO chaos.dropped_notifies VALUES (channel);
+			ELSE
+				PERFORM pg_catalog.pg_notify(channel, payload);
+			END IF;
+		END $$;
+	`); err != nil {
+		t.Fatalf("create pg_notify shadow error = %v", err)
+	}
+
+	const fallback = 30 * time.Second
+	rt, err := engineruntime.New(engineruntime.Options{
+		DatabaseURL:             db.DatabaseURL + "&search_path=chaos,pg_catalog,public",
+		Workflows:               []workflow.Definition{definition},
+		Activities:              notifyLatencyActivities(),
+		ProjectID:               &projectID,
+		WorkflowPollInterval:    fallback,
+		ActivityPollInterval:    fallback,
+		MaintenancePollInterval: fallback,
+		NotifyFallbackInterval:  fallback,
+	})
+	if err != nil {
+		t.Fatalf("runtime.New() error = %v", err)
+	}
+
+	store := enginestore.New(db.Pool)
+	run := seedNotifyLatencyRun(t, store, projectID, definition, "notify-lost-completion")
+	cancel, done := runNotifyRuntime(t, rt)
+	defer stopNotifyRuntime(t, cancel, done)
+
+	waitForNotifyRun(t, store, run.ID, 5*time.Second)
+	var dropped int
+	if err := db.Pool.QueryRow(context.Background(), "SELECT count(*) FROM chaos.dropped_notifies").Scan(&dropped); err != nil {
+		t.Fatalf("count dropped notifications error = %v", err)
+	}
+	if dropped == 0 {
+		t.Fatal("no run notification was dropped, so the test did not exercise a lost wake")
 	}
 }
 
