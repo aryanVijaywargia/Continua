@@ -2121,8 +2121,9 @@ func TestActivatorFailureMovesProjectedTraceIntoCatchingUpWithoutProjectingTermi
 	); err != nil {
 		t.Fatalf("query projected trace summary: %v", err)
 	}
-	if traceStatus != "running" || traceRunStatus != "queued" {
-		t.Fatalf("expected projected summary to remain unchanged before projector catch-up, got trace=%q run=%q", traceStatus, traceRunStatus)
+	// The claim projects running (#347); the terminal status waits for the projector.
+	if traceStatus != "running" || traceRunStatus != "running" {
+		t.Fatalf("expected projected summary to keep the claimed status before projector catch-up, got trace=%q run=%q", traceStatus, traceRunStatus)
 	}
 	if len(traceOutput) != 0 {
 		t.Fatalf("expected projected terminal output to remain empty before projector catch-up, got %s", traceOutput)
@@ -2286,8 +2287,9 @@ func TestActivatorCancellationTransitionsRunToCancelledWithoutProjectingTerminal
 	); err != nil {
 		t.Fatalf("query projected trace summary: %v", err)
 	}
-	if traceStatus != "running" || traceRunStatus != "queued" {
-		t.Fatalf("expected projected summary to remain unchanged before projector catch-up, got trace=%q run=%q", traceStatus, traceRunStatus)
+	// The claim projects running (#347); the terminal status waits for the projector.
+	if traceStatus != "running" || traceRunStatus != "running" {
+		t.Fatalf("expected projected summary to keep the claimed status before projector catch-up, got trace=%q run=%q", traceStatus, traceRunStatus)
 	}
 	if len(traceOutput) != 0 {
 		t.Fatalf("expected projected terminal output to remain empty before projector catch-up, got %s", traceOutput)
