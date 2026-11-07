@@ -106,6 +106,15 @@ func (t *Tx) GetTraceByProjectAndEngineRunIDForUpdate(
 	return trace, err
 }
 
+// LockEngineRunTraces holds the projected trace row of every listed run until the
+// transaction ends, taking the locks in platform ingest's trace lock order.
+func (t *Tx) LockEngineRunTraces(ctx context.Context, projectID uuid.UUID, runIDs []uuid.UUID) error {
+	return t.q.LockEngineRunTraces(ctx, platform.LockEngineRunTracesParams{
+		ProjectID:    projectID,
+		EngineRunIds: runIDs,
+	})
+}
+
 func (t *Tx) DeleteSpanEventsByTrace(ctx context.Context, traceID uuid.UUID) error {
 	return t.q.DeleteSpanEventsByTrace(ctx, traceID)
 }

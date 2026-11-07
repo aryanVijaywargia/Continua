@@ -27,6 +27,17 @@ SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2;
 -- can lock every trace it writes under in one deterministic order before writing.
 SELECT id FROM traces WHERE project_id = $1 AND trace_id = $2 FOR NO KEY UPDATE;
 
+-- name: LockEngineRunTraces :exec
+-- Lock the projected traces of several engine runs in ingest's lock order: the lock
+-- LockTraceUUID takes, by project, then external trace id in byte order (ingest sorts the
+-- ids in Go, hence COLLATE "C"). A subtree write and an ingest batch over the same traces
+-- then queue instead of deadlocking.
+SELECT id FROM traces
+WHERE project_id = sqlc.arg(project_id)
+  AND engine_run_id = ANY(sqlc.arg(engine_run_ids)::uuid[])
+ORDER BY project_id, trace_id COLLATE "C"
+FOR NO KEY UPDATE;
+
 -- name: ListTraces :many
 SELECT sqlc.embed(t), s.external_id AS session_external_id
 FROM traces t

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -981,7 +982,6 @@ func TestTerminateEngineRun_RecursivelyTerminatesActiveDescendants(t *testing.T)
 		rootRun,
 		"charge-card",
 		"billing",
-		"v1",
 		"instance-terminate-descendants-child",
 	)
 	grandchildInstance, grandchildRun := seedEngineChildRun(
@@ -993,7 +993,6 @@ func TestTerminateEngineRun_RecursivelyTerminatesActiveDescendants(t *testing.T)
 		childRun,
 		"issue-receipt",
 		"receipts",
-		"v1",
 		"instance-terminate-descendants-grandchild",
 	)
 
@@ -1002,9 +1001,9 @@ func TestTerminateEngineRun_RecursivelyTerminatesActiveDescendants(t *testing.T)
 	resp := decodeJSONBody[EngineRunResultResponse](t, rec)
 	assert.Equal(t, EngineRunStatusTERMINATED, resp.Status)
 
-	assertTerminatedRunState(t, ctx, engineQueries, projectID, rootRun.ID, publichistory.EventWorkflowTerminated)
-	assertTerminatedRunState(t, ctx, engineQueries, projectID, childRun.ID, publichistory.EventWorkflowTerminated)
-	assertTerminatedRunState(t, ctx, engineQueries, projectID, grandchildRun.ID, publichistory.EventWorkflowTerminated)
+	assertTerminatedRunState(t, ctx, engineQueries, projectID, rootRun.ID)
+	assertTerminatedRunState(t, ctx, engineQueries, projectID, childRun.ID)
+	assertTerminatedRunState(t, ctx, engineQueries, projectID, grandchildRun.ID)
 
 	childRelationship, err := engineQueries.GetChildWorkflowByParentRunAndKey(ctx, enginedb.GetChildWorkflowByParentRunAndKeyParams{
 		ProjectID:   projectID,
@@ -1035,6 +1034,102 @@ func TestTerminateEngineRun_RecursivelyTerminatesActiveDescendants(t *testing.T)
 
 	assert.Equal(t, childInstance.ID, childInstanceState.ID)
 	assert.Equal(t, grandchildInstance.ID, grandchildInstanceState.ID)
+}
+
+// Subtree termination must lock its traces in platform ingest's order (#333). An
+// ingest-like writer holds the first trace in that order while termination starts. Under
+// the old depth-order updates, termination then held the other two traces and the
+// writer's next lock deadlocked (40P01).
+func TestTerminateEngineRun_LocksSubtreeTracesInIngestOrder(t *testing.T) {
+	ctx, platformStore, engineQueries, server, projectID := setupEngineHandlerTest(t)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	pool := platformStore.Pool()
+	require.NoError(t, publishCheckoutDefinition(ctx, engineQueries))
+
+	start := decodeJSONBody[EngineStartRunResponse](t, invokeStartEngineRun(t, server, projectID, EngineStartRunRequest{
+		DefinitionName:    "checkout",
+		DefinitionVersion: "v1",
+		InstanceKey:       "instance-terminate-lock-order",
+		RequestKey:        "req-terminate-lock-order",
+	}))
+	rootRun, err := engineQueries.GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
+		ProjectID: projectID,
+		ID:        start.RunId,
+	})
+	require.NoError(t, err)
+	rootInstance, err := engineQueries.GetInstance(ctx, rootRun.InstanceID)
+	require.NoError(t, err)
+	childInstance, childRun := seedEngineChildRun(t, ctx, platformStore, engineQueries,
+		rootInstance, rootRun, "charge-card", "billing", "instance-terminate-lock-order-child")
+	_, grandchildRun := seedEngineChildRun(t, ctx, platformStore, engineQueries,
+		childInstance, childRun, "issue-receipt", "receipts", "instance-terminate-lock-order-grandchild")
+
+	// Termination updates grandchild, child, then root. Give the traces ids whose byte
+	// order is the reverse, so the old code always deadlocks. The ids also sort differently
+	// under a linguistic collation, so the lock query must compare bytes as ingest does.
+	ingestOrder := []string{"engine:Root", "engine:child", "engine:grandchild"}
+	require.True(t, slices.IsSorted(ingestOrder))
+	for i, runID := range []uuid.UUID{rootRun.ID, childRun.ID, grandchildRun.ID} {
+		_, err := pool.Exec(ctx, `UPDATE public.traces SET trace_id = $2 WHERE engine_run_id = $1`, runID, ingestOrder[i])
+		require.NoError(t, err)
+	}
+
+	writer, err := platformStore.BeginTx(ctx, pgx.TxOptions{})
+	require.NoError(t, err)
+	defer func() { _ = writer.Rollback(ctx) }()
+	var writerPID int32
+	require.NoError(t, writer.Tx().QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&writerPID))
+	_, err = writer.LockTraceUUID(ctx, projectID, ingestOrder[0])
+	require.NoError(t, err)
+
+	// The request carries the bounded ctx, so a timeout cancels a blocked termination,
+	// and the deferred join keeps its pool connection from outliving the test.
+	terminateDone := make(chan *httptest.ResponseRecorder, 1)
+	var rec *httptest.ResponseRecorder
+	go func() {
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/engine/runs/"+rootRun.ID.String()+"/terminate", nil)
+		req.Header.Set(enginePreviewHeader, "1")
+		req = req.WithContext(context.WithValue(req.Context(), middleware.ProjectIDKey, projectID))
+		recorder := httptest.NewRecorder()
+		server.TerminateEngineRun(recorder, req, rootRun.ID, TerminateEngineRunParams{})
+		terminateDone <- recorder
+	}()
+	defer func() {
+		if rec == nil {
+			cancel()
+			<-terminateDone
+		}
+	}()
+	require.Eventually(t, func() bool {
+		var blocked bool
+		err := pool.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))`, writerPID,
+		).Scan(&blocked)
+		return err == nil && blocked
+	}, 10*time.Second, 5*time.Millisecond, "termination never queued behind the writer's trace lock")
+
+	// Finish the batch the way ingest does: lock the remaining traces in order, then write
+	// under them (the span trigger bumps each trace's version).
+	for _, traceID := range ingestOrder[1:] {
+		_, err := writer.LockTraceUUID(ctx, projectID, traceID)
+		require.NoError(t, err, "ingest-like writer lost a lock-order conflict on %s", traceID)
+	}
+	_, err = writer.Tx().Exec(ctx,
+		`UPDATE public.traces SET version = version + 1 WHERE project_id = $1 AND trace_id = ANY($2)`,
+		projectID, ingestOrder)
+	require.NoError(t, err)
+	require.NoError(t, writer.Commit(ctx))
+
+	select {
+	case rec = <-terminateDone:
+	case <-ctx.Done():
+		t.Fatal("termination did not finish after the writer committed")
+	}
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	for _, runID := range []uuid.UUID{rootRun.ID, childRun.ID, grandchildRun.ID} {
+		assertTerminatedRunState(t, ctx, engineQueries, projectID, runID)
+	}
 }
 
 func TestTerminateEngineRun_ReturnsExistingTerminalStateWhenActivationWinsRowLock(t *testing.T) {
@@ -3713,7 +3808,6 @@ func seedEngineChildRun(
 	parentRun enginedb.EngineRun,
 	childKey string,
 	definitionName string,
-	definitionVersion string,
 	instanceKey string,
 ) (enginedb.EngineInstance, enginedb.EngineRun) {
 	t.Helper()
@@ -3733,7 +3827,7 @@ func seedEngineChildRun(
 		ProjectID:          parentRun.ProjectID,
 		InstanceID:         childInstance.ID,
 		RunNumber:          1,
-		DefinitionVersion:  definitionVersion,
+		DefinitionVersion:  "v1",
 		ReadyAt:            time.Now().UTC().Add(-time.Minute),
 		ContinuedFromRunID: pgtype.UUID{},
 		ParentRunID:        pgtype.UUID{Bytes: parentRun.ID, Valid: true},
@@ -3754,7 +3848,7 @@ func seedEngineChildRun(
 		publichistory.EventWorkflowStarted,
 		publichistory.WorkflowStartedPayload{
 			DefinitionName:    definitionName,
-			DefinitionVersion: definitionVersion,
+			DefinitionVersion: "v1",
 			InstanceKey:       instanceKey,
 			Input:             []byte(`{"seeded":true}`),
 		},
@@ -3766,7 +3860,7 @@ func seedEngineChildRun(
 		ParentRunID:                parentRun.ID,
 		ChildKey:                   childKey,
 		RequestedDefinitionName:    definitionName,
-		RequestedDefinitionVersion: definitionVersion,
+		RequestedDefinitionVersion: "v1",
 		ChildInstanceID:            childInstance.ID,
 		ChildInstanceKey:           instanceKey,
 		CurrentChildRunID:          childRun.ID,
@@ -3836,7 +3930,6 @@ func assertTerminatedRunState(
 	engineQueries *enginedb.Queries,
 	projectID uuid.UUID,
 	runID uuid.UUID,
-	wantTerminalEvent string,
 ) {
 	t.Helper()
 
@@ -3850,7 +3943,7 @@ func assertTerminatedRunState(
 	historyRows, err := engineQueries.GetHistoryByRun(ctx, runID)
 	require.NoError(t, err)
 	require.NotEmpty(t, historyRows)
-	assert.Equal(t, wantTerminalEvent, historyRows[len(historyRows)-1].EventType)
+	assert.Equal(t, publichistory.EventWorkflowTerminated, historyRows[len(historyRows)-1].EventType)
 }
 
 //nolint:revive // Keep testing.T first in test helper signatures.
