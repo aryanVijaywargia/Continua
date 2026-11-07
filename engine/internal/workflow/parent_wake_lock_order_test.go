@@ -45,6 +45,7 @@ func newParentWakeFixture(t *testing.T, ctx context.Context, childRun func(publi
 	t.Helper()
 
 	db := enginetest.NewTestDatabase(t)
+	db.Pool = newLockOrderPool(t, ctx, db.DatabaseURL)
 	store := enginestore.New(db.Pool)
 	_, parentRun := createStartedRun(t, store, workflowTestCase{
 		projectID:         enginetest.DefaultPlatformProjectID,
@@ -75,6 +76,29 @@ func newParentWakeFixture(t *testing.T, ctx context.Context, childRun func(publi
 		parentRun:  parentRun,
 		childRunID: childWorkflow.CurrentChildRunID,
 	}
+}
+
+// newLockOrderPool returns a pool large enough for the lock-order tests. They hold a gate
+// transaction and up to three queued operations at once, and still need a connection for
+// the pg_blocking_pids query. pgxpool defaults to max(4, NumCPU) connections, so on a
+// 4-CPU CI runner the queued operations took every connection and the query timed out.
+//
+//nolint:revive // Keep testing.T first in test helper signatures.
+func newLockOrderPool(t *testing.T, ctx context.Context, databaseURL string) *pgxpool.Pool {
+	t.Helper()
+
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("parse test database URL: %v", err)
+	}
+	cfg.MaxConns = 16
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("connect lock-order pool: %v", err)
+	}
+	// Registered after the test database's cleanup, so it closes before the drop.
+	t.Cleanup(pool.Close)
+	return pool
 }
 
 // A child activation that wakes its parent writes both projected traces. Real ingest
