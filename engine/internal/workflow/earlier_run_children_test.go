@@ -250,7 +250,7 @@ func TestActivatorCancelCascadeReachesChildrenOfEarlierRuns(t *testing.T) {
 
 	requestCancel(t, ctx, fixture.store, fixture.currentRunID)
 	activateRunByID(t, ctx, fixture.pool, fixture.store, activator, fixture.currentRunID, "worker-cancel")
-	assertRunStatus(t, ctx, fixture.store, fixture.currentRunID, enginedb.EngineRunLifecycleStatusCancelled)
+	assertRunCancelled(t, ctx, fixture.store, fixture.currentRunID)
 
 	var cascaded int
 	if err := fixture.pool.QueryRow(ctx, `SELECT count(*) FROM engine.inbox WHERE run_id = $1 AND kind = 'cancel' AND status = 'pending'`,
@@ -261,7 +261,7 @@ func TestActivatorCancelCascadeReachesChildrenOfEarlierRuns(t *testing.T) {
 		t.Fatalf("expected one cancel item for the earlier run's child, got %d", cascaded)
 	}
 	activateRunByID(t, ctx, fixture.pool, fixture.store, activator, fixture.childRunID, "worker-child")
-	assertRunStatus(t, ctx, fixture.store, fixture.childRunID, enginedb.EngineRunLifecycleStatusCancelled)
+	assertRunCancelled(t, ctx, fixture.store, fixture.childRunID)
 }
 
 // The earlier run's child continues as new while the current run's cancellation commits.
@@ -306,7 +306,7 @@ func TestActivatorCancelCascadeLocksEarlierRunBeforeListingItsChildren(t *testin
 	if err := cancelActivation.wait(ctx); err != nil {
 		t.Fatalf("Activate(cancel) error = %v", err)
 	}
-	assertRunStatus(t, ctx, fixture.store, fixture.currentRunID, enginedb.EngineRunLifecycleStatusCancelled)
+	assertRunCancelled(t, ctx, fixture.store, fixture.currentRunID)
 	nextChildRunID := activeChildRunID(t, ctx, fixture.pool, fixture.earlierRunID)
 	if nextChildRunID == fixture.childRunID {
 		t.Fatalf("expected the child to continue as new")
@@ -345,20 +345,14 @@ func requestCancel(t *testing.T, ctx context.Context, store *enginestore.Store, 
 }
 
 //nolint:revive // Keep testing.T first in test helper signatures.
-func assertRunStatus(
-	t *testing.T,
-	ctx context.Context,
-	store *enginestore.Store,
-	runID uuid.UUID,
-	want enginedb.EngineRunLifecycleStatus,
-) {
+func assertRunCancelled(t *testing.T, ctx context.Context, store *enginestore.Store, runID uuid.UUID) {
 	t.Helper()
 	run, err := store.GetRun(ctx, runID)
 	if err != nil {
 		t.Fatalf("GetRun(%s) error = %v", runID, err)
 	}
-	if run.Status != want {
-		t.Fatalf("run %s has status %q, want %q", runID, run.Status, want)
+	if run.Status != enginedb.EngineRunLifecycleStatusCancelled {
+		t.Fatalf("run %s has status %q, want cancelled", runID, run.Status)
 	}
 }
 
@@ -412,4 +406,109 @@ func assertAllRunsEnded(t *testing.T, ctx context.Context, pool *pgxpool.Pool, w
 	if active != 0 {
 		t.Fatalf("expected no active child relationship, got %d", active)
 	}
+}
+
+// reattachingDefinition starts its child under a fixed instance key and continues as
+// new while the child is still active. When the next run is cancelled, its code asks
+// for the same child instance again; the engine rejects that (instance_conflict), and
+// the workflow honours the cancel.
+func reattachingDefinition() publicworkflow.Definition {
+	opts := publicworkflow.ChildWorkflowOptions{InstanceKey: "fixed-child-instance"}
+	return publicworkflow.Definition{Name: "reattaching", Version: "v1", Run: func(ctx publicworkflow.Context) error {
+		var input struct {
+			Continued bool `json:"continued"`
+		}
+		if err := ctx.Input(&input); err != nil {
+			return err
+		}
+		if !input.Continued {
+			if err := ctx.ChildWorkflowWithOptions("work", "worker", "v1", nil, nil, opts); err == nil {
+				return errors.New("child ended before its wait failed")
+			}
+			return publicworkflow.ContinueAsNew(map[string]bool{"continued": true})
+		}
+		if ctx.CancellationRequested() {
+			_ = ctx.ChildWorkflowWithOptions("work", "worker", "v1", nil, nil, opts)
+			return publicworkflow.ErrCancelled
+		}
+		return ctx.ReceiveSignal("finish", nil)
+	}}
+}
+
+// The child binding check reads a relationship that belongs to an earlier run. It must
+// not lock that row: the earlier run's child holds the earlier run while it updates the
+// row, and the cancel cascade then waits on the earlier run (40P01 if the row is locked).
+func TestActivatorCancelCascadeDoesNotLockEarlierRunRelationship(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	db := enginetest.NewTestDatabase(t)
+	pool := newLockOrderPool(t, ctx, db.DatabaseURL)
+	store := enginestore.New(pool)
+	activator := NewActivator(store, mustRegistry(t,
+		reattachingDefinition(),
+		publicworkflow.Definition{Name: "worker", Version: "v1", Run: cancellableWorker},
+	))
+	_, earlierRun := createStartedRun(t, store, workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-reattach",
+		definitionName:    "reattaching",
+		definitionVersion: "v1",
+		input:             mustJSON(t, map[string]string{}),
+	})
+	activateRunByID(t, ctx, pool, store, activator, earlierRun.ID, "worker-earlier")
+	childRunID := activeChildRunID(t, ctx, pool, earlierRun.ID)
+	// Make the parent's wait on the child fail, so the parent continues as new.
+	if _, err := pool.Exec(ctx, `UPDATE engine.child_workflows SET continuation_count = $2 WHERE current_child_run_id = $1`,
+		childRunID, maxContinuationFollowDepth); err != nil {
+		t.Fatalf("set continuation count: %v", err)
+	}
+	activateRunByID(t, ctx, pool, store, activator, earlierRun.ID, "worker-continue")
+	continued, err := store.GetRun(ctx, earlierRun.ID)
+	if err != nil {
+		t.Fatalf("get earlier run: %v", err)
+	}
+	if continued.Status != enginedb.EngineRunLifecycleStatusContinuedAsNew {
+		t.Fatalf("earlier run status = %s, want continued_as_new", continued.Status)
+	}
+	currentRunID := uuid.UUID(continued.ContinuedToRunID.Bytes)
+	activateRunByID(t, ctx, pool, store, activator, currentRunID, "worker-current")
+	requestCancel(t, ctx, store, currentRunID)
+
+	// The earlier run's child pauses inside its activation, holding the earlier run
+	// and its own run.
+	paused, release := make(chan struct{}), make(chan struct{})
+	childActivator := NewActivator(store, mustRegistry(t,
+		publicworkflow.Definition{Name: "worker", Version: "v1", Run: func(publicworkflow.Context) error {
+			close(paused)
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			return publicworkflow.ContinueAsNew(nil)
+		}},
+	))
+	childClaim := forceClaimRun(t, ctx, pool, store, childRunID, "worker-child")
+	childActivation := startAsync(t, cancel, func() error { return childActivator.Activate(ctx, &childClaim) })
+	select {
+	case <-paused:
+	case <-ctx.Done():
+		t.Fatalf("child activation never ran: %v", ctx.Err())
+	}
+
+	// The current run's cancel activation checks the child binding, then its cascade
+	// waits on the earlier run.
+	cancelClaim := forceClaimRun(t, ctx, pool, store, currentRunID, "worker-cancel")
+	cancelActivation := startAsync(t, cancel, func() error { return activator.Activate(ctx, &cancelClaim) })
+	waitForRunLockWait(t, ctx, pool, cancelActivation, "GetRunForUpdate")
+
+	close(release)
+	if err := childActivation.wait(ctx); err != nil {
+		t.Fatalf("child activation: %v", err)
+	}
+	if err := cancelActivation.wait(ctx); err != nil {
+		t.Fatalf("cancel activation: %v", err)
+	}
+	assertRunCancelled(t, ctx, store, currentRunID)
 }

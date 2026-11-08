@@ -765,7 +765,12 @@ func (a *Activator) loadChildWorkflowBindingState(
 		}
 	}
 
-	relationship, err := tx.GetChildWorkflowByChildInstanceForUpdate(ctx, enginedb.GetChildWorkflowByChildInstanceForUpdateParams{
+	// A plain read, not a row lock: the row can belong to another parent run (for
+	// example an earlier run of this instance), and its writers hold that run's lock.
+	// Locking the row here, before the cancel cascade locks earlier runs, would invert
+	// the run-before-relationship order. The compared fields never change, and a row
+	// whose parent is this run was already found (and locked) by the lookup above.
+	relationship, err := tx.GetChildWorkflowByChildInstance(ctx, enginedb.GetChildWorkflowByChildInstanceParams{
 		ProjectID:       parentRun.ProjectID,
 		ChildInstanceID: childInstance.ID,
 	})

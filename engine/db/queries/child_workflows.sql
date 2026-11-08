@@ -30,6 +30,12 @@ WHERE project_id = $1
   AND child_key = $3
 FOR UPDATE;
 
+-- name: GetChildWorkflowByChildInstance :one
+SELECT *
+FROM engine.child_workflows
+WHERE project_id = $1
+  AND child_instance_id = $2;
+
 -- name: GetChildWorkflowByChildInstanceForUpdate :one
 SELECT *
 FROM engine.child_workflows
