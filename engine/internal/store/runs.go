@@ -48,6 +48,17 @@ func (o *storeOps) GetRunForUpdate(ctx context.Context, id uuid.UUID) (enginedb.
 	return mapResult(o.q.GetRunForUpdate(ctx, id))
 }
 
+func (o *storeOps) ListContinuedRunsWithActiveChildren(
+	ctx context.Context,
+	projectID uuid.UUID,
+	instanceIDs []uuid.UUID,
+) ([]enginedb.ListContinuedRunsWithActiveChildrenRow, error) {
+	return o.q.ListContinuedRunsWithActiveChildren(ctx, enginedb.ListContinuedRunsWithActiveChildrenParams{
+		ProjectID:   projectID,
+		InstanceIds: instanceIDs,
+	})
+}
+
 func (o *storeOps) ListRunsByInstance(
 	ctx context.Context,
 	arg enginedb.ListRunsByInstanceParams,

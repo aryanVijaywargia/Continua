@@ -33,11 +33,11 @@ func (o *storeOps) GetChildWorkflowByParentRunAndKeyForUpdate(
 	return mapResult(o.q.GetChildWorkflowByParentRunAndKeyForUpdate(ctx, arg))
 }
 
-func (o *storeOps) GetChildWorkflowByChildInstanceForUpdate(
+func (o *storeOps) GetChildWorkflowByChildInstance(
 	ctx context.Context,
-	arg enginedb.GetChildWorkflowByChildInstanceForUpdateParams,
+	arg enginedb.GetChildWorkflowByChildInstanceParams,
 ) (enginedb.EngineChildWorkflow, error) {
-	return mapResult(o.q.GetChildWorkflowByChildInstanceForUpdate(ctx, arg))
+	return mapResult(o.q.GetChildWorkflowByChildInstance(ctx, arg))
 }
 
 func (o *storeOps) GetChildWorkflowByCurrentChildRunForUpdate(
@@ -76,14 +76,14 @@ func (o *storeOps) ListChildWorkflowsByParentRun(
 	})
 }
 
-func (o *storeOps) ListActiveChildWorkflowsByParentRun(
+func (o *storeOps) ListActiveChildWorkflowsByParentRuns(
 	ctx context.Context,
 	projectID uuid.UUID,
-	parentRunID uuid.UUID,
+	parentRunIDs []uuid.UUID,
 ) ([]enginedb.EngineChildWorkflow, error) {
-	return o.q.ListActiveChildWorkflowsByParentRun(ctx, enginedb.ListActiveChildWorkflowsByParentRunParams{
-		ProjectID:   projectID,
-		ParentRunID: parentRunID,
+	return o.q.ListActiveChildWorkflowsByParentRuns(ctx, enginedb.ListActiveChildWorkflowsByParentRunsParams{
+		ProjectID:    projectID,
+		ParentRunIds: parentRunIDs,
 	})
 }
 
