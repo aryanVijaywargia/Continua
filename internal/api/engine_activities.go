@@ -226,6 +226,7 @@ func (s *engineControlService) HeartbeatRemoteActivityTask(
 	taskID uuid.UUID,
 	workerID string,
 ) (enginedb.EngineActivityTask, error) {
+	// A heartbeat writes only the task row, so it takes no run lock (see lockRemoteActivityRun).
 	task, err := s.engine.HeartbeatRemoteActivityTask(ctx, enginedb.HeartbeatRemoteActivityTaskParams{
 		ID:        taskID,
 		ProjectID: projectID,
@@ -251,6 +252,9 @@ func (s *engineControlService) CompleteRemoteActivityTask(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	engineTx := enginedb.New(tx.Tx())
+	if _, err := lockRemoteActivityRun(ctx, engineTx, projectID, taskID); err != nil {
+		return err
+	}
 	task, err := engineTx.CompleteRemoteActivityTask(ctx, enginedb.CompleteRemoteActivityTaskParams{
 		ID:                taskID,
 		ProjectID:         projectID,
@@ -281,6 +285,10 @@ func (s *engineControlService) FailRemoteActivityTask(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	engineTx := enginedb.New(tx.Tx())
+	run, err := lockRemoteActivityRun(ctx, engineTx, projectID, taskID)
+	if err != nil {
+		return err
+	}
 	task, err := engineTx.GetActivityTaskByProjectForUpdate(ctx, enginedb.GetActivityTaskByProjectForUpdateParams{
 		ID:        taskID,
 		ProjectID: projectID,
@@ -308,15 +316,11 @@ func (s *engineControlService) FailRemoteActivityTask(
 		if retryErr != nil {
 			return retryErr
 		}
-		run, retryErr := engineTx.GetRunForUpdate(ctx, retried.RunID)
-		if retryErr != nil {
-			return retryErr
-		}
 		appended, retryErr := appendLockedRunHistoryEvent(ctx, engineTx, &run, publichistory.EventActivityRetryScheduled, payload)
 		if retryErr != nil {
 			return retryErr
 		}
-		if retryErr := updateProjectedTraceLatestHistory(ctx, tx, retried.RunID, appended.ID); retryErr != nil {
+		if retryErr := updateProjectedTraceLatestHistory(ctx, tx, run.ID, appended.ID); retryErr != nil {
 			return retryErr
 		}
 		return tx.Commit(ctx)
@@ -562,6 +566,32 @@ func retryRemoteActivityTask(
 		return enginedb.EngineActivityTask{}, classifyRemoteActivityOwnershipMiss(ctx, engineTx, projectID, task.ID, err)
 	}
 	return retried, nil
+}
+
+// lockRemoteActivityRun locks the run of a remote activity task. A remote report that
+// writes its run locks the run, then the task, then trace rows. Termination, activation
+// cancellation and continue-as-new lock the run and then cancel its open tasks, so a
+// report that held the task while it waited for the run would deadlock with them (#352).
+// A task's run_id never changes, so the unlocked read finds the right run. The caller
+// locks the task next and checks again under both locks that the worker owns it.
+func lockRemoteActivityRun(
+	ctx context.Context,
+	engineTx *enginedb.Queries,
+	projectID uuid.UUID,
+	taskID uuid.UUID,
+) (enginedb.EngineRun, error) {
+	runID, err := engineTx.GetActivityTaskRunIDByProject(ctx, enginedb.GetActivityTaskRunIDByProjectParams{
+		ID:        taskID,
+		ProjectID: projectID,
+	})
+	if err != nil {
+		return enginedb.EngineRun{}, classifyRemoteActivityOwnershipMiss(ctx, engineTx, projectID, taskID, err)
+	}
+	run, err := engineTx.GetRunForUpdate(ctx, runID)
+	if err != nil {
+		return enginedb.EngineRun{}, fmt.Errorf("lock run %s: %w", runID, err)
+	}
+	return run, nil
 }
 
 func wakeAndSyncRemoteActivityRun(
