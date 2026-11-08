@@ -502,6 +502,9 @@ func TestActivatorCancelCascadeDoesNotLockEarlierRunRelationship(t *testing.T) {
 	cancelClaim := forceClaimRun(t, ctx, pool, store, currentRunID, "worker-cancel")
 	cancelActivation := startAsync(t, cancel, func() error { return activator.Activate(ctx, &cancelClaim) })
 	waitForRunLockWait(t, ctx, pool, cancelActivation, "GetRunForUpdate")
+	if cancelActivation.finished() {
+		t.Fatal("cancel activation finished without waiting on the earlier run; the test no longer covers the cycle")
+	}
 
 	close(release)
 	if err := childActivation.wait(ctx); err != nil {
