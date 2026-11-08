@@ -837,6 +837,26 @@ func (q *Queries) GetActivityTaskRemoteConflictState(ctx context.Context, arg Ge
 	return i, err
 }
 
+const getActivityTaskRunIDByProject = `-- name: GetActivityTaskRunIDByProject :one
+SELECT run_id
+FROM engine.activity_tasks
+WHERE id = $1
+  AND project_id = $2
+`
+
+type GetActivityTaskRunIDByProjectParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+}
+
+// Unlocked: a task's run_id never changes, so a caller can lock the run before the task.
+func (q *Queries) GetActivityTaskRunIDByProject(ctx context.Context, arg GetActivityTaskRunIDByProjectParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getActivityTaskRunIDByProject, arg.ID, arg.ProjectID)
+	var run_id uuid.UUID
+	err := row.Scan(&run_id)
+	return run_id, err
+}
+
 const heartbeatLocalActivityTask = `-- name: HeartbeatLocalActivityTask :one
 UPDATE engine.activity_tasks
 SET lease_expires_at = NOW() + (lease_duration_ms * INTERVAL '1 millisecond'),

@@ -139,6 +139,13 @@ FROM engine.activity_tasks
 WHERE id = $1
   AND project_id = $2;
 
+-- name: GetActivityTaskRunIDByProject :one
+-- Unlocked: a task's run_id never changes, so a caller can lock the run before the task.
+SELECT run_id
+FROM engine.activity_tasks
+WHERE id = $1
+  AND project_id = $2;
+
 -- name: GetActivityTaskByProjectForUpdate :one
 SELECT *
 FROM engine.activity_tasks

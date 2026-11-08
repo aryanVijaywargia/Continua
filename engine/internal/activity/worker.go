@@ -87,6 +87,11 @@ func (w *Worker) PollOnce(ctx context.Context, workerID string) (bool, error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Lock the run before the task, as an activation or a terminate does when it cancels
+	// the run's open tasks; holding the task while waiting for the run deadlocks (#352).
+	if _, err := tx.GetRunForUpdate(ctx, task.RunID); err != nil {
+		return true, err
+	}
 	_, err = tx.CompleteActivityTask(ctx, task.ID, workerID, output)
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
@@ -342,6 +347,10 @@ func (w *Worker) failTask(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Run before task, as in PollOnce.
+	if _, err := tx.GetRunForUpdate(ctx, runID); err != nil {
+		return err
+	}
 	_, err = tx.FailActivityTask(ctx, taskID, workerID, errorCode, errorMessage)
 	if err != nil {
 		if errors.Is(err, store.ErrStaleClaim) {
