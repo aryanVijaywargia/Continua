@@ -167,7 +167,7 @@ func TestActivatorParentWakeQueuesBehindIngestInTraceOrder(t *testing.T) {
 			if err := activation.wait(ctx); err != nil {
 				t.Fatalf("Activate(child) error = %v", err)
 			}
-			assertParentQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
+			assertRunQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
 		})
 	}
 }
@@ -207,7 +207,7 @@ func TestActivatorChildTerminalWaitsForParentCommittingWait(t *testing.T) {
 			t.Fatalf("%s error = %v", name, err)
 		}
 	}
-	assertParentQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
+	assertRunQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
 }
 
 // Run locks follow one order: ancestor before descendant. TerminateRun on a parent locks
@@ -247,7 +247,7 @@ func TestActivatorChildTerminalLocksParentRunBeforeChildRun(t *testing.T) {
 	if err := activation.wait(ctx); err != nil {
 		t.Fatalf("Activate(child) error = %v", err)
 	}
-	assertParentQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
+	assertRunQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
 }
 
 // A grandchild's activation can insert a run that names the root run through the
@@ -379,11 +379,13 @@ func waitUntilBlocked(t *testing.T, ctx context.Context, pool *pgxpool.Pool, pid
 
 // A parent's cancelled activation enqueues a cancel inbox item for each active child.
 // The item names the child run, so its foreign key check locks that run (KEY SHARE),
-// after the activation locked the traces. An activity retry on the child holds the
-// child's run and then waits for the child's trace, which ingest holds while it waits for
-// the parent's trace, which the activation holds. If the run lock blocked KEY SHARE, the
-// three would deadlock (40P01) and roll back the cancellation.
-func TestActivatorCancelCascadeDoesNotWaitForChildRunLock(t *testing.T) {
+// after the activation locked the traces. The cascade locks only children that are
+// waiting (it wakes them); a child that is already queued gets the item with no run lock.
+// An activity retry on that queued child holds the child's run and then waits for the
+// child's trace, which ingest holds while it waits for the parent's trace, which the
+// activation holds. If the run lock blocked KEY SHARE, the three would deadlock (40P01)
+// and roll back the cancellation.
+func TestActivatorCancelCascadeKeyShareDoesNotWaitForQueuedChildRunLock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	billing := func(ctx publicworkflow.Context) error {
@@ -412,6 +414,11 @@ func TestActivatorCancelCascadeDoesNotWaitForChildRunLock(t *testing.T) {
 		t.Fatalf("read receipts run: %v", err)
 	}
 	activateRunByID(t, ctx, pool, fixture.store, activator, receiptsRunID, "worker-receipts")
+	// A signal wakes receipts while its activity runs, so the cascade below sees it queued
+	// and takes no lock on its run.
+	if _, err := fixture.store.WakeWaitingRun(ctx, receiptsRunID); err != nil {
+		t.Fatalf("wake receipts: %v", err)
+	}
 
 	// Ingest locks the receipts trace before the billing trace.
 	for runID, traceID := range map[uuid.UUID]string{receiptsRunID: "engine:0-receipts", billingRunID: "engine:1-billing"} {
@@ -638,21 +645,24 @@ func waitForLockQueue(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hol
 	}
 }
 
+// assertRunQueuedAndProjected checks that a waiting run was woken, and that its projected
+// trace shows the new status.
+//
 //nolint:revive // Keep testing.T first in test helper signatures.
-func assertParentQueuedAndProjected(t *testing.T, ctx context.Context, store *enginestore.Store, parentRunID uuid.UUID) {
+func assertRunQueuedAndProjected(t *testing.T, ctx context.Context, store *enginestore.Store, runID uuid.UUID) {
 	t.Helper()
-	parent, err := store.GetRun(ctx, parentRunID)
+	run, err := store.GetRun(ctx, runID)
 	if err != nil {
-		t.Fatalf("GetRun(parent) error = %v", err)
+		t.Fatalf("GetRun(%s) error = %v", runID, err)
 	}
-	if parent.Status != enginedb.EngineRunLifecycleStatusQueued {
-		t.Fatalf("expected the child to wake its parent, got parent status %q", parent.Status)
+	if run.Status != enginedb.EngineRunLifecycleStatusQueued {
+		t.Fatalf("expected run %s to be woken, got status %q", runID, run.Status)
 	}
 	var projected string
-	if err := store.Pool().QueryRow(ctx, `SELECT engine_run_status FROM public.traces WHERE engine_run_id = $1`, parentRunID).Scan(&projected); err != nil {
-		t.Fatalf("query parent projected run status: %v", err)
+	if err := store.Pool().QueryRow(ctx, `SELECT engine_run_status FROM public.traces WHERE engine_run_id = $1`, runID).Scan(&projected); err != nil {
+		t.Fatalf("query projected run status of run %s: %v", runID, err)
 	}
 	if projected != string(enginedb.EngineRunLifecycleStatusQueued) {
-		t.Fatalf("expected parent projected run status %q after the wake, got %q", enginedb.EngineRunLifecycleStatusQueued, projected)
+		t.Fatalf("expected projected run status %q for run %s after the wake, got %q", enginedb.EngineRunLifecycleStatusQueued, runID, projected)
 	}
 }

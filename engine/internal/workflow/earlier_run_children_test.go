@@ -57,6 +57,13 @@ func continuingDefinition() publicworkflow.Definition {
 	}}
 }
 
+// ordersDefinition runs the "continuing" instance as its child "billing" and waits on it.
+func ordersDefinition() publicworkflow.Definition {
+	return publicworkflow.Definition{Name: "orders", Version: "v1", Run: func(ctx publicworkflow.Context) error {
+		return ctx.ChildWorkflow("billing", "continuing", "v1", nil, nil)
+	}}
+}
+
 // cancellableWorker waits for a signal, and ends cancelled when asked to.
 func cancellableWorker(ctx publicworkflow.Context) error {
 	if ctx.CancellationRequested() {
@@ -87,9 +94,7 @@ func newEarlierRunChildFixture(
 	rootDefinition := "continuing"
 	if nested {
 		rootDefinition = "orders"
-		definitions = append(definitions, publicworkflow.Definition{Name: "orders", Version: "v1", Run: func(ctx publicworkflow.Context) error {
-			return ctx.ChildWorkflow("billing", "continuing", "v1", nil, nil)
-		}})
+		definitions = append(definitions, ordersDefinition())
 	}
 	activator := NewActivator(store, mustRegistry(t, definitions...))
 	_, rootRun := createStartedRun(t, store, workflowTestCase{
