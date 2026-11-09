@@ -128,14 +128,16 @@ func testPurgeAndRemoteActivityReport(t *testing.T, report *remoteActivityReport
 		WHERE id = $1
 	`, traceID).Scan(&projectionState, &projectedStatus, &pendingTasks))
 	assert.Equal(t, string(enginedb.EngineRunLifecycleStatusCompleted), projectedStatus)
-	if report.retried {
+	if report.retried && purgeFirst {
 		// The retry appends a history row to the finished run. After the purge that row
-		// reopens the projection (catching_up); a purge after the retry deletes it. That
-		// follows from a finished run keeping open tasks, not from the lock order.
+		// reopens the projection (catching_up). That follows from a finished run keeping
+		// open tasks, not from the lock order.
 		return
 	}
 	assert.Equal(t, "journal_expired", projectionState)
-	assert.Zero(t, pendingTasks)
+	if !report.retried {
+		assert.Zero(t, pendingTasks)
+	}
 	assert.Nil(t, task.HistoryID, "the full purge clears the task's history link")
 	historyRows, err := engineQueries.GetHistoryByRun(ctx, fixture.Run.ID)
 	require.NoError(t, err)
