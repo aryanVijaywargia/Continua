@@ -131,13 +131,14 @@ func testPurgeAndRemoteActivityReport(t *testing.T, report *remoteActivityReport
 		WHERE id = $1
 	`, traceID).Scan(&projectionState, &projectedStatus, &pendingTasks))
 	assert.Equal(t, string(enginedb.EngineRunLifecycleStatusCompleted), projectedStatus)
+	// The purged projection stays purged, even when a late retry report commits after it.
+	assert.Equal(t, "journal_expired", projectionState)
 	if report.retried && purgeFirst {
-		// The retry appends a history row to the finished run. After the purge that row
-		// reopens the projection (catching_up). That follows from a finished run keeping
-		// open tasks, not from the lock order.
+		// This fixture finishes the run with SQL, so the task stays open and the retry
+		// still appends a history row after the purge. An activator-finished run cancels
+		// its open tasks first (#359), so no report reaches it.
 		return
 	}
-	assert.Equal(t, "journal_expired", projectionState)
 	if !report.retried {
 		assert.Zero(t, pendingTasks)
 	}
