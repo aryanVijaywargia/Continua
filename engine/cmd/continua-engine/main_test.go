@@ -295,6 +295,92 @@ func TestBackfillMigrationRecomputesInstanceStatusesFromLatestRun(t *testing.T) 
 	}
 }
 
+// Migration 000017 closes the open work that runs finished before #359 left behind:
+// open tasks are cancelled and open inbox items discarded for completed and failed
+// runs only.
+func TestCloseFinishedRunOpenWorkMigration(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+
+	t.Setenv("ENGINE_DATABASE_URL", db.DatabaseURL)
+	t.Setenv("DATABASE_URL", "")
+
+	store := enginestore.New(db.Pool)
+	ctx := context.Background()
+	projectID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+
+	runIDs := map[string]uuid.UUID{}
+	for _, status := range []string{"completed", "failed", "waiting", "cancelled"} {
+		instance, err := store.CreateInstance(ctx, enginedb.CreateInstanceParams{
+			ProjectID:      projectID,
+			InstanceKey:    "close-open-work-" + status,
+			DefinitionName: "demo",
+		})
+		if err != nil {
+			t.Fatalf("CreateInstance(%s) error = %v", status, err)
+		}
+		run, err := store.CreateRun(ctx, enginedb.CreateRunParams{
+			ProjectID:         projectID,
+			InstanceID:        instance.ID,
+			RunNumber:         1,
+			DefinitionVersion: "v1",
+			ReadyAt:           time.Now().Add(-time.Minute),
+		})
+		if err != nil {
+			t.Fatalf("CreateRun(%s) error = %v", status, err)
+		}
+		if _, err := db.Pool.Exec(ctx, `
+			UPDATE engine.runs SET status = $2::engine.run_lifecycle_status, updated_at = NOW() WHERE id = $1
+		`, run.ID, status); err != nil {
+			t.Fatalf("set run status %s: %v", status, err)
+		}
+		if _, err := db.Pool.Exec(ctx, `
+			INSERT INTO engine.activity_tasks (project_id, instance_id, run_id, activity_key, activity_type, status, claimed_by, claimed_at, lease_expires_at)
+			VALUES ($1, $2, $3, 'claimed', 'demo', 'claimed', 'worker', NOW(), NOW() + INTERVAL '1 minute'),
+			       ($1, $2, $3, 'queued', 'demo', 'queued', NULL, NULL, NULL)
+		`, projectID, instance.ID, run.ID); err != nil {
+			t.Fatalf("insert tasks of %s run: %v", status, err)
+		}
+		if _, err := db.Pool.Exec(ctx, `
+			INSERT INTO engine.inbox (project_id, instance_id, run_id, kind) VALUES ($1, $2, $3, 'signal')
+		`, projectID, instance.ID, run.ID); err != nil {
+			t.Fatalf("insert inbox item of %s run: %v", status, err)
+		}
+		runIDs[status] = run.ID
+	}
+
+	steps := rollbackStepsThroughVersion(t, 17)
+	if stdout, stderr, err := executeCommand(t, "migrate", "down", strconv.Itoa(steps)); err != nil {
+		t.Fatalf("execute migrate down %d: %v (stdout=%q stderr=%q)", steps, err, stdout, stderr)
+	}
+	if stdout, stderr, err := executeCommand(t, "migrate", "up"); err != nil {
+		t.Fatalf("execute migrate up: %v (stdout=%q stderr=%q)", err, stdout, stderr)
+	}
+
+	for status, runID := range runIDs {
+		wantTask, wantInbox := "claimed,queued", "pending"
+		if status == "completed" || status == "failed" {
+			wantTask, wantInbox = "cancelled,cancelled", "discarded"
+		}
+		var gotTask, gotInbox string
+		var openClaims int
+		if err := db.Pool.QueryRow(ctx, `
+			SELECT string_agg(status::text, ',' ORDER BY activity_key),
+			       COUNT(*) FILTER (WHERE claimed_by IS NOT NULL AND status = 'cancelled')
+			FROM engine.activity_tasks
+			WHERE run_id = $1
+		`, runID).Scan(&gotTask, &openClaims); err != nil {
+			t.Fatalf("load tasks of %s run: %v", status, err)
+		}
+		if err := db.Pool.QueryRow(ctx, `SELECT status::text FROM engine.inbox WHERE run_id = $1`, runID).Scan(&gotInbox); err != nil {
+			t.Fatalf("load inbox item of %s run: %v", status, err)
+		}
+		if gotTask != wantTask || gotInbox != wantInbox || openClaims != 0 {
+			t.Fatalf("%s run after migration: tasks=%s inbox=%s cancelled-with-claim=%d; want tasks=%s inbox=%s",
+				status, gotTask, gotInbox, openClaims, wantTask, wantInbox)
+		}
+	}
+}
+
 func executeCommand(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
