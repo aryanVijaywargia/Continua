@@ -58,11 +58,32 @@ func (t *projectionTarget) traceRef() *publicprojection.TraceRef {
 }
 
 type terminalProjection struct {
-	RunStatus     enginedb.EngineRunLifecycleStatus
-	Result        json.RawMessage
-	ErrorCode     string
-	ErrorMessage  string
-	CleanupReason string
+	RunStatus    enginedb.EngineRunLifecycleStatus
+	Result       json.RawMessage
+	ErrorCode    string
+	ErrorMessage string
+	Cleanup      terminalCleanup
+}
+
+// terminalCleanup closes the work a run's terminal transition abandoned: the spans of
+// its cancelled activity tasks and the waits on its discarded timers. Every ending
+// cancels its open tasks and discards its open inbox items, completed and failed runs
+// too since #359.
+type terminalCleanup struct {
+	Resolution   string // resolution of the closed waits
+	ErrorCode    string // error_code in the output of a closed activity span
+	ErrorMessage string // status message of a closed activity span
+}
+
+// finishedRunCleanup is the cleanup of a run that completed or failed. Only the run's
+// end cancelled its open tasks, so a closed activity says that, not the run's result
+// or error.
+func finishedRunCleanup(ending string) terminalCleanup {
+	return terminalCleanup{
+		Resolution:   "cancelled",
+		ErrorCode:    "cancelled",
+		ErrorMessage: "activity cancelled: workflow " + ending,
+	}
 }
 
 func New(store *enginestore.Store) *Projector {
@@ -144,33 +165,39 @@ func projectHistoryRow(
 		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
 			RunStatus: enginedb.EngineRunLifecycleStatusCompleted,
 			Result:    publicjsonraw.Clone(typed.Result),
+			Cleanup:   finishedRunCleanup("completed"),
 		})
 	case *publichistory.WorkflowFailedPayload:
 		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
 			RunStatus:    enginedb.EngineRunLifecycleStatusFailed,
 			ErrorCode:    typed.ErrorCode,
 			ErrorMessage: typed.ErrorMessage,
+			Cleanup:      finishedRunCleanup("failed"),
 		})
 	case *publichistory.WorkflowCancelledPayload:
 		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
-			RunStatus:     enginedb.EngineRunLifecycleStatusCancelled,
-			ErrorCode:     "cancelled",
-			ErrorMessage:  "workflow cancelled",
-			CleanupReason: "cancelled",
+			RunStatus:    enginedb.EngineRunLifecycleStatusCancelled,
+			ErrorCode:    "cancelled",
+			ErrorMessage: "workflow cancelled",
+			Cleanup:      terminalCleanup{Resolution: "cancelled", ErrorCode: "cancelled", ErrorMessage: "workflow cancelled"},
 		})
 	case *publichistory.WorkflowContinuedAsNewPayload:
 		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
-			RunStatus:     enginedb.EngineRunLifecycleStatusContinuedAsNew,
-			ErrorCode:     "continued_as_new",
-			ErrorMessage:  "workflow continued as new",
-			CleanupReason: "continued_as_new",
+			RunStatus:    enginedb.EngineRunLifecycleStatusContinuedAsNew,
+			ErrorCode:    "continued_as_new",
+			ErrorMessage: "workflow continued as new",
+			Cleanup: terminalCleanup{
+				Resolution:   "continued_as_new",
+				ErrorCode:    "continued_as_new",
+				ErrorMessage: "workflow continued as new",
+			},
 		})
 	case *publichistory.WorkflowTerminatedPayload:
 		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
-			RunStatus:     enginedb.EngineRunLifecycleStatusTerminated,
-			ErrorCode:     typed.ErrorCode,
-			ErrorMessage:  typed.ErrorMessage,
-			CleanupReason: "terminated",
+			RunStatus:    enginedb.EngineRunLifecycleStatusTerminated,
+			ErrorCode:    typed.ErrorCode,
+			ErrorMessage: typed.ErrorMessage,
+			Cleanup:      terminalCleanup{Resolution: "terminated", ErrorCode: typed.ErrorCode, ErrorMessage: typed.ErrorMessage},
 		})
 	case *publichistory.ActivityScheduledPayload:
 		return projectActivityScheduled(ctx, writer, target, row, typed)
@@ -239,13 +266,7 @@ func projectTerminalHistoryRow(
 		return err
 	}
 
-	if projection.CleanupReason != "" {
-		if err := projectTerminalCleanup(ctx, tx, writer, target, row, projection); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return projectTerminalCleanup(ctx, tx, writer, target, row, &projection.Cleanup)
 }
 
 func projectTerminalCleanup(
@@ -254,11 +275,8 @@ func projectTerminalCleanup(
 	writer *publicprojection.Writer,
 	target *projectionTarget,
 	row *enginedb.EngineHistory,
-	projection *terminalProjection,
+	cleanup *terminalCleanup,
 ) error {
-	if projection == nil {
-		return errors.New("terminal projection is required")
-	}
 	cancelledActivities, err := tx.ListCancelledActivityTasksByRun(ctx, target.RunID)
 	if err != nil {
 		return err
@@ -278,8 +296,8 @@ func projectTerminalCleanup(
 			row.ID,
 			row.CreatedAt,
 			task.ActivityKey,
-			projection.ErrorCode,
-			projection.ErrorMessage,
+			cleanup.ErrorCode,
+			cleanup.ErrorMessage,
 		); err != nil {
 			return err
 		}
@@ -294,11 +312,11 @@ func projectTerminalCleanup(
 				"wait_kind":  "activity",
 				"phase":      "resolved",
 				"wait_id":    "activity:" + task.ActivityKey,
-				"resolution": projection.CleanupReason,
+				"resolution": cleanup.Resolution,
 			}),
 			HistoryID:  row.ID,
 			RunID:      target.RunID,
-			VariantKey: projection.CleanupReason + ":activity:" + task.ActivityKey,
+			VariantKey: cleanup.Resolution + ":activity:" + task.ActivityKey,
 		}); err != nil {
 			return err
 		}
@@ -323,11 +341,11 @@ func projectTerminalCleanup(
 				"wait_kind":  "timer",
 				"phase":      "resolved",
 				"wait_id":    "timer:" + timerPayload.TimerKey,
-				"resolution": projection.CleanupReason,
+				"resolution": cleanup.Resolution,
 			}),
 			HistoryID:  row.ID,
 			RunID:      target.RunID,
-			VariantKey: projection.CleanupReason + ":timer:" + timerPayload.TimerKey,
+			VariantKey: cleanup.Resolution + ":timer:" + timerPayload.TimerKey,
 		}); err != nil {
 			return err
 		}
