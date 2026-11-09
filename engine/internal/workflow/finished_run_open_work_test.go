@@ -214,3 +214,95 @@ func TestFinishedRunCancelsOpenWork(t *testing.T) {
 		}
 	}
 }
+
+// A remote worker that still holds a task of a run that failed gets a stale claim for
+// every report, and the task cannot be claimed again (#359). The run waits on a remote
+// activity, a remote worker claims it, then a signal wakes the run and the activation
+// fails it because the definition version is gone.
+func TestFinishedRunCancelsOpenRemoteTask(t *testing.T) {
+	db := enginetest.NewTestDatabase(t)
+	store := enginestore.New(db.Pool)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, run := createStartedRun(t, store, workflowTestCase{
+		projectID:         enginetest.DefaultPlatformProjectID,
+		instanceKey:       "instance-finished-run-remote",
+		definitionName:    "finished-run",
+		definitionVersion: "v1",
+	})
+	activateNextRun(t, ctx, store, NewActivator(store, mustRegistry(t, publicworkflow.Definition{
+		Name:    "finished-run",
+		Version: "v1",
+		Run: func(ctx publicworkflow.Context) error {
+			return ctx.ActivityWithOptions("work", finishedRunActivityType, nil, nil, publicworkflow.ActivityOptions{
+				ExecutionTarget: publicworkflow.ActivityExecutionTargetRemote,
+				RetryPolicy: &publicworkflow.RetryPolicy{
+					MaxAttempts:       3,
+					InitialBackoff:    time.Millisecond,
+					MaxBackoff:        time.Millisecond,
+					BackoffMultiplier: 1,
+				},
+			})
+		},
+	})), "workflow-worker")
+
+	claimed, err := store.ClaimRemoteActivityTasks(ctx, run.ProjectID, "remote-worker", []string{finishedRunActivityType}, 1, time.Minute)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("ClaimRemoteActivityTasks() = %d tasks, error %v; want 1 task", len(claimed), err)
+	}
+	task := claimed[0]
+
+	signal, err := enginehistory.MarshalPayload(enginehistory.SignalReceivedPayload{SignalName: "nudge"})
+	if err != nil {
+		t.Fatalf("MarshalPayload(signal) error = %v", err)
+	}
+	if _, err := store.CreateInboxItem(ctx, enginedb.CreateInboxItemParams{
+		ProjectID:   run.ProjectID,
+		InstanceID:  run.InstanceID,
+		RunID:       pgtype.UUID{Bytes: run.ID, Valid: true},
+		Kind:        "signal",
+		Payload:     signal,
+		AvailableAt: time.Now().Add(-time.Second),
+	}); err != nil {
+		t.Fatalf("CreateInboxItem(signal) error = %v", err)
+	}
+	if _, err := store.WakeWaitingRun(ctx, run.ID); err != nil {
+		t.Fatalf("WakeWaitingRun() error = %v", err)
+	}
+	activateNextRun(t, ctx, store, NewActivator(store, mustRegistry(t)), "workflow-worker")
+
+	finished, err := store.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun() error = %v", err)
+	}
+	if finished.Status != enginedb.EngineRunLifecycleStatusFailed {
+		t.Fatalf("run status = %s, want failed", finished.Status)
+	}
+	historyAtFinish, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+
+	reason := "try again"
+	if _, err := store.RetryRemoteActivityTask(ctx, run.ProjectID, task.ID, "remote-worker", 1, &reason, &reason); !errors.Is(err, enginestore.ErrStaleClaim) {
+		t.Fatalf("RetryRemoteActivityTask() error = %v, want ErrStaleClaim", err)
+	}
+	if _, err := store.CompleteRemoteActivityTask(ctx, run.ProjectID, task.ID, "remote-worker", []byte(`{"ok":true}`)); !errors.Is(err, enginestore.ErrStaleClaim) {
+		t.Fatalf("CompleteRemoteActivityTask() error = %v, want ErrStaleClaim", err)
+	}
+	if _, err := store.HeartbeatRemoteActivityTask(ctx, run.ProjectID, task.ID, "remote-worker"); !errors.Is(err, enginestore.ErrStaleClaim) {
+		t.Fatalf("HeartbeatRemoteActivityTask() error = %v, want ErrStaleClaim", err)
+	}
+	reclaimed, err := store.ClaimRemoteActivityTasks(ctx, run.ProjectID, "remote-worker-2", []string{finishedRunActivityType}, 1, time.Minute)
+	if err != nil || len(reclaimed) != 0 {
+		t.Fatalf("ClaimRemoteActivityTasks() after the run failed = %d tasks, error %v; want none", len(reclaimed), err)
+	}
+	historyAfterReports, err := store.GetHistoryByRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetHistoryByRun() error = %v", err)
+	}
+	if got, want := historyEventTypes(historyAfterReports), historyEventTypes(historyAtFinish); !slices.Equal(got, want) {
+		t.Fatalf("history after the late reports = %v, want %v", got, want)
+	}
+}
