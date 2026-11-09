@@ -21,8 +21,20 @@ The engine module ships a working durable runtime:
 What is still **preview / not yet there**:
 
 - workflow authoring is Go-only — no TypeScript/Python authoring SDK
-- no production path to register arbitrary user workflow definitions (the dark-launch CLI still ships a fixed demo registry)
-- the public `/v1/engine/*` REST control plane is gated behind `X-Continua-Engine-Preview` + `ENGINE_PUBLIC_API_ENABLED`
+- no dynamic definition loading: your workflows compile into your own worker program (see [Run your own workflows](#run-your-own-workflows)); `continua-engine serve` and `start` use only the built-in dark-launch demo definitions
+- the public `/v1/engine/*` REST control plane is gated behind `ENGINE_PUBLIC_API_ENABLED` (#336); `X-Continua-Engine-Preview: 1` is optional and deprecated
+
+## Run your own workflows
+
+The supported way to run your own workflows is a Go program that embeds `pkg/runtime`:
+
+1. Copy [`examples/worker-template`](./examples/worker-template) into a new Go module outside this repository.
+2. Add `replace github.com/continua-ai/continua/engine => <path to your Continua clone>/engine` to its `go.mod`, then run `go get ./...`. The module path does not match the GitHub repository, so Go cannot download the module.
+3. Build it and run it with the same `ENGINE_*` environment as `serve`. `runtime.OptionsFromEnv` reads every setting.
+4. Start runs through `POST /v1/engine/runs` on the platform server.
+
+The full walkthrough is [`docs-site/guides/run-your-own-workflows.mdx`](../docs-site/guides/run-your-own-workflows.mdx).
+All workers on one engine database must register the same definitions.
 
 ## Activity Leases
 
@@ -45,10 +57,10 @@ Current implemented guidance is:
 ### Definition Catalog
 
 `engine.definition_catalog` reflects the definitions registered in the live engine runtime.
-At `continua-engine serve` startup, the runtime rewrites the catalog by upserting the
-registered definitions and deleting stale rows. The platform `StartRun` path validates
-requests against this catalog, so inserting catalog rows out of band is unsupported; those
-rows are removed at the next serve start. Richer liveness metadata is future work tracked
+At startup, every engine runtime (an embedded worker or `continua-engine serve`)
+rewrites the catalog by upserting its registered definitions and deleting all other rows.
+The platform `StartRun` path validates requests against this catalog, so inserting
+catalog rows out of band is unsupported; those rows are removed at the next runtime start. Richer liveness metadata is future work tracked
 by the "definition catalog as registry truth" issue (#163).
 
 ## Module Isolation
@@ -75,7 +87,7 @@ bin/continua-engine version
 bin/continua-engine migrate up
 bin/continua-engine migrate down 1
 
-# durable runtime (dark-launch demo registry)
+# durable runtime with the built-in dark-launch demo definitions only
 bin/continua-engine serve                                   # run workflow + activity + maintenance + projector workers
 bin/continua-engine start  --instance-key <k> --definition <name> --version <v> --request-key <r> [--input <json>]
 bin/continua-engine signal --instance-key <k> --signal-name <s> [--payload <json>]
@@ -87,7 +99,7 @@ Database config is env-only:
 
 - `ENGINE_DATABASE_URL` overrides `DATABASE_URL`
 - `DATABASE_URL` is the fallback when no engine-specific URL is set
-- `ENGINE_PROJECT_ID` scopes `serve` to an existing platform project; startup fails if
+- `ENGINE_PROJECT_ID` scopes `serve` (and any worker that uses `runtime.OptionsFromEnv`) to an existing platform project; startup fails if
   that project row is missing. The dark-launch `start` command bootstraps only its local
   demo project row for CLI demo runs.
 

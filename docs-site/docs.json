@@ -61,6 +61,7 @@
             "group": "Workflows",
             "pages": [
               "guides/workflow-code-versioning",
+              "guides/run-your-own-workflows",
               "guides/engine-project-provisioning",
               "guides/embed-engine",
               "guides/go-workflows-python-activities",

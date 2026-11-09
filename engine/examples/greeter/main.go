@@ -36,25 +36,28 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	rt, err := engineruntime.New(engineruntime.Options{
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		Workflows: []workflow.Definition{
-			{
-				Name:    greeterWorkflowName,
-				Version: greeterWorkflowVersion,
-				Run:     runGreeterWorkflow,
-			},
+	options, err := engineruntime.OptionsFromEnv(os.Stderr)
+	if err != nil {
+		return err
+	}
+	options.Workflows = []workflow.Definition{
+		{
+			Name:    greeterWorkflowName,
+			Version: greeterWorkflowVersion,
+			Run:     runGreeterWorkflow,
 		},
-		Activities: map[string]engineruntime.ActivityHandler{
-			greetActivityType: greetActivity,
-		},
-	})
+	}
+	options.Activities = map[string]engineruntime.ActivityHandler{
+		greetActivityType: greetActivity,
+	}
+
+	rt, err := engineruntime.New(options)
 	if err != nil {
 		return err
 	}
 
-	// Run the engine worker loop. To create runs, use the continua-engine CLI
-	// or the preview engine control plane.
+	// Run the engine worker loop. Start runs through POST /v1/engine/runs on
+	// the platform server.
 	return rt.Run(ctx)
 }
 

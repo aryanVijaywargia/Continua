@@ -4,8 +4,9 @@ description: "Expose and configure operational probes for the preview durable en
 ---
 
 The preview engine runtime can expose liveness, readiness, and Prometheus
-metrics on one operational HTTP listener. Set `ENGINE_HTTP_ADDR` when running
-`continua-engine serve`:
+metrics on one operational HTTP listener. Set `ENGINE_HTTP_ADDR` for your worker
+program (it reads the variable through `runtime.OptionsFromEnv`; see
+[Run your own workflows](/guides/run-your-own-workflows)) or for the demo `continua-engine serve`:
 
 ```bash
 ENGINE_HTTP_ADDR=0.0.0.0:9099 continua-engine serve
@@ -71,7 +72,7 @@ decisions.
 ```ini
 [Service]
 Environment=ENGINE_HTTP_ADDR=127.0.0.1:9099
-ExecStart=/usr/local/bin/continua-engine serve
+ExecStart=/usr/local/bin/my-worker
 ExecStartPost=/bin/sh -c 'for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:9099/readyz && exit 0; sleep 1; done; exit 1'
 Restart=on-failure
 ```

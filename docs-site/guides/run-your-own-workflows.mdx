@@ -1,0 +1,318 @@
+---
+title: "Run your own workflows"
+description: "The supported way to run your own Go workflows: a worker program that embeds the engine runtime."
+---
+
+To run your own workflows, you build a small Go program, the **worker**. The worker
+embeds `github.com/continua-ai/continua/engine/pkg/runtime`, registers your workflow
+definitions and activity handlers, and runs the engine workers against Postgres. This
+is the supported production path.
+
+`continua-engine serve` is not this path. It runs only the built-in demo definitions,
+and `continua-engine start` starts only those demo definitions on a fixed demo project.
+
+<Warning>
+  The durable engine is in preview. Workflow authoring is Go-only. The `/v1/engine/*`
+  control plane that starts runs is off by default: the platform server must run with
+  `ENGINE_PUBLIC_API_ENABLED=true`. Removing that gate is tracked in
+  [#336](https://github.com/aryanVijaywargia/Continua/issues/336).
+</Warning>
+
+This guide takes you from an empty directory to a completed run. It uses these
+defaults:
+
+| Item | Value |
+| --- | --- |
+| Postgres | `postgres://continua:continua@localhost:5432/continua?sslmode=disable` |
+| Platform server | `http://localhost:8080` |
+| Worker health and metrics listener | `127.0.0.1:9099` |
+
+Change them to match your setup.
+
+You use three terminals:
+
+- **Terminal 1** for setup commands and `curl` requests.
+- **Terminal 2** for the platform server.
+- **Terminal 3** for the worker.
+
+## Prerequisites
+
+- Go 1.25 or later.
+- Git, `make`, and `curl`.
+- A Postgres 16 database that you can connect to. For a local one with Docker, run
+  `docker compose -f deploy/docker-compose/docker-compose.dev.yml up -d postgres` in
+  the Continua clone after step 1. It uses the default URL above.
+
+## 1. Clone Continua and build the binaries
+
+The worker module needs a local Continua clone (see step 5). The clone also builds the
+platform server (`continua`) and the engine CLI (`continua-engine`). In terminal 1:
+
+```bash
+git clone https://github.com/aryanVijaywargia/Continua.git
+cd Continua
+export CONTINUA_DIR="$PWD"
+make build-server build-engine
+```
+
+This writes `bin/continua` and `bin/continua-engine`.
+
+## 2. Apply the migrations
+
+The platform and the engine each have their own schema. Apply both to the same
+database. In terminal 1:
+
+```bash
+export DATABASE_URL="postgres://continua:continua@localhost:5432/continua?sslmode=disable"
+"$CONTINUA_DIR/bin/continua" migrate up
+"$CONTINUA_DIR/bin/continua-engine" migrate up
+```
+
+Expected output ends with `Migrations applied successfully` and
+`Engine migrations applied successfully`.
+
+## 3. Start the platform server with the engine API
+
+The platform server owns the `/v1/engine/*` control plane. Start it in terminal 2.
+Replace `<path to your Continua clone>` with the directory from step 1:
+
+```bash
+cd <path to your Continua clone>
+export DATABASE_URL="postgres://continua:continua@localhost:5432/continua?sslmode=disable"
+ENGINE_PUBLIC_API_ENABLED=true ./bin/continua serve
+```
+
+Leave it running. Check it from terminal 1:
+
+```bash
+curl -s http://localhost:8080/api/health
+```
+
+Without `ENGINE_PUBLIC_API_ENABLED=true`, every `/v1/engine/*` request returns `404`.
+
+## 4. Create a project and an API key
+
+Engine runs belong to a platform project. On a loopback connection, the server accepts
+project creation without credentials, so a fresh install can create its first project.
+In terminal 1:
+
+```bash
+curl -s -X POST http://localhost:8080/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-workflows"}'
+```
+
+The response contains the project `id` and a plaintext `api_key`. The server shows the
+key only once. Save both values:
+
+```bash
+export ENGINE_PROJECT_ID="<id from the response>"
+export CONTINUA_API_KEY="<api_key from the response>"
+```
+
+From a non-loopback connection, send an existing project API key in `X-API-Key`. See
+[Engine project provisioning](/guides/engine-project-provisioning) and
+[Managing projects](/guides/managing-projects).
+
+## 5. Create the worker module
+
+Create the worker in its own directory next to the Continua clone, not inside it. Inside
+the clone, the repository's `go.work` file applies and `go get` fails. In terminal 1:
+
+```bash
+cd "$CONTINUA_DIR/.."
+mkdir my-worker
+cd my-worker
+go mod init example.com/my-worker
+go mod edit -replace github.com/continua-ai/continua/engine="$CONTINUA_DIR/engine"
+cp "$CONTINUA_DIR/engine/examples/worker-template/main.go" .
+cp "$CONTINUA_DIR/engine/examples/worker-template/main_test.go" .
+go get ./...
+```
+
+`go get ./...` adds the engine module and its dependencies to `go.mod` and `go.sum`.
+
+The `replace` directive is required. The engine module path is
+`github.com/continua-ai/continua/engine`, but the code lives in the
+`aryanVijaywargia/Continua` repository, so Go cannot download it. The `replace`
+directive points Go at your local clone.
+
+<Note>
+  Use `go get ./...`, not `go mod tidy`, to add the engine. `go mod tidy` also loads the
+  tests of the engine packages, and two of those tests import the root Continua module.
+  Without a second `replace`, `go mod tidy` stops with
+  `repository 'https://github.com/continua-ai/continua/' not found`. If you need
+  `go mod tidy`, add the second `replace` first:
+  `go mod edit -replace github.com/continua-ai/continua="$CONTINUA_DIR"`. Your binary
+  does not contain root-module code in either case.
+</Note>
+
+The template in `main.go` does these things:
+
+- It defines one workflow, `app.hello` version `v1`, which calls one local activity,
+  `app.say-hello`, and returns `{"message":"hello, <name>"}`.
+- It calls `runtime.OptionsFromEnv`, which reads the same `ENGINE_*` settings as
+  `continua-engine serve`: database, pool, project, poll intervals, leases, notify,
+  shutdown grace, retention, metrics, health, and logging.
+- It adds the workflow and the activity to the options, then calls `runtime.New` and
+  `Run`.
+- It stops on `SIGINT` or `SIGTERM` and drains in-flight work first.
+
+Run the template's workflow unit test. It uses `pkg/workflowtest` and needs no
+database:
+
+```bash
+go test ./...
+```
+
+Rename the workflow and activity constants, then replace `runHello` and `sayHello` with
+your own code. See [Testing workflows](/guides/testing-workflows) for more about
+workflow unit tests.
+
+## 6. Run the worker
+
+Start the worker in terminal 3. Replace `<path to my-worker>` with the directory from
+step 5, and `<project id from step 4>` with the project `id`:
+
+```bash
+cd <path to my-worker>
+export DATABASE_URL="postgres://continua:continua@localhost:5432/continua?sslmode=disable"
+export ENGINE_PROJECT_ID="<project id from step 4>"
+export ENGINE_HTTP_ADDR="127.0.0.1:9099"
+go build -o my-worker .
+./my-worker
+```
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` or `ENGINE_DATABASE_URL` | Yes | Postgres for the engine schema. `ENGINE_DATABASE_URL` wins when both are set. Use the database that the platform server uses, so that runs appear in the debugger. |
+| `ENGINE_PROJECT_ID` | Recommended | The project from step 4. The worker claims only runs of this project, and it fails at startup if the project does not exist. Without it, the worker claims runs of every project in the database. |
+| `ENGINE_HTTP_ADDR` | No | Listener for `/healthz`, `/readyz`, and `/metrics`. Off when empty. |
+| `ENGINE_METRICS_ADDR` | No | Separate listener for `/metrics` only. Off when empty. |
+| `ENGINE_LOG_LEVEL`, `ENGINE_LOG_FORMAT` | No | `debug`, `info`, `warn`, or `error`; `json` or `text`. Defaults: `info`, `json`. |
+| `ENGINE_SHUTDOWN_GRACE` | No | Time that in-flight work gets to finish after `SIGTERM`. Default `30s`. |
+
+The [Embed the engine](/guides/embed-engine) guide lists the pool, retention, and depth
+settings. All of them apply to the worker, because the worker reads them through
+`runtime.OptionsFromEnv`.
+
+The worker writes JSON log lines to stderr. One of them is `"msg":"worker starting"`.
+
+At startup, the worker publishes its definitions to the engine definition catalog, and
+while it runs, it refreshes them. The platform server accepts a start request only for a
+definition that a running worker refreshed in the last 60 seconds.
+
+<Warning>
+  **All workers that use one engine database must register the same definitions.**
+
+  - At startup, each worker replaces the whole definition catalog with its own
+    definitions. The catalog is shared by all projects in the database.
+  - A worker claims every queued run of its project, or of every project when
+    `ENGINE_PROJECT_ID` is empty. If it claims a run whose definition and version it
+    does not register, it fails the run with `definition_version_mismatch`.
+  - A worker also claims activity tasks of other definitions. If it does not register
+    the activity type, it fails the task with `activity_not_registered`.
+
+  So do not run `continua-engine serve`, or a worker with other definitions, against
+  the database of your workers. An unscoped `serve` fails your queued runs and activity
+  tasks. It also removes your definitions from the catalog until your worker refreshes
+  them again, which takes up to `ENGINE_MAINTENANCE_POLL_INTERVAL` (default `10s`).
+</Warning>
+
+Leave the worker running. Check readiness from terminal 1:
+
+```bash
+curl -s http://127.0.0.1:9099/readyz
+```
+
+`/readyz` returns `200` after every engine worker loop has run once and Postgres
+answers. See [Engine health and readiness](/guides/engine-health).
+
+## 7. Start a run
+
+Send a start request to the platform server with the project API key. In terminal 1:
+
+```bash
+curl -s -X POST http://localhost:8080/v1/engine/runs \
+  -H "X-API-Key: ${CONTINUA_API_KEY}" \
+  -H "X-Continua-Engine-Preview: 1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "definition_name": "app.hello",
+    "definition_version": "v1",
+    "instance_key": "hello-ada-1",
+    "request_key": "hello-ada-1",
+    "input": {"name": "Ada"}
+  }'
+```
+
+- `instance_key` names the durable workflow instance. `request_key` makes the start
+  request idempotent: a retry with the same key returns the same run. Use new values
+  for each new run.
+- `X-Continua-Engine-Preview: 1` is deprecated and optional. Without it, the server
+  logs a deprecation warning for each `POST`.
+- A `400` response with `definition_not_registered` means that no running worker
+  publishes `app.hello` version `v1`. Start the worker (step 6) and send the request
+  again with a new `request_key`. The server stores a failed start under its
+  `request_key` too, so the same key returns the same error.
+
+The response contains the `run_id`. Save it:
+
+```bash
+export RUN_ID="<run_id from the response>"
+```
+
+You can also start runs from Python with `EngineControlClient`. See
+[Go workflows with Python activities](/guides/go-workflows-python-activities).
+
+## 8. Read the result
+
+Read the run status:
+
+```bash
+curl -s "http://localhost:8080/v1/engine/runs/${RUN_ID}" \
+  -H "X-API-Key: ${CONTINUA_API_KEY}"
+```
+
+After the run completes, read its result:
+
+```bash
+curl -s "http://localhost:8080/v1/engine/runs/${RUN_ID}/result" \
+  -H "X-API-Key: ${CONTINUA_API_KEY}"
+```
+
+The result is `{"message":"hello, Ada"}` with status `COMPLETED`. The result endpoint
+returns `409` while the run is not finished.
+
+The run also appears in the debugger's [Engine runs console](/debugger/engine-runs) at
+`/engine/runs`. The `bin/continua` binary from `make build-server` does not contain the
+web UI. To use the console, install the web dependencies and build the UI before the
+server binary: `pnpm install && make build-web build-server` (it needs Node.js and pnpm).
+You can also use the Docker image.
+
+## Deploy the worker
+
+- **One binary.** `go build` makes one binary with your workflows inside it.
+  Ship it next to the platform server, with the same `DATABASE_URL`. You can run more
+  than one copy: workers share the work through Postgres leases.
+- **Probes.** Set `ENGINE_HTTP_ADDR` and use `GET /healthz` for liveness and
+  `GET /readyz` for readiness. The endpoints have no authentication, so bind them to an
+  internal interface. See [Engine health and readiness](/guides/engine-health).
+- **Metrics.** Scrape `GET /metrics` on the same listener, or on a separate
+  `ENGINE_METRICS_ADDR`. See [Engine metrics](/guides/engine-metrics).
+- **Shutdown.** On `SIGTERM`, the worker stops claiming new work and gives in-flight
+  work up to `ENGINE_SHUTDOWN_GRACE` to finish. Then it releases its remaining claims,
+  so another worker can pick them up at once. If the process crashes instead, another
+  worker reclaims its work after the lease expires (`ENGINE_RUN_LEASE_TTL`,
+  `ENGINE_ACTIVITY_LEASE_TTL`). An activity can run more than once, so make activities
+  idempotent.
+- **New workflow code.** Runs replay their history on the current code. A change that
+  alters the history of running workflows needs `GetVersion` or a new definition
+  version. Keep the old version registered until its runs finish. See
+  [Workflow code versioning](/guides/workflow-code-versioning).
+- **New definitions with more than one worker.** An old worker fails a run of a
+  definition or version that it does not register (see the warning in step 6). Roll the
+  new binary out to every worker before you start runs of a new definition or version.
+- **Remote activities.** To run an activity in Python or in another service, mark it
+  remote and run an activity worker. See
+  [Go workflows with Python activities](/guides/go-workflows-python-activities).

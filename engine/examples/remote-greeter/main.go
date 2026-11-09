@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/google/uuid"
 
 	engineruntime "github.com/continua-ai/continua/engine/pkg/runtime"
 	"github.com/continua-ai/continua/engine/pkg/workflow"
@@ -78,17 +75,11 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	options := engineruntime.Options{
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		Workflows:   []workflow.Definition{remoteGreeterDefinition()},
+	options, err := engineruntime.OptionsFromEnv(os.Stderr)
+	if err != nil {
+		return err
 	}
-	if value := os.Getenv("ENGINE_PROJECT_ID"); value != "" {
-		projectID, err := uuid.Parse(value)
-		if err != nil {
-			return fmt.Errorf("parse ENGINE_PROJECT_ID: %w", err)
-		}
-		options.ProjectID = &projectID
-	}
+	options.Workflows = []workflow.Definition{remoteGreeterDefinition()}
 
 	rt, err := engineruntime.New(options)
 	if err != nil {

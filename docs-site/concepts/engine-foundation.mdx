@@ -14,8 +14,8 @@ This page draws the line between what runs today and what's still preview-limite
 <Warning>
   The engine is preview. `X-Continua-Engine-Preview: 1` is optional and deprecated for
   mutating (POST) endpoints during the sunset window. All `/v1/engine/*` endpoints still
-  require `ENGINE_PUBLIC_API_ENABLED=true` on the server. Don't depend on engine workflow
-  execution for production work yet. See [Roadmap](/roadmap).
+  require `ENGINE_PUBLIC_API_ENABLED=true` on the server. To run your own workflows, see
+  [Run your own workflows](/guides/run-your-own-workflows). See [Roadmap](/roadmap) for what is still preview.
 </Warning>
 
 ## What's implemented
@@ -52,10 +52,12 @@ console, the engine schema and its projections into `public.traces` must live in
 ### Definition catalog (registry truth)
 
 `engine.definition_catalog` is a runtime-synced catalog of definitions registered in the
-live engine process. When `continua-engine serve` starts, it upserts the registered
-definitions and deletes stale catalog rows. `POST /v1/engine/runs` validates start
-requests against this catalog; inserting catalog rows directly is unsupported, and those
-rows are removed on the next serve start. Richer liveness metadata is future work tracked
+live engine process. When an engine runtime starts (your embedded worker or
+`continua-engine serve`), it upserts its registered definitions and deletes all other
+catalog rows. The catalog is shared by all projects in the database, so all workers on one
+engine database must register the same definitions. `POST /v1/engine/runs` validates
+start requests against this catalog; inserting catalog rows directly is unsupported, and
+those rows are removed on the next runtime start. Richer liveness metadata is future work tracked
 by the "definition catalog as registry truth" issue (#163).
 
 ### Control endpoints (real)
@@ -76,7 +78,8 @@ by the "definition catalog as registry truth" issue (#163).
 
 ### Runtime (real)
 
-`continua-engine serve` runs four workers in-process: a **workflow worker** (claims runs,
+Each engine runtime (`engine/pkg/runtime`, embedded in your worker program or in the demo
+`continua-engine serve`) runs four workers in-process: a **workflow worker** (claims runs,
 replays history, drives them forward), an **activity worker** (claims tasks, runs
 handlers, records completions/failures with retry backoff), a **maintenance worker**
 (timers, lease expiry, dedupe TTLs), and a **projector** (mirrors run state into
@@ -103,7 +106,9 @@ already be deterministic. For example, prefer `ctx.Sleep("wait", 5*time.Minute)`
 
 A separate binary `continua-engine` with `version`, `migrate up` / `migrate down`, and the
 runtime commands `serve`, `start`, `signal`, `cancel`, and `inspect`. Migrations are
-independent from platform migrations.
+independent from platform migrations. `serve` runs only the built-in dark-launch demo
+definitions, and `start` starts only those definitions on a fixed demo project. Your own
+workflows run in a worker program; see [Run your own workflows](/guides/run-your-own-workflows).
 
 ### Runs console UI (real)
 
@@ -115,10 +120,11 @@ the control bar. Polling-based.
 - **Go-only authoring.** Workflow logic and authoring remain Go-only; the Python SDK's
   `ActivityWorker` / `@activity` and `EngineControlClient` support remote activity
   execution and run control only.
-- **No production definition loading.** The runtime today registers definitions from the
-  Go process that starts workers; the bundled dark-launch CLI is still only a demo
-  consumer. There's no supported path yet to dynamically register and version arbitrary
-  user workflow definitions in a multi-tenant deployment.
+- **Workflows compile into a worker.** The supported way to run your own workflows is a
+  Go program that embeds `engine/pkg/runtime` and registers the definitions at startup;
+  see [Run your own workflows](/guides/run-your-own-workflows). The bundled `continua-engine serve` is only a demo
+  host. There's no dynamic definition loading, and all workers on one engine database
+  must register the same definitions.
 - **Explicit project provisioning.** Scoped workers must point at an existing platform
   project with `ENGINE_PROJECT_ID` or `runtime.Options.ProjectID`; missing projects fail
   startup. See [Engine project provisioning](/guides/engine-project-provisioning).
