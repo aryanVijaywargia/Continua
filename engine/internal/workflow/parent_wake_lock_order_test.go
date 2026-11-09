@@ -379,11 +379,13 @@ func waitUntilBlocked(t *testing.T, ctx context.Context, pool *pgxpool.Pool, pid
 
 // A parent's cancelled activation enqueues a cancel inbox item for each active child.
 // The item names the child run, so its foreign key check locks that run (KEY SHARE),
-// after the activation locked the traces. An activity retry on the child holds the
-// child's run and then waits for the child's trace, which ingest holds while it waits for
-// the parent's trace, which the activation holds. If the run lock blocked KEY SHARE, the
-// three would deadlock (40P01) and roll back the cancellation.
-func TestActivatorCancelCascadeDoesNotWaitForChildRunLock(t *testing.T) {
+// after the activation locked the traces. The cascade locks only children that are
+// waiting (it wakes them); a child that is already queued gets the item with no run lock.
+// An activity retry on that queued child holds the child's run and then waits for the
+// child's trace, which ingest holds while it waits for the parent's trace, which the
+// activation holds. If the run lock blocked KEY SHARE, the three would deadlock (40P01)
+// and roll back the cancellation.
+func TestActivatorCancelCascadeKeyShareDoesNotWaitForQueuedChildRunLock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	billing := func(ctx publicworkflow.Context) error {
@@ -412,6 +414,11 @@ func TestActivatorCancelCascadeDoesNotWaitForChildRunLock(t *testing.T) {
 		t.Fatalf("read receipts run: %v", err)
 	}
 	activateRunByID(t, ctx, pool, fixture.store, activator, receiptsRunID, "worker-receipts")
+	// A signal wakes receipts while its activity runs, so the cascade below sees it queued
+	// and takes no lock on its run.
+	if _, err := fixture.store.WakeWaitingRun(ctx, receiptsRunID); err != nil {
+		t.Fatalf("wake receipts: %v", err)
+	}
 
 	// Ingest locks the receipts trace before the billing trace.
 	for runID, traceID := range map[uuid.UUID]string{receiptsRunID: "engine:0-receipts", billingRunID: "engine:1-billing"} {

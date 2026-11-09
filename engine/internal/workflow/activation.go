@@ -157,7 +157,8 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 //     A cancelled run's cascade and TerminateRun then lock the earlier runs of an
 //     instance that still have active children (lockCancelCascade), because those
 //     children's relationships name the earlier run, and every write that replaces or
-//     ends such a child holds that earlier run.
+//     ends such a child holds that earlier run. The cascade then locks the current run of
+//     each waiting child (one depth lower, by child instance id) to wake it.
 //     Every run lock is FOR NO KEY UPDATE. It serializes run writers, but does not
 //     conflict with the FOR KEY SHARE that a foreign key check takes when a new row
 //     names a run (root_run_id on a new child or continue-as-new run, run_id on a
