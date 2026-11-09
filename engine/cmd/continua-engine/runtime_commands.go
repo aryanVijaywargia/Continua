@@ -84,54 +84,37 @@ type inspectResponse struct {
 	History           []inspectHistoryEvent `json:"history"`
 }
 
+// runYourOwnWorkflowsDoc is the docs page for the supported production host.
+const runYourOwnWorkflowsDoc = "https://www.continua.in/docs/guides/run-your-own-workflows"
+
 func serveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "serve",
-		Short: "Run the dark-launch engine runtime",
+		Short: "Run the engine runtime with the built-in demo definitions only",
+		Long: `Run the engine workers with only the built-in dark-launch demo workflow and
+activity definitions. serve cannot run your own workflows.
+
+To run your own workflows in production, build a Go program that embeds
+github.com/continua-ai/continua/engine/pkg/runtime and loads the same ENGINE_*
+settings with runtime.OptionsFromEnv. See ` + runYourOwnWorkflowsDoc + `.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
-			cfg, err := config.Load()
+			options, err := engineruntime.OptionsFromEnv(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
-			logger := config.NewLogger(cfg.Logging, cmd.ErrOrStderr())
-			rt, err := engineruntime.New(engineruntime.Options{
-				DatabaseURL:                cfg.Database.URL,
-				DBMaxConns:                 cfg.Database.MaxConns,
-				DBMinConns:                 cfg.Database.MinConns,
-				DBMinConnsSet:              true,
-				DBMaxConnLifetime:          cfg.Database.MaxConnLifetime,
-				DBMaxConnIdleTime:          cfg.Database.MaxConnIdleTime,
-				DBHealthCheckPeriod:        cfg.Database.HealthCheckPeriod,
-				Workflows:                  darklaunch.Definitions(),
-				Activities:                 runtimeHandlers(darklaunch.Handlers()),
-				Logger:                     logger,
-				ProjectID:                  cfg.Runtime.ProjectIDFilter,
-				ProjectorBatchSize:         cfg.Runtime.ProjectorBatchSize,
-				MaxChildDepth:              cfg.Runtime.MaxChildDepth,
-				MaxContinuationFollowDepth: cfg.Runtime.MaxContinuationFollowDepth,
-				WorkflowPollInterval:       cfg.Runtime.WorkflowPollInterval,
-				ActivityPollInterval:       cfg.Runtime.ActivityPollInterval,
-				MaintenancePollInterval:    cfg.Runtime.MaintenancePollInterval,
-				MetricsSampleInterval:      cfg.Runtime.MetricsSampleInterval,
-				RunLeaseTTL:                cfg.Runtime.RunLeaseTTL,
-				ActivityLeaseTTL:           cfg.Runtime.ActivityLeaseTTL,
-				DisableNotify:              !cfg.Runtime.NotifyEnabled,
-				NotifyFallbackInterval:     cfg.Runtime.NotifyFallbackInterval,
-				ShutdownGrace:              shutdownGraceOption(cfg.Runtime.ShutdownGrace),
-				RetentionTerminalRuns:      retentionWindowOption(cfg.Runtime.RetentionTerminalRuns),
-				RetentionDedupeGrace:       retentionWindowOption(cfg.Runtime.RetentionDedupeGrace),
-				RetentionBatchSize:         cfg.Runtime.RetentionBatchSize,
-				MetricsAddr:                cfg.Runtime.MetricsAddr,
-				HTTPAddr:                   cfg.Runtime.HTTPAddr,
-				LeaseCompletionGrace:       cfg.Runtime.LeaseCompletionGrace,
-			})
+			options.Workflows = darklaunch.Definitions()
+			options.Activities = runtimeHandlers(darklaunch.Handlers())
+			logger := options.Logger
+			rt, err := engineruntime.New(options)
 			if err != nil {
 				return err
 			}
 
+			logger.Warn("continua-engine serve runs only the built-in demo definitions; to run your own workflows, embed engine/pkg/runtime",
+				"event", "serve_demo_only", "docs", runYourOwnWorkflowsDoc)
 			logger.Info("starting continua-engine serve", "event", "serve_start")
 			err = rt.Run(ctx)
 			if err != nil {
@@ -144,20 +127,6 @@ func serveCmd() *cobra.Command {
 	}
 }
 
-func retentionWindowOption(configured time.Duration) time.Duration {
-	if configured == 0 {
-		return -1
-	}
-	return configured
-}
-
-func shutdownGraceOption(configured time.Duration) time.Duration {
-	if configured == 0 {
-		return -1
-	}
-	return configured
-}
-
 func startCmd() *cobra.Command {
 	var instanceKey string
 	var definitionName string
@@ -167,7 +136,11 @@ func startCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start a dark-launch workflow instance",
+		Short: "Start a built-in demo workflow instance on the fixed demo project",
+		Long: `Start an instance of a built-in dark-launch demo definition on the fixed demo
+project ` + darkLaunchProjectID.String() + `. start cannot start your own
+workflow definitions. Start those through POST /v1/engine/runs on the platform
+server. See ` + runYourOwnWorkflowsDoc + `.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if instanceKey == "" || definitionName == "" || requestKey == "" {
 				return writeJSONError(cmd.OutOrStdout(), "internal_error", "start requires --instance-key, --definition, and --request-key")

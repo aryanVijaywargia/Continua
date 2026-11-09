@@ -4,8 +4,9 @@ description: "Scrape Prometheus metrics from the preview durable engine and buil
 ---
 
 The preview engine runtime can expose worker, claim, activity, queue, and
-projector metrics in Prometheus format. Set `ENGINE_METRICS_ADDR` when running
-`continua-engine serve`:
+projector metrics in Prometheus format. Set `ENGINE_METRICS_ADDR` for your worker
+program (it reads the variable through `runtime.OptionsFromEnv`; see
+[Run your own workflows](/guides/run-your-own-workflows)) or for the demo `continua-engine serve`:
 
 ```bash
 ENGINE_METRICS_ADDR=0.0.0.0:9464 continua-engine serve

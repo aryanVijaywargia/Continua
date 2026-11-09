@@ -178,7 +178,7 @@ Continua is in alpha. The authoritative status breakdown of what's shippable, wh
 
 Shippable today: authenticated REST ingest, Postgres persistence, River background jobs, trace/session/timeline/compare read APIs, the embedded React debugger (incl. engine runs console), project & API-key management, and the Python SDK.
 
-Preview: durable engine workflow execution: the `continua-engine` worker runtime runs Go-defined workflows end-to-end with crash-recovery (event-sourced history + replay, activities, timers, signals, child workflows), but the public `/v1/engine/*` REST control plane is preview-gated, authoring is Go-only, and there's no production path for registering arbitrary workflow definitions yet.
+Preview: durable engine workflow execution: the `continua-engine` worker runtime runs Go-defined workflows end-to-end with crash-recovery (event-sourced history + replay, activities, timers, signals, child workflows), but the public `/v1/engine/*` REST control plane is preview-gated and authoring is Go-only. To run your own workflows, build a Go worker that embeds `engine/pkg/runtime` ([guide](./docs-site/guides/run-your-own-workflows.mdx)); `continua-engine serve` runs only the built-in demo definitions.
 
 Planned (no implementation in the tree yet): live WebSocket runtime, proxy capture, and platform trace-replay execution against new code or model versions.
 
@@ -188,7 +188,7 @@ Early stub (don't rely on yet): the TypeScript SDK (`sdks/typescript`) has real 
 
 The full documentation site lives under [`docs-site/`](./docs-site/) (Mintlify) and is organised into six tabs:
 
-- **Guides**: quickstart, [instrument your app](./docs-site/guides/instrument-your-app.mdx), [installation](./docs-site/guides/installation.mdx), [self-hosting](./docs-site/guides/self-hosting.mdx), [managing projects](./docs-site/guides/managing-projects.mdx), and failure-debugging workflows.
+- **Guides**: quickstart, [instrument your app](./docs-site/guides/instrument-your-app.mdx), [installation](./docs-site/guides/installation.mdx), [self-hosting](./docs-site/guides/self-hosting.mdx), [managing projects](./docs-site/guides/managing-projects.mdx), [run your own workflows](./docs-site/guides/run-your-own-workflows.mdx), and failure-debugging workflows.
 - **Concepts**: [architecture overview](./docs-site/concepts/overview.mdx), [data model](./docs-site/concepts/data-model.mdx), [traces / spans / sessions](./docs-site/concepts/traces-spans-sessions.mdx), [events](./docs-site/concepts/events.mdx), [ingest lifecycle](./docs-site/concepts/ingest-lifecycle.mdx), [cost & tokens](./docs-site/concepts/cost-and-tokens.mdx), [projects & auth](./docs-site/concepts/projects-and-auth.mdx), [engine foundation](./docs-site/concepts/engine-foundation.mdx).
 - **Debugger**: [tour of the UI](./docs-site/debugger/overview.mdx) plus per-page references for traces, trace detail, sessions, session compare, engine runs, command palette, and settings.
 - **Python SDK**: [overview](./docs-site/sdk/python/overview.mdx), tracing, sessions, span events, batching & ingest modes, exceptions.

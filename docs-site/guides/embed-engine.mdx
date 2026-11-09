@@ -3,45 +3,52 @@ title: "Embed the engine"
 description: "Run the preview durable engine inside a Go program with your own workflow and activity registries."
 ---
 
-The engine can run as an embedded Go library. Your process registers workflow
+The engine runs as an embedded Go library. Your program registers workflow
 definitions and activity handlers, then starts the same worker loop that powers
-`continua-engine serve`.
+`continua-engine serve`. This is the supported way to run your own workflows;
+`continua-engine serve` runs only the built-in demo definitions.
+
+For a step-by-step setup from an empty directory, including the Go module, the platform
+server, and the first run, see [Run your own workflows](/guides/run-your-own-workflows). This page is the reference
+for `runtime.Options`.
 
 <Warning>
-  The durable engine is still preview. Workflow authoring is Go-only, and run
-  start still happens through the `continua-engine` CLI or the preview control
-  plane.
+  The durable engine is still preview. Workflow authoring is Go-only, and runs of
+  your definitions start through the preview control plane (`POST /v1/engine/runs`,
+  which needs `ENGINE_PUBLIC_API_ENABLED=true` on the platform server).
 </Warning>
 
 ## Register definitions and handlers
 
-Use `github.com/continua-ai/continua/engine/pkg/runtime` from inside a Go program in the
-engine module:
+Use `github.com/continua-ai/continua/engine/pkg/runtime`. `runtime.OptionsFromEnv` reads
+the same `ENGINE_*` environment settings as `continua-engine serve` and returns them as
+`runtime.Options`. Add your definitions and handlers, then build and run the runtime:
 
 ```go
-projectID, err := uuid.Parse(os.Getenv("ENGINE_PROJECT_ID"))
+options, err := runtime.OptionsFromEnv(os.Stderr)
 if err != nil {
-    return fmt.Errorf("parse ENGINE_PROJECT_ID: %w", err)
+    return err
 }
-rt, err := runtime.New(runtime.Options{
-    DatabaseURL: os.Getenv("ENGINE_DATABASE_URL"),
-    ProjectID:   &projectID,
-    Workflows: []workflow.Definition{
-        {
-            Name:    "examples.greeter",
-            Version: "v1",
-            Run:     runGreeterWorkflow,
-        },
+options.Workflows = []workflow.Definition{
+    {
+        Name:    "examples.greeter",
+        Version: "v1",
+        Run:     runGreeterWorkflow,
     },
-    Activities: map[string]runtime.ActivityHandler{
-        "examples.greet": greetActivity,
-    },
-})
+}
+options.Activities = map[string]runtime.ActivityHandler{
+    "examples.greet": greetActivity,
+}
+rt, err := runtime.New(options)
 if err != nil {
     return err
 }
 return rt.Run(ctx)
 ```
+
+`OptionsFromEnv` writes structured logs to the writer you pass, in the format that
+`ENGINE_LOG_LEVEL` and `ENGINE_LOG_FORMAT` select. You can change any field of the
+returned options before you call `runtime.New`, or build `runtime.Options` by hand.
 
 `runtime.New` validates the database URL and the supplied registries, but it does not
 connect to Postgres. `Run` opens the engine pool, publishes the registered definitions
@@ -52,7 +59,8 @@ If `ProjectID` is set, `Run` verifies that the platform project exists before wo
 start. Create the project first and set `ENGINE_PROJECT_ID`; see
 [Engine project provisioning](/guides/engine-project-provisioning).
 
-See `engine/examples/greeter` for a minimal compilable program with signal handling.
+See `engine/examples/worker-template` for a minimal, copyable program with signal
+handling and a workflow unit test.
 
 ## Retention
 
@@ -91,21 +99,12 @@ minimum pool connections from Go, set both `runtime.Options.DBMinConns` to `0` a
 
 ## Start runs
 
-The embedded process executes runs for definitions it registered. Creating those runs is
-still a control-plane operation:
-
-```bash
-continua-engine start \
-  --instance-key greeter-1 \
-  --definition examples.greeter \
-  --version v1 \
-  --request-key greeter-1 \
-  --input '{"name":"Ada"}'
-```
-
-In deployments that use the preview REST control plane, start requests can also come
-through `POST /v1/engine/runs`. The registered definition name and version must already
-be present in the runtime-published catalog.
+The embedded process executes runs for definitions it registered. Start those runs
+through `POST /v1/engine/runs` on the platform server, or with the Python
+`EngineControlClient`. The definition name and version must be in the catalog that a
+running worker published. `continua-engine start` cannot start your definitions: it
+resolves only the built-in demo definitions on a fixed demo project. See
+[Run your own workflows](/guides/run-your-own-workflows) for the request.
 
 ## Scope and caveats
 
@@ -113,6 +112,9 @@ be present in the runtime-published catalog.
 - Workflow and activity authoring is Go-only.
 - There is no dynamic definition loading path yet; user code registers definitions in
   the Go process at startup.
+- All workers on one engine database must register the same definitions. A runtime
+  start replaces the shared definition catalog, and a worker fails a claimed run whose
+  definition it does not register. See [Run your own workflows](/guides/run-your-own-workflows).
 - A scoped runtime requires a pre-created platform project. Missing projects fail startup
   instead of creating implicit projection rows.
 - The runtime uses the same Postgres-backed history, leases, timers, signals, activity

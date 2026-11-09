@@ -11,8 +11,8 @@ repair projection state.
   The engine surface is in preview. `X-Continua-Engine-Preview: 1` is optional and
   deprecated for mutating (POST) endpoints during the sunset window. All
   `/v1/engine/*` endpoints still require `ENGINE_PUBLIC_API_ENABLED=true` on the server.
-  Workflow execution works (Go-defined workflows), but it's preview, not
-  production-hardened, so don't put it on a production-critical path yet. See
+  Workflow execution works (Go-defined workflows, run by your own worker program; see
+  [Run your own workflows](/guides/run-your-own-workflows)), but it's preview, not production-hardened. See
   [Engine foundation](/concepts/engine-foundation) and [Roadmap](/roadmap).
 </Warning>
 
@@ -81,8 +81,8 @@ The page calls `POST /v1/engine/projections/backfill` and reports per-run progre
 
 **Not yet:**
 
-- Non-Go workflow authoring, and a production path to dynamically register arbitrary
-  workflow definitions
+- Non-Go workflow authoring, and dynamic loading of workflow definitions (today they
+  compile into your worker program)
 - A GA, non-preview `/v1/engine/*` control plane
 
 For the full status breakdown, see [Engine foundation](/concepts/engine-foundation) and

@@ -31,24 +31,14 @@ export ENGINE_DATABASE_URL="postgres://continua:continua@localhost:5432/continua
 export ENGINE_PROJECT_ID="<project-id>"
 
 continua-engine migrate up
-continua-engine serve
+./my-worker
 ```
 
-`ENGINE_PROJECT_ID` scopes the worker runtime to that project. Startup fails fast if the
-project row is missing, so create the project before starting workers.
-
-When embedding the Go runtime directly, pass the same project id through
-`runtime.Options.ProjectID`:
-
-```go
-projectID := uuid.MustParse(os.Getenv("ENGINE_PROJECT_ID"))
-rt, err := runtime.New(runtime.Options{
-    DatabaseURL: os.Getenv("ENGINE_DATABASE_URL"),
-    ProjectID:   &projectID,
-    Workflows:   definitions,
-    Activities:  handlers,
-})
-```
+`./my-worker` is your worker program; see [Run your own workflows](/guides/run-your-own-workflows). It reads
+`ENGINE_PROJECT_ID` through `runtime.OptionsFromEnv`, which sets
+`runtime.Options.ProjectID`. `ENGINE_PROJECT_ID` scopes the worker runtime to that
+project. Startup fails fast if the project row is missing, so create the project before
+starting workers. The demo `continua-engine serve` reads the same variable.
 
 See [Embed the engine](/guides/embed-engine) for the full runtime setup.
 
