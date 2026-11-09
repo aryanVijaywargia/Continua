@@ -66,6 +66,9 @@ func TestPurgeAndRemoteActivityReportLockRunFirst(t *testing.T) {
 	}
 }
 
+// testPurgeAndRemoteActivityReport runs a full purge and one remote report on a completed
+// run that still holds a claimed task. A gate on the trace queues both operations, in the
+// order purgeFirst picks; then it checks that both succeed and the end state is correct.
 func testPurgeAndRemoteActivityReport(t *testing.T, report *remoteActivityReport, purgeFirst bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
