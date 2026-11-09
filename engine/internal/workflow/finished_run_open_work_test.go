@@ -291,6 +291,9 @@ func TestFinishedRunCancelsOpenRemoteTask(t *testing.T) {
 	if _, err := store.CompleteRemoteActivityTask(ctx, run.ProjectID, task.ID, "remote-worker", []byte(`{"ok":true}`)); !errors.Is(err, enginestore.ErrStaleClaim) {
 		t.Fatalf("CompleteRemoteActivityTask() error = %v, want ErrStaleClaim", err)
 	}
+	if _, err := store.FailRemoteActivityTask(ctx, run.ProjectID, task.ID, "remote-worker", &reason, &reason); !errors.Is(err, enginestore.ErrStaleClaim) {
+		t.Fatalf("FailRemoteActivityTask() error = %v, want ErrStaleClaim", err)
+	}
 	if _, err := store.HeartbeatRemoteActivityTask(ctx, run.ProjectID, task.ID, "remote-worker"); !errors.Is(err, enginestore.ErrStaleClaim) {
 		t.Fatalf("HeartbeatRemoteActivityTask() error = %v, want ErrStaleClaim", err)
 	}
