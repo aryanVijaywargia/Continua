@@ -75,6 +75,21 @@ type terminalCleanup struct {
 	ErrorMessage string // status message of a closed activity span
 }
 
+// endedEarly builds the projection of a run that ended before its workflow code
+// returned (cancelled, continued as new, terminated). Its open activity spans close
+// with the run's own error code and message.
+func endedEarly(
+	status enginedb.EngineRunLifecycleStatus,
+	resolution, errorCode, errorMessage string,
+) *terminalProjection {
+	return &terminalProjection{
+		RunStatus:    status,
+		ErrorCode:    errorCode,
+		ErrorMessage: errorMessage,
+		Cleanup:      terminalCleanup{Resolution: resolution, ErrorCode: errorCode, ErrorMessage: errorMessage},
+	}
+}
+
 // finishedRunCleanup is the cleanup of a run that completed or failed. Only the run's
 // end cancelled its open tasks, so a closed activity says that, not the run's result
 // or error.
@@ -175,30 +190,14 @@ func projectHistoryRow(
 			Cleanup:      finishedRunCleanup("failed"),
 		})
 	case *publichistory.WorkflowCancelledPayload:
-		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
-			RunStatus:    enginedb.EngineRunLifecycleStatusCancelled,
-			ErrorCode:    "cancelled",
-			ErrorMessage: "workflow cancelled",
-			Cleanup:      terminalCleanup{Resolution: "cancelled", ErrorCode: "cancelled", ErrorMessage: "workflow cancelled"},
-		})
+		return projectTerminalHistoryRow(ctx, tx, writer, target, row,
+			endedEarly(enginedb.EngineRunLifecycleStatusCancelled, "cancelled", "cancelled", "workflow cancelled"))
 	case *publichistory.WorkflowContinuedAsNewPayload:
-		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
-			RunStatus:    enginedb.EngineRunLifecycleStatusContinuedAsNew,
-			ErrorCode:    "continued_as_new",
-			ErrorMessage: "workflow continued as new",
-			Cleanup: terminalCleanup{
-				Resolution:   "continued_as_new",
-				ErrorCode:    "continued_as_new",
-				ErrorMessage: "workflow continued as new",
-			},
-		})
+		return projectTerminalHistoryRow(ctx, tx, writer, target, row,
+			endedEarly(enginedb.EngineRunLifecycleStatusContinuedAsNew, "continued_as_new", "continued_as_new", "workflow continued as new"))
 	case *publichistory.WorkflowTerminatedPayload:
-		return projectTerminalHistoryRow(ctx, tx, writer, target, row, &terminalProjection{
-			RunStatus:    enginedb.EngineRunLifecycleStatusTerminated,
-			ErrorCode:    typed.ErrorCode,
-			ErrorMessage: typed.ErrorMessage,
-			Cleanup:      terminalCleanup{Resolution: "terminated", ErrorCode: typed.ErrorCode, ErrorMessage: typed.ErrorMessage},
-		})
+		return projectTerminalHistoryRow(ctx, tx, writer, target, row,
+			endedEarly(enginedb.EngineRunLifecycleStatusTerminated, "terminated", typed.ErrorCode, typed.ErrorMessage))
 	case *publichistory.ActivityScheduledPayload:
 		return projectActivityScheduled(ctx, writer, target, row, typed)
 	case *publichistory.ActivityCompletedPayload:

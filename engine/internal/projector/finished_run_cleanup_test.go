@@ -185,8 +185,10 @@ type activitySpanRow struct {
 
 func (r *activitySpanRow) equal(other *activitySpanRow) bool {
 	return r.Status == other.Status &&
-		*r.StatusMessage == *other.StatusMessage &&
-		r.EndTime.Equal(*other.EndTime) &&
+		(r.StatusMessage == nil) == (other.StatusMessage == nil) &&
+		(r.StatusMessage == nil || *r.StatusMessage == *other.StatusMessage) &&
+		(r.EndTime == nil) == (other.EndTime == nil) &&
+		(r.EndTime == nil || r.EndTime.Equal(*other.EndTime)) &&
 		jsonEqual(r.Output, other.Output) &&
 		jsonEqual(r.Metadata, other.Metadata) &&
 		r.Version == other.Version
