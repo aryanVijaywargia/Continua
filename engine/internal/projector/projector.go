@@ -241,6 +241,8 @@ func projectHistoryRow(
 	}
 }
 
+// projectTerminalHistoryRow writes a run's terminal history row: its event, the
+// trace's terminal summary, then the cleanup of the run's open activity spans and waits.
 func projectTerminalHistoryRow(
 	ctx context.Context,
 	tx *enginestore.Tx,
@@ -268,6 +270,10 @@ func projectTerminalHistoryRow(
 	return projectTerminalCleanup(ctx, tx, writer, target, row, &projection.Cleanup)
 }
 
+// projectTerminalCleanup closes the activity spans and waits that a run left open when
+// it ended. A task that ended without a history row gets its real result; a task the
+// ending cancelled, and a discarded timer, get the cleanup's resolution. Spans that are
+// already closed are skipped, so projecting the terminal row again changes nothing.
 func projectTerminalCleanup(
 	ctx context.Context,
 	tx *enginestore.Tx,
@@ -458,6 +464,7 @@ type activityOutcome struct {
 	decision map[string]any
 }
 
+// completedActivity is the outcome of an activity.completed history row.
 func completedActivity(payload *publichistory.ActivityCompletedPayload) *activityOutcome {
 	return &activityOutcome{
 		span: publicprojection.ActivitySpanUpdate{
@@ -473,6 +480,7 @@ func completedActivity(payload *publichistory.ActivityCompletedPayload) *activit
 	}
 }
 
+// failedActivity is the outcome of an activity.failed history row.
 func failedActivity(payload *publichistory.ActivityFailedPayload) *activityOutcome {
 	return &activityOutcome{
 		span: publicprojection.ActivitySpanUpdate{

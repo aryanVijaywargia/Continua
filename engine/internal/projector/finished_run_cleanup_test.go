@@ -161,6 +161,7 @@ func TestProjectorPollOnce_FinishedRunClosesCancelledWork(t *testing.T) {
 	}
 }
 
+// activate claims the next ready run and runs one activation with the given definitions.
 func activate(t *testing.T, fixture *projectorFixture, definitions ...publicworkflow.Definition) {
 	t.Helper()
 
@@ -186,6 +187,7 @@ type activitySpanRow struct {
 	Version       int32
 }
 
+// equal reports whether two span rows match, field by field, including nil fields.
 func (r *activitySpanRow) equal(other *activitySpanRow) bool {
 	return r.Status == other.Status &&
 		(r.StatusMessage == nil) == (other.StatusMessage == nil) &&
@@ -197,6 +199,7 @@ func (r *activitySpanRow) equal(other *activitySpanRow) bool {
 		r.Version == other.Version
 }
 
+// queryActivitySpan loads the activity span of the fixture's run for activityKey.
 func queryActivitySpan(t *testing.T, fixture *projectorFixture, activityKey string) activitySpanRow {
 	t.Helper()
 
@@ -214,6 +217,7 @@ func queryActivitySpan(t *testing.T, fixture *projectorFixture, activityKey stri
 	return row
 }
 
+// countSpanEvents counts the span events of the fixture's trace.
 func countSpanEvents(t *testing.T, fixture *projectorFixture) int {
 	t.Helper()
 
@@ -368,6 +372,7 @@ func TestProjectorPollOnce_FailedRunClosesUnrecordedActivityOutcome(t *testing.T
 	}
 }
 
+// queryActivityDecisionEvents loads the payloads of the trace's decision events, in sequence order.
 func queryActivityDecisionEvents(t *testing.T, fixture *projectorFixture) [][]byte {
 	t.Helper()
 
