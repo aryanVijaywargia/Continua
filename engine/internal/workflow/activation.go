@@ -155,9 +155,10 @@ func (a *Activator) Activate(ctx context.Context, claimedRun *enginedb.EngineRun
 //     A child's terminal commit wakes its parent, so the child locks the parent run
 //     before its own; parent_run_id never changes, so an unlocked read finds the parent.
 //     A cancelled run's cascade and TerminateRun then lock the earlier runs of an
-//     instance that still have active children (lockCancelCascadeRuns), because those
+//     instance that still have active children (lockCancelCascade), because those
 //     children's relationships name the earlier run, and every write that replaces or
-//     ends such a child holds that earlier run.
+//     ends such a child holds that earlier run. The cascade then locks the current run of
+//     each waiting child (one depth lower, by child instance id) to wake it.
 //     Every run lock is FOR NO KEY UPDATE. It serializes run writers, but does not
 //     conflict with the FOR KEY SHARE that a foreign key check takes when a new row
 //     names a run (root_run_id on a new child or continue-as-new run, run_id on a
@@ -211,16 +212,21 @@ func (a *Activator) commitDecision(
 	decision *activationDecision,
 ) error {
 	// The cascade's run locks come before the trace locks below.
-	var cascadeRunIDs []uuid.UUID
+	var cascade cancelCascade
 	if decision.Kind == decisionCancelled {
 		var err error
-		if cascadeRunIDs, err = lockCancelCascadeRuns(ctx, tx, run); err != nil {
+		if cascade, err = lockCancelCascade(ctx, tx, run); err != nil {
 			return err
 		}
 	}
+	// Every trace the commit writes besides the run's own: the parent's when the run wakes
+	// it, and each child's that the cascade wakes. All of them lock in one statement.
+	traceRunIDs := append([]uuid.UUID{run.ID}, cascade.waitingChildRunIDs...)
 	if run.ParentRunID.Valid && decisionMayWakeParent(decision.Kind) {
-		parentRunID := uuid.UUID(run.ParentRunID.Bytes)
-		if err := publicprojection.NewWriter(tx.Tx()).LockRunTraces(ctx, run.ProjectID, []uuid.UUID{run.ID, parentRunID}); err != nil {
+		traceRunIDs = append(traceRunIDs, run.ParentRunID.Bytes)
+	}
+	if len(traceRunIDs) > 1 {
+		if err := publicprojection.NewWriter(tx.Tx()).LockRunTraces(ctx, run.ProjectID, traceRunIDs); err != nil {
 			return err
 		}
 	}
@@ -409,7 +415,7 @@ func (a *Activator) commitDecision(
 		if _, err := tx.DiscardOpenInboxItemsByRun(ctx, run.ID); err != nil {
 			return err
 		}
-		if err := a.enqueueChildCancelCascade(ctx, tx, run.ProjectID, cascadeRunIDs); err != nil {
+		if err := enqueueChildCancelCascade(ctx, tx, &cascade); err != nil {
 			return err
 		}
 		if err := a.commitChildTerminalTransition(ctx, tx, &updatedRun, enginedb.EngineChildWorkflowStatusCancelled); err != nil {
@@ -869,45 +875,88 @@ func (a *Activator) getOrCreateChildInstance(
 	return instance, false, nil
 }
 
-// lockCancelCascadeRuns returns the runs whose active children a cancelled run's cascade
-// reaches: the run itself, which the activation already holds, and each earlier run of
-// its instance that still has an active child, locked newest first.
+// cancelCascade is what a cancelled run's cascade reaches. lockCancelCascade finds and
+// locks it before the activation takes any trace lock.
+type cancelCascade struct {
+	// children are the active children of the run and of its earlier runs.
+	children []enginedb.EngineChildWorkflow
+	// waitingChildRunIDs are the children's current runs that wait, each locked.
+	waitingChildRunIDs []uuid.UUID
+}
+
+// lockCancelCascade locks what a cancelled run's cascade changes, and returns it. The
+// activation already holds the run and its parent run.
 //
 // The workflow instance is the logical parent. Continue-as-new leaves a run's active
 // children in place, and their relationships keep naming the earlier run, so cancelling
-// the instance's current run must reach them too. A child's continue-as-new or terminal
-// commit holds its parent run, so the cascade lists an earlier run's children only after
-// it holds that run. Otherwise it can enqueue the cancel on a child run that is being
-// replaced, and the run that replaces it never sees the cancel.
-func lockCancelCascadeRuns(ctx context.Context, tx *store.Tx, run *enginedb.EngineRun) ([]uuid.UUID, error) {
+// the instance's current run must reach them too. Every write that adds, replaces or
+// ends a child of run X holds X (a child's continue-as-new or terminal commit locks its
+// parent first), so the cascade lists the children only after it holds each parent run.
+// Otherwise it can enqueue the cancel on a child run that is being replaced, and the run
+// that replaces it never sees the cancel.
+//
+// A child that waits sees the cancel only when it is woken, so the cascade wakes it and
+// projects its new status, which writes the child's trace.
+func lockCancelCascade(ctx context.Context, tx *store.Tx, run *enginedb.EngineRun) (cancelCascade, error) {
+	// Run locks follow the order in lockRunAfterParent. After the parent run and this run:
+	//  1. this instance's earlier runs that still have an active child, newest first (same
+	//     depth and instance, lower run_number);
+	//  2. then the children's current runs that wait, in child instance id order (one depth
+	//     lower, the order ListActiveChildWorkflowsByParentRuns returns);
+	//  3. then, in commitDecision, every trace the commit writes, in one statement.
 	earlier, err := tx.ListContinuedRunsWithActiveChildren(ctx, run.ProjectID, []uuid.UUID{run.InstanceID})
 	if err != nil {
-		return nil, err
+		return cancelCascade{}, err
 	}
-	runIDs := make([]uuid.UUID, 0, len(earlier)+1)
-	runIDs = append(runIDs, run.ID)
+	parentRunIDs := make([]uuid.UUID, 0, len(earlier)+1)
+	parentRunIDs = append(parentRunIDs, run.ID)
 	for i := range earlier {
 		if _, err := tx.GetRunForUpdate(ctx, earlier[i].ID); err != nil {
-			return nil, fmt.Errorf("lock earlier run: %w", err)
+			return cancelCascade{}, fmt.Errorf("lock earlier run: %w", err)
 		}
-		runIDs = append(runIDs, earlier[i].ID)
+		parentRunIDs = append(parentRunIDs, earlier[i].ID)
 	}
-	return runIDs, nil
+
+	children, err := tx.ListActiveChildWorkflowsByParentRuns(ctx, run.ProjectID, parentRunIDs)
+	if err != nil {
+		return cancelCascade{}, err
+	}
+	cascade := cancelCascade{children: children}
+	for i := range children {
+		childRunID := children[i].CurrentChildRunID
+		// Only a run's own activation makes it wait, and that activation locks the run's
+		// parent first, which is held here. So a child read as not waiting stays so until
+		// this commit; it sees the cancel when it is next activated. A child read as
+		// waiting can still be woken (a signal, a due timer, a cancel through the API) or
+		// suspended by a writer that locks only the child, so the status that counts is
+		// the one read under the child's lock.
+		unlocked, err := tx.GetRun(ctx, childRunID)
+		if err != nil {
+			return cancelCascade{}, err
+		}
+		if unlocked.Status != enginedb.EngineRunLifecycleStatusWaiting {
+			continue
+		}
+		locked, err := tx.GetRunForUpdate(ctx, childRunID)
+		if err != nil {
+			return cancelCascade{}, fmt.Errorf("lock child run: %w", err)
+		}
+		if locked.Status == enginedb.EngineRunLifecycleStatusWaiting {
+			cascade.waitingChildRunIDs = append(cascade.waitingChildRunIDs, childRunID)
+		}
+	}
+	return cascade, nil
 }
 
-// enqueueChildCancelCascade asks every active child of the runs to cancel. The caller
-// holds each run's lock, so the list of children is final.
-func (a *Activator) enqueueChildCancelCascade(ctx context.Context, tx *store.Tx, projectID uuid.UUID, runIDs []uuid.UUID) error {
-	children, err := tx.ListActiveChildWorkflowsByParentRuns(ctx, projectID, runIDs)
-	if err != nil {
-		return err
-	}
+// enqueueChildCancelCascade asks every child in the cascade to cancel, and wakes each one
+// that waits. The caller holds every run lock and trace lock that lockCancelCascade names.
+func enqueueChildCancelCascade(ctx context.Context, tx *store.Tx, cascade *cancelCascade) error {
 	payload, err := enginehistory.MarshalPayload(enginehistory.CancelRequestedPayload{})
 	if err != nil {
 		return err
 	}
-	for i := range children {
-		child := children[i]
+	for i := range cascade.children {
+		child := cascade.children[i]
 		dedupeKey := "cancel:" + child.CurrentChildRunID.String()
 		if _, err := tx.Tx().Exec(ctx, "SAVEPOINT child_cancel_inbox"); err != nil {
 			return err
@@ -934,6 +983,20 @@ func (a *Activator) enqueueChildCancelCascade(ctx context.Context, tx *store.Tx,
 			return releaseErr
 		}
 		if !errors.Is(err, store.ErrAlreadyExists) {
+			return err
+		}
+	}
+	// The wake appends no child history row for the projector to follow, so project the
+	// child's new status here.
+	for _, childRunID := range cascade.waitingChildRunIDs {
+		woken, err := tx.WakeWaitingRun(ctx, childRunID)
+		if err != nil {
+			return err
+		}
+		if !woken.Applied {
+			continue
+		}
+		if err := publicprojection.NewWriter(tx.Tx()).SyncRunSummary(ctx, &woken.Run); err != nil {
 			return err
 		}
 	}
