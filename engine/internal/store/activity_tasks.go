@@ -58,6 +58,13 @@ func (o *storeOps) ListCancelledActivityTasksByRun(
 	return o.q.ListCancelledActivityTasksByRun(ctx, runID)
 }
 
+func (o *storeOps) ListEndedActivityTasksByRun(
+	ctx context.Context,
+	runID uuid.UUID,
+) ([]enginedb.EngineActivityTask, error) {
+	return o.q.ListEndedActivityTasksByRun(ctx, runID)
+}
+
 func (o *storeOps) ClaimNextActivityTask(
 	ctx context.Context,
 	workerID string,

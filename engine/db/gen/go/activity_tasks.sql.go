@@ -1076,6 +1076,61 @@ func (q *Queries) ListCancelledActivityTasksByRun(ctx context.Context, runID uui
 	return items, nil
 }
 
+const listEndedActivityTasksByRun = `-- name: ListEndedActivityTasksByRun :many
+SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
+FROM engine.activity_tasks
+WHERE run_id = $1
+  AND status IN ('completed', 'failed')
+ORDER BY completed_at ASC, id ASC
+`
+
+func (q *Queries) ListEndedActivityTasksByRun(ctx context.Context, runID uuid.UUID) ([]EngineActivityTask, error) {
+	rows, err := q.db.Query(ctx, listEndedActivityTasksByRun, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EngineActivityTask{}
+	for rows.Next() {
+		var i EngineActivityTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.InstanceID,
+			&i.RunID,
+			&i.HistoryID,
+			&i.ActivityKey,
+			&i.ActivityType,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.AvailableAt,
+			&i.AttemptCount,
+			&i.ClaimedBy,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MaxAttempts,
+			&i.InitialBackoffMs,
+			&i.MaxBackoffMs,
+			&i.BackoffMultiplier,
+			&i.ExecutionTarget,
+			&i.LeaseDurationMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenActivityTasksByRun = `-- name: ListOpenActivityTasksByRun :many
 SELECT id, project_id, instance_id, run_id, history_id, activity_key, activity_type, input, output, status, available_at, attempt_count, claimed_by, claimed_at, lease_expires_at, last_error_code, last_error_message, completed_at, created_at, updated_at, max_attempts, initial_backoff_ms, max_backoff_ms, backoff_multiplier, execution_target, lease_duration_ms
 FROM engine.activity_tasks

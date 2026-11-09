@@ -431,19 +431,42 @@ func (w *Writer) CloseTerminalActivitySpan(
 	errorCode string,
 	errorMessage string,
 ) error {
-	if ref == nil {
-		return errors.New("projection target is required")
+	_, err := w.CloseOpenActivitySpan(ctx, ref, historyID, &ActivitySpanUpdate{
+		ActivityKey:   activityKey,
+		Status:        "failed",
+		EndTime:       &closedAt,
+		StatusMessage: &errorMessage,
+		Output: mustMarshalMap(map[string]any{
+			"error_code":    errorCode,
+			"error_message": errorMessage,
+		}),
+	})
+	return err
+}
+
+// CloseOpenActivitySpan ends a still-open activity span with the update's status,
+// status message, end time and output, and marks it with the terminal history row
+// that closed it. It reports whether the span was open; it leaves an ended span as
+// it is.
+func (w *Writer) CloseOpenActivitySpan(
+	ctx context.Context,
+	ref *TraceRef,
+	historyID int64,
+	update *ActivitySpanUpdate,
+) (bool, error) {
+	if ref == nil || update == nil || update.EndTime == nil {
+		return false, errors.New("projection target and activity end time are required")
 	}
 
-	_, err := w.tx.Exec(ctx, `
+	tag, err := w.tx.Exec(ctx, `
 		UPDATE public.spans
-		SET status = 'failed',
-		    status_message = $3,
-		    end_time = $4::timestamptz,
-		    output = $5::jsonb,
-		    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object($6::text, to_jsonb($7::bigint)),
+		SET status = $3,
+		    status_message = $4,
+		    end_time = $5::timestamptz,
+		    output = $6::jsonb,
+		    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object($7::text, to_jsonb($8::bigint)),
 		    duration_ms = CASE
-		        WHEN start_time IS NOT NULL THEN EXTRACT(EPOCH FROM ($4::timestamptz - start_time)) * 1000
+		        WHEN start_time IS NOT NULL THEN EXTRACT(EPOCH FROM ($5::timestamptz - start_time)) * 1000
 		        ELSE duration_ms
 		    END,
 		    updated_at = NOW(),
@@ -451,11 +474,12 @@ func (w *Writer) CloseTerminalActivitySpan(
 		WHERE trace_id = $1
 		  AND span_id = $2
 		  AND end_time IS NULL
-	`, ref.TraceID, ActivitySpanExternalID(ref.RunID, activityKey), errorMessage, closedAt, mustMarshalMap(map[string]any{
-		"error_code":    errorCode,
-		"error_message": errorMessage,
-	}), TerminalHistoryMetadataKey, historyID)
-	return err
+	`, ref.TraceID, ActivitySpanExternalID(ref.RunID, update.ActivityKey), update.Status, update.StatusMessage,
+		*update.EndTime, update.Output, TerminalHistoryMetadataKey, historyID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // UpsertActivitySpan creates or patches the projected span for an activity.
