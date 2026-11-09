@@ -99,7 +99,7 @@ In terminal 1:
 ```bash
 curl -s -X POST http://localhost:8080/api/projects \
   -H "Content-Type: application/json" \
-  -d '{"name":"my-workflows","description":"My durable workflows"}'
+  -d '{"name":"my-workflows"}'
 ```
 
 The response contains the project `id` and a plaintext `api_key`. The server shows the
@@ -210,10 +210,13 @@ definition that a running worker refreshed in the last 60 seconds.
   - A worker claims every queued run of its project, or of every project when
     `ENGINE_PROJECT_ID` is empty. If it claims a run whose definition and version it
     does not register, it fails the run with `definition_version_mismatch`.
+  - A worker also claims activity tasks of other definitions. If it does not register
+    the activity type, it fails the task with `activity_not_registered`.
 
   So do not run `continua-engine serve`, or a worker with other definitions, against
-  the database of your workers. An unscoped `serve` fails your queued runs and removes
-  your definitions from the catalog.
+  the database of your workers. An unscoped `serve` fails your queued runs and activity
+  tasks. It also removes your definitions from the catalog until your worker refreshes
+  them again, which takes up to `ENGINE_MAINTENANCE_POLL_INTERVAL` (default `10s`).
 </Warning>
 
 Leave the worker running. Check readiness from terminal 1:
@@ -283,8 +286,9 @@ returns `409` while the run is not finished.
 
 The run also appears in the debugger's [Engine runs console](/debugger/engine-runs) at
 `/engine/runs`. The `bin/continua` binary from `make build-server` does not contain the
-web UI. To use the console, run `make build` (it needs Node.js and pnpm) or use the
-Docker image.
+web UI. To use the console, install the web dependencies and build the UI before the
+server binary: `pnpm install && make build-web build-server` (it needs Node.js and pnpm).
+You can also use the Docker image.
 
 ## Deploy the worker
 

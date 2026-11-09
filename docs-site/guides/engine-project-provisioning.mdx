@@ -15,7 +15,7 @@ Create a project from the debugger Projects page or the projects API:
 curl -X POST http://localhost:8080/api/projects \
   -H "X-API-Key: <admin-key>" \
   -H "Content-Type: application/json" \
-  -d '{"name":"engine-prod","description":"Durable engine runs"}'
+  -d '{"name":"engine-prod"}'
 ```
 
 Save the returned `id` and the plaintext `api_key`. The API key is shown only once. See
