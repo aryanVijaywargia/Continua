@@ -27,20 +27,37 @@ type LockedRunTrace struct {
 	Run                          enginedb.EngineRun
 }
 
-// LockRunTrace locks the projected trace row (FOR UPDATE) and loads the
-// matching engine run, scoped to the requesting project. Returns
+// LockRunTrace locks the engine run (FOR NO KEY UPDATE), then its projected
+// trace row (FOR UPDATE), scoped to the requesting project. Returns
 // ErrRunNotFound when either side of the pair is missing.
+//
+// The order is the engine-wide one: the run, then trace rows, then the
+// run's other rows (child relationship, spans, activity tasks, inbox,
+// history). A remote or local activity report locks the run, then its task,
+// then the trace, so a purge that held the trace while it cleared the tasks
+// deadlocked with it (#356).
 func (w *Writer) LockRunTrace(
 	ctx context.Context,
 	projectID uuid.UUID,
 	runID uuid.UUID,
 ) (*LockedRunTrace, error) {
-	locked := &LockedRunTrace{}
+	run, err := enginedb.New(w.tx).GetRunByProjectAndIDForUpdate(ctx, enginedb.GetRunByProjectAndIDForUpdateParams{
+		ProjectID: projectID,
+		ID:        runID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRunNotFound
+		}
+		return nil, err
+	}
+
+	locked := &LockedRunTrace{Run: run}
 	var (
 		projectionState        pgtype.Text
 		lastProjectedHistoryID pgtype.Int8
 	)
-	err := w.tx.QueryRow(ctx, `
+	err = w.tx.QueryRow(ctx, `
 		SELECT id,
 		       engine_projection_state,
 		       engine_last_projected_history_id
@@ -60,18 +77,6 @@ func (w *Writer) LockRunTrace(
 		value := lastProjectedHistoryID.Int64
 		locked.EngineLastProjectedHistoryID = &value
 	}
-
-	run, err := enginedb.New(w.tx).GetRunByProjectAndID(ctx, enginedb.GetRunByProjectAndIDParams{
-		ProjectID: projectID,
-		ID:        runID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrRunNotFound
-		}
-		return nil, err
-	}
-	locked.Run = run
 	return locked, nil
 }
 
