@@ -149,7 +149,9 @@ type Event struct {
 }
 
 // UpdateLatestHistory advances the stored per-trace history freshness
-// checkpoint after new history rows are appended for a run.
+// checkpoint after new history rows are appended for a run. A purged projection
+// (summary_only or journal_expired) keeps its state: the projector skips such a
+// trace, so catching_up would never clear, and the purge must not be undone.
 func (w *Writer) UpdateLatestHistory(
 	ctx context.Context,
 	projectID uuid.UUID,
@@ -160,6 +162,7 @@ func (w *Writer) UpdateLatestHistory(
 		UPDATE public.traces
 		SET engine_latest_history_id = GREATEST(COALESCE(engine_latest_history_id, 0), $2),
 		    engine_projection_state = CASE
+		        WHEN engine_projection_state IN ($5, $6) THEN engine_projection_state
 		        WHEN COALESCE(engine_last_projected_history_id, 0) >= $2 THEN $3
 		        ELSE $4
 		    END,
@@ -167,7 +170,7 @@ func (w *Writer) UpdateLatestHistory(
 		    updated_at = NOW(),
 		    version = COALESCE(version, 1) + 1
 		WHERE engine_run_id = $1
-	`, runID, latestHistoryID, StateUpToDate.String(), StateCatchingUp.String())
+	`, runID, latestHistoryID, StateUpToDate.String(), StateCatchingUp.String(), StateSummaryOnly.String(), StateJournalExpired.String())
 	if err != nil {
 		return err
 	}

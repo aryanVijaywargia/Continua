@@ -3113,6 +3113,9 @@ func TestEngineRunPendingWorkCountsStayConsistentAcrossRunReadAndProjectedSummar
 		DedupeKey:   testutil.StrPtr("cancel:" + runID.String()),
 	})
 	require.NoError(t, err)
+	// The run waits, so the engine does not activate it: an activation would fail it (the
+	// engine registers no checkout definition), and a finished run discards its open inbox.
+	setEngineRunWaiting(t, ctx, platformStore, runID, map[string]any{"phase": "approval"})
 
 	trace, err := platformStore.Queries().GetTraceByExternalID(ctx, platformdb.GetTraceByExternalIDParams{
 		ProjectID: projectID,

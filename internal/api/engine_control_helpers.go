@@ -260,10 +260,12 @@ func updateProjectedTraceLatestHistory(
 		return errors.New("transaction is required")
 	}
 
+	// A purged projection keeps its state, as in publicprojection.Writer.UpdateLatestHistory.
 	commandTag, err := tx.Tx().Exec(ctx, `
 		UPDATE public.traces
 		SET engine_latest_history_id = GREATEST(COALESCE(engine_latest_history_id, 0), $2),
 		    engine_projection_state = CASE
+		        WHEN engine_projection_state IN ($5, $6) THEN engine_projection_state
 		        WHEN COALESCE(engine_last_projected_history_id, 0) >= $2 THEN $3
 		        ELSE $4
 		    END,
@@ -271,7 +273,9 @@ func updateProjectedTraceLatestHistory(
 		    updated_at = NOW(),
 		    version = COALESCE(version, 1) + 1
 		WHERE engine_run_id = $1
-	`, runID, latestHistoryID, publicprojection.StateUpToDate.String(), publicprojection.StateCatchingUp.String())
+	`, runID, latestHistoryID,
+		publicprojection.StateUpToDate.String(), publicprojection.StateCatchingUp.String(),
+		publicprojection.StateSummaryOnly.String(), publicprojection.StateJournalExpired.String())
 	if err != nil {
 		return err
 	}

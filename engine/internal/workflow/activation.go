@@ -358,6 +358,9 @@ func (a *Activator) commitDecision(
 		if err != nil {
 			return err
 		}
+		if err := closeFinishedRunOpenWork(ctx, tx, run.ID); err != nil {
+			return err
+		}
 		if err := a.commitChildTerminalTransition(ctx, tx, &updatedRun, enginedb.EngineChildWorkflowStatusCompleted); err != nil {
 			return err
 		}
@@ -371,6 +374,9 @@ func (a *Activator) commitDecision(
 			LastErrorMessage: &decision.FailureMessage,
 		})
 		if err != nil {
+			return err
+		}
+		if err := closeFinishedRunOpenWork(ctx, tx, run.ID); err != nil {
 			return err
 		}
 		if err := a.commitChildTerminalTransition(ctx, tx, &updatedRun, enginedb.EngineChildWorkflowStatusFailed); err != nil {
@@ -421,6 +427,23 @@ func (a *Activator) commitDecision(
 	default:
 		return fmt.Errorf("unsupported activation decision kind %q", decision.Kind)
 	}
+}
+
+// closeFinishedRunOpenWork cancels the open activity tasks and discards the open inbox
+// items (timers, signals, cancel requests) of a run that just completed or failed. A
+// finished run never activates again, so that work can never resolve. An open task would
+// still take reports: a retry report would append history to the finished run, queue the
+// task again, and reopen a purged projection (#359). The caller holds the run lock and has
+// written the run's trace (the terminal history row moves its freshness checkpoint), so the
+// tasks are locked after both, as on the cancel, terminate and continue-as-new paths.
+func closeFinishedRunOpenWork(ctx context.Context, tx *store.Tx, runID uuid.UUID) error {
+	if _, err := tx.CancelOpenActivityTasksByRun(ctx, runID); err != nil {
+		return fmt.Errorf("cancel open activity tasks of finished run %s: %w", runID, err)
+	}
+	if _, err := tx.DiscardOpenInboxItemsByRun(ctx, runID); err != nil {
+		return fmt.Errorf("discard open inbox items of finished run %s: %w", runID, err)
+	}
+	return nil
 }
 
 func (a *Activator) commitContinuationDecision(
