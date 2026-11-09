@@ -167,7 +167,7 @@ func TestActivatorParentWakeQueuesBehindIngestInTraceOrder(t *testing.T) {
 			if err := activation.wait(ctx); err != nil {
 				t.Fatalf("Activate(child) error = %v", err)
 			}
-			assertParentQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
+			assertRunQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
 		})
 	}
 }
@@ -207,7 +207,7 @@ func TestActivatorChildTerminalWaitsForParentCommittingWait(t *testing.T) {
 			t.Fatalf("%s error = %v", name, err)
 		}
 	}
-	assertParentQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
+	assertRunQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
 }
 
 // Run locks follow one order: ancestor before descendant. TerminateRun on a parent locks
@@ -247,7 +247,7 @@ func TestActivatorChildTerminalLocksParentRunBeforeChildRun(t *testing.T) {
 	if err := activation.wait(ctx); err != nil {
 		t.Fatalf("Activate(child) error = %v", err)
 	}
-	assertParentQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
+	assertRunQueuedAndProjected(t, ctx, fixture.store, fixture.parentRun.ID)
 }
 
 // A grandchild's activation can insert a run that names the root run through the
@@ -638,21 +638,24 @@ func waitForLockQueue(t *testing.T, ctx context.Context, pool *pgxpool.Pool, hol
 	}
 }
 
+// assertRunQueuedAndProjected checks that a waiting run was woken, and that its projected
+// trace shows the new status.
+//
 //nolint:revive // Keep testing.T first in test helper signatures.
-func assertParentQueuedAndProjected(t *testing.T, ctx context.Context, store *enginestore.Store, parentRunID uuid.UUID) {
+func assertRunQueuedAndProjected(t *testing.T, ctx context.Context, store *enginestore.Store, runID uuid.UUID) {
 	t.Helper()
-	parent, err := store.GetRun(ctx, parentRunID)
+	run, err := store.GetRun(ctx, runID)
 	if err != nil {
-		t.Fatalf("GetRun(parent) error = %v", err)
+		t.Fatalf("GetRun(%s) error = %v", runID, err)
 	}
-	if parent.Status != enginedb.EngineRunLifecycleStatusQueued {
-		t.Fatalf("expected the child to wake its parent, got parent status %q", parent.Status)
+	if run.Status != enginedb.EngineRunLifecycleStatusQueued {
+		t.Fatalf("expected run %s to be woken, got status %q", runID, run.Status)
 	}
 	var projected string
-	if err := store.Pool().QueryRow(ctx, `SELECT engine_run_status FROM public.traces WHERE engine_run_id = $1`, parentRunID).Scan(&projected); err != nil {
-		t.Fatalf("query parent projected run status: %v", err)
+	if err := store.Pool().QueryRow(ctx, `SELECT engine_run_status FROM public.traces WHERE engine_run_id = $1`, runID).Scan(&projected); err != nil {
+		t.Fatalf("query projected run status of run %s: %v", runID, err)
 	}
 	if projected != string(enginedb.EngineRunLifecycleStatusQueued) {
-		t.Fatalf("expected parent projected run status %q after the wake, got %q", enginedb.EngineRunLifecycleStatusQueued, projected)
+		t.Fatalf("expected projected run status %q for run %s after the wake, got %q", enginedb.EngineRunLifecycleStatusQueued, runID, projected)
 	}
 }
