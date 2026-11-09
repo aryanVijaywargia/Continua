@@ -1,13 +1,16 @@
 package projector
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
 	enginedb "github.com/continua-ai/continua/engine/db/gen/go"
+	engineactivity "github.com/continua-ai/continua/engine/internal/activity"
 	engineworkflow "github.com/continua-ai/continua/engine/internal/workflow"
 	publichistory "github.com/continua-ai/continua/engine/pkg/history"
 	publicprojection "github.com/continua-ai/continua/engine/pkg/projection"
@@ -158,6 +161,7 @@ func TestProjectorPollOnce_FinishedRunClosesCancelledWork(t *testing.T) {
 	}
 }
 
+// activate claims the next ready run and runs one activation with the given definitions.
 func activate(t *testing.T, fixture *projectorFixture, definitions ...publicworkflow.Definition) {
 	t.Helper()
 
@@ -183,6 +187,7 @@ type activitySpanRow struct {
 	Version       int32
 }
 
+// equal reports whether two span rows match, field by field, including nil fields.
 func (r *activitySpanRow) equal(other *activitySpanRow) bool {
 	return r.Status == other.Status &&
 		(r.StatusMessage == nil) == (other.StatusMessage == nil) &&
@@ -194,6 +199,7 @@ func (r *activitySpanRow) equal(other *activitySpanRow) bool {
 		r.Version == other.Version
 }
 
+// queryActivitySpan loads the activity span of the fixture's run for activityKey.
 func queryActivitySpan(t *testing.T, fixture *projectorFixture, activityKey string) activitySpanRow {
 	t.Helper()
 
@@ -211,6 +217,7 @@ func queryActivitySpan(t *testing.T, fixture *projectorFixture, activityKey stri
 	return row
 }
 
+// countSpanEvents counts the span events of the fixture's trace.
 func countSpanEvents(t *testing.T, fixture *projectorFixture) int {
 	t.Helper()
 
@@ -223,4 +230,174 @@ func countSpanEvents(t *testing.T, fixture *projectorFixture) int {
 		t.Fatalf("count span events: %v", err)
 	}
 	return count
+}
+
+// A worker can finish an activity task after the run's last activation began, so no
+// activation records the outcome in history. When the run then fails without a replay
+// (definition_version_mismatch appends only workflow.failed), the projector pass for
+// the terminal history row closes the activity span with the task's own result, and
+// projecting that row again changes nothing (#364).
+func TestProjectorPollOnce_FailedRunClosesUnrecordedActivityOutcome(t *testing.T) {
+	outcomes := []struct {
+		name          string
+		handler       engineactivity.Handler
+		taskStatus    enginedb.EngineActivityTaskStatus
+		spanStatus    string
+		statusMessage *string
+		output        map[string]any
+		decision      map[string]any
+	}{
+		{
+			name: "completed",
+			handler: func(context.Context, json.RawMessage) (json.RawMessage, error) {
+				return json.RawMessage(`{"charged":true}`), nil
+			},
+			taskStatus: enginedb.EngineActivityTaskStatusCompleted,
+			spanStatus: "completed",
+			output:     map[string]any{"charged": true},
+			decision:   map[string]any{"question": "activity:charge:outcome", "chosen": "completed"},
+		},
+		{
+			name: "failed",
+			handler: func(context.Context, json.RawMessage) (json.RawMessage, error) {
+				return nil, publicworkflow.NonRetryableError(errors.New("card declined"))
+			},
+			taskStatus:    enginedb.EngineActivityTaskStatusFailed,
+			spanStatus:    "failed",
+			statusMessage: stringPtr("card declined"),
+			output:        map[string]any{"error_code": "activity_failed", "error_message": "card declined"},
+			decision: map[string]any{
+				"question":  "activity:charge:outcome",
+				"chosen":    "failed",
+				"reasoning": "card declined",
+			},
+		},
+	}
+	for _, outcome := range outcomes {
+		t.Run(outcome.name, func(t *testing.T) {
+			fixture := newProjectorFixture(t)
+			activate(t, fixture, publicworkflow.Definition{
+				Name:    "projector-demo",
+				Version: "v1",
+				Run: func(ctx publicworkflow.Context) error {
+					return ctx.Activity("charge", "demo.charge", nil, nil)
+				},
+			})
+			if err := fixture.projector.PollOnce(fixture.ctx, "projector-open-work"); err != nil {
+				t.Fatalf("PollOnce() open work error = %v", err)
+			}
+
+			activities, err := engineactivity.NewRegistry(map[string]engineactivity.Handler{"demo.charge": outcome.handler})
+			if err != nil {
+				t.Fatalf("NewRegistry(activities) error = %v", err)
+			}
+			worker := engineactivity.NewWorker(fixture.store, activities, time.Minute, nil)
+			if claimed, err := worker.PollOnce(fixture.ctx, "activity-worker"); err != nil || !claimed {
+				t.Fatalf("activity worker PollOnce() = %v, %v; want a claimed task", claimed, err)
+			}
+			// The definition version is gone, so the activation fails the run without
+			// replaying it, and no history row records the task's outcome.
+			activate(t, fixture)
+
+			finished, err := fixture.store.GetRun(fixture.ctx, fixture.run.ID)
+			if err != nil {
+				t.Fatalf("GetRun() error = %v", err)
+			}
+			if finished.Status != enginedb.EngineRunLifecycleStatusFailed {
+				t.Fatalf("run status = %s, want failed", finished.Status)
+			}
+			history, err := fixture.store.GetHistoryByRun(fixture.ctx, fixture.run.ID)
+			if err != nil {
+				t.Fatalf("GetHistoryByRun() error = %v", err)
+			}
+			for i := range history {
+				switch history[i].EventType {
+				case publichistory.EventActivityCompleted, publichistory.EventActivityFailed:
+					t.Fatalf("history records the activity outcome (%s); the test needs an unrecorded one", history[i].EventType)
+				}
+			}
+			terminal := history[len(history)-1]
+			if terminal.EventType != publichistory.EventWorkflowFailed {
+				t.Fatalf("last history event = %s, want %s", terminal.EventType, publichistory.EventWorkflowFailed)
+			}
+			task, err := fixture.store.GetActivityTaskByRunAndKey(fixture.ctx, enginedb.GetActivityTaskByRunAndKeyParams{
+				RunID:       fixture.run.ID,
+				ActivityKey: "charge",
+			})
+			if err != nil {
+				t.Fatalf("GetActivityTaskByRunAndKey() error = %v", err)
+			}
+			if task.Status != outcome.taskStatus || !task.CompletedAt.Valid {
+				t.Fatalf("task status = %s, completed at %v; want %s with a completion time", task.Status, task.CompletedAt, outcome.taskStatus)
+			}
+
+			if err := fixture.projector.PollOnce(fixture.ctx, "projector-failed-run"); err != nil {
+				t.Fatalf("PollOnce() failed run error = %v", err)
+			}
+			span := queryActivitySpan(t, fixture, "charge")
+			if span.Status != outcome.spanStatus {
+				t.Fatalf("activity span status = %q, want %q", span.Status, outcome.spanStatus)
+			}
+			if (span.StatusMessage == nil) != (outcome.statusMessage == nil) ||
+				(span.StatusMessage != nil && *span.StatusMessage != *outcome.statusMessage) {
+				t.Fatalf("activity span status message = %v, want %v", span.StatusMessage, outcome.statusMessage)
+			}
+			if span.EndTime == nil || !span.EndTime.Equal(task.CompletedAt.Time) {
+				t.Fatalf("activity span end time = %v, want the task completion time %v", span.EndTime, task.CompletedAt.Time)
+			}
+			if !jsonEqual(span.Output, mustJSON(t, outcome.output)) {
+				t.Fatalf("activity span output = %s, want %v", span.Output, outcome.output)
+			}
+			decisions := queryActivityDecisionEvents(t, fixture)
+			if len(decisions) != 1 || !jsonEqual(decisions[0], mustJSON(t, outcome.decision)) {
+				t.Fatalf("activity decision events = %s, want one %v", decisions, outcome.decision)
+			}
+			waits := queryResolvedWaitEvents(t, fixture, outcome.spanStatus)
+			want := resolvedWaitEvent{Sequence: terminal.SequenceNo*10 + 2, WaitID: "activity:charge"}
+			if len(waits) != 1 || waits[0] != want {
+				t.Fatalf("%s waits = %+v, want %+v", outcome.spanStatus, waits, want)
+			}
+			eventCount := countSpanEvents(t, fixture)
+
+			// Crash recovery projects the terminal history row again.
+			fixture.setTraceProjection(terminal.ID, history[len(history)-2].ID, publicprojection.StateCatchingUp.String())
+			if err := fixture.projector.PollOnce(fixture.ctx, "projector-failed-run-again"); err != nil {
+				t.Fatalf("PollOnce() re-projection error = %v", err)
+			}
+			assertProjectedDetailState(t, fixture, publicprojection.StateUpToDate.String(), terminal.ID, 1, eventCount)
+			if again := queryActivitySpan(t, fixture, "charge"); !again.equal(&span) {
+				t.Fatalf("activity span after re-projection = %+v, want %+v", again, span)
+			}
+		})
+	}
+}
+
+// queryActivityDecisionEvents loads the payloads of the trace's decision events, in sequence order.
+func queryActivityDecisionEvents(t *testing.T, fixture *projectorFixture) [][]byte {
+	t.Helper()
+
+	rows, err := fixture.db.Pool.Query(fixture.ctx, `
+		SELECT payload
+		FROM public.span_events
+		WHERE trace_id = $1
+		  AND event_type = 'decision'
+		ORDER BY sequence ASC, created_at ASC
+	`, fixture.traceID)
+	if err != nil {
+		t.Fatalf("query decision events: %v", err)
+	}
+	defer rows.Close()
+
+	var payloads [][]byte
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			t.Fatalf("scan decision event: %v", err)
+		}
+		payloads = append(payloads, payload)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate decision events: %v", err)
+	}
+	return payloads
 }

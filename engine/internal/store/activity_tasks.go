@@ -58,6 +58,15 @@ func (o *storeOps) ListCancelledActivityTasksByRun(
 	return o.q.ListCancelledActivityTasksByRun(ctx, runID)
 }
 
+// ListEndedActivityTasksByRun returns the run's completed and failed tasks, in
+// completion order.
+func (o *storeOps) ListEndedActivityTasksByRun(
+	ctx context.Context,
+	runID uuid.UUID,
+) ([]enginedb.EngineActivityTask, error) {
+	return o.q.ListEndedActivityTasksByRun(ctx, runID)
+}
+
 func (o *storeOps) ClaimNextActivityTask(
 	ctx context.Context,
 	workerID string,

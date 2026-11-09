@@ -54,6 +54,13 @@ WHERE run_id = $1
   AND status = 'cancelled'
 ORDER BY available_at ASC, id ASC;
 
+-- name: ListEndedActivityTasksByRun :many
+SELECT *
+FROM engine.activity_tasks
+WHERE run_id = $1
+  AND status IN ('completed', 'failed')
+ORDER BY completed_at ASC, id ASC;
+
 -- name: ClaimNextActivityTask :one
 UPDATE engine.activity_tasks
 SET status = 'claimed',

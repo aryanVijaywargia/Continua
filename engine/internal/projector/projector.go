@@ -201,9 +201,9 @@ func projectHistoryRow(
 	case *publichistory.ActivityScheduledPayload:
 		return projectActivityScheduled(ctx, writer, target, row, typed)
 	case *publichistory.ActivityCompletedPayload:
-		return projectActivityCompleted(ctx, writer, target, row, typed)
+		return projectActivityOutcome(ctx, writer, target, row, completedActivity(typed))
 	case *publichistory.ActivityFailedPayload:
-		return projectActivityFailed(ctx, writer, target, row, typed)
+		return projectActivityOutcome(ctx, writer, target, row, failedActivity(typed))
 	case *publichistory.TimerScheduledPayload:
 		return writer.EmitEvent(ctx, &publicprojection.Event{
 			ProjectID:  target.ProjectID,
@@ -241,6 +241,8 @@ func projectHistoryRow(
 	}
 }
 
+// projectTerminalHistoryRow writes a run's terminal history row: its event, the
+// trace's terminal summary, then the cleanup of the run's open activity spans and waits.
 func projectTerminalHistoryRow(
 	ctx context.Context,
 	tx *enginestore.Tx,
@@ -268,6 +270,10 @@ func projectTerminalHistoryRow(
 	return projectTerminalCleanup(ctx, tx, writer, target, row, &projection.Cleanup)
 }
 
+// projectTerminalCleanup closes the activity spans and waits that a run left open when
+// it ended. A task that ended without a history row gets its real result; a task the
+// ending cancelled, and a discarded timer, get the cleanup's resolution. Spans that are
+// already closed are skipped, so projecting the terminal row again changes nothing.
 func projectTerminalCleanup(
 	ctx context.Context,
 	tx *enginestore.Tx,
@@ -276,6 +282,11 @@ func projectTerminalCleanup(
 	row *enginedb.EngineHistory,
 	cleanup *terminalCleanup,
 ) error {
+	endedActivities, err := tx.ListEndedActivityTasksByRun(ctx, target.RunID)
+	if err != nil {
+		return err
+	}
+
 	cancelledActivities, err := tx.ListCancelledActivityTasksByRun(ctx, target.RunID)
 	if err != nil {
 		return err
@@ -287,6 +298,16 @@ func projectTerminalCleanup(
 	}
 
 	sequence := row.SequenceNo*10 + 1
+	for i := range endedActivities {
+		closed, err := closeUnrecordedActivitySpan(ctx, writer, target, row, &endedActivities[i], sequence)
+		if err != nil {
+			return err
+		}
+		if closed {
+			sequence += 2
+		}
+	}
+
 	for i := range cancelledActivities {
 		task := cancelledActivities[i]
 		if err := writer.CloseTerminalActivitySpan(
@@ -354,6 +375,34 @@ func projectTerminalCleanup(
 	return nil
 }
 
+// closeUnrecordedActivitySpan closes the open span of a task that a worker completed or
+// failed after the run's last activation began, so no history row records its outcome
+// (#364). The span and its events show the task's stored result at its completion time
+// (the terminal row's time if the task has none). A span that an activity history row
+// already closed stays as it is, and so does a span that an earlier projection of this
+// terminal row closed.
+func closeUnrecordedActivitySpan(
+	ctx context.Context,
+	writer *publicprojection.Writer,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
+	task *enginedb.EngineActivityTask,
+	sequence int32,
+) (bool, error) {
+	endedAt := row.CreatedAt
+	if task.CompletedAt.Valid {
+		endedAt = task.CompletedAt.Time
+	}
+	outcome := endedActivity(task)
+	span := outcome.span
+	span.EndTime = &endedAt
+	closed, err := writer.CloseOpenActivitySpan(ctx, target.traceRef(), row.ID, &span)
+	if err != nil || !closed {
+		return false, err
+	}
+	return true, outcome.emitEvents(ctx, writer, target, row.ID, endedAt, sequence, ":activity:"+task.ActivityKey)
+}
+
 func projectActivityScheduled(
 	ctx context.Context,
 	writer *publicprojection.Writer,
@@ -408,96 +457,92 @@ func projectActivityScheduled(
 	})
 }
 
-func projectActivityCompleted(
-	ctx context.Context,
-	writer *publicprojection.Writer,
-	target *projectionTarget,
-	row *enginedb.EngineHistory,
-	payload *publichistory.ActivityCompletedPayload,
-) error {
-	if err := writer.UpsertActivitySpan(ctx, target.traceRef(), &publicprojection.ActivitySpanUpdate{
-		ActivityKey:  payload.ActivityKey,
-		ActivityType: payload.ActivityType,
-		Status:       "completed",
-		EndTime:      &row.CreatedAt,
-		Output:       publicjsonraw.Clone(payload.Output),
-	}); err != nil {
-		return err
-	}
-
-	if err := writer.EmitEvent(ctx, &publicprojection.Event{
-		ProjectID: target.ProjectID,
-		TraceID:   target.TraceID,
-		SpanID:    rootSpanExternalID(target.RunID),
-		EventType: "decision",
-		EventTS:   row.CreatedAt,
-		Sequence:  row.SequenceNo*10 + 1,
-		Payload: mustMarshalMap(map[string]any{
-			"question": "activity:" + payload.ActivityKey + ":outcome",
-			"chosen":   "completed",
-		}),
-		HistoryID:  row.ID,
-		RunID:      target.RunID,
-		VariantKey: "activity_decision_completed",
-	}); err != nil {
-		return err
-	}
-
-	return writer.EmitEvent(ctx, &publicprojection.Event{
-		ProjectID: target.ProjectID,
-		TraceID:   target.TraceID,
-		SpanID:    rootSpanExternalID(target.RunID),
-		EventType: "wait",
-		EventTS:   row.CreatedAt,
-		Sequence:  row.SequenceNo*10 + 2,
-		Payload: mustMarshalMap(map[string]any{
-			"wait_kind":  "activity",
-			"phase":      "resolved",
-			"wait_id":    "activity:" + payload.ActivityKey,
-			"resolution": "completed",
-		}),
-		HistoryID:  row.ID,
-		RunID:      target.RunID,
-		VariantKey: "activity_wait_resolved_completed",
-	})
+// activityOutcome is how an activity task ended: the final state of its span (without
+// an end time) and the payload of its outcome decision event.
+type activityOutcome struct {
+	span     publicprojection.ActivitySpanUpdate
+	decision map[string]any
 }
 
-func projectActivityFailed(
-	ctx context.Context,
-	writer *publicprojection.Writer,
-	target *projectionTarget,
-	row *enginedb.EngineHistory,
-	payload *publichistory.ActivityFailedPayload,
-) error {
-	if err := writer.UpsertActivitySpan(ctx, target.traceRef(), &publicprojection.ActivitySpanUpdate{
-		ActivityKey:   payload.ActivityKey,
-		ActivityType:  payload.ActivityType,
-		Status:        "failed",
-		EndTime:       &row.CreatedAt,
-		StatusMessage: stringPtr(strings.TrimSpace(payload.ErrorMessage)),
-		Output: mustMarshalMap(map[string]any{
-			"error_code":    payload.ErrorCode,
-			"error_message": payload.ErrorMessage,
-		}),
-	}); err != nil {
-		return err
+// completedActivity is the outcome of an activity.completed history row.
+func completedActivity(payload *publichistory.ActivityCompletedPayload) *activityOutcome {
+	return &activityOutcome{
+		span: publicprojection.ActivitySpanUpdate{
+			ActivityKey:  payload.ActivityKey,
+			ActivityType: payload.ActivityType,
+			Status:       "completed",
+			Output:       publicjsonraw.Clone(payload.Output),
+		},
+		decision: map[string]any{
+			"question": "activity:" + payload.ActivityKey + ":outcome",
+			"chosen":   "completed",
+		},
 	}
+}
 
-	if err := writer.EmitEvent(ctx, &publicprojection.Event{
-		ProjectID: target.ProjectID,
-		TraceID:   target.TraceID,
-		SpanID:    rootSpanExternalID(target.RunID),
-		EventType: "decision",
-		EventTS:   row.CreatedAt,
-		Sequence:  row.SequenceNo*10 + 1,
-		Payload: mustMarshalMap(map[string]any{
+// failedActivity is the outcome of an activity.failed history row.
+func failedActivity(payload *publichistory.ActivityFailedPayload) *activityOutcome {
+	return &activityOutcome{
+		span: publicprojection.ActivitySpanUpdate{
+			ActivityKey:   payload.ActivityKey,
+			ActivityType:  payload.ActivityType,
+			Status:        "failed",
+			StatusMessage: stringPtr(strings.TrimSpace(payload.ErrorMessage)),
+			Output: mustMarshalMap(map[string]any{
+				"error_code":    payload.ErrorCode,
+				"error_message": payload.ErrorMessage,
+			}),
+		},
+		decision: map[string]any{
 			"question":  "activity:" + payload.ActivityKey + ":outcome",
 			"chosen":    "failed",
 			"reasoning": payload.ErrorMessage,
-		}),
-		HistoryID:  row.ID,
+		},
+	}
+}
+
+// endedActivity is the outcome a completed or failed task stores, built the way a
+// replay records it in history.
+func endedActivity(task *enginedb.EngineActivityTask) *activityOutcome {
+	if task.Status == enginedb.EngineActivityTaskStatusCompleted {
+		return completedActivity(&publichistory.ActivityCompletedPayload{
+			ActivityKey:  task.ActivityKey,
+			ActivityType: task.ActivityType,
+			Output:       task.Output,
+		})
+	}
+	return failedActivity(&publichistory.ActivityFailedPayload{
+		ActivityKey:  task.ActivityKey,
+		ActivityType: task.ActivityType,
+		ErrorCode:    stringValue(task.LastErrorCode),
+		ErrorMessage: stringValue(task.LastErrorMessage),
+	})
+}
+
+// emitEvents writes the outcome's decision event at sequence and its resolved activity
+// wait at sequence+1. variantSuffix keeps the keys of several outcomes that one history
+// row projects apart.
+func (o *activityOutcome) emitEvents(
+	ctx context.Context,
+	writer *publicprojection.Writer,
+	target *projectionTarget,
+	historyID int64,
+	at time.Time,
+	sequence int32,
+	variantSuffix string,
+) error {
+	status := o.span.Status
+	if err := writer.EmitEvent(ctx, &publicprojection.Event{
+		ProjectID:  target.ProjectID,
+		TraceID:    target.TraceID,
+		SpanID:     rootSpanExternalID(target.RunID),
+		EventType:  "decision",
+		EventTS:    at,
+		Sequence:   sequence,
+		Payload:    mustMarshalMap(o.decision),
+		HistoryID:  historyID,
 		RunID:      target.RunID,
-		VariantKey: "activity_decision_failed",
+		VariantKey: "activity_decision_" + status + variantSuffix,
 	}); err != nil {
 		return err
 	}
@@ -507,18 +552,34 @@ func projectActivityFailed(
 		TraceID:   target.TraceID,
 		SpanID:    rootSpanExternalID(target.RunID),
 		EventType: "wait",
-		EventTS:   row.CreatedAt,
-		Sequence:  row.SequenceNo*10 + 2,
+		EventTS:   at,
+		Sequence:  sequence + 1,
 		Payload: mustMarshalMap(map[string]any{
 			"wait_kind":  "activity",
 			"phase":      "resolved",
-			"wait_id":    "activity:" + payload.ActivityKey,
-			"resolution": "failed",
+			"wait_id":    "activity:" + o.span.ActivityKey,
+			"resolution": status,
 		}),
-		HistoryID:  row.ID,
+		HistoryID:  historyID,
 		RunID:      target.RunID,
-		VariantKey: "activity_wait_resolved_failed",
+		VariantKey: "activity_wait_resolved_" + status + variantSuffix,
 	})
+}
+
+// projectActivityOutcome projects the activity.completed or activity.failed history row.
+func projectActivityOutcome(
+	ctx context.Context,
+	writer *publicprojection.Writer,
+	target *projectionTarget,
+	row *enginedb.EngineHistory,
+	outcome *activityOutcome,
+) error {
+	span := outcome.span
+	span.EndTime = &row.CreatedAt
+	if err := writer.UpsertActivitySpan(ctx, target.traceRef(), &span); err != nil {
+		return err
+	}
+	return outcome.emitEvents(ctx, writer, target, row.ID, row.CreatedAt, row.SequenceNo*10+1, "")
 }
 
 func projectCustomHistoryEvent(
@@ -739,6 +800,13 @@ func stringPtr(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 type pgtypeTimestamptz struct {
